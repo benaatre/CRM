@@ -1,0 +1,290 @@
+// نظام «مشاريع السلطان» CRM — المخطط الأولي (المرحلة ١)
+// مرجع البيانات: docs/design-reference/schema.md + بريف التصميم.
+// التوليد: npx prisma generate   |   النشر: npx prisma migrate deploy
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== التعدادات (Enums) =====================
+
+/// أدوار المستخدمين — الصلاحيات تُطبّق على الخادم في كل query/action.
+enum Role {
+  OWNER // المالك — صلاحيات كاملة
+  ADMIN // مدير — إدارة الموظفين والتوزيع والتقارير
+  EMPLOYEE // موظف مبيعات — يدخل برمز PIN، يشوف عملاءه فقط
+}
+
+/// مراحل العميل في خط البيع (كانبان ٩ أعمدة).
+enum LeadStage {
+  NEW // جديد
+  ATTEMPTED // محاولة / لم يرد
+  INTERESTED // مهتم
+  FOLLOW_UP_LATER // موعد لاحق
+  VIEWING // زيارة / معاينة
+  NEGOTIATION // تفاوض
+  RESERVED // محجوز / عربون
+  CLOSED_WON // مقفول - بيع
+  CLOSED_LOST // غير مهتم / خاسر
+}
+
+enum Priority {
+  HIGH // عالية
+  MEDIUM // متوسطة
+  LOW // منخفضة
+}
+
+/// قنوات وصول العميل (مصدر الليد).
+enum Channel {
+  WHATSAPP // واتساب
+  TIKTOK // تيك توك
+  META // ميتا (انستقرام/فيسبوك)
+  AQAR // عقار
+  REFERRAL // إحالة
+  VISIT // زيارة
+  OTHER // أخرى
+}
+
+enum UnitType {
+  APARTMENT // شقة
+  FLOOR // دور
+  GROUND_FLOOR_APARTMENT // شقة دور أرضي
+  PENTHOUSE // بنتهاوس
+  OTHER // أخرى
+}
+
+enum ProjectStatus {
+  AVAILABLE // متاح
+  UNDER_CONSTRUCTION // تحت الإنشاء
+  FINISHING // تشطيبات
+  COMPLETED // مكتمل
+}
+
+enum UnitStatus {
+  AVAILABLE // متاحة
+  RESERVED // محجوزة
+  SOLD // مباعة
+}
+
+enum PaymentMethod {
+  CASH // كاش
+  BANK_FINANCE // تمويل بنكي
+}
+
+/// أسماء البنوك السعودية (للتمويل).
+enum SaudiBank {
+  RAJHI // الراجحي
+  SNB // الأهلي SNB
+  RIYAD // الرياض
+  ALINMA // الإنماء
+  SAB // ساب
+  ALBILAD // البلاد
+  ALJAZIRA // الجزيرة
+  OTHER // أخرى
+}
+
+enum Nationality {
+  SAUDI // سعودي
+  RESIDENT // مقيم
+}
+
+/// مراحل تقدّم البيع داخل بطاقة الحجز.
+enum BookingStage {
+  RESERVATION // حجز
+  PAPERWORK // أوراق
+  VALUATION // تقييم
+  SIGNING // توقيع
+  TRANSFER // إفراغ
+  SOLD // بيع
+}
+
+enum DeliveryStatus {
+  PENDING // لم يُسلّم
+  SCHEDULED // مجدول
+  DELIVERED // تم التسليم
+}
+
+/// أنواع النشاطات/التفاعلات (للتحليلات: محاولات، زيارات، مواعيد، سرعة الرد).
+enum ActivityType {
+  CALL // اتصال / محاولة
+  WHATSAPP // رسالة واتساب
+  VISIT // زيارة / معاينة
+  APPOINTMENT // موعد
+  NOTE // ملاحظة
+  STAGE_CHANGE // تغيير مرحلة
+  ASSIGNMENT // توزيع/نقل
+}
+
+// ===================== الجداول (Models) =====================
+
+/// المستخدمون (مالك/مدير/موظف). الموظف يسجّل الدخول برمز PIN.
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String?  @unique
+  email        String?  @unique
+  role         Role     @default(EMPLOYEE)
+  /// بصمة كلمة المرور (للمالك/المدير عبر الإيميل) — bcrypt
+  passwordHash String?
+  /// بصمة رمز PIN (للموظف) — bcrypt
+  pinHash      String?
+  /// هدف الصفقات المقفولة (لشريط التقدّم في لوحة الأداء)
+  targetDeals  Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // علاقات
+  assignedLeads Lead[]     @relation("LeadAssignee")
+  createdLeads  Lead[]     @relation("LeadCreator")
+  bookings      Booking[]  @relation("BookingSeller")
+  activities    Activity[]
+
+  @@index([role])
+}
+
+/// المشاريع العقارية (مثال: مشروع السلطان 79 / 80).
+model Project {
+  id           String        @id @default(cuid())
+  name         String
+  district     String? // الحي
+  status       ProjectStatus @default(AVAILABLE)
+  priceMin     Decimal?      @db.Decimal(14, 2)
+  priceMax     Decimal?      @db.Decimal(14, 2)
+  deliveryDate DateTime? // موعد التسليم
+  /// رقم ترخيص فال (REGA) — يظهر بزاوية الواجهة
+  falLicense   String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  units Unit[]
+  leads Lead[]
+
+  @@index([status])
+}
+
+/// الوحدات السكنية داخل المشروع.
+model Unit {
+  id        String     @id @default(cuid())
+  projectId String
+  number    String // رقم الوحدة
+  type      UnitType   @default(APARTMENT)
+  floor     String? // الدور
+  area      Decimal?   @db.Decimal(8, 2) // المساحة م²
+  price     Decimal?   @db.Decimal(14, 2)
+  status    UnitStatus @default(AVAILABLE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  booking Booking?
+
+  @@unique([projectId, number])
+  @@index([status])
+}
+
+/// العملاء / الليدات — قلب النظام.
+model Lead {
+  id           String      @id @default(cuid())
+  name         String
+  phone        String
+  nationalId   String? // رقم الهوية
+  nationality  Nationality?
+  channel      Channel     @default(OTHER)
+  projectId    String?
+  unitType     UnitType?
+  budget       Decimal?    @db.Decimal(14, 2)
+  stage        LeadStage   @default(NEW)
+  priority     Priority    @default(MEDIUM)
+  /// عدد محاولات التواصل
+  attempts     Int         @default(0)
+  /// وقت أول تواصل — لقياس سرعة الرد (speed-to-lead)
+  firstContactAt DateTime?
+  lastContact  DateTime?
+  nextFollowup DateTime?
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // الإسناد
+  assignedToId String?
+  assignedTo   User?    @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdById  String?
+  createdBy    User?    @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  booking    Booking?
+  activities Activity[]
+  referrals  Referral[]
+
+  @@index([stage])
+  @@index([assignedToId])
+  @@index([nextFollowup])
+}
+
+/// حجز وحدة لعميل — بطاقة خط المبيعات.
+model Booking {
+  id            String         @id @default(cuid())
+  leadId        String         @unique
+  unitId        String         @unique
+  sellerId      String?
+  nationality   Nationality?
+  nationalId    String?
+  phone         String?
+  paymentMethod PaymentMethod  @default(CASH)
+  bankName      SaudiBank?
+  deposit       Decimal?       @db.Decimal(14, 2) // العربون
+  price         Decimal        @db.Decimal(14, 2)
+  discount      Decimal        @default(0) @db.Decimal(14, 2)
+  finalPrice    Decimal        @db.Decimal(14, 2) // السعر بعد الخصم
+  stage         BookingStage   @default(RESERVATION)
+  deliveryStatus DeliveryStatus @default(PENDING)
+  /// فشل تمويل / رفض بنك (يظهر بأحمر)
+  financeRejected Boolean      @default(false)
+  /// المبلغ المحصّل فعليًا (للتحليلات المالية)
+  collected     Decimal        @default(0) @db.Decimal(14, 2)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  lead   Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  unit   Unit  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  seller User? @relation("BookingSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+
+  @@index([stage])
+  @@index([sellerId])
+}
+
+/// سجل النشاطات/التفاعلات لكل عميل (للتحليلات).
+model Activity {
+  id        String       @id @default(cuid())
+  leadId    String
+  userId    String?
+  type      ActivityType
+  note      String?
+  createdAt DateTime     @default(now())
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([type])
+}
+
+/// الإحالات (ما بعد البيع — اطلب إحالة من عميل مقفول).
+model Referral {
+  id           String   @id @default(cuid())
+  fromLeadId   String
+  name         String
+  phone        String?
+  converted    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  fromLead Lead @relation(fields: [fromLeadId], references: [id], onDelete: Cascade)
+
+  @@index([fromLeadId])
+}

@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  ثيم «أوبسيديان» الداكن — الألوان من بريف التصميم بالضبط (Hex).
+  التطبيق داكن أولًا (الجذر = الوضع الداكن). الوضع النهاري اختياري (المرحلة ٢).
+  المتغيّرات متوافقة مع shadcn/ui حتى تلتقط المكوّنات الجاهزة هويتنا تلقائيًا.
+*/
+:root {
+  --radius: 0.875rem;
+
+  /* الأساسيات */
+  --background: #0a0a0b;
+  --foreground: #ededf0;
+
+  /* الأسطح */
+  --card: #141417; /* سطح البطاقات */
+  --card-foreground: #ededf0;
+  --popover: #1c1c20; /* سطح مرتفع */
+  --popover-foreground: #ededf0;
+
+  /* الذهبي العتيق (اللون الأساسي للهوية) */
+  --primary: #cba45e;
+  --primary-foreground: #0a0a0b;
+  --gold: #cba45e;
+  --gold-light: #e2c078;
+  --gold-dark: #9c7c3c;
+
+  /* ثانوي / خافت / تمييز */
+  --secondary: #1c1c20;
+  --secondary-foreground: #ededf0;
+  --muted: #1c1c20;
+  --muted-foreground: #9a9aa3;
+  --accent: #1c1c20;
+  --accent-foreground: #e2c078;
+
+  /* دلالات */
+  --destructive: #f0685f; /* خطر / تنبيه */
+  --success: #2fbf8f; /* نجاح */
+  --warning: #e5b45c; /* تحذير */
+  --info: #5b9bd8; /* معلومة */
+
+  /* الحدود والإدخال والتركيز */
+  --border: #2a2a30;
+  --input: #2a2a30;
+  --ring: #cba45e;
+
+  /* سطح إضافي للـ bento */
+  --surface-raised: #1c1c20;
+}
+
+/* خريطة المتغيّرات إلى أدوات Tailwind v4 (bg-background, text-gold, border-border ...) */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-gold: var(--gold);
+  --color-gold-light: var(--gold-light);
+  --color-gold-dark: var(--gold-dark);
+  --color-surface-raised: var(--surface-raised);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* الخطوط — تُحقن من next/font في layout.tsx */
+  --font-sans: var(--font-ibm-plex-arabic), system-ui, sans-serif;
+  --font-logo: var(--font-reem-kufi), serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* الشعار «مشاريع السلطان» */
+  .font-logo {
+    font-family: var(--font-logo);
+  }
+}
+
+/* لمسة زجاجية خفيفة للبطاقات (glassmorphism) — حسب البريف */
+@utility glass {
+  background-color: color-mix(in srgb, var(--card) 80%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
