@@ -2,13 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, Upload, Shuffle, X, Loader2 } from "lucide-react";
+import { UserPlus, Upload, Shuffle, X } from "lucide-react";
 import type { Role } from "@prisma/client";
 import { roleLabel } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
 import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
-import { importLeads } from "@/lib/actions/import";
+import { ImportDialog } from "./import-dialog";
 
 type Employee = { id: string; name: string };
 
@@ -178,53 +178,6 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
           <button type="submit" disabled={pending} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "أضف"}</button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function ImportDialog({ onClose, employees }: { onClose: () => void; employees: Employee[] }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
-
-  function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    setResult(null);
-    const fd = new FormData(e.currentTarget);
-    startTransition(async () => {
-      const res = await importLeads(fd);
-      if (res.ok) {
-        setResult(`تم استيراد ${toArabicDigits(res.created ?? 0)} عميل` + (res.skipped ? ` · تخطّيت ${toArabicDigits(res.skipped)} صف` : ""));
-        router.refresh();
-      } else setError(res.error ?? "صار خطأ");
-    });
-  }
-
-  return (
-    <Modal title="استيراد عملاء" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
-        <p className="text-xs text-muted-foreground">
-          ملف CSV أو Excel، الصف الأول عناوين. لازم عمودي «الاسم» و«الجوال». الأعمدة الاختيارية: القناة، المشروع، نوع الوحدة، الميزانية، المرحلة، الأولوية، ملاحظات.
-        </p>
-        <Field label="الملف *">
-          <input type="file" name="file" accept=".csv,.xlsx,.xls" required className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-foreground" />
-        </Field>
-        <Field label="الإسناد">
-          <select name="assignMode" className="select-base" defaultValue="self">
-            <option value="self">لي أنا</option>
-            <option value="roundrobin">توزيع بالتساوي على الموظفين</option>
-            {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-        </Field>
-        {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">{error}</p>}
-        {result && <p className="rounded-lg bg-success/10 px-3 py-2 text-center text-sm text-success">{result}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إغلاق</button>
-          <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending && <Loader2 className="size-4 animate-spin" />} استورد</button>
         </div>
       </form>
     </Modal>
