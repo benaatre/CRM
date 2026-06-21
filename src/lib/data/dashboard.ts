@@ -55,10 +55,21 @@ export type TeamRow = {
   progress: number | null; // % نحو الهدف
 };
 
+export type RecentSale = {
+  id: string;
+  leadName: string;
+  phone: string | null;
+  projectName: string | null;
+  unitNumber: string;
+  sellerName: string | null;
+  finalPrice: number;
+};
+
 export type DashboardData = {
   manager: boolean;
   kpis: {
     totalClients: number;
+    newInPeriod: number;
     unassigned: number;
     bookings: number;
     visits: number;
@@ -67,6 +78,7 @@ export type DashboardData = {
   };
   followupsToday: MiniLead[];
   waitingFirstContact: MiniLead[];
+  recentSales: RecentSale[];
   funnel: { stage: LeadStage; count: number }[];
   team: TeamRow[];
 };
@@ -100,6 +112,31 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   ]);
 
   const conversion = totalAll > 0 ? Math.round((closedAll / totalAll) * 100) : 0;
+
+  const newInPeriod = since
+    ? await prisma.lead.count({ where: { ...where, createdAt: inPeriod } })
+    : totalClients;
+
+  // آخر الصفقات المقفولة (تم البيع)
+  const salesRaw = await prisma.booking.findMany({
+    where: { ...bookingScope, stage: "SOLD" },
+    orderBy: { updatedAt: "desc" },
+    take: 4,
+    include: {
+      lead: { select: { name: true } },
+      unit: { select: { number: true, project: { select: { name: true } } } },
+      seller: { select: { name: true } },
+    },
+  });
+  const recentSales = salesRaw.map((b) => ({
+    id: b.id,
+    leadName: b.lead.name,
+    phone: b.phone,
+    projectName: b.unit.project?.name ?? null,
+    unitNumber: b.unit.number,
+    sellerName: b.seller?.name ?? null,
+    finalPrice: b.finalPrice.toNumber(),
+  }));
 
   // متابعات اليوم
   const followupsRaw = await prisma.lead.findMany({
@@ -201,9 +238,10 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
 
   return {
     manager,
-    kpis: { totalClients, unassigned, bookings, visits, closedWon, conversion },
+    kpis: { totalClients, newInPeriod, unassigned, bookings, visits, closedWon, conversion },
     followupsToday: followupsRaw.map(toMini),
     waitingFirstContact: waitingRaw.map(toMini),
+    recentSales,
     funnel,
     team,
   };
