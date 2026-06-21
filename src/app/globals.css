@@ -49,6 +49,9 @@
 
   /* سطح إضافي للـ bento */
   --surface-raised: #1c1c20;
+  /* الزجاجي والغائر (من ملف التصميم) */
+  --glass: rgba(22, 22, 26, 0.6);
+  --inset: #0f0f11;
 }
 
 /* خريطة المتغيّرات إلى أدوات Tailwind v4 (bg-background, text-gold, border-border ...) */
@@ -116,6 +119,8 @@
   --input: #e6e1d5;
   --ring: #cba45e;
   --surface-raised: #faf8f2;
+  --glass: rgba(255, 255, 255, 0.72);
+  --inset: #f3f0e9;
 }
 
 @layer base {

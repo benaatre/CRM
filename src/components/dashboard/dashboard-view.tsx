@@ -1,27 +1,31 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Users,
-  Flame,
-  Building2,
-  CalendarClock,
-  BadgeCheck,
-  TrendingUp,
-  Phone,
-  LayoutGrid,
-  BarChart2,
-  Rows3,
-  Check,
-} from "lucide-react";
-import { stageLabels, stageColor, channelLabel } from "@/lib/labels";
+import { Phone, LayoutGrid, BarChart2, Rows3, Check } from "lucide-react";
+import { stageLabels, stageColor } from "@/lib/labels";
 import { formatCurrency, formatNumberShort, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
 import { distributeUnassigned } from "@/lib/actions/team";
 
-type ViewMode = "glass" | "analytical" | "compact";
+type ViewMode = "compact" | "analytical" | "glass";
+
+// أنماط البطاقات بالضبط من ملف التصميم (sultan-crm-standalone.html):
+// V = 0 مكثّف | 1 تحليلي | 2 زجاجي
+const KPI_SPANS = [
+  [6, 3, 3, 4, 4, 4], // مكثّف
+  [2, 2, 2, 2, 2, 2], // تحليلي
+  [4, 4, 4, 4, 4, 4], // زجاجي
+];
+
+const glassStyle: CSSProperties = {
+  background: "var(--glass)",
+  backdropFilter: "blur(16px)",
+  WebkitBackdropFilter: "blur(16px)",
+  border: "1px solid rgba(203,164,94,.20)",
+  boxShadow: "0 18px 48px rgba(0,0,0,.45)",
+};
 
 export function DashboardView({ data }: { data: DashboardData }) {
   const router = useRouter();
@@ -35,14 +39,22 @@ export function DashboardView({ data }: { data: DashboardData }) {
     });
   }
 
-  const cardBase =
-    view === "compact"
-      ? "rounded-xl p-4"
-      : view === "analytical"
-        ? "rounded-2xl border border-border bg-card p-5"
-        : "glass rounded-2xl p-5";
-  const valueSize = view === "compact" ? "text-2xl" : "text-3xl";
-  const bigSize = view === "compact" ? "text-3xl" : "text-5xl";
+  const V = view === "compact" ? 0 : view === "analytical" ? 1 : 2;
+  const glass = V === 2;
+  const spans = KPI_SPANS[V];
+  const k = data.kpis;
+  const maxCount = Math.max(k.totalClients, k.bookings, k.visits, k.closedWon, k.unassigned, 1);
+  const pct = (n: number) => Math.round((n / maxCount) * 100);
+
+  // الترتيب نفس التصميم: تحويل · إجمالي · غير موزّعين · حجوزات · زيارات · مقفولة
+  const cards = [
+    { label: "معدل التحويل", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false },
+    { label: "إجمالي العملاء", value: formatNumberShort(k.totalClients), unit: "عميل", fill: 100, up: true, chip: k.newInPeriod > 0 ? `+${toArabicDigits(k.newInPeriod)}` : null, action: false },
+    { label: "غير موزّعين", value: toArabicDigits(k.unassigned), unit: "ليد", fill: pct(k.unassigned), up: false, chip: k.unassigned > 0 ? toArabicDigits(k.unassigned) : null, action: data.manager && k.unassigned > 0 },
+    { label: "عدد الحجوزات", value: formatNumberShort(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false },
+    { label: "عدد الزيارات", value: formatNumberShort(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false },
+    { label: "صفقات مقفولة", value: formatNumberShort(k.closedWon), unit: "صفقة", fill: pct(k.closedWon), up: true, chip: null, action: false },
+  ];
 
   return (
     <div className="space-y-7">
@@ -50,9 +62,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
       <div className="flex justify-end">
         <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
           {([
-            ["glass", "زجاجي", LayoutGrid],
-            ["analytical", "تحليلي", BarChart2],
             ["compact", "مكثّف", Rows3],
+            ["analytical", "تحليلي", BarChart2],
+            ["glass", "زجاجي", LayoutGrid],
           ] as const).map(([v, label, Icon]) => (
             <button
               key={v}
@@ -68,49 +80,75 @@ export function DashboardView({ data }: { data: DashboardData }) {
         </div>
       </div>
 
-      {/* الصف الأول: غير موزّعين | إجمالي العملاء (كبير) | معدل التحويل (كبير) */}
-      <section className="grid grid-cols-1 gap-5 md:grid-cols-4">
-        <Card className={`${cardBase} relative overflow-hidden md:col-span-1`}>
-          <Badge tone="danger">{toArabicDigits(data.kpis.unassigned)}</Badge>
-          <Head icon={Flame} accent="text-destructive" label="غير موزّعين" />
-          <div className={`mt-2 font-bold text-destructive ${valueSize}`}>
-            {toArabicDigits(data.kpis.unassigned)}
-          </div>
-          {data.manager && data.kpis.unassigned > 0 && (
-            <button
-              onClick={distribute}
-              disabled={pending}
-              className="mt-3 w-full rounded-lg bg-destructive/15 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/25 disabled:opacity-50"
+      {/* مؤشرات Bento — شبكة ١٢ عمود، النمط يغيّر الشكل بالضبط */}
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(12,1fr)", gap: 20, alignItems: "stretch" }}>
+        {cards.map((c, i) => {
+          const span = spans[i];
+          const accent = !glass && i === 0;
+          const surface: CSSProperties = glass
+            ? glassStyle
+            : accent
+              ? { background: "linear-gradient(155deg, rgba(203,164,94,.10), var(--card) 50%)", border: "1px solid rgba(203,164,94,.28)", boxShadow: "0 14px 34px rgba(0,0,0,.35)" }
+              : { background: "var(--card)", border: "1px solid var(--border)" };
+          const numSize = V === 1 ? 27 : accent || (glass && i === 0) ? 40 : 34;
+          const goldNum = accent || glass;
+
+          return (
+            <div
+              key={c.label}
+              style={{
+                gridColumn: `span ${span}`,
+                ...surface,
+                borderRadius: 18,
+                padding: V === 1 ? 16 : 20,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: V === 1 ? 112 : 148,
+              }}
             >
-              {pending ? "جارٍ التوزيع…" : "وزّعهم الآن"}
-            </button>
-          )}
-          <GoldBar />
-        </Card>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[13px] text-muted-foreground">{c.label}</span>
+                {c.chip && (
+                  <span
+                    style={{
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      padding: "3px 9px",
+                      borderRadius: 20,
+                      color: c.up ? "#2FBF8F" : "#F0685F",
+                      background: c.up ? "rgba(47,191,143,.12)" : "rgba(240,104,95,.12)",
+                    }}
+                  >
+                    {c.chip}
+                  </span>
+                )}
+              </div>
 
-        <Card className={`${cardBase} relative overflow-hidden md:col-span-2`}>
-          {data.kpis.newInPeriod > 0 && <Badge tone="success">+{toArabicDigits(data.kpis.newInPeriod)}</Badge>}
-          <Head icon={Users} accent="text-gold" label="إجمالي العملاء" />
-          <div className={`mt-2 font-bold text-gold ${bigSize}`}>
-            {formatNumberShort(data.kpis.totalClients)}
-          </div>
-          <GoldBar />
-        </Card>
+              <div style={{ flex: 1 }} />
 
-        <Card className={`${cardBase} relative overflow-hidden md:col-span-1`}>
-          <Head icon={TrendingUp} accent="text-gold" label="معدل التحويل" />
-          <div className={`mt-2 font-bold text-gold ${bigSize}`}>
-            {toArabicDigits(data.kpis.conversion)}٪
-          </div>
-          <GoldBar />
-        </Card>
-      </section>
+              <div className="flex items-baseline gap-1.5">
+                <span style={{ fontSize: numSize, fontWeight: 700, letterSpacing: "-1px", color: goldNum ? "#E2C078" : "var(--text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                  {c.value}
+                </span>
+                {c.unit && <span className="text-xs text-muted-foreground">{c.unit}</span>}
+              </div>
 
-      {/* الصف الثاني: صفقات مقفولة | الزيارات | الحجوزات */}
-      <section className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-        <KpiSmall cardBase={cardBase} valueSize={valueSize} icon={BadgeCheck} accent="text-success" label="صفقات مقفولة" value={data.kpis.closedWon} />
-        <KpiSmall cardBase={cardBase} valueSize={valueSize} icon={CalendarClock} accent="text-info" label="عدد الزيارات" value={data.kpis.visits} />
-        <KpiSmall cardBase={cardBase} valueSize={valueSize} icon={Building2} accent="text-gold" label="عدد الحجوزات" value={data.kpis.bookings} />
+              {c.action && (
+                <button
+                  onClick={distribute}
+                  disabled={pending}
+                  className="mt-3 w-fit rounded-lg bg-destructive/15 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/25 disabled:opacity-50"
+                >
+                  {pending ? "جارٍ التوزيع…" : "وزّعهم الآن"}
+                </button>
+              )}
+
+              <div style={{ marginTop: 14, height: 6, background: "var(--inset)", borderRadius: 20, overflow: "hidden", display: V === 1 ? "none" : "block" }}>
+                <div style={{ height: "100%", width: `${c.fill}%`, borderRadius: 20, background: goldNum ? "linear-gradient(90deg,#9C7C3C,#E2C078)" : "var(--border)" }} />
+              </div>
+            </div>
+          );
+        })}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -124,14 +162,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
                 <div key={l.id} className="flex items-center justify-between rounded-xl border border-border p-3">
                   <div>
                     <div className="font-medium text-foreground">{l.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">{timeAgo(l.createdAt)}</span>
-                    </div>
+                    <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">{timeAgo(l.createdAt)}</span>
                   </div>
-                  <a
-                    href={`tel:${l.phone}`}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
-                  >
+                  <a href={`tel:${l.phone}`} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90">
                     <Phone className="size-3.5" /> اتصال
                   </a>
                 </div>
@@ -150,9 +183,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
                 <li key={l.id} className="flex items-center justify-between py-2.5">
                   <div>
                     <div className="font-medium text-foreground">{l.name}</div>
-                    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>
-                      {stageLabels[l.stage]}
-                    </span>
+                    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
                   </div>
                   <div className="text-left text-xs text-muted-foreground">
                     {timeAgo(l.nextFollowup)}
@@ -166,7 +197,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
         </Section>
       </div>
 
-      {/* تم البيع — آخر الصفقات المقفولة */}
+      {/* تم البيع */}
       {data.recentSales.length > 0 && (
         <Section title="تم البيع — آخر الصفقات المقفولة" bar="bg-success">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -177,13 +208,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
                     <div className="font-bold text-foreground">{s.leadName}</div>
                     {s.phone && <div className="text-xs text-muted-foreground" dir="ltr">{s.phone}</div>}
                   </div>
-                  <span className="flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs text-success">
-                    <Check className="size-3" /> باع
-                  </span>
+                  <span className="flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs text-success"><Check className="size-3" /> باع</span>
                 </div>
-                <div className="mt-2 text-sm text-muted-foreground">
-                  {s.projectName ?? "—"} · وحدة <span dir="ltr">{s.unitNumber}</span>
-                </div>
+                <div className="mt-2 text-sm text-muted-foreground">{s.projectName ?? "—"} · وحدة <span dir="ltr">{s.unitNumber}</span></div>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">{s.sellerName ?? "—"}</span>
                   <span className="font-bold text-gold">{formatCurrency(s.finalPrice)}</span>
@@ -203,10 +230,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
               <div key={f.stage} className="flex items-center gap-3">
                 <span className="w-28 shrink-0 text-sm text-muted-foreground">{stageLabels[f.stage]}</span>
                 <div className="h-7 flex-1 overflow-hidden rounded-lg bg-secondary">
-                  <div
-                    className="flex h-full items-center justify-end rounded-lg bg-gradient-to-l from-gold to-gold-dark px-2 text-xs font-medium text-primary-foreground"
-                    style={{ width: `${Math.max((f.count / max) * 100, 6)}%` }}
-                  >
+                  <div className="flex h-full items-center justify-end rounded-lg bg-gradient-to-l from-gold to-gold-dark px-2 text-xs font-medium text-primary-foreground" style={{ width: `${Math.max((f.count / max) * 100, 6)}%` }}>
                     {f.count > 0 ? toArabicDigits(f.count) : ""}
                   </div>
                 </div>
@@ -248,33 +272,6 @@ export function DashboardView({ data }: { data: DashboardData }) {
   );
 }
 
-function Card({ className, children }: { className: string; children: React.ReactNode }) {
-  return <div className={className}>{children}</div>;
-}
-function Head({ icon: Icon, accent, label }: { icon: typeof Users; accent: string; label: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <Icon className={`size-5 ${accent}`} />
-    </div>
-  );
-}
-function Badge({ tone, children }: { tone: "success" | "danger"; children: React.ReactNode }) {
-  const c = tone === "success" ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive";
-  return <span className={`absolute left-3 top-3 rounded-full px-2 py-0.5 text-[0.65rem] font-bold ${c}`}>{children}</span>;
-}
-function GoldBar() {
-  return <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-l from-gold via-gold-light to-gold-dark" />;
-}
-function KpiSmall({ cardBase, valueSize, icon: Icon, accent, label, value }: { cardBase: string; valueSize: string; icon: typeof Users; accent: string; label: string; value: number }) {
-  return (
-    <div className={`${cardBase} relative overflow-hidden`}>
-      <Head icon={Icon} accent={accent} label={label} />
-      <div className={`mt-2 font-bold ${accent} ${valueSize}`}>{formatNumberShort(value)}</div>
-      <GoldBar />
-    </div>
-  );
-}
 function Section({ title, hint, bar, children }: { title: string; hint?: string; bar?: string; children: React.ReactNode }) {
   return (
     <section className="glass rounded-2xl p-5">
@@ -289,6 +286,7 @@ function Section({ title, hint, bar, children }: { title: string; hint?: string;
     </section>
   );
 }
+
 function S({ label, v, cls }: { label: string; v: number; cls?: string }) {
   return (
     <div className="rounded-lg bg-secondary/50 py-2">
@@ -297,6 +295,7 @@ function S({ label, v, cls }: { label: string; v: number; cls?: string }) {
     </div>
   );
 }
+
 function Empty({ text }: { text: string }) {
   return <p className="py-6 text-center text-sm text-muted-foreground">{text}</p>;
 }
