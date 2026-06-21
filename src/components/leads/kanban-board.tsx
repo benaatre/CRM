@@ -3,13 +3,20 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
-import { stageOrder, stageLabels, channelLabel, priorityColor, priorityLabels } from "@/lib/labels";
+import type { Priority } from "@prisma/client";
+import { stageOrder, stageLabels, channelLabel, priorityLabels } from "@/lib/labels";
 import { formatCurrency } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import { updateLeadStage } from "@/lib/actions/leads";
 import { LeadDrawer } from "./lead-drawer";
 
 type Employee = { id: string; name: string };
+
+const priorityBorder: Record<Priority, string> = {
+  HIGH: "border-r-destructive",
+  MEDIUM: "border-r-warning",
+  LOW: "border-r-muted-foreground",
+};
 
 export function KanbanBoard({
   leads,
@@ -88,16 +95,13 @@ export function KanbanBoard({
                     onDragStart={() => setDragId(l.id)}
                     onDragEnd={() => setDragId(null)}
                     onClick={() => setSelectedId(l.id)}
-                    className={`cursor-pointer rounded-xl border border-border bg-card p-3 shadow-sm transition-all hover:border-gold/40 ${
-                      dragId === l.id ? "opacity-40" : ""
-                    }`}
+                    title={`أولوية ${priorityLabels[l.priority]}`}
+                    className={`cursor-pointer rounded-xl border border-r-4 border-border bg-card p-3 shadow-sm transition-all hover:border-gold/40 ${
+                      priorityBorder[l.priority]
+                    } ${dragId === l.id ? "opacity-40" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-medium text-foreground">{l.name}</span>
-                      <span
-                        className={`mt-1 size-2 shrink-0 rounded-full ${priorityColor[l.priority].replace("text-", "bg-")}`}
-                        title={priorityLabels[l.priority]}
-                      />
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {channelLabel(l.channel)}
