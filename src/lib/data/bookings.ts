@@ -42,12 +42,17 @@ export type BookingCard = {
   sellerName: string | null;
   // حقول الدفع المرنة
   expectedCheckDate: Date | null;
+  expectedTransferDate: Date | null;
   cashPaymentType: CashPaymentType | null;
   installmentsCount: number | null;
   installmentAmount: number | null;
+  installments: { amount: number; date: string }[] | null;
   cashAmount: number | null;
   financePercent: number | null;
   financeRequestNo: string | null;
+  subjectToTax: boolean;
+  taxAmount: number | null;
+  stageIndex: number;
   events: BookingEventDTO[];
 };
 
@@ -99,12 +104,17 @@ export async function getBookings(): Promise<BookingsData> {
     collected: b.collected.toNumber(),
     sellerName: b.seller?.name ?? null,
     expectedCheckDate: b.expectedCheckDate,
+    expectedTransferDate: b.expectedTransferDate,
     cashPaymentType: b.cashPaymentType,
     installmentsCount: b.installmentsCount,
     installmentAmount: dec(b.installmentAmount),
+    installments: (b.installments as { amount: number; date: string }[] | null) ?? null,
     cashAmount: dec(b.cashAmount),
     financePercent: dec(b.financePercent),
     financeRequestNo: b.financeRequestNo,
+    subjectToTax: b.subjectToTax,
+    taxAmount: dec(b.taxAmount),
+    stageIndex: b.stageIndex,
     events: b.events.map((e) => ({
       toStage: e.toStage,
       userName: e.user?.name ?? null,

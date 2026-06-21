@@ -60,6 +60,22 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const cashPaymentType = cashTypeRaw ? (cashTypeRaw as CashPaymentType) : null;
     const installmentsCount = formData.get("installmentsCount") ? Number(numOf(formData, "installmentsCount")) : null;
     const installmentAmount = numOf(formData, "installmentAmount");
+    const transferDateRaw = String(formData.get("expectedTransferDate") ?? "");
+    const expectedTransferDate = transferDateRaw ? new Date(transferDateRaw) : null;
+
+    // ضريبة التصرفات العقارية (5% على السعر بعد الخصم)
+    const subjectToTax = String(formData.get("subjectToTax") ?? "") === "yes";
+    const taxAmount = subjectToTax ? Math.round(finalPrice * 0.05) : null;
+
+    // تفاصيل الدفعات [{amount, date}]
+    let installments: { amount: number; date: string }[] | null = null;
+    const installmentsRaw = String(formData.get("installments") ?? "");
+    if (installmentsRaw) {
+      try {
+        const parsed = JSON.parse(installmentsRaw);
+        if (Array.isArray(parsed) && parsed.length) installments = parsed;
+      } catch {}
+    }
 
     if (paymentMethod === "BANK_FINANCE" && !bankName)
       return { ok: false, error: "اختر البنك" };
@@ -93,8 +109,12 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           paymentMethod, bankName,
           deposit, price, discount, finalPrice,
           stage: BookingStage.RESERVATION,
+          stageIndex: 0,
           financePercent, financeRequestNo, cashAmount,
-          expectedCheckDate, cashPaymentType, installmentsCount, installmentAmount,
+          expectedCheckDate, expectedTransferDate, cashPaymentType,
+          installmentsCount, installmentAmount,
+          installments: installments ?? undefined,
+          subjectToTax, taxAmount,
         },
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: "RESERVED" } });

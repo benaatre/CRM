@@ -172,6 +172,7 @@ export const purchaseGoalLabels: Record<PurchaseGoal, string> = {
 };
 
 export const cashPaymentTypeLabels: Record<CashPaymentType, string> = {
+  CHECK: "شيك",
   TRANSFER: "تحويل",
   INSTALLMENTS: "دفعات",
 };
@@ -183,9 +184,10 @@ export const bankLabels: Record<SaudiBank, string> = {
   RAJHI: "الراجحي",
   SNB: "الأهلي SNB",
   RIYAD: "الرياض",
+  ALBILAD: "البلاد",
   ALINMA: "الإنماء",
   SAB: "ساب",
-  ALBILAD: "البلاد",
+  ANB: "العربي ANB",
   ALJAZIRA: "الجزيرة",
   OTHER: "أخرى",
 };

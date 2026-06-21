@@ -94,6 +94,7 @@ enum PurchaseGoal {
 
 /// طريقة دفع الكاش داخل الحجز.
 enum CashPaymentType {
+  CHECK // شيك
   TRANSFER // تحويل
   INSTALLMENTS // دفعات
 }
@@ -103,9 +104,10 @@ enum SaudiBank {
   RAJHI // الراجحي
   SNB // الأهلي SNB
   RIYAD // الرياض
+  ALBILAD // البلاد
   ALINMA // الإنماء
   SAB // ساب
-  ALBILAD // البلاد
+  ANB // العربي الوطني
   ALJAZIRA // الجزيرة
   OTHER // أخرى
 }
@@ -283,12 +285,22 @@ model Booking {
   // ===== حقول الدفع المرنة =====
   /// موعد الشيك المتوقع (كاش)
   expectedCheckDate DateTime?
-  /// نوع دفع الكاش: تحويل / دفعات
+  /// تاريخ التحويل المتوقع (كاش - تحويل)
+  expectedTransferDate DateTime?
+  /// نوع دفع الكاش: شيك / تحويل / دفعات
   cashPaymentType   CashPaymentType?
   installmentsCount Int?
   installmentAmount Decimal?       @db.Decimal(14, 2)
+  /// تفاصيل الدفعات [{amount, date}] (JSON)
+  installments      Json?
   /// مبلغ الكاش في خيار كاش+تمويل
   cashAmount        Decimal?       @db.Decimal(14, 2)
+  /// خاضع لضريبة التصرفات العقارية (5%)؟
+  subjectToTax      Boolean        @default(false)
+  /// قيمة الضريبة المحسوبة
+  taxAmount         Decimal?       @db.Decimal(14, 2)
+  /// مؤشّر المرحلة الحالية ضمن قائمة المراحل الديناميكية (القسم ٢)
+  stageIndex        Int            @default(0)
   /// نسبة التمويل %
   financePercent    Decimal?       @db.Decimal(5, 2)
   /// رقم طلب التمويل

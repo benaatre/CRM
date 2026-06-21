@@ -110,7 +110,7 @@ function BookingCardView({ b }: { b: BookingCard }) {
           <h3 className="font-bold text-foreground">{b.leadName}</h3>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {b.nationality ? nationalityLabels[b.nationality] : "—"}
-            {b.nationalId ? ` · هوية ${b.nationalId}` : ""}
+            {b.nationalId ? ` · ${b.nationality === "RESIDENT" ? "إقامة" : "هوية"} ${b.nationalId}` : ""}
             {b.phone ? " · " : ""}{b.phone && <span dir="ltr">{b.phone}</span>}
           </div>
           <div className="mt-1 text-sm text-gold">{b.projectName ?? "—"} · وحدة <span dir="ltr">{b.unitNumber}</span></div>
@@ -139,7 +139,11 @@ function BookingCardView({ b }: { b: BookingCard }) {
         <Row label="السعر" value={formatCurrencyFull(b.price)} />
         <Row label="الخصم" value={b.discount > 0 ? `- ${formatCurrencyFull(b.discount)}` : "—"} />
         <Row label="بعد الخصم" value={formatCurrencyFull(b.finalPrice)} strong />
+        {b.subjectToTax && b.taxAmount != null && <Row label="الضريبة ٥٪" value={formatCurrencyFull(b.taxAmount)} />}
+        {b.subjectToTax && b.taxAmount != null && <Row label="الإجمالي" value={formatCurrencyFull(b.finalPrice + b.taxAmount)} strong />}
         <Row label="محصّل" value={formatCurrencyFull(b.collected)} />
+        {b.expectedTransferDate && <Row label="موعد التحويل" value={formatDate(b.expectedTransferDate)} />}
+        {b.installments && b.installments.length > 0 && <Row label="الدفعات" value={`${toArabicDigits(b.installments.length)} دفعة`} />}
         {b.financePercent != null && <Row label="نسبة التمويل" value={`${toArabicDigits(b.financePercent)}٪`} />}
         {b.financeRequestNo && <Row label="رقم الطلب" value={b.financeRequestNo} />}
         {b.cashAmount != null && <Row label="مبلغ الكاش" value={formatCurrencyFull(b.cashAmount)} />}
