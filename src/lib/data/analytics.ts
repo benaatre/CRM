@@ -29,6 +29,7 @@ export type AnalyticsData = {
     perProject: FinanceRow[];
   };
   metrics: {
+    winRate: number; // % مقفول-بيع من (بيع + خسارة)
     avgFirstResponseHours: number | null;
     within1hRate: number; // %
     responseRate: number; // %
@@ -122,6 +123,9 @@ export async function getAnalytics(): Promise<AnalyticsData> {
 
   // ===== القمع + نسب التحويل =====
   const stageCount = new Map(stageGroups.map((g) => [g.stage, g._count._all]));
+  const won = stageCount.get("CLOSED_WON") ?? 0;
+  const lost = stageCount.get("CLOSED_LOST") ?? 0;
+  const winRate = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
   const funnel = FUNNEL.map((stage, i) => {
     const count = stageCount.get(stage) ?? 0;
     const prev = i > 0 ? stageCount.get(FUNNEL[i - 1]) ?? 0 : null;
@@ -150,6 +154,7 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       perProject: [...perProjectMap.values()],
     },
     metrics: {
+      winRate,
       avgFirstResponseHours,
       within1hRate: responded.length > 0 ? Math.round((within1h / responded.length) * 100) : 0,
       responseRate: total > 0 ? Math.round((responded.length / total) * 100) : 0,

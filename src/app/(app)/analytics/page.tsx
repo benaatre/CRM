@@ -11,15 +11,27 @@ export default async function AnalyticsPage() {
   const a = await getAnalytics();
 
   const metricCards = [
+    { label: "نسبة الفوز", value: `${toArabicDigits(a.metrics.winRate)}٪` },
     { label: "متوسط زمن أول رد", value: a.metrics.avgFirstResponseHours != null ? `${toArabicDigits(a.metrics.avgFirstResponseHours)} ساعة` : "—" },
-    { label: "رد خلال ساعة", value: `${toArabicDigits(a.metrics.within1hRate)}٪` },
     { label: "نسبة الرد", value: `${toArabicDigits(a.metrics.responseRate)}٪` },
     { label: "متوسط المحاولات", value: toArabicDigits(a.metrics.avgAttempts) },
     { label: "متوسط دورة البيع", value: a.metrics.avgSalesCycleDays != null ? `${toArabicDigits(a.metrics.avgSalesCycleDays)} يوم` : "—" },
   ];
 
-  const maxChannel = Math.max(...a.channels.map((c) => c.count), 1);
   const maxClosed = Math.max(...a.team.map((t) => t.closed), 1);
+
+  // رسم دائري للقنوات (conic-gradient)
+  const channelPalette = ["var(--gold)", "var(--info)", "var(--success)", "var(--warning)", "var(--destructive)", "var(--gold-light)", "var(--muted-foreground)"];
+  const channelTotal = a.channels.reduce((s, c) => s + c.count, 0) || 1;
+  let acc = 0;
+  const donutStops = a.channels
+    .map((c, i) => {
+      const start = (acc / channelTotal) * 100;
+      acc += c.count;
+      const end = (acc / channelTotal) * 100;
+      return `${channelPalette[i % channelPalette.length]} ${start}% ${end}%`;
+    })
+    .join(", ");
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -114,21 +126,32 @@ export default async function AnalyticsPage() {
           </div>
         </section>
 
-        {/* القنوات التسويقية */}
+        {/* القنوات التسويقية — رسم دائري */}
         <section className="glass rounded-2xl p-5">
           <h2 className="mb-4 font-semibold text-foreground">القنوات التسويقية</h2>
-          <div className="space-y-3">
-            {a.channels.map((c) => (
-              <div key={c.channel} className="flex items-center gap-3">
-                <span className="w-20 shrink-0 text-sm text-muted-foreground">{channelLabels[c.channel]}</span>
-                <div className="h-5 flex-1 overflow-hidden rounded-lg bg-secondary">
-                  <div className="h-full rounded-lg bg-info/70" style={{ width: `${(c.count / maxChannel) * 100}%` }} />
+          {a.channels.length === 0 ? (
+            <p className="text-sm text-muted-foreground">ما فيه بيانات.</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="relative size-40 shrink-0">
+                <div className="size-40 rounded-full" style={{ background: `conic-gradient(${donutStops})` }} />
+                <div className="absolute inset-0 m-auto flex size-24 flex-col items-center justify-center rounded-full bg-card">
+                  <span className="text-xl font-bold text-foreground">{toArabicDigits(channelTotal)}</span>
+                  <span className="text-xs text-muted-foreground">عميل</span>
                 </div>
-                <span className="w-8 shrink-0 text-left text-sm text-foreground">{toArabicDigits(c.count)}</span>
               </div>
-            ))}
-            {a.channels.length === 0 && <p className="text-sm text-muted-foreground">ما فيه بيانات.</p>}
-          </div>
+              <ul className="flex-1 space-y-2">
+                {a.channels.map((c, i) => (
+                  <li key={c.channel} className="flex items-center gap-2 text-sm">
+                    <span className="size-3 rounded-full" style={{ background: channelPalette[i % channelPalette.length] }} />
+                    <span className="flex-1 text-muted-foreground">{channelLabels[c.channel]}</span>
+                    <span className="text-foreground">{toArabicDigits(c.count)}</span>
+                    <span className="w-10 text-left text-xs text-gold">{toArabicDigits(Math.round((c.count / channelTotal) * 100))}٪</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       </div>
 
