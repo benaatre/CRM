@@ -118,3 +118,20 @@
   backdrop-filter: blur(12px);
   border: 1px solid var(--border);
 }
+
+@layer components {
+  /* قائمة منسدلة موحّدة على الثيم */
+  .select-base {
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background-color: var(--background);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--foreground);
+    outline: none;
+  }
+  .select-base:focus {
+    border-color: var(--gold);
+  }
+}

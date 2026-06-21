@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, Users2, LogOut } from "lucide-react";
+import { LayoutDashboard, Users2, Contact, KanbanSquare, LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth-guards";
 import { isManager } from "@/lib/auth-guards";
 import { roleLabel } from "@/lib/labels";
@@ -16,6 +16,8 @@ export default async function AppLayout({
 
   const nav = [
     { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true },
+    { href: "/leads", label: "كل العملاء", icon: Contact, show: true },
+    { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true },
     { href: "/admin", label: "الموظفين", icon: Users2, show: manager },
   ].filter((n) => n.show);
 
