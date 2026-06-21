@@ -6,6 +6,7 @@ export type AppSettings = {
   companyName: string;
   falLicense: string | null;
   phone: string | null;
+  autoAssign: boolean;
 };
 
 /** يرجّع إعدادات الشركة (سجل singleton) — ينشئه إن ما كان موجودًا. */
@@ -19,5 +20,6 @@ export async function getSettings(): Promise<AppSettings> {
     companyName: s.companyName,
     falLicense: s.falLicense,
     phone: s.phone,
+    autoAssign: s.autoAssign,
   };
 }

@@ -58,10 +58,29 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
   const budget = budgetRaw ? Number(budgetRaw) : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
-  // الإسناد: المدير يقدر يحدّد موظفًا، غير ذلك = نفسه.
+  // الإسناد: المدير يقدر يحدّد موظفًا؛ أو إسناد تلقائي للأقل حملًا؛ غير ذلك = نفسه.
   let assignedToId = user.id;
   const chosen = String(formData.get("assignedToId") ?? "");
-  if (isManager(user.role) && chosen) assignedToId = chosen;
+  if (isManager(user.role)) {
+    if (chosen) {
+      assignedToId = chosen;
+    } else {
+      const settings = await prisma.settings.findUnique({
+        where: { id: "singleton" },
+        select: { autoAssign: true },
+      });
+      if (settings?.autoAssign) {
+        const emps = await prisma.user.findMany({
+          where: { role: "EMPLOYEE", active: true },
+          select: { id: true, _count: { select: { assignedLeads: true } } },
+        });
+        if (emps.length > 0) {
+          emps.sort((a, b) => a._count.assignedLeads - b._count.assignedLeads);
+          assignedToId = emps[0].id;
+        }
+      }
+    }
+  }
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);

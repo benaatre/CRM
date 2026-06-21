@@ -282,6 +282,8 @@ model Settings {
   companyName String   @default("مشاريع السلطان")
   falLicense  String?
   phone       String?
+  /// إسناد العملاء الجدد تلقائيًا لموظف (الأقل حملًا) عند إنشائهم من المدير
+  autoAssign  Boolean  @default(false)
   updatedAt   DateTime @updatedAt
 }
 
