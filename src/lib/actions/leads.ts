@@ -178,6 +178,37 @@ export async function updateLeadFields(
   }
 }
 
+/** نقل جماعي لعدة عملاء لموظف — للمدير فقط. */
+export async function bulkReassign(ids: string[], toUserId: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (!isManager(user.role)) return { ok: false, error: "النقل للمدير فقط" };
+    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
+    const target = await prisma.user.findUnique({ where: { id: toUserId }, select: { id: true } });
+    if (!target) return { ok: false, error: "الموظف غير موجود" };
+
+    await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId } });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** حذف جماعي — المدير يحذف أي عميل، الموظف يحذف عملاءه فقط. */
+export async function bulkDelete(ids: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
+    const scope = isManager(user.role) ? {} : { assignedToId: user.id };
+    await prisma.lead.deleteMany({ where: { id: { in: ids }, ...scope } });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** إعادة إسناد العميل لموظف آخر — للمدير فقط. */
 export async function reassignLead(
   leadId: string,

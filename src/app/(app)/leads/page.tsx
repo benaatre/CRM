@@ -4,13 +4,18 @@ import { LeadsView } from "@/components/leads/leads-view";
 
 export const dynamic = "force-dynamic";
 
-export default async function LeadsPage() {
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   const user = await requireUser();
   const manager = isManager(user.role);
   const [leads, employees] = await Promise.all([
     getLeads(),
     manager ? getEmployees() : Promise.resolve([]),
   ]);
+  const { q } = await searchParams;
 
-  return <LeadsView leads={leads} isManager={manager} employees={employees} />;
+  return <LeadsView leads={leads} isManager={manager} employees={employees} initialQ={q ?? ""} />;
 }
