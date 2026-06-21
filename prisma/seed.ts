@@ -7,6 +7,11 @@ import {
   ProjectStatus,
   UnitType,
   UnitStatus,
+  PaymentMethod,
+  SaudiBank,
+  Nationality,
+  BookingStage,
+  DeliveryStatus,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -100,6 +105,67 @@ async function main() {
     console.log("  ✅ 6 عملاء تجريبيين موزّعين على الموظفين");
   } else {
     console.log(`  ℹ️ يوجد ${leadCount} عميل — تخطّيت إضافة عملاء تجريبيين`);
+  }
+
+  // 4) حجوزات تجريبية (فقط إذا ما فيه حجوزات)
+  const bookingCount = await prisma.booking.count();
+  if (bookingCount === 0) {
+    const noura = created["0500000004"];
+    const fahad = created["0500000005"];
+    const findLead = (name: string) =>
+      prisma.lead.findFirst({ where: { name }, select: { id: true, phone: true } });
+    const findUnit = (number: string) =>
+      prisma.unit.findFirst({ where: { projectId: project.id, number }, select: { id: true } });
+
+    const [sara, hind, majed] = await Promise.all([
+      findLead("سارة العنزي"),
+      findLead("هند الزهراني"),
+      findLead("ماجد السبيعي"),
+    ]);
+    const [uA102, uP501, uG001] = await Promise.all([
+      findUnit("A-102"),
+      findUnit("P-501"),
+      findUnit("G-001"),
+    ]);
+
+    if (sara && uA102) {
+      await prisma.booking.create({
+        data: {
+          leadId: sara.id, unitId: uA102.id, sellerId: noura,
+          nationality: Nationality.SAUDI, nationalId: "1045678901", phone: sara.phone,
+          paymentMethod: PaymentMethod.BANK_FINANCE, bankName: SaudiBank.RAJHI,
+          deposit: 30000, price: 790000, discount: 20000, finalPrice: 770000,
+          stage: BookingStage.VALUATION, deliveryStatus: DeliveryStatus.PENDING,
+        },
+      });
+    }
+    if (hind && uP501) {
+      await prisma.booking.create({
+        data: {
+          leadId: hind.id, unitId: uP501.id, sellerId: fahad,
+          nationality: Nationality.SAUDI, nationalId: "1098765432", phone: hind.phone,
+          paymentMethod: PaymentMethod.CASH,
+          deposit: 50000, price: 1250000, discount: 50000, finalPrice: 1200000,
+          collected: 1200000, stage: BookingStage.SOLD, deliveryStatus: DeliveryStatus.DELIVERED,
+        },
+      });
+    }
+    if (majed && uG001) {
+      await prisma.booking.create({
+        data: {
+          leadId: majed.id, unitId: uG001.id, sellerId: noura,
+          nationality: Nationality.RESIDENT, nationalId: "2087654321", phone: majed.phone,
+          paymentMethod: PaymentMethod.BANK_FINANCE, bankName: SaudiBank.ALINMA,
+          deposit: 25000, price: 850000, discount: 0, finalPrice: 850000,
+          stage: BookingStage.PAPERWORK, deliveryStatus: DeliveryStatus.PENDING,
+          financeRejected: true,
+        },
+      });
+      await prisma.unit.update({ where: { id: uG001.id }, data: { status: UnitStatus.RESERVED } });
+    }
+    console.log("  ✅ 3 حجوزات تجريبية (منها واحد رفض تمويل + واحد مباع)");
+  } else {
+    console.log(`  ℹ️ يوجد ${bookingCount} حجز — تخطّيت الحجوزات التجريبية`);
   }
 
   console.log("✅ خلصت البذرة.");

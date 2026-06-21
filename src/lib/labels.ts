@@ -5,6 +5,13 @@ import type {
   Priority,
   UnitType,
   ActivityType,
+  ProjectStatus,
+  UnitStatus,
+  BookingStage,
+  PaymentMethod,
+  SaudiBank,
+  Nationality,
+  DeliveryStatus,
 } from "@prisma/client";
 
 // تسميات عربية — استيراد الأنواع فقط (type-only) عشان الوحدة آمنة للاستخدام
@@ -98,3 +105,74 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   ASSIGNMENT: "توزيع",
 };
 export const activityTypeLabel = (t: ActivityType) => activityTypeLabels[t] ?? t;
+
+// ===== المشاريع والوحدات والحجوزات =====
+
+export const projectStatusLabels: Record<ProjectStatus, string> = {
+  AVAILABLE: "متاح",
+  UNDER_CONSTRUCTION: "تحت الإنشاء",
+  FINISHING: "تشطيبات",
+  COMPLETED: "مكتمل",
+};
+export const projectStatusColor: Record<ProjectStatus, string> = {
+  AVAILABLE: "text-success bg-success/10 border-success/30",
+  UNDER_CONSTRUCTION: "text-warning bg-warning/10 border-warning/30",
+  FINISHING: "text-info bg-info/10 border-info/30",
+  COMPLETED: "text-gold bg-gold/10 border-gold/30",
+};
+
+export const unitStatusLabels: Record<UnitStatus, string> = {
+  AVAILABLE: "متاحة",
+  RESERVED: "محجوزة",
+  SOLD: "مباعة",
+};
+export const unitStatusColor: Record<UnitStatus, string> = {
+  AVAILABLE: "text-success",
+  RESERVED: "text-warning",
+  SOLD: "text-muted-foreground",
+};
+
+// مراحل تقدّم البيع (بالترتيب) — للشريط في بطاقة الحجز.
+export const bookingStageOrder: BookingStage[] = [
+  "RESERVATION",
+  "PAPERWORK",
+  "VALUATION",
+  "SIGNING",
+  "TRANSFER",
+  "SOLD",
+];
+export const bookingStageLabels: Record<BookingStage, string> = {
+  RESERVATION: "حجز",
+  PAPERWORK: "أوراق",
+  VALUATION: "تقييم",
+  SIGNING: "توقيع",
+  TRANSFER: "إفراغ",
+  SOLD: "بيع",
+};
+
+export const paymentMethodLabels: Record<PaymentMethod, string> = {
+  CASH: "كاش",
+  BANK_FINANCE: "تمويل بنكي",
+};
+
+export const bankLabels: Record<SaudiBank, string> = {
+  RAJHI: "الراجحي",
+  SNB: "الأهلي SNB",
+  RIYAD: "الرياض",
+  ALINMA: "الإنماء",
+  SAB: "ساب",
+  ALBILAD: "البلاد",
+  ALJAZIRA: "الجزيرة",
+  OTHER: "أخرى",
+};
+
+export const nationalityLabels: Record<Nationality, string> = {
+  SAUDI: "سعودي",
+  RESIDENT: "مقيم",
+};
+
+export const deliveryStatusLabels: Record<DeliveryStatus, string> = {
+  PENDING: "لم يُسلّم",
+  SCHEDULED: "مجدول",
+  DELIVERED: "تم التسليم",
+};
