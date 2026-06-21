@@ -54,29 +54,34 @@ export async function toggleEmployeeActive(userId: string, active: boolean): Pro
   }
 }
 
-/** توزيع العملاء غير الموزّعين على الموظفين بالتساوي (round-robin). */
-export async function distributeUnassigned(): Promise<ActionResult> {
+/**
+ * توزيع العملاء غير الموزّعين على الموظفين.
+ * perEmployee غير محدّد → بالتساوي (round-robin على الكل).
+ * perEmployee = N → كل موظف ياخذ حتى N عميل.
+ */
+export async function distributeUnassigned(perEmployee?: number): Promise<ActionResult> {
   try {
     await requireManager();
     const [emps, unassigned] = await Promise.all([
       prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true } }),
-      prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true } }),
+      prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } }),
     ]);
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
 
+    const n = perEmployee && perEmployee > 0 ? perEmployee : 0;
+    const list = n ? unassigned.slice(0, n * emps.length) : unassigned;
+
     await prisma.$transaction(
-      unassigned.map((lead, i) =>
-        prisma.lead.update({
-          where: { id: lead.id },
-          data: { assignedToId: emps[i % emps.length].id },
-        }),
-      ),
+      list.map((lead, i) => {
+        const empIdx = n ? Math.floor(i / n) : i % emps.length;
+        return prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: emps[empIdx].id } });
+      }),
     );
 
     revalidatePath("/admin");
     revalidatePath("/leads");
-    return { ok: true, message: `وُزّع ${unassigned.length} عميل على ${emps.length} موظف` };
+    return { ok: true, message: `وُزّع ${list.length} عميل على ${emps.length} موظف` };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

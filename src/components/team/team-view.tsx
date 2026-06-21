@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { UserPlus, Upload, Shuffle, X, Loader2 } from "lucide-react";
+import type { Role } from "@prisma/client";
+import { roleLabel } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
 import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
@@ -10,21 +12,18 @@ import { importLeads } from "@/lib/actions/import";
 
 type Employee = { id: string; name: string };
 
+const roleBadge: Record<Role, string> = {
+  OWNER: "bg-gold/15 text-gold",
+  ADMIN: "bg-info/15 text-info",
+  EMPLOYEE: "bg-secondary text-muted-foreground",
+};
+
 export function TeamView({ data, employees }: { data: TeamData; employees: Employee[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-
-  function distribute() {
-    setMsg(null);
-    startTransition(async () => {
-      const res = await distributeUnassigned();
-      setMsg(res.ok ? res.message ?? "تم التوزيع" : res.error ?? "صار خطأ");
-      router.refresh();
-    });
-  }
+  const [showDist, setShowDist] = useState(false);
 
   function setActive(id: string, active: boolean) {
     startTransition(async () => {
@@ -39,71 +38,114 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
         <div>
           <h1 className="text-2xl font-bold text-foreground">الفريق والتوزيع</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {toArabicDigits(data.members.length)} موظف · {toArabicDigits(data.unassigned)} عميل غير موزّع
+            {toArabicDigits(data.employeeCount)} موظف · {toArabicDigits(data.unassigned)} عميل غير موزّع
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
             <Upload className="size-4" /> استيراد عملاء
           </button>
-          <button
-            onClick={distribute}
-            disabled={pending || data.unassigned === 0}
-            className="flex items-center gap-2 rounded-xl border border-gold/40 px-3 py-2 text-sm text-gold hover:bg-gold/10 disabled:opacity-40"
-          >
-            <Shuffle className="size-4" /> وزّع غير الموزّعين ({toArabicDigits(data.unassigned)})
+          <button onClick={() => setShowDist(true)} disabled={data.unassigned === 0} className="flex items-center gap-2 rounded-xl border border-gold/40 px-3 py-2 text-sm text-gold hover:bg-gold/10 disabled:opacity-40">
+            <Shuffle className="size-4" /> توزيع ({toArabicDigits(data.unassigned)})
           </button>
           <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
-            <UserPlus className="size-4" /> أضف موظف
+            <UserPlus className="size-4" /> إضافة موظف
           </button>
         </div>
       </header>
 
-      {msg && <div className="rounded-xl bg-secondary px-4 py-2 text-sm text-foreground">{msg}</div>}
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {data.members.map((m) => (
-          <div key={m.id} className={`glass rounded-2xl p-5 ${m.active ? "" : "opacity-60"}`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-bold text-foreground">{m.name}</h3>
-                {m.phone && <p className="text-xs text-muted-foreground" dir="ltr">{m.phone}</p>}
-              </div>
-              <button
-                onClick={() => setActive(m.id, !m.active)}
-                disabled={pending}
-                className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}
-              >
-                {m.active ? "مفعّل" : "موقوف"}
-              </button>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-              <Stat label="عملاء" value={m.total} />
-              <Stat label="مقفول" value={m.closed} className="text-success" />
-              <Stat label="حجوزات" value={m.bookings} className="text-gold" />
-            </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              الهدف: {m.target > 0 ? toArabicDigits(m.target) + " صفقة" : "—"}
-            </div>
-          </div>
-        ))}
-        {data.members.length === 0 && (
-          <p className="col-span-full py-8 text-center text-muted-foreground">ما فيه موظفين بعد.</p>
-        )}
+      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+        <table className="w-full text-right text-sm">
+          <thead className="bg-secondary/40 text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">الاسم</th>
+              <th className="px-4 py-3 font-medium">الجوال</th>
+              <th className="px-4 py-3 font-medium">الدور</th>
+              <th className="px-4 py-3 font-medium">عملاء</th>
+              <th className="px-4 py-3 font-medium">مقفول</th>
+              <th className="px-4 py-3 font-medium">الهدف</th>
+              <th className="px-4 py-3 font-medium">النشاط</th>
+              <th className="px-4 py-3 font-medium">الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.members.map((m) => (
+              <tr key={m.id} className={`border-t border-border ${m.active ? "" : "opacity-50"}`}>
+                <td className="px-4 py-3 font-medium text-foreground">{m.name}</td>
+                <td className="px-4 py-3 text-muted-foreground" dir="ltr">{m.phone ?? "—"}</td>
+                <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${roleBadge[m.role]}`}>{roleLabel(m.role)}</span></td>
+                <td className="px-4 py-3 text-muted-foreground">{toArabicDigits(m.total)}</td>
+                <td className="px-4 py-3 text-success">{toArabicDigits(m.closed)}</td>
+                <td className="px-4 py-3 text-gold">{m.target > 0 ? toArabicDigits(m.target) : "—"}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
+                      <div className="h-full rounded-full bg-gold" style={{ width: `${m.activityRate}%` }} />
+                    </div>
+                    <span className="text-xs text-muted-foreground">{toArabicDigits(m.activityRate)}٪</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  {m.role === "EMPLOYEE" ? (
+                    <button onClick={() => setActive(m.id, !m.active)} disabled={pending} className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}>
+                      {m.active ? "مفعّل" : "موقوف"}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-success">مفعّل</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {data.members.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">ما فيه موظفين بعد.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {showAdd && <AddEmployeeDialog onClose={() => setShowAdd(false)} />}
       {showImport && <ImportDialog onClose={() => setShowImport(false)} employees={employees} />}
+      {showDist && <DistributeDialog onClose={() => setShowDist(false)} unassigned={data.unassigned} empCount={data.employeeCount} />}
     </div>
   );
 }
 
-function Stat({ label, value, className }: { label: string; value: number; className?: string }) {
+function DistributeDialog({ onClose, unassigned, empCount }: { onClose: () => void; unassigned: number; empCount: number }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [mode, setMode] = useState<"equal" | "count">("equal");
+  const [perEmp, setPerEmp] = useState("5");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function run() {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await distributeUnassigned(mode === "count" ? Number(perEmp) || 0 : undefined);
+      setMsg(res.ok ? res.message ?? "تم" : res.error ?? "صار خطأ");
+      router.refresh();
+    });
+  }
+
   return (
-    <div className="rounded-lg bg-secondary/50 py-2">
-      <div className={`text-base font-bold ${className ?? "text-foreground"}`}>{toArabicDigits(value)}</div>
-      <div className="text-muted-foreground">{label}</div>
-    </div>
+    <Modal title="توزيع العملاء غير الموزّعين" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">{toArabicDigits(unassigned)} عميل · {toArabicDigits(empCount)} موظف مفعّل</p>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" checked={mode === "equal"} onChange={() => setMode("equal")} />
+          بالتساوي على الجميع
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" checked={mode === "count"} onChange={() => setMode("count")} />
+          عدد محدد لكل موظف:
+          <input value={perEmp} onChange={(e) => setPerEmp(e.target.value.replace(/\D/g, ""))} disabled={mode !== "count"} inputMode="numeric" dir="ltr" className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm disabled:opacity-50" />
+        </label>
+        {msg && <p className="rounded-lg bg-secondary px-3 py-2 text-sm text-foreground">{msg}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إغلاق</button>
+          <button onClick={run} disabled={pending} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "وزّع"}</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -135,9 +177,7 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
         {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
-          <button type="submit" disabled={pending} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-            {pending ? "جارٍ…" : "أضف"}
-          </button>
+          <button type="submit" disabled={pending} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "أضف"}</button>
         </div>
       </form>
     </Modal>
@@ -177,18 +217,14 @@ function ImportDialog({ onClose, employees }: { onClose: () => void; employees: 
           <select name="assignMode" className="select-base" defaultValue="self">
             <option value="self">لي أنا</option>
             <option value="roundrobin">توزيع بالتساوي على الموظفين</option>
-            {employees.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </Field>
         {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">{error}</p>}
         {result && <p className="rounded-lg bg-success/10 px-3 py-2 text-center text-sm text-success">{result}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إغلاق</button>
-          <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-            {pending && <Loader2 className="size-4 animate-spin" />} استورد
-          </button>
+          <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending && <Loader2 className="size-4 animate-spin" />} استورد</button>
         </div>
       </form>
     </Modal>
