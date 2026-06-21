@@ -7,6 +7,8 @@ export type AppSettings = {
   falLicense: string | null;
   phone: string | null;
   autoAssign: boolean;
+  googleSheetUrl: string | null;
+  lastSyncAt: Date | null;
 };
 
 /** يرجّع إعدادات الشركة (سجل singleton) — ينشئه إن ما كان موجودًا. */
@@ -21,5 +23,7 @@ export async function getSettings(): Promise<AppSettings> {
     falLicense: s.falLicense,
     phone: s.phone,
     autoAssign: s.autoAssign,
+    googleSheetUrl: s.googleSheetUrl,
+    lastSyncAt: s.lastSyncAt,
   };
 }

@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Copy, Check, Loader2, FileUp, ClipboardPaste, Link2 } from "lucide-react";
+import { X, Copy, Check, Loader2, FileUp, ClipboardPaste, Link2, ArrowRight } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
-import { parseImport, commitImport } from "@/lib/actions/import";
-import { IMPORT_TEMPLATE, type ImportRow } from "@/lib/import-meta";
+import { readSheet, previewMapped, commitImport } from "@/lib/actions/import";
+import { IMPORT_TEMPLATE, MAPPABLE_FIELDS, type ImportRow } from "@/lib/import-meta";
 
 type Employee = { id: string; name: string };
 type Mode = "file" | "paste" | "sheet";
+type Step = "source" | "map" | "preview";
 
 const statusStyle: Record<ImportRow["status"], string> = {
   new: "bg-success/15 text-success",
@@ -17,43 +18,56 @@ const statusStyle: Record<ImportRow["status"], string> = {
   invalid: "bg-destructive/15 text-destructive",
 };
 const statusLabel: Record<ImportRow["status"], string> = {
-  new: "جديد",
-  duplicate: "مكرر",
-  exists: "موجود",
-  invalid: "غير صالح",
+  new: "جديد", duplicate: "مكرر", exists: "موجود", invalid: "غير صالح",
 };
 
 export function ImportDialog({ onClose, employees }: { onClose: () => void; employees: Employee[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [step, setStep] = useState<Step>("source");
   const [mode, setMode] = useState<Mode>("file");
-  const [rows, setRows] = useState<ImportRow[] | null>(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rawRows, setRawRows] = useState<string[][]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [previewRows, setPreviewRows] = useState<ImportRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [assignMode, setAssignMode] = useState("self");
 
-  const newCount = rows?.filter((r) => r.status === "new").length ?? 0;
+  const newCount = previewRows.filter((r) => r.status === "new").length;
 
-  function preview(e: React.FormEvent<HTMLFormElement>) {
+  function read(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setResult(null);
-    setRows(null);
     const fd = new FormData(e.currentTarget);
     fd.set("mode", mode);
     startTransition(async () => {
-      const res = await parseImport(fd);
-      if (res.ok) setRows(res.rows ?? []);
-      else setError(res.error ?? "صار خطأ");
+      const res = await readSheet(fd);
+      if (!res.ok) { setError(res.error ?? "صار خطأ"); return; }
+      setHeaders(res.headers ?? []);
+      setRawRows(res.rows ?? []);
+      const init: Record<string, string> = {};
+      (res.suggested ?? []).forEach((f, i) => { init[i] = f || ""; });
+      setMapping(init);
+      setStep("map");
+    });
+  }
+
+  function preview() {
+    setError(null);
+    startTransition(async () => {
+      const res = await previewMapped(rawRows, mapping);
+      if (!res.ok) { setError(res.error ?? "صار خطأ"); return; }
+      setPreviewRows(res.rows ?? []);
+      setStep("preview");
     });
   }
 
   function commit() {
-    if (!rows) return;
     startTransition(async () => {
-      const res = await commitImport(rows, assignMode);
-      if (res.ok) { setResult(`تم استيراد ${toArabicDigits(res.created ?? 0)} عميل`); router.refresh(); setRows(null); }
+      const res = await commitImport(previewRows, assignMode);
+      if (res.ok) { setResult(`تم استيراد ${toArabicDigits(res.created ?? 0)} عميل`); router.refresh(); setStep("source"); setPreviewRows([]); }
       else setError(res.error ?? "صار خطأ");
     });
   }
@@ -63,78 +77,107 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="glass relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-foreground">استيراد عملاء</h2>
+          <h2 className="text-lg font-bold text-foreground">
+            استيراد عملاء {step === "map" ? "· مطابقة الأعمدة" : step === "preview" ? "· معاينة" : ""}
+          </h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"><X className="size-5" /></button>
         </div>
 
-        {/* التبويبات */}
-        <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-secondary p-1">
-          {([["file", "رفع ملف", FileUp], ["paste", "لصق", ClipboardPaste], ["sheet", "رابط الشيت", Link2]] as const).map(([v, label, Icon]) => (
-            <button key={v} onClick={() => { setMode(v); setRows(null); setError(null); }} className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${mode === v ? "bg-card text-gold" : "text-muted-foreground hover:text-foreground"}`}>
-              <Icon className="size-4" /> {label}
-            </button>
-          ))}
-        </div>
+        {error && <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+        {result && step === "source" && <p className="mb-3 rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{result}</p>}
 
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>الصف الأول عناوين. مطلوب «الاسم» و«الجوال».</span>
-          <button onClick={() => { navigator.clipboard.writeText(IMPORT_TEMPLATE); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="flex items-center gap-1 text-gold">
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} نسخ قالب الأعمدة
-          </button>
-        </div>
+        {/* الخطوة ١: المصدر */}
+        {step === "source" && (
+          <>
+            <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-secondary p-1">
+              {([["file", "رفع ملف", FileUp], ["paste", "لصق", ClipboardPaste], ["sheet", "رابط الشيت", Link2]] as const).map(([v, label, Icon]) => (
+                <button key={v} onClick={() => setMode(v)} className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${mode === v ? "bg-card text-gold" : "text-muted-foreground hover:text-foreground"}`}>
+                  <Icon className="size-4" /> {label}
+                </button>
+              ))}
+            </div>
+            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>أي أعمدة — بنطابقها بالخطوة الجاية.</span>
+              <button onClick={() => { navigator.clipboard.writeText(IMPORT_TEMPLATE); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="flex items-center gap-1 text-gold">
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} نسخ قالب الأعمدة
+              </button>
+            </div>
+            <form onSubmit={read} className="space-y-3">
+              {mode === "file" && <input type="file" name="file" accept=".csv,.xlsx,.xls" required className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-foreground" />}
+              {mode === "paste" && <textarea name="text" required rows={5} dir="ltr" placeholder={"name,phone,...\nعبدالله,0551234567,..."} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />}
+              {mode === "sheet" && <input name="sheetUrl" required dir="ltr" placeholder="رابط Google Sheet (عام)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />}
+              <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {pending && <Loader2 className="size-4 animate-spin" />} اقرأ الملف
+              </button>
+            </form>
+          </>
+        )}
 
-        <form onSubmit={preview} className="mt-3 space-y-3">
-          {mode === "file" && (
-            <input type="file" name="file" accept=".csv,.xlsx,.xls" required className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-foreground" />
-          )}
-          {mode === "paste" && (
-            <textarea name="text" required rows={5} dir="ltr" placeholder={IMPORT_TEMPLATE + "\nعبدالله,0551234567,واتساب,..."} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-          )}
-          {mode === "sheet" && (
-            <input name="sheetUrl" required dir="ltr" placeholder="رابط Google Sheet (عام)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-          )}
-          <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">
-            {pending && <Loader2 className="size-4 animate-spin" />} معاينة
-          </button>
-        </form>
-
-        {error && <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
-        {result && <p className="mt-3 rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{result}</p>}
-
-        {/* المعاينة */}
-        {rows && (
-          <div className="mt-4 flex-1 overflow-y-auto rounded-xl border border-border">
-            <table className="w-full text-right text-sm">
-              <thead className="sticky top-0 bg-secondary text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">الاسم</th>
-                  <th className="px-3 py-2 font-medium">الجوال</th>
-                  <th className="px-3 py-2 font-medium">الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(0, 100).map((r, i) => (
-                  <tr key={i} className="border-t border-border">
-                    <td className="px-3 py-2 text-foreground">{r.name || "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground" dir="ltr">{r.phone || "—"}</td>
-                    <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs ${statusStyle[r.status]}`}>{statusLabel[r.status]}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* الخطوة ٢: مطابقة الأعمدة */}
+        {step === "map" && (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <p className="mb-3 text-xs text-muted-foreground">طابق كل عمود في ملفك بحقل النظام. «الاسم» (أو الأول+الأخير) و«الجوال» إجباريان.</p>
+            <div className="flex-1 overflow-y-auto rounded-xl border border-border">
+              <table className="w-full text-right text-sm">
+                <thead className="sticky top-0 bg-secondary text-muted-foreground">
+                  <tr><th className="px-3 py-2 font-medium">العمود في ملفك</th><th className="px-3 py-2 font-medium">يقابل في النظام</th></tr>
+                </thead>
+                <tbody>
+                  {headers.map((h, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-3 py-2 text-foreground">{h || `عمود ${toArabicDigits(i + 1)}`}<div className="text-xs text-muted-foreground/70" dir="ltr">{rawRows[0]?.[i] ?? ""}</div></td>
+                      <td className="px-3 py-2">
+                        <select value={mapping[i] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [i]: e.target.value }))} className="select-base">
+                          <option value="">تجاهل</option>
+                          {MAPPABLE_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex justify-between">
+              <button onClick={() => setStep("source")} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">رجوع</button>
+              <button onClick={preview} disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+                {pending && <Loader2 className="size-4 animate-spin" />} معاينة <ArrowRight className="size-4 rotate-180" />
+              </button>
+            </div>
           </div>
         )}
 
-        {rows && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-            <select value={assignMode} onChange={(e) => setAssignMode(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-sm">
-              <option value="self">إسناد لي</option>
-              <option value="roundrobin">توزيع بالتساوي</option>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
-            <button onClick={commit} disabled={pending || newCount === 0} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-              استيراد ({toArabicDigits(newCount)})
-            </button>
+        {/* الخطوة ٣: معاينة + استيراد */}
+        {step === "preview" && (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto rounded-xl border border-border">
+              <table className="w-full text-right text-sm">
+                <thead className="sticky top-0 bg-secondary text-muted-foreground">
+                  <tr><th className="px-3 py-2 font-medium">الاسم</th><th className="px-3 py-2 font-medium">الجوال</th><th className="px-3 py-2 font-medium">الحالة</th></tr>
+                </thead>
+                <tbody>
+                  {previewRows.slice(0, 100).map((r, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-3 py-2 text-foreground">{r.name || "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground" dir="ltr">{r.phone || "—"}</td>
+                      <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs ${statusStyle[r.status]}`}>{statusLabel[r.status]}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+              <button onClick={() => setStep("map")} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">رجوع للمطابقة</button>
+              <div className="flex items-center gap-2">
+                <select value={assignMode} onChange={(e) => setAssignMode(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                  <option value="self">إسناد لي</option>
+                  <option value="roundrobin">توزيع بالتساوي</option>
+                  {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                <button onClick={commit} disabled={pending || newCount === 0} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                  استيراد ({toArabicDigits(newCount)})
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

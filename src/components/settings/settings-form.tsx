@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2, RefreshCw } from "lucide-react";
+import { timeAgo } from "@/lib/format";
 import type { AppSettings } from "@/lib/data/settings";
-import { updateSettings, updateMyPin } from "@/lib/actions/settings";
+import { updateSettings, updateMyPin, syncGoogleSheet } from "@/lib/actions/settings";
 
 export function SettingsForm({ settings }: { settings: AppSettings }) {
   const router = useRouter();
@@ -47,6 +49,10 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
           <input type="checkbox" name="autoAssign" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="size-5 accent-[var(--gold)]" />
         </label>
 
+        <Field label="رابط جوجل شيت (مزامنة تلقائية)">
+          <input name="googleSheetUrl" defaultValue={settings.googleSheetUrl ?? ""} dir="ltr" className="select-base" placeholder="https://docs.google.com/spreadsheets/d/..." />
+        </Field>
+
         {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
         {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
 
@@ -55,7 +61,38 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
         </button>
       </form>
 
+      <SheetSync configured={!!settings.googleSheetUrl} lastSyncAt={settings.lastSyncAt} />
       <PinForm />
+    </div>
+  );
+}
+
+function SheetSync({ configured, lastSyncAt }: { configured: boolean; lastSyncAt: Date | null }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function sync() {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await syncGoogleSheet();
+      setMsg(res.ok ? `تمت المزامنة — ${res.created ?? 0} عميل جديد` : res.error ?? "صار خطأ");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="glass max-w-xl space-y-3 rounded-2xl p-6">
+      <h2 className="font-semibold text-foreground">مزامنة جوجل شيت</h2>
+      <p className="text-xs text-muted-foreground">
+        يسحب الليدات الجديدة من الشيت ويتجاهل المكرر (نفس الجوال). للمزامنة الدورية التلقائية على الخادم، اضبط cron يستدعي{" "}
+        <code dir="ltr">/api/sync-sheet?secret=…</code>
+      </p>
+      {lastSyncAt && <p className="text-xs text-muted-foreground">آخر مزامنة: {timeAgo(lastSyncAt)}</p>}
+      <button onClick={sync} disabled={pending || !configured} className="flex items-center gap-2 rounded-xl border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 disabled:opacity-50">
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+        {configured ? "مزامنة الآن" : "أضف رابط الشيت أول"}
+      </button>
     </div>
   );
 }
