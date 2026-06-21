@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ActivityType, Channel, LeadStage, Priority, UnitType } from "@prisma/client";
+import type { ActivityType, Channel, LeadStage, Priority, UnitType, PurchaseMethod, PurchaseGoal } from "@prisma/client";
 import {
   X, Phone, MessageCircle, Loader2, Sparkles, Copy, Check,
 } from "lucide-react";
 import {
   stageOrder, stageLabels, stageColor, channelLabels, priorityLabels,
-  unitTypeLabels, activityTypeLabels,
+  unitTypeLabels, activityTypeLabels, purchaseMethodLabels, purchaseGoalLabels, districtOptions,
 } from "@/lib/labels";
 import { formatDate, timeAgo } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
@@ -16,6 +16,7 @@ import {
   fetchLeadDetail, updateLeadStage, updateLeadFields, addActivity,
   reassignLead, updateLead,
 } from "@/lib/actions/leads";
+import { BookingForm } from "@/components/bookings/booking-form";
 
 type Employee = { id: string; name: string };
 type Tab = "data" | "timeline" | "ai";
@@ -50,6 +51,7 @@ export function LeadDrawer({
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("data");
   const [note, setNote] = useState("");
+  const [showBooking, setShowBooking] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -81,6 +83,9 @@ export function LeadDrawer({
         budget: String(fd.get("budget") ?? ""),
         unitType: (fd.get("unitType") as UnitType) || null,
         priority: fd.get("priority") as Priority,
+        purchaseMethod: (fd.get("purchaseMethod") as PurchaseMethod) || null,
+        purchaseGoal: (fd.get("purchaseGoal") as PurchaseGoal) || null,
+        preferredDistrict: String(fd.get("preferredDistrict") ?? ""),
       });
       refresh();
     });
@@ -183,11 +188,39 @@ export function LeadDrawer({
                       </select>
                     </DField>
                     <DField label="الميزانية"><input name="budget" defaultValue={lead.budget ?? ""} dir="ltr" className="select-base" /></DField>
+                    <DField label="طريقة الشراء">
+                      <select name="purchaseMethod" defaultValue={lead.purchaseMethod ?? ""} className="select-base">
+                        <option value="">—</option>
+                        {(Object.keys(purchaseMethodLabels) as PurchaseMethod[]).map((m) => <option key={m} value={m}>{purchaseMethodLabels[m]}</option>)}
+                      </select>
+                    </DField>
+                    <DField label="هدف الشراء">
+                      <select name="purchaseGoal" defaultValue={lead.purchaseGoal ?? ""} className="select-base">
+                        <option value="">—</option>
+                        {(Object.keys(purchaseGoalLabels) as PurchaseGoal[]).map((g) => <option key={g} value={g}>{purchaseGoalLabels[g]}</option>)}
+                      </select>
+                    </DField>
+                    <DField label="الحي المفضّل">
+                      <select name="preferredDistrict" defaultValue={lead.preferredDistrict ?? ""} className="select-base">
+                        <option value="">—</option>
+                        {districtOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </DField>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
                     <DField label="المرحلة">
-                      <select value={lead.stage} disabled={pending} onChange={(e) => startTransition(async () => { await updateLeadStage(lead.id, e.target.value as LeadStage); refresh(); })} className="select-base">
+                      <select
+                        value={lead.stage}
+                        disabled={pending}
+                        onChange={(e) => {
+                          const v = e.target.value as LeadStage;
+                          // اختيار «محجوز/عربون» يفتح نموذج الحجز بدل تغيير المرحلة مباشرة
+                          if (v === "RESERVED") { setShowBooking(true); return; }
+                          startTransition(async () => { await updateLeadStage(lead.id, v); refresh(); });
+                        }}
+                        className="select-base"
+                      >
                         {stageOrder.map((s) => <option key={s} value={s}>{stageLabels[s]}</option>)}
                       </select>
                     </DField>
@@ -284,6 +317,16 @@ export function LeadDrawer({
           </>
         )}
       </aside>
+
+      {lead && (
+        <BookingForm
+          open={showBooking}
+          onClose={() => setShowBooking(false)}
+          leadId={lead.id}
+          leadName={lead.name}
+          onDone={refresh}
+        />
+      )}
     </>
   );
 }

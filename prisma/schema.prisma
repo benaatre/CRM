@@ -75,6 +75,27 @@ enum UnitStatus {
 enum PaymentMethod {
   CASH // كاش
   BANK_FINANCE // تمويل بنكي
+  CASH_AND_FINANCE // كاش + تمويل بنكي
+}
+
+/// طريقة الشراء المفضّلة للعميل.
+enum PurchaseMethod {
+  CASH // كاش
+  BANK_FINANCE // تمويل بنكي
+  CASH_AND_FINANCE // كاش + تمويل بنكي
+}
+
+/// هدف الشراء.
+enum PurchaseGoal {
+  RESIDENCE // سكن
+  INVESTMENT // استثمار
+  BOTH // الاثنين معًا
+}
+
+/// طريقة دفع الكاش داخل الحجز.
+enum CashPaymentType {
+  TRANSFER // تحويل
+  INSTALLMENTS // دفعات
 }
 
 /// أسماء البنوك السعودية (للتمويل).
@@ -145,6 +166,7 @@ model User {
   createdLeads  Lead[]     @relation("LeadCreator")
   bookings      Booking[]  @relation("BookingSeller")
   activities    Activity[]
+  bookingEvents BookingEvent[]
 
   @@index([role])
 }
@@ -200,6 +222,12 @@ model Lead {
   projectId    String?
   unitType     UnitType?
   budget       Decimal?    @db.Decimal(14, 2)
+  /// طريقة الشراء المفضّلة (كاش/تمويل/كاش+تمويل)
+  purchaseMethod PurchaseMethod?
+  /// هدف الشراء (سكن/استثمار/الاثنين)
+  purchaseGoal PurchaseGoal?
+  /// الحي المفضّل (المهدية/ظهرة لبن/لبن الشرقي/أخرى)
+  preferredDistrict String?
   stage        LeadStage   @default(NEW)
   priority     Priority    @default(MEDIUM)
   /// عدد محاولات التواصل
@@ -247,17 +275,51 @@ model Booking {
   deliveryStatus DeliveryStatus @default(PENDING)
   /// فشل تمويل / رفض بنك (يظهر بأحمر)
   financeRejected Boolean      @default(false)
+  /// سبب فشل التمويل
+  financeRejectedReason String?
   /// المبلغ المحصّل فعليًا (للتحليلات المالية)
   collected     Decimal        @default(0) @db.Decimal(14, 2)
+
+  // ===== حقول الدفع المرنة =====
+  /// موعد الشيك المتوقع (كاش)
+  expectedCheckDate DateTime?
+  /// نوع دفع الكاش: تحويل / دفعات
+  cashPaymentType   CashPaymentType?
+  installmentsCount Int?
+  installmentAmount Decimal?       @db.Decimal(14, 2)
+  /// مبلغ الكاش في خيار كاش+تمويل
+  cashAmount        Decimal?       @db.Decimal(14, 2)
+  /// نسبة التمويل %
+  financePercent    Decimal?       @db.Decimal(5, 2)
+  /// رقم طلب التمويل
+  financeRequestNo  String?
+
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
   lead   Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   unit   Unit  @relation(fields: [unitId], references: [id], onDelete: Cascade)
   seller User? @relation("BookingSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  events BookingEvent[]
 
   @@index([stage])
   @@index([sellerId])
+}
+
+/// سجل تغييرات مرحلة الحجز (من غيّرها ومتى) — لخط المبيعات المرئي للكل.
+model BookingEvent {
+  id        String        @id @default(cuid())
+  bookingId String
+  userId    String?
+  fromStage BookingStage?
+  toStage   BookingStage
+  note      String?
+  createdAt DateTime      @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
 }
 
 /// سجل النشاطات/التفاعلات لكل عميل (للتحليلات).
@@ -284,6 +346,10 @@ model Settings {
   phone       String?
   /// إسناد العملاء الجدد تلقائيًا لموظف (الأقل حملًا) عند إنشائهم من المدير
   autoAssign  Boolean  @default(false)
+  /// رابط جوجل شيت للمزامنة التلقائية (CSV عام أو رابط شيت)
+  googleSheetUrl String?
+  /// آخر مزامنة ناجحة للشيت
+  lastSyncAt  DateTime?
   updatedAt   DateTime @updatedAt
 }
 

@@ -6,6 +6,8 @@ import type {
   Priority,
   UnitType,
   ActivityType,
+  PurchaseMethod,
+  PurchaseGoal,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -41,6 +43,10 @@ export type LeadDetail = LeadRow & {
   nationalId: string | null;
   notes: string | null;
   firstContactAt: Date | null;
+  purchaseMethod: PurchaseMethod | null;
+  purchaseGoal: PurchaseGoal | null;
+  preferredDistrict: string | null;
+  projectId: string | null;
   activities: LeadActivity[];
 };
 
@@ -137,6 +143,10 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     nationalId: lead.nationalId,
     notes: lead.notes,
     firstContactAt: lead.firstContactAt,
+    purchaseMethod: lead.purchaseMethod,
+    purchaseGoal: lead.purchaseGoal,
+    preferredDistrict: lead.preferredDistrict,
+    projectId: lead.projectId,
     activities: lead.activities.map((a) => ({
       id: a.id,
       type: a.type,

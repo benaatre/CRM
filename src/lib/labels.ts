@@ -12,6 +12,9 @@ import type {
   SaudiBank,
   Nationality,
   DeliveryStatus,
+  PurchaseMethod,
+  PurchaseGoal,
+  CashPaymentType,
 } from "@prisma/client";
 
 // تسميات عربية — استيراد الأنواع فقط (type-only) عشان الوحدة آمنة للاستخدام
@@ -153,7 +156,28 @@ export const bookingStageLabels: Record<BookingStage, string> = {
 export const paymentMethodLabels: Record<PaymentMethod, string> = {
   CASH: "كاش",
   BANK_FINANCE: "تمويل بنكي",
+  CASH_AND_FINANCE: "كاش + تمويل بنكي",
 };
+
+export const purchaseMethodLabels: Record<PurchaseMethod, string> = {
+  CASH: "كاش",
+  BANK_FINANCE: "تمويل بنكي",
+  CASH_AND_FINANCE: "كاش + تمويل بنكي",
+};
+
+export const purchaseGoalLabels: Record<PurchaseGoal, string> = {
+  RESIDENCE: "سكن",
+  INVESTMENT: "استثمار",
+  BOTH: "الاثنين معًا",
+};
+
+export const cashPaymentTypeLabels: Record<CashPaymentType, string> = {
+  TRANSFER: "تحويل",
+  INSTALLMENTS: "دفعات",
+};
+
+/// أحياء شائعة (قابلة للتوسعة) — مع «أخرى».
+export const districtOptions = ["المهدية", "ظهرة لبن", "لبن الشرقي", "أخرى"];
 
 export const bankLabels: Record<SaudiBank, string> = {
   RAJHI: "الراجحي",

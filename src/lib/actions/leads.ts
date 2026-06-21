@@ -8,6 +8,7 @@ import {
   Priority,
   UnitType,
 } from "@prisma/client";
+import type { PurchaseMethod, PurchaseGoal } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
@@ -238,6 +239,9 @@ export async function updateLead(
     budget?: string | null;
     unitType?: UnitType | null;
     priority?: Priority;
+    purchaseMethod?: PurchaseMethod | null;
+    purchaseGoal?: PurchaseGoal | null;
+    preferredDistrict?: string | null;
   },
 ): Promise<ActionResult> {
   try {
@@ -253,6 +257,9 @@ export async function updateLead(
         ...(data.priority ? { priority: data.priority } : {}),
         ...(data.unitType !== undefined ? { unitType: data.unitType } : {}),
         ...(budget !== undefined ? { budget } : {}),
+        ...(data.purchaseMethod !== undefined ? { purchaseMethod: data.purchaseMethod } : {}),
+        ...(data.purchaseGoal !== undefined ? { purchaseGoal: data.purchaseGoal } : {}),
+        ...(data.preferredDistrict !== undefined ? { preferredDistrict: data.preferredDistrict || null } : {}),
       },
     });
     revalidateLeads();
