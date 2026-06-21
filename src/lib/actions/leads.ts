@@ -228,6 +228,40 @@ export async function bulkDelete(ids: string[]): Promise<ActionResult> {
   }
 }
 
+/** تعديل بيانات العميل من تبويب «البيانات» في الدرج. */
+export async function updateLead(
+  leadId: string,
+  data: {
+    name?: string;
+    phone?: string;
+    channel?: Channel;
+    budget?: string | null;
+    unitType?: UnitType | null;
+    priority?: Priority;
+  },
+): Promise<ActionResult> {
+  try {
+    await assertLeadAccess(leadId);
+    const budget =
+      data.budget != null ? Number(String(data.budget).replace(/[^\d]/g, "")) || null : undefined;
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        ...(data.name ? { name: data.name.trim() } : {}),
+        ...(data.phone ? { phone: data.phone.replace(/[^\d]/g, "") } : {}),
+        ...(data.channel ? { channel: data.channel } : {}),
+        ...(data.priority ? { priority: data.priority } : {}),
+        ...(data.unitType !== undefined ? { unitType: data.unitType } : {}),
+        ...(budget !== undefined ? { budget } : {}),
+      },
+    });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** إعادة إسناد العميل لموظف آخر — للمدير فقط. */
 export async function reassignLead(
   leadId: string,
