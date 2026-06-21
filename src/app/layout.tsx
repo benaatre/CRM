@@ -36,6 +36,13 @@ export default function RootLayout({
       className={`${ibmPlexArabic.variable} ${reemKufi.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light')}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="min-h-full bg-background text-foreground">{children}</body>
     </html>
   );

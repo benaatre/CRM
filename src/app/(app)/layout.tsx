@@ -1,10 +1,19 @@
 import Link from "next/link";
-import { LayoutDashboard, Users2, Contact, KanbanSquare, Building2, Handshake, BarChart3, Settings as SettingsIcon, LogOut } from "lucide-react";
-import { requireUser } from "@/lib/auth-guards";
-import { isManager } from "@/lib/auth-guards";
+import {
+  LayoutDashboard,
+  Users2,
+  Contact,
+  KanbanSquare,
+  Building2,
+  Handshake,
+  BarChart3,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import { requireUser, isManager } from "@/lib/auth-guards";
 import { roleLabel } from "@/lib/labels";
 import { getSettings } from "@/lib/data/settings";
-import { signOutAction } from "@/lib/actions/auth";
+import { getEmployees } from "@/lib/data/leads";
+import { Topbar } from "@/components/layout/topbar";
 
 // تخطيط المنطقة المحميّة — يتطلب دخولًا، ويعرض تنقّلًا حسب الدور.
 export default async function AppLayout({
@@ -14,7 +23,10 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   const manager = isManager(user.role);
-  const settings = await getSettings();
+  const [settings, employees] = await Promise.all([
+    getSettings(),
+    manager ? getEmployees() : Promise.resolve([]),
+  ]);
 
   const nav = [
     { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true },
@@ -32,9 +44,8 @@ export default async function AppLayout({
       {/* شريط جانبي (RTL — يظهر يمين) */}
       <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 md:flex">
         <div className="mb-8">
-          <span className="font-logo text-2xl font-bold text-gold">
-            {settings.companyName}
-          </span>
+          <span className="font-logo text-2xl font-bold text-gold">{settings.companyName}</span>
+          <p className="mt-0.5 text-xs text-muted-foreground">إدارة المبيعات العقارية</p>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {nav.map((item) => {
@@ -51,36 +62,24 @@ export default async function AppLayout({
             );
           })}
         </nav>
+        {/* رقم ترخيص فال (REGA) — دائمًا أسفل القائمة */}
+        {settings.falLicense && (
+          <div className="mt-4 rounded-xl border border-border bg-background/50 px-3 py-2 text-center">
+            <div className="text-[0.65rem] text-muted-foreground">ترخيص فال (REGA)</div>
+            <div className="text-xs font-medium text-gold" dir="ltr">{settings.falLicense}</div>
+          </div>
+        )}
       </aside>
 
       <div className="flex flex-1 flex-col">
-        {/* هيدر */}
-        <header className="flex items-center justify-between border-b border-border bg-card/50 px-6 py-4">
-          <div className="md:hidden">
-            <span className="font-logo text-lg font-bold text-gold">
-              مشاريع السلطان
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-left">
-              <div className="text-sm font-medium text-foreground">
-                {user.name}
-              </div>
-              <div className="text-xs text-gold">{roleLabel(user.role)}</div>
-            </div>
-            <form action={signOutAction}>
-              <button
-                type="submit"
-                className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive"
-              >
-                <LogOut className="size-4" />
-                خروج
-              </button>
-            </form>
-          </div>
-        </header>
-
-        <main className="flex-1 px-6 py-8">{children}</main>
+        <Topbar
+          userName={user.name ?? "مستخدم"}
+          roleLabel={roleLabel(user.role)}
+          companyName={settings.companyName}
+          isManager={manager}
+          employees={employees}
+        />
+        <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>
     </div>
   );

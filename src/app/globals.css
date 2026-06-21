@@ -89,6 +89,35 @@
   --font-logo: var(--font-reem-kufi), serif;
 }
 
+/* الوضع النهاري — ثيم «أوبسيديان النهاري» الكريمي الدافئ (ألوان ملف التصميم). */
+:root.light {
+  --background: #f1eee7;
+  --foreground: #211e18;
+  --card: #ffffff;
+  --card-foreground: #211e18;
+  --popover: #faf8f2;
+  --popover-foreground: #211e18;
+  --primary: #cba45e;
+  --primary-foreground: #211e18;
+  --gold: #9c7c3c;
+  --gold-light: #cba45e;
+  --gold-dark: #806331;
+  --secondary: #eae5da;
+  --secondary-foreground: #211e18;
+  --muted: #f3f0e9;
+  --muted-foreground: #6b665b;
+  --accent: #eae5da;
+  --accent-foreground: #9c7c3c;
+  --destructive: #d4564d;
+  --success: #1f9e74;
+  --warning: #c8923a;
+  --info: #4683bf;
+  --border: #e6e1d5;
+  --input: #e6e1d5;
+  --ring: #cba45e;
+  --surface-raised: #faf8f2;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -96,6 +125,10 @@
 
   html {
     color-scheme: dark;
+  }
+
+  html.light {
+    color-scheme: light;
   }
 
   body {
