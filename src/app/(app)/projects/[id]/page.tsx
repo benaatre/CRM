@@ -3,14 +3,9 @@ import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { requireUser } from "@/lib/auth-guards";
 import { getProject } from "@/lib/data/projects";
-import {
-  projectStatusLabels,
-  projectStatusColor,
-  unitTypeLabel,
-  unitStatusLabels,
-  unitStatusColor,
-} from "@/lib/labels";
+import { projectStatusLabels, projectStatusColor } from "@/lib/labels";
 import { formatCurrency, formatDate, toArabicDigits } from "@/lib/format";
+import { UnitsTable } from "@/components/projects/units-table";
 
 export const dynamic = "force-dynamic";
 
@@ -68,34 +63,7 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
-        <table className="w-full text-right text-sm">
-          <thead className="bg-secondary/40 text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 font-medium">الوحدة</th>
-              <th className="px-4 py-3 font-medium">النوع</th>
-              <th className="px-4 py-3 font-medium">الدور</th>
-              <th className="px-4 py-3 font-medium">المساحة</th>
-              <th className="px-4 py-3 font-medium">السعر</th>
-              <th className="px-4 py-3 font-medium">الحالة</th>
-              <th className="px-4 py-3 font-medium">المشتري</th>
-            </tr>
-          </thead>
-          <tbody>
-            {p.unitRows.map((u) => (
-              <tr key={u.id} className="border-t border-border">
-                <td className="px-4 py-3 font-medium text-foreground" dir="ltr">{u.number}</td>
-                <td className="px-4 py-3 text-muted-foreground">{unitTypeLabel(u.type)}</td>
-                <td className="px-4 py-3 text-muted-foreground">{u.floor ?? "—"}</td>
-                <td className="px-4 py-3 text-muted-foreground">{u.area ? `${toArabicDigits(u.area)} م²` : "—"}</td>
-                <td className="px-4 py-3 text-gold">{formatCurrency(u.price)}</td>
-                <td className={`px-4 py-3 ${unitStatusColor[u.status]}`}>{unitStatusLabels[u.status]}</td>
-                <td className="px-4 py-3 text-muted-foreground">{u.buyerName ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <UnitsTable rows={p.unitRows} />
     </div>
   );
 }
