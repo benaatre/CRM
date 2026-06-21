@@ -276,6 +276,15 @@ model Activity {
   @@index([type])
 }
 
+/// إعدادات الشركة (سجل واحد singleton).
+model Settings {
+  id          String   @id @default("singleton")
+  companyName String   @default("مشاريع السلطان")
+  falLicense  String?
+  phone       String?
+  updatedAt   DateTime @updatedAt
+}
+
 /// الإحالات (ما بعد البيع — اطلب إحالة من عميل مقفول).
 model Referral {
   id           String   @id @default(cuid())

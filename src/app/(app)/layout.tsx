@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { LayoutDashboard, Users2, Contact, KanbanSquare, Building2, Handshake, LogOut } from "lucide-react";
+import { LayoutDashboard, Users2, Contact, KanbanSquare, Building2, Handshake, BarChart3, Settings as SettingsIcon, LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth-guards";
 import { isManager } from "@/lib/auth-guards";
 import { roleLabel } from "@/lib/labels";
+import { getSettings } from "@/lib/data/settings";
 import { signOutAction } from "@/lib/actions/auth";
 
 // تخطيط المنطقة المحميّة — يتطلب دخولًا، ويعرض تنقّلًا حسب الدور.
@@ -13,6 +14,7 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   const manager = isManager(user.role);
+  const settings = await getSettings();
 
   const nav = [
     { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true },
@@ -20,7 +22,9 @@ export default async function AppLayout({
     { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true },
     { href: "/projects", label: "المشاريع", icon: Building2, show: true },
     { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true },
-    { href: "/admin", label: "الموظفين", icon: Users2, show: manager },
+    { href: "/analytics", label: "التحليلات", icon: BarChart3, show: manager },
+    { href: "/admin", label: "الفريق", icon: Users2, show: manager },
+    { href: "/settings", label: "الإعدادات", icon: SettingsIcon, show: manager },
   ].filter((n) => n.show);
 
   return (
@@ -29,7 +33,7 @@ export default async function AppLayout({
       <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 md:flex">
         <div className="mb-8">
           <span className="font-logo text-2xl font-bold text-gold">
-            مشاريع السلطان
+            {settings.companyName}
           </span>
         </div>
         <nav className="flex flex-1 flex-col gap-1">

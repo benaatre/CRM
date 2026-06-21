@@ -168,6 +168,14 @@ async function main() {
     console.log(`  ℹ️ يوجد ${bookingCount} حجز — تخطّيت الحجوزات التجريبية`);
   }
 
+  // 5) إعدادات الشركة (singleton)
+  await prisma.settings.upsert({
+    where: { id: "singleton" },
+    update: {},
+    create: { id: "singleton", companyName: "مشاريع السلطان", falLicense: "1200000000" },
+  });
+  console.log("  ✅ إعدادات الشركة");
+
   console.log("✅ خلصت البذرة.");
 }
 
