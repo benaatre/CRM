@@ -9,7 +9,8 @@ import {
   CashPaymentType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth-guards";
+import { requireUser, isManager } from "@/lib/auth-guards";
+import { logAudit } from "@/lib/audit";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -85,14 +86,14 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     // تحقق توفّر الوحدة
     const unit = await prisma.unit.findUnique({
       where: { id: unitId },
-      select: { status: true, booking: { select: { id: true } } },
+      select: { status: true, number: true, project: { select: { name: true } }, booking: { select: { id: true } } },
     });
     if (!unit) return { ok: false, error: "الوحدة غير موجودة" };
     if (unit.booking) return { ok: false, error: "الوحدة محجوزة مسبقًا" };
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { phone: true, nationality: true, nationalId: true, booking: { select: { id: true } } },
+      select: { name: true, phone: true, nationality: true, nationalId: true, booking: { select: { id: true } } },
     });
     if (lead?.booking) return { ok: false, error: "العميل عنده حجز مسبق" };
 
@@ -122,6 +123,44 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       await tx.bookingEvent.create({
         data: { bookingId: booking.id, userId: user.id, toStage: BookingStage.RESERVATION, note: "تم إنشاء الحجز" },
       });
+      await logAudit(tx, {
+        userId: user.id, action: "booking.created", entity: "booking", entityId: booking.id,
+        summary: `حجز وحدة ${unit.number} في ${unit.project?.name ?? "—"}${lead?.name ? ` للعميل ${lead.name}` : ""}`,
+      });
+    });
+
+    revalidateBookings();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** إلغاء الحجز — يحرّر الوحدة، يرجّع العميل لـ«تفاوض»، يحذف الحجز، ويسجّل في التدقيق. */
+export async function cancelBooking(bookingId: string, reason?: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        sellerId: true, unitId: true, leadId: true,
+        unit: { select: { number: true, project: { select: { name: true } } } },
+        lead: { select: { name: true } },
+      },
+    });
+    if (!booking) return { ok: false, error: "الحجز غير موجود" };
+    if (!isManager(user.role) && booking.sellerId !== user.id) {
+      return { ok: false, error: "ما عندك صلاحية على هذا الحجز" };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.unit.update({ where: { id: booking.unitId }, data: { status: "AVAILABLE" } });
+      await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "NEGOTIATION" } });
+      await logAudit(tx, {
+        userId: user.id, action: "booking.cancelled", entity: "unit", entityId: booking.unitId,
+        summary: `ألغى حجز وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}${booking.lead?.name ? ` (${booking.lead.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}`,
+      });
+      await tx.booking.delete({ where: { id: bookingId } }); // يحذف أحداث الحجز تلقائيًا (cascade)
     });
 
     revalidateBookings();
@@ -137,7 +176,7 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
     const user = await requireUser();
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { stage: true, unitId: true, leadId: true },
+      select: { stage: true, unitId: true, leadId: true, unit: { select: { number: true } } },
     });
     if (!booking) return { ok: false, error: "الحجز غير موجود" };
     if (booking.stage === stage) return { ok: true };
@@ -153,6 +192,10 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
       } else {
         await tx.unit.update({ where: { id: booking.unitId }, data: { status: "RESERVED" } });
       }
+      await logAudit(tx, {
+        userId: user.id, action: "booking.stage", entity: "booking", entityId: bookingId,
+        summary: `نقل حجز وحدة ${booking.unit.number} إلى مرحلة جديدة${stage === BookingStage.SOLD ? " (تم البيع)" : ""}`,
+      });
     });
 
     revalidateBookings();
@@ -183,6 +226,10 @@ export async function setFinanceRejected(
           bookingId, userId: user.id, toStage: booking.stage,
           note: rejected ? `فشل التمويل${reason ? `: ${reason}` : ""}` : "أُلغي وسم فشل التمويل",
         },
+      });
+      await logAudit(tx, {
+        userId: user.id, action: "booking.finance", entity: "booking", entityId: bookingId,
+        summary: rejected ? `وسم فشل تمويل${reason ? ` — ${reason}` : ""}` : "ألغى وسم فشل التمويل",
       });
     });
 

@@ -84,6 +84,7 @@ export type UnitRow = {
   price: number | null;
   status: UnitStatus;
   buyerName: string | null;
+  bookingId: string | null;
 };
 
 export type ProjectDetail = ProjectCard & { unitRows: UnitRow[] };
@@ -126,6 +127,7 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
       price: dec(u.price),
       status: u.status,
       buyerName: u.booking?.lead.name ?? null,
+      bookingId: u.booking?.id ?? null,
     })),
   };
 }

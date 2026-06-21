@@ -17,6 +17,7 @@ import {
   reassignLead, updateLead,
 } from "@/lib/actions/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
+import { cancelBooking } from "@/lib/actions/bookings";
 
 type Employee = { id: string; name: string };
 type Tab = "data" | "timeline" | "ai";
@@ -89,6 +90,13 @@ export function LeadDrawer({
       });
       refresh();
     });
+  }
+
+  function cancelLeadBooking() {
+    if (!lead?.bookingId) return;
+    if (!confirm("متأكد تبي تلغي حجز هذا العميل؟ الوحدة بترجع «متاحة».")) return;
+    const reason = prompt("سبب الإلغاء (اختياري):") ?? undefined;
+    startTransition(async () => { await cancelBooking(lead.bookingId!, reason || undefined); refresh(); });
   }
 
   function logResult(type: ActivityType, stage?: LeadStage) {
@@ -236,6 +244,9 @@ export function LeadDrawer({
                     </DField>
                   </div>
 
+                  {lead.bookingId && (
+                    <button type="button" onClick={cancelLeadBooking} disabled={pending} className="w-full rounded-lg border border-destructive/40 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50">إلغاء الحجز</button>
+                  )}
                   <button type="submit" disabled={pending} className="w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "جارٍ الحفظ…" : "حفظ البيانات"}</button>
                 </form>
               )}

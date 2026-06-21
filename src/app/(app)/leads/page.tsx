@@ -1,6 +1,7 @@
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeads, getEmployees } from "@/lib/data/leads";
 import { LeadsView } from "@/components/leads/leads-view";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -17,5 +18,10 @@ export default async function LeadsPage({
   ]);
   const { q } = await searchParams;
 
-  return <LeadsView leads={leads} isManager={manager} employees={employees} initialQ={q ?? ""} />;
+  return (
+    <>
+      <AutoRefresh seconds={30} />
+      <LeadsView leads={leads} isManager={manager} employees={employees} initialQ={q ?? ""} />
+    </>
+  );
 }

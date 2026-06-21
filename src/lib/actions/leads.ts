@@ -11,6 +11,7 @@ import {
 import type { PurchaseMethod, PurchaseGoal } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
+import { logAudit } from "@/lib/audit";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -86,7 +87,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  await prisma.lead.create({
+  const lead = await prisma.lead.create({
     data: {
       name,
       phone,
@@ -101,6 +102,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
       nextFollowup: tomorrow,
     },
   });
+  await logAudit(prisma, { userId: user.id, action: "lead.created", entity: "lead", entityId: lead.id, summary: `أضاف عميل ${name}` });
 
   revalidateLeads();
   return { ok: true };
@@ -208,6 +210,7 @@ export async function bulkReassign(ids: string[], toUserId: string): Promise<Act
     if (!target) return { ok: false, error: "الموظف غير موجود" };
 
     await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId } });
+    await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", summary: `نقل ${ids.length} عميل إلى موظف` });
     revalidateLeads();
     return { ok: true };
   } catch (e) {
@@ -299,6 +302,7 @@ export async function reassignLead(
         },
       }),
     ]);
+    await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", entityId: leadId, summary: `أعاد إسناد عميل إلى ${target.name}` });
 
     revalidateLeads();
     return { ok: true };

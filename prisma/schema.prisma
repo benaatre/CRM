@@ -169,6 +169,7 @@ model User {
   bookings      Booking[]  @relation("BookingSeller")
   activities    Activity[]
   bookingEvents BookingEvent[]
+  auditLogs     AuditLog[]
 
   @@index([role])
 }
@@ -348,6 +349,22 @@ model Activity {
 
   @@index([leadId])
   @@index([type])
+}
+
+/// سجل التدقيق العام (من غيّر + متى + ماذا).
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String // booking.created / booking.cancelled / booking.stage / lead.created / lead.reassigned ...
+  entity    String? // booking | lead | unit
+  entityId  String?
+  summary   String // وصف عربي مقروء
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([action])
 }
 
 /// إعدادات الشركة (سجل واحد singleton).

@@ -7,6 +7,7 @@ import {
   Building2,
   Handshake,
   BarChart3,
+  ScrollText,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -36,6 +37,7 @@ export default async function AppLayout({
     { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true },
     { href: "/analytics", label: "التحليلات", icon: BarChart3, show: manager },
     { href: "/admin", label: "الفريق", icon: Users2, show: manager },
+    { href: "/audit", label: "سجل التدقيق", icon: ScrollText, show: manager },
     { href: "/settings", label: "الإعدادات", icon: SettingsIcon, show: manager },
   ].filter((n) => n.show);
 

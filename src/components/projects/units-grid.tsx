@@ -1,0 +1,81 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Search, Ban, Loader2 } from "lucide-react";
+import type { UnitStatus } from "@prisma/client";
+import { unitTypeLabel, unitStatusLabels } from "@/lib/labels";
+import { formatCurrency, toArabicDigits } from "@/lib/format";
+import type { UnitRow } from "@/lib/data/projects";
+import { cancelBooking } from "@/lib/actions/bookings";
+
+const statusCard: Record<UnitStatus, string> = {
+  AVAILABLE: "border-success/40 bg-success/5",
+  RESERVED: "border-warning/40 bg-warning/5",
+  SOLD: "border-destructive/40 bg-destructive/5",
+};
+const statusBadge: Record<UnitStatus, string> = {
+  AVAILABLE: "bg-success/15 text-success",
+  RESERVED: "bg-warning/15 text-warning",
+  SOLD: "bg-destructive/15 text-destructive",
+};
+
+export function UnitsGrid({ rows }: { rows: UnitRow[] }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [q, setQ] = useState("");
+
+  const filtered = useMemo(
+    () => rows.filter((u) => !q || u.number.includes(q) || unitTypeLabel(u.type).includes(q)),
+    [rows, q],
+  );
+
+  function cancel(bookingId: string, unitNumber: string) {
+    if (!confirm(`متأكد تبي تلغي حجز وحدة ${unitNumber}؟ بترجع «متاحة».`)) return;
+    const reason = prompt("سبب الإلغاء (اختياري):") ?? undefined;
+    startTransition(async () => {
+      await cancelBooking(bookingId, reason || undefined);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث برقم الوحدة أو النوع…" className="w-full rounded-xl border border-border bg-card py-2.5 pr-9 pl-3 text-sm outline-none focus:border-gold" />
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="py-8 text-center text-muted-foreground">ما فيه وحدات مطابقة.</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((u) => (
+            <div key={u.id} className={`rounded-2xl border p-4 ${statusCard[u.status]}`}>
+              <div className="flex items-start justify-between">
+                <div className="text-lg font-bold text-foreground" dir="ltr">{u.number}</div>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${statusBadge[u.status]}`}>{unitStatusLabels[u.status]}</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>النوع: {unitTypeLabel(u.type)}</span>
+                <span>الدور: {u.floor ?? "—"}</span>
+                <span>المساحة: {u.area ? `${toArabicDigits(u.area)} م²` : "—"}</span>
+                <span className="text-gold">{formatCurrency(u.price)}</span>
+              </div>
+              {u.buyerName && <div className="mt-2 text-xs text-muted-foreground">المشتري: {u.buyerName}</div>}
+              {u.status === "RESERVED" && u.bookingId && (
+                <button
+                  onClick={() => cancel(u.bookingId!, u.number)}
+                  disabled={pending}
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-destructive/40 py-1.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                >
+                  {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Ban className="size-3.5" />} إلغاء الحجز
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

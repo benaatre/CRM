@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Building2, Clock, BadgeCheck, Coins, Wallet, AlertTriangle, History,
+  Building2, Clock, BadgeCheck, Coins, Wallet, AlertTriangle, History, Ban,
 } from "lucide-react";
 import type { BookingStage } from "@prisma/client";
 import {
@@ -12,7 +12,7 @@ import {
 } from "@/lib/labels";
 import { formatCurrency, formatCurrencyFull, formatNumberShort, formatDate, timeAgo, toArabicDigits } from "@/lib/format";
 import type { BookingCard, BookingsData } from "@/lib/data/bookings";
-import { updateBookingStage, setFinanceRejected } from "@/lib/actions/bookings";
+import { updateBookingStage, setFinanceRejected, cancelBooking } from "@/lib/actions/bookings";
 
 export function BookingsList({ data }: { data: BookingsData }) {
   const router = useRouter();
@@ -102,6 +102,15 @@ function BookingCardView({ b }: { b: BookingCard }) {
   function clearRejected() {
     startTransition(async () => { await setFinanceRejected(b.id, false); router.refresh(); });
   }
+  function cancel() {
+    if (!confirm(`متأكد تبي تلغي حجز وحدة ${b.unitNumber}؟ بترجع «متاحة» ويختفي من خط المبيعات.`)) return;
+    const reason = prompt("سبب الإلغاء (اختياري):") ?? undefined;
+    startTransition(async () => {
+      const res = await cancelBooking(b.id, reason || undefined);
+      if (!res.ok) setError(res.error ?? "صار خطأ");
+      else router.refresh();
+    });
+  }
 
   return (
     <article className={`glass rounded-2xl p-5 ${b.financeRejected ? "border-destructive/50" : ""}`}>
@@ -168,6 +177,7 @@ function BookingCardView({ b }: { b: BookingCard }) {
           <button onClick={() => setShowReason((v) => !v)} disabled={pending} className="rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10">فشل التمويل</button>
         )}
         <button onClick={() => setShowLog((v) => !v)} className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground"><History className="size-3.5" /> السجل</button>
+        <button onClick={cancel} disabled={pending} className="flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"><Ban className="size-3.5" /> إلغاء الحجز</button>
         {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
 

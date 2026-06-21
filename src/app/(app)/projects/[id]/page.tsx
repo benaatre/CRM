@@ -5,7 +5,8 @@ import { requireUser } from "@/lib/auth-guards";
 import { getProject } from "@/lib/data/projects";
 import { projectStatusLabels, projectStatusColor } from "@/lib/labels";
 import { formatCurrency, formatDate, toArabicDigits } from "@/lib/format";
-import { UnitsTable } from "@/components/projects/units-table";
+import { UnitsGrid } from "@/components/projects/units-grid";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function ProjectDetailPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      <AutoRefresh seconds={30} />
       <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowRight className="size-4" />
         المشاريع
@@ -63,7 +65,7 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      <UnitsTable rows={p.unitRows} />
+      <UnitsGrid rows={p.unitRows} />
     </div>
   );
 }
