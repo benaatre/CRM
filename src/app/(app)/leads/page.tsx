@@ -12,8 +12,9 @@ export default async function LeadsPage({
 }) {
   const user = await requireUser();
   const manager = isManager(user.role);
-  const [leads, employees] = await Promise.all([
-    getLeads(),
+  const [working, archived, employees] = await Promise.all([
+    getLeads(false),
+    getLeads(true),
     manager ? getEmployees() : Promise.resolve([]),
   ]);
   const { q } = await searchParams;
@@ -21,7 +22,7 @@ export default async function LeadsPage({
   return (
     <>
       <AutoRefresh seconds={30} />
-      <LeadsView leads={leads} isManager={manager} employees={employees} initialQ={q ?? ""} />
+      <LeadsView working={working} archived={archived} isManager={manager} employees={employees} initialQ={q ?? ""} />
     </>
   );
 }
