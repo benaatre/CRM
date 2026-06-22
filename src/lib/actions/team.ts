@@ -42,6 +42,66 @@ export async function addEmployee(formData: FormData): Promise<ActionResult> {
   }
 }
 
+export type EmployeeDetail = {
+  id: string; name: string; phone: string | null; role: Role;
+  targetDeals: number; maxClients: number | null; staffNotes: string | null;
+  active: boolean; allowedProjectIds: string[];
+};
+
+/** جلب تفاصيل موظف لنافذة الإعدادات. */
+export async function fetchEmployeeDetail(userId: string): Promise<EmployeeDetail | null> {
+  await requireManager();
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, phone: true, role: true, targetDeals: true, maxClients: true, staffNotes: true, active: true, allowedProjects: { select: { id: true } } },
+  });
+  if (!u) return null;
+  return { ...u, allowedProjectIds: u.allowedProjects.map((p) => p.id) };
+}
+
+/** قائمة المشاريع (للاختيار في إعدادات الموظف). */
+export async function fetchProjectsList(): Promise<{ id: string; name: string }[]> {
+  await requireManager();
+  return prisma.project.findMany({ select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+}
+
+/** تحديث إعدادات موظف كاملة. */
+export async function updateEmployee(userId: string, formData: FormData): Promise<ActionResult> {
+  try {
+    await requireManager();
+    const name = String(formData.get("name") ?? "").trim();
+    if (!name) return { ok: false, error: "اكتب الاسم" };
+    const phone = String(formData.get("phone") ?? "").trim() || null;
+    const role = (String(formData.get("role") ?? "EMPLOYEE") as Role);
+    const targetDeals = Number(String(formData.get("target") ?? "0").replace(/\D/g, "")) || 0;
+    const maxClientsRaw = String(formData.get("maxClients") ?? "").replace(/\D/g, "");
+    const maxClients = maxClientsRaw ? Number(maxClientsRaw) : null;
+    const staffNotes = String(formData.get("staffNotes") ?? "").trim() || null;
+    const active = String(formData.get("active") ?? "") === "on";
+    const pin = String(formData.get("pin") ?? "").trim();
+    const allowedProjectIds = formData.getAll("allowedProjects").map(String).filter(Boolean);
+
+    if (phone) {
+      const exists = await prisma.user.findFirst({ where: { phone, NOT: { id: userId } } });
+      if (exists) return { ok: false, error: "الجوال مسجّل لمستخدم ثاني" };
+    }
+    if (pin && !/^\d{4,6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٤–٦ أرقام" };
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name, phone, role, targetDeals, maxClients, staffNotes, active,
+        ...(pin ? { pinHash: bcrypt.hashSync(pin, 10) } : {}),
+        allowedProjects: { set: allowedProjectIds.map((id) => ({ id })) },
+      },
+    });
+    revalidatePath("/admin");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** تفعيل/إيقاف موظف. */
 export async function toggleEmployeeActive(userId: string, active: boolean): Promise<ActionResult> {
   try {

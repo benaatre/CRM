@@ -9,6 +9,7 @@ import { toArabicDigits } from "@/lib/format";
 import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
 import { ImportDialog } from "./import-dialog";
+import { EmployeeSettingsDialog } from "./employee-settings-dialog";
 
 type Employee = { id: string; name: string };
 
@@ -24,6 +25,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showDist, setShowDist] = useState(false);
+  const [editEmp, setEditEmp] = useState<string | null>(null);
 
   function setActive(id: string, active: boolean) {
     startTransition(async () => {
@@ -70,7 +72,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
           </thead>
           <tbody>
             {data.members.map((m) => (
-              <tr key={m.id} className={`border-t border-border ${m.active ? "" : "opacity-50"}`}>
+              <tr key={m.id} onClick={() => setEditEmp(m.id)} className={`cursor-pointer border-t border-border transition-colors hover:bg-secondary/40 ${m.active ? "" : "opacity-50"}`}>
                 <td className="px-4 py-3 font-medium text-foreground">{m.name}</td>
                 <td className="px-4 py-3 text-muted-foreground" dir="ltr">{m.phone ?? "—"}</td>
                 <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${roleBadge[m.role]}`}>{roleLabel(m.role)}</span></td>
@@ -87,7 +89,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
                 </td>
                 <td className="px-4 py-3">
                   {m.role === "EMPLOYEE" ? (
-                    <button onClick={() => setActive(m.id, !m.active)} disabled={pending} className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}>
+                    <button onClick={(e) => { e.stopPropagation(); setActive(m.id, !m.active); }} disabled={pending} className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}>
                       {m.active ? "مفعّل" : "موقوف"}
                     </button>
                   ) : (
@@ -106,6 +108,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
       {showAdd && <AddEmployeeDialog onClose={() => setShowAdd(false)} />}
       {showImport && <ImportDialog onClose={() => setShowImport(false)} employees={employees} />}
       {showDist && <DistributeDialog onClose={() => setShowDist(false)} unassigned={data.unassigned} empCount={data.employeeCount} />}
+      {editEmp && <EmployeeSettingsDialog userId={editEmp} onClose={() => setEditEmp(null)} />}
     </div>
   );
 }

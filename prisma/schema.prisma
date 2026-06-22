@@ -159,6 +159,10 @@ model User {
   pinHash      String?
   /// هدف الصفقات المقفولة (لشريط التقدّم في لوحة الأداء)
   targetDeals  Int      @default(0)
+  /// الحد الأقصى لعدد العملاء المسندين (اختياري)
+  maxClients   Int?
+  /// ملاحظات خاصة بالموظف (للمدير)
+  staffNotes   String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -170,6 +174,8 @@ model User {
   activities    Activity[]
   bookingEvents BookingEvent[]
   auditLogs     AuditLog[]
+  /// المشاريع المسموح للموظف بيعها
+  allowedProjects Project[] @relation("AllowedSellers")
 
   @@index([role])
 }
@@ -194,6 +200,7 @@ model Project {
 
   units Unit[]
   leads Lead[]
+  allowedSellers User[] @relation("AllowedSellers")
 
   @@index([status])
 }
