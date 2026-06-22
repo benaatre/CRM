@@ -15,6 +15,8 @@ import type {
   PurchaseMethod,
   PurchaseGoal,
   CashPaymentType,
+  FollowUpType,
+  FollowUpResult,
 } from "@prisma/client";
 
 // تسميات عربية — استيراد الأنواع فقط (type-only) عشان الوحدة آمنة للاستخدام
@@ -197,6 +199,45 @@ export const bankLabels: Record<SaudiBank, string> = {
 export const nationalityLabels: Record<Nationality, string> = {
   SAUDI: "سعودي",
   RESIDENT: "مقيم",
+};
+
+// ===== المتابعات (FollowUp) =====
+
+export const followUpTypeLabels: Record<FollowUpType, string> = {
+  CALL: "اتصال",
+  WHATSAPP: "واتساب",
+  VISIT_PROJECT: "زيارة المشروع",
+  VISIT_OFFICE: "زيارة الشركة",
+  OTHER: "أخرى",
+};
+
+export const followUpResultLabels: Record<FollowUpResult, string> = {
+  INTERESTED_SCHEDULED: "مهتم — جدول موعد",
+  INTERESTED_SENT_INFO: "مهتم — أرسلت معلومات",
+  INTERESTED_VISITED: "مهتم — زار",
+  NEGOTIATING: "تفاوض",
+  NOT_ANSWERED_SCHEDULED: "لم يرد — جُدولت محاولة",
+  NOT_ANSWERED_WHATSAPP: "لم يرد — أُرسل واتساب",
+  NOT_INTERESTED_LOCATION: "غير مهتم — الموقع",
+  NOT_INTERESTED_SPACE: "غير مهتم — المساحة",
+  NOT_INTERESTED_PRICE: "غير مهتم — السعر",
+  NOT_INTERESTED_FINAL: "غير مهتم نهائيًا",
+  BOOKED: "تم الحجز ✅",
+};
+
+/// تعيين نتيجة المتابعة → مرحلة العميل (تُحدَّث تلقائيًا).
+export const resultToStage: Record<FollowUpResult, LeadStage> = {
+  INTERESTED_SCHEDULED: "INTERESTED",
+  INTERESTED_SENT_INFO: "INTERESTED",
+  INTERESTED_VISITED: "VIEWING",
+  NEGOTIATING: "NEGOTIATION",
+  NOT_ANSWERED_SCHEDULED: "ATTEMPTED",
+  NOT_ANSWERED_WHATSAPP: "ATTEMPTED",
+  NOT_INTERESTED_LOCATION: "NEGOTIATION",
+  NOT_INTERESTED_SPACE: "NEGOTIATION",
+  NOT_INTERESTED_PRICE: "NEGOTIATION",
+  NOT_INTERESTED_FINAL: "CLOSED_LOST",
+  BOOKED: "RESERVED",
 };
 
 export const deliveryStatusLabels: Record<DeliveryStatus, string> = {
