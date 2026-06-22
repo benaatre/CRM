@@ -235,7 +235,7 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
   NOT_INTERESTED_SPACE: "غير مهتم — المساحة",
   NOT_INTERESTED_PRICE: "غير مهتم — السعر",
   NOT_INTERESTED_FINAL: "غير مهتم نهائيًا",
-  BOOKED: "تم الحجز ✅",
+  BOOKED: "تم الحجز",
 };
 
 /// تعيين نتيجة المتابعة → مرحلة العميل (تُحدَّث تلقائيًا).

@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Phone, MessageCircle, Plus, X, CheckCircle2, Handshake } from "lucide-react";
 import type { PurchaseGoal, PurchaseMethod } from "@prisma/client";
 import {
   purchaseGoalLabels, purchaseMethodLabels, stageLabels, stageColor,
@@ -28,6 +27,9 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
   const [areaInput, setAreaInput] = useState("");
   const [projSel, setProjSel] = useState<Set<string>>(new Set(detail.preferredProjects ?? []));
 
+  // أزرار «تم الحجز / الشراء» تظهر فقط لمرحلة مهتم أو تفاوض (وغير مؤرشف).
+  const canBook = !detail.isArchived && (detail.stage === "INTERESTED" || detail.stage === "NEGOTIATION");
+
   function addArea() {
     const v = areaInput.trim();
     if (v && !areas.includes(v)) setAreas((a) => [...a, v]);
@@ -45,7 +47,7 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
         preferredAreas: areas,
         preferredProjects: [...projSel],
       });
-      setMsg(res.ok ? "تم الحفظ ✅" : res.error ?? "صار خطأ");
+      setMsg(res.ok ? "تم الحفظ" : res.error ?? "صار خطأ");
       router.refresh();
     });
   }
@@ -54,11 +56,9 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Link href="/leads" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowRight className="size-4" /> العملاء
-      </Link>
+      <Link href="/leads" className="inline-block text-sm text-muted-foreground hover:text-foreground">العملاء</Link>
 
-      {/* الرأس */}
+      {/* ١. الرأس */}
       <header className="glass flex flex-wrap items-start justify-between gap-4 rounded-2xl p-5">
         <div className="flex items-center gap-3">
           <div className="flex size-12 items-center justify-center rounded-full bg-gold/15 text-xl font-bold text-gold">{detail.name.charAt(0)}</div>
@@ -72,22 +72,16 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
           </div>
         </div>
         <div className="flex gap-2">
-          <a href={`tel:${detail.phone}`} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" /> اتصال</a>
-          <a href={wa} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success hover:bg-success/25"><MessageCircle className="size-4" /> واتساب</a>
+          <a href={`tel:${detail.phone}`} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">اتصال</a>
+          <a href={wa} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success hover:bg-success/25">واتساب</a>
         </div>
       </header>
 
-      {/* أزرار الحجز/الشراء */}
-      {detail.isArchived ? (
-        <div className="rounded-2xl border border-success/30 bg-success/5 px-4 py-3 text-center text-sm font-medium text-success">✅ هذا العميل مؤرشف (تم الحجز/الشراء)</div>
-      ) : (
-        <div className="flex flex-wrap gap-3">
-          <button onClick={() => setBooking("reserve")} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"><Handshake className="size-4" /> تم الحجز</button>
-          <button onClick={() => setBooking("sale")} className="flex items-center gap-2 rounded-xl border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10"><CheckCircle2 className="size-4" /> تم الشراء (كاش فوري)</button>
-        </div>
+      {detail.isArchived && (
+        <div className="rounded-2xl border border-success/30 bg-success/5 px-4 py-3 text-center text-sm font-medium text-success">هذا العميل مؤرشف (تم الحجز/الشراء)</div>
       )}
 
-      {/* البيانات الأساسية */}
+      {/* ٢. البيانات الأساسية */}
       <section className="glass space-y-4 rounded-2xl p-5">
         <h2 className="font-semibold text-foreground">البيانات الأساسية</h2>
         <div className="grid grid-cols-2 gap-3">
@@ -112,12 +106,12 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
           <span className="text-xs text-muted-foreground">الأحياء المناسبة</span>
           <div className="flex flex-wrap gap-2">
             {areas.map((a) => (
-              <span key={a} className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-foreground">{a}<button onClick={() => setAreas((xs) => xs.filter((x) => x !== a))} className="text-muted-foreground hover:text-destructive"><X className="size-3" /></button></span>
+              <span key={a} className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-foreground">{a}<button onClick={() => setAreas((xs) => xs.filter((x) => x !== a))} className="text-muted-foreground hover:text-destructive" aria-label="حذف">×</button></span>
             ))}
           </div>
           <div className="flex gap-2">
             <input value={areaInput} onChange={(e) => setAreaInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addArea(); } }} placeholder="اكتب حيًّا واضغط Enter…" className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-            <button onClick={addArea} className="rounded-lg border border-border px-3 text-sm text-muted-foreground hover:text-foreground"><Plus className="size-4" /></button>
+            <button onClick={addArea} className="rounded-lg border border-border px-3 text-sm text-muted-foreground hover:text-foreground">إضافة</button>
           </div>
         </div>
 
@@ -138,11 +132,19 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
         <button onClick={save} disabled={pending} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "جارٍ الحفظ…" : "حفظ البيانات"}</button>
       </section>
 
-      {/* المتابعات */}
+      {/* ٣. سجل المتابعات */}
       <section className="glass rounded-2xl p-5">
         <h2 className="mb-4 font-semibold text-foreground">المتابعات</h2>
         <FollowUpsPanel leadId={detail.id} stage={detail.stage} onChanged={() => router.refresh()} readOnly={detail.isArchived} />
       </section>
+
+      {/* ٤. أزرار الحجز/الشراء — أسفل الصفحة، فقط لمرحلة مهتم أو تفاوض */}
+      {canBook && (
+        <div className="flex flex-wrap gap-3">
+          <button onClick={() => setBooking("reserve")} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">تم الحجز</button>
+          <button onClick={() => setBooking("sale")} className="rounded-xl border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10">تم الشراء (كاش فوري)</button>
+        </div>
+      )}
 
       {booking && (
         <BookingForm

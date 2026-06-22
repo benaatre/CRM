@@ -235,6 +235,40 @@ export async function bulkDelete(ids: string[]): Promise<ActionResult> {
   }
 }
 
+/** أرشفة جماعية — تنقل العملاء لتبويب «تم الحجز/الشراء». المدير للكل، الموظف لعملائه فقط. */
+export async function bulkArchive(ids: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
+    const scope = isManager(user.role) ? {} : { assignedToId: user.id };
+    const res = await prisma.lead.updateMany({ where: { id: { in: ids }, ...scope }, data: { isArchived: true } });
+    await logAudit(prisma, { userId: user.id, action: "lead.archived", entity: "lead", summary: `أرشف ${res.count} عميل` });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** إرجاع العميل لمرحلة «جديد» — مع تسجيل في السجل. */
+export async function resetLeadToNew(leadId: string): Promise<ActionResult> {
+  try {
+    const { user, lead } = await assertLeadAccess(leadId);
+    if (lead.stage === LeadStage.NEW) return { ok: true };
+    await prisma.$transaction([
+      prisma.lead.update({ where: { id: leadId }, data: { stage: LeadStage.NEW, lastContact: new Date() } }),
+      prisma.activity.create({
+        data: { leadId, userId: user.id, type: ActivityType.STAGE_CHANGE, note: "أُرجع لمرحلة جديد" },
+      }),
+    ]);
+    await logAudit(prisma, { userId: user.id, action: "lead.resetToNew", entity: "lead", entityId: leadId, summary: "أرجع العميل لمرحلة جديد" });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** تعديل بيانات العميل من تبويب «البيانات» في الدرج. */
 export async function updateLead(
   leadId: string,

@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
 import { channelLabels, unitTypeLabels } from "@/lib/labels";
 import type { Channel, UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
@@ -47,9 +46,7 @@ export function NewLeadDialog({
       <div className="glass relative z-10 w-full max-w-lg rounded-2xl p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-bold text-foreground">عميل جديد</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary">
-            <X className="size-5" />
-          </button>
+          <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-secondary">إغلاق</button>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">

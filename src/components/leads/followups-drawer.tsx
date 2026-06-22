@@ -1,6 +1,5 @@
 "use client";
 
-import { X } from "lucide-react";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageColor } from "@/lib/labels";
 import { FollowUpsPanel } from "./followups-panel";
@@ -27,7 +26,7 @@ export function FollowUpsDrawer({
               <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[stage]}`}>{stageLabels[stage]}</span>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"><X className="size-5" /></button>
+          <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-secondary">إغلاق</button>
         </header>
         <div className="flex-1 overflow-y-auto p-5">
           <FollowUpsPanel leadId={leadId} stage={stage} onChanged={onChanged} />

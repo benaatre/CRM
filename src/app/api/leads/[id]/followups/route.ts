@@ -23,7 +23,7 @@ async function authorize(leadId: string) {
   return { user: session.user, lead };
 }
 
-// GET /api/leads/[id]/followups — كل متابعات العميل (الأحدث أولًا).
+// GET /api/leads/[id]/followups — كل متابعات العميل (تصاعدي: الأقدم أولًا).
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const a = await authorize(id);
@@ -31,7 +31,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const items = await prisma.followUp.findMany({
     where: { leadId: id },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: "asc" },
     include: { employee: { select: { name: true } } },
   });
   return NextResponse.json({
