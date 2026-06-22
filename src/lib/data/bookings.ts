@@ -140,6 +140,8 @@ export async function getBookings(): Promise<BookingsData> {
 export type ProjectWithUnits = {
   id: string;
   name: string;
+  maxDiscountPercent: number | null;
+  maxDiscountAmount: number | null;
   units: { id: string; number: string; price: number | null }[];
 };
 
@@ -158,6 +160,8 @@ export async function getProjectsWithAvailableUnits(): Promise<ProjectWithUnits[
   return projects.map((p) => ({
     id: p.id,
     name: p.name,
+    maxDiscountPercent: dec(p.maxDiscountPercent),
+    maxDiscountAmount: dec(p.maxDiscountAmount),
     units: p.units.map((u) => ({ id: u.id, number: u.number, price: dec(u.price) })),
   }));
 }

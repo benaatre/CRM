@@ -71,7 +71,15 @@ export function UnitsGrid({ rows, projectId }: { rows: UnitRow[]; projectId: str
                 <span>النوع: {unitTypeLabel(u.type)}</span>
                 <span>الدور: {u.floor ?? "—"}</span>
                 <span>المساحة: {u.area ? `${toArabicDigits(u.area)} م²` : "—"}</span>
-                <span className="text-gold">{formatCurrency(u.price)}</span>
+                {u.discountPercent && u.finalPrice != null && u.price != null && u.finalPrice !== u.price ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-[0.7rem] text-muted-foreground line-through">{formatCurrency(u.price)}</span>
+                    <span className="font-bold text-gold">{formatCurrency(u.finalPrice)}</span>
+                    <span className="rounded bg-success/15 px-1 text-[0.6rem] text-success">-{toArabicDigits(u.discountPercent)}٪</span>
+                  </span>
+                ) : (
+                  <span className="text-gold">{formatCurrency(u.price)}</span>
+                )}
               </div>
               {u.buyerName && <div className="mt-2 text-xs text-muted-foreground">المشتري: {u.buyerName}</div>}
               {u.notes && <div className="mt-1 text-xs text-muted-foreground/70">{u.notes}</div>}

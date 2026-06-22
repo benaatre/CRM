@@ -46,6 +46,7 @@ export function UnitForm({ open, onClose, projectId, unit }: { open: boolean; on
             <Field label="الدور"><input name="floor" defaultValue={unit?.floor ?? ""} className="select-base" /></Field>
             <Field label="المساحة م²"><input name="area" inputMode="numeric" dir="ltr" defaultValue={unit?.area ?? ""} className="select-base" /></Field>
             <Field label="السعر"><input name="price" inputMode="numeric" dir="ltr" defaultValue={unit?.price ?? ""} className="select-base" /></Field>
+            <Field label="نسبة الخصم %"><input name="discountPercent" inputMode="numeric" dir="ltr" defaultValue={unit?.discountPercent ?? ""} className="select-base" placeholder="اختياري" /></Field>
             <Field label="الحالة">
               <select name="status" defaultValue={unit?.status ?? "AVAILABLE"} className="select-base">
                 {(Object.keys(unitStatusLabels) as UnitStatus[]).map((s) => <option key={s} value={s}>{unitStatusLabels[s]}</option>)}

@@ -14,6 +14,8 @@ export type ProjectCard = {
   deliveryDate: Date | null;
   priceMin: number | null;
   priceMax: number | null;
+  maxDiscountPercent: number | null;
+  maxDiscountAmount: number | null;
   falLicense: string | null;
   units: { available: number; reserved: number; sold: number; total: number };
 };
@@ -59,6 +61,8 @@ export async function getProjectsOverview(): Promise<ProjectsOverview> {
       deliveryDate: p.deliveryDate,
       priceMin: dec(p.priceMin),
       priceMax: dec(p.priceMax),
+      maxDiscountPercent: dec(p.maxDiscountPercent),
+      maxDiscountAmount: dec(p.maxDiscountAmount),
       falLicense: p.falLicense,
       units: counts,
     };
@@ -84,6 +88,8 @@ export type UnitRow = {
   floor: string | null;
   area: number | null;
   price: number | null;
+  discountPercent: number | null;
+  finalPrice: number | null;
   status: UnitStatus;
   notes: string | null;
   buyerName: string | null;
@@ -120,6 +126,8 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
     deliveryDate: p.deliveryDate,
     priceMin: dec(p.priceMin),
     priceMax: dec(p.priceMax),
+    maxDiscountPercent: dec(p.maxDiscountPercent),
+    maxDiscountAmount: dec(p.maxDiscountAmount),
     falLicense: p.falLicense,
     units: counts,
     unitRows: p.units.map((u) => ({
@@ -129,6 +137,12 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
       floor: u.floor,
       area: dec(u.area),
       price: dec(u.price),
+      discountPercent: dec(u.discountPercent),
+      finalPrice: (() => {
+        const pr = dec(u.price);
+        const dp = dec(u.discountPercent);
+        return pr != null && dp ? Math.round(pr * (1 - dp / 100)) : pr;
+      })(),
       status: u.status,
       notes: u.notes,
       buyerName: u.booking?.lead.name ?? null,

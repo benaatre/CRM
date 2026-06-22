@@ -47,6 +47,8 @@ export function ProjectForm({ open, onClose, project }: { open: boolean; onClose
             <Field label="موعد التسليم"><input name="deliveryDate" type="date" defaultValue={project?.deliveryDate ? new Date(project.deliveryDate).toISOString().slice(0, 10) : ""} className="select-base" /></Field>
             <Field label="السعر من"><input name="priceMin" inputMode="numeric" dir="ltr" defaultValue={project?.priceMin ?? ""} className="select-base" /></Field>
             <Field label="السعر إلى"><input name="priceMax" inputMode="numeric" dir="ltr" defaultValue={project?.priceMax ?? ""} className="select-base" /></Field>
+            <Field label="أقصى خصم %"><input name="maxDiscountPercent" inputMode="numeric" dir="ltr" defaultValue={project?.maxDiscountPercent ?? ""} className="select-base" placeholder="مثال: 5" /></Field>
+            <Field label="أقصى خصم (ريال)"><input name="maxDiscountAmount" inputMode="numeric" dir="ltr" defaultValue={project?.maxDiscountAmount ?? ""} className="select-base" placeholder="اختياري" /></Field>
             <Field label="رقم فال REGA"><input name="falLicense" dir="ltr" defaultValue={project?.falLicense ?? ""} className="select-base" /></Field>
           </div>
           <Field label="الوصف"><textarea name="description" rows={2} defaultValue={project?.description ?? ""} className="select-base" /></Field>

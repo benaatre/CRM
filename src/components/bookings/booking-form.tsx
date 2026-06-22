@@ -54,8 +54,19 @@ export function BookingForm({
     }
   }, [presetUnitId, projects]);
 
-  const finalPrice = (Number(price.replace(/\D/g, "")) || 0) - (Number(discount.replace(/\D/g, "")) || 0);
+  const priceNum = Number(price.replace(/\D/g, "")) || 0;
+  const discountNum = Number(discount.replace(/\D/g, "")) || 0;
+  const finalPrice = priceNum - discountNum;
   const tax = taxed ? Math.round(finalPrice * 0.05) : 0;
+
+  // الحد الأقصى للخصم من إعدادات المشروع
+  const selProject = projects.find((p) => p.id === projectId);
+  const maxCandidates = [
+    selProject?.maxDiscountPercent ? Math.round(priceNum * (selProject.maxDiscountPercent / 100)) : null,
+    selProject?.maxDiscountAmount ?? null,
+  ].filter((v): v is number => v != null);
+  const maxDiscount = maxCandidates.length ? Math.min(...maxCandidates) : null;
+  const discountExceeds = maxDiscount != null && discountNum > maxDiscount;
   const showCash = method === "CASH" || method === "CASH_AND_FINANCE";
   const showFinance = method === "BANK_FINANCE" || method === "CASH_AND_FINANCE";
 
@@ -146,6 +157,12 @@ export function BookingForm({
               ))}
             </div>
           </div>
+
+          {maxDiscount != null && (
+            <p className={`rounded-lg px-3 py-2 text-xs ${discountExceeds ? "bg-destructive/10 text-destructive" : "bg-secondary/50 text-muted-foreground"}`}>
+              {discountExceeds ? "⚠️ تجاوز الحد الأقصى المسموح للخصم" : `الحد الأقصى للخصم: ${formatCurrencyFull(maxDiscount)}`}
+            </p>
+          )}
 
           {/* ملخّص السعر */}
           <div className="space-y-1 rounded-lg bg-secondary/50 px-3 py-2 text-sm">
