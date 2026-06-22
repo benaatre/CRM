@@ -70,6 +70,8 @@ export const channelLabels: Record<Channel, string> = {
   WHATSAPP: "واتساب",
   TIKTOK: "تيك توك",
   META: "ميتا",
+  SNAPCHAT: "سناب",
+  GOOGLE: "جوجل",
   AQAR: "عقار",
   REFERRAL: "إحالة",
   VISIT: "زيارة",

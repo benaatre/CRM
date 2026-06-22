@@ -45,6 +45,8 @@ enum Channel {
   WHATSAPP // واتساب
   TIKTOK // تيك توك
   META // ميتا (انستقرام/فيسبوك)
+  SNAPCHAT // سناب
+  GOOGLE // جوجل
   AQAR // عقار
   REFERRAL // إحالة
   VISIT // زيارة
@@ -144,6 +146,30 @@ enum ActivityType {
   ASSIGNMENT // توزيع/نقل
 }
 
+/// نوع متابعة العميل (FollowUp).
+enum FollowUpType {
+  CALL // اتصال
+  WHATSAPP // واتساب
+  VISIT_PROJECT // زيارة المشروع
+  VISIT_OFFICE // زيارة الشركة
+  OTHER // أخرى
+}
+
+/// نتيجة المتابعة — تحدّد مرحلة العميل تلقائيًا.
+enum FollowUpResult {
+  INTERESTED_SCHEDULED // مهتم - جدول موعد
+  INTERESTED_SENT_INFO // مهتم - أُرسلت معلومات
+  INTERESTED_VISITED // مهتم - زار
+  NEGOTIATING // تفاوض
+  NOT_ANSWERED_SCHEDULED // لم يرد - جُدولت محاولة
+  NOT_ANSWERED_WHATSAPP // لم يرد - أُرسل واتساب
+  NOT_INTERESTED_LOCATION // غير مهتم - الموقع
+  NOT_INTERESTED_SPACE // غير مهتم - المساحة
+  NOT_INTERESTED_PRICE // غير مهتم - السعر
+  NOT_INTERESTED_FINAL // غير مهتم نهائيًا
+  BOOKED // تم الحجز
+}
+
 // ===================== الجداول (Models) =====================
 
 /// المستخدمون (مالك/مدير/موظف). الموظف يسجّل الدخول برمز PIN.
@@ -179,6 +205,7 @@ model User {
   /// المشاريع المسموح للموظف بيعها
   allowedProjects Project[] @relation("AllowedSellers")
   notifications Notification[]
+  followUps     FollowUp[] @relation("FollowUpCreator")
 
   @@index([role])
 }
@@ -269,11 +296,30 @@ model Lead {
   project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
   booking    Booking?
   activities Activity[]
+  followUps  FollowUp[]
   referrals  Referral[]
 
   @@index([stage])
   @@index([assignedToId])
   @@index([nextFollowup])
+}
+
+/// متابعة عميل — نوع + نتيجة + موعد قادم (سجل ذكي مرتّب).
+model FollowUp {
+  id        String         @id @default(cuid())
+  leadId    String
+  type      FollowUpType
+  note      String?
+  result    FollowUpResult
+  nextDate  DateTime?
+  createdAt DateTime       @default(now())
+  createdBy String
+
+  lead     Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  employee User @relation("FollowUpCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([createdBy])
 }
 
 /// حجز وحدة لعميل — بطاقة خط المبيعات.
