@@ -135,7 +135,7 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
       {/* ٣. سجل المتابعات */}
       <section className="glass rounded-2xl p-5">
         <h2 className="mb-4 font-semibold text-foreground">المتابعات</h2>
-        <FollowUpsPanel leadId={detail.id} stage={detail.stage} onChanged={() => router.refresh()} readOnly={detail.isArchived} />
+        <FollowUpsPanel leadId={detail.id} stage={detail.stage} onChanged={() => router.refresh()} onBook={canBook ? () => setBooking("reserve") : undefined} readOnly={detail.isArchived} />
       </section>
 
       {/* ٤. أزرار الحجز/الشراء — أسفل الصفحة، فقط لمرحلة مهتم أو تفاوض */}
