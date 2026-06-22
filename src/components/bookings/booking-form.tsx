@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Loader2, Plus, Trash2 } from "lucide-react";
 import type { PaymentMethod } from "@prisma/client";
 import { bankLabels, paymentMethodLabels } from "@/lib/labels";
 import { formatCurrencyFull, toArabicDigits } from "@/lib/format";
@@ -103,7 +102,7 @@ export function BookingForm({
             <h2 className="text-lg font-bold text-foreground">{immediateSale ? "تسجيل شراء (كاش فوري)" : "حجز جديد"}</h2>
             <p className="text-xs text-muted-foreground">للعميل: {leadName}</p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"><X className="size-5" /></button>
+          <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-secondary">إغلاق</button>
         </div>
 
         <form onSubmit={submit} className="space-y-4">
@@ -208,13 +207,13 @@ export function BookingForm({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>الدفعات ({toArabicDigits(instRows.length)})</span>
-                    <button type="button" onClick={() => setInstRows((r) => [...r, { amount: "", date: "" }])} className="flex items-center gap-1 text-gold"><Plus className="size-3.5" /> أضف دفعة</button>
+                    <button type="button" onClick={() => setInstRows((r) => [...r, { amount: "", date: "" }])} className="text-gold">أضف دفعة</button>
                   </div>
                   {instRows.map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <input value={row.amount} onChange={(e) => setInstRows((r) => r.map((x, j) => j === i ? { ...x, amount: e.target.value.replace(/\D/g, "") } : x))} inputMode="numeric" dir="ltr" placeholder="القيمة" className="w-1/2 rounded-lg border border-border bg-background px-2 py-1.5 text-sm" />
                       <input value={row.date} onChange={(e) => setInstRows((r) => r.map((x, j) => j === i ? { ...x, date: e.target.value } : x))} type="date" className="flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-sm" />
-                      {instRows.length > 1 && <button type="button" onClick={() => setInstRows((r) => r.filter((_, j) => j !== i))} className="text-destructive"><Trash2 className="size-4" /></button>}
+                      {instRows.length > 1 && <button type="button" onClick={() => setInstRows((r) => r.filter((_, j) => j !== i))} className="text-xs text-destructive">حذف</button>}
                     </div>
                   ))}
                 </div>
@@ -243,8 +242,8 @@ export function BookingForm({
 
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
-            <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-              {pending && <Loader2 className="size-4 animate-spin" />} سجّل الحجز
+            <button type="submit" disabled={pending} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+              {pending ? "جارٍ…" : "سجّل الحجز"}
             </button>
           </div>
         </form>

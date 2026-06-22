@@ -7,6 +7,8 @@ import {
   SaudiBank,
   Nationality,
   CashPaymentType,
+  FollowUpType,
+  FollowUpResult,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -27,6 +29,8 @@ function revalidateBookings() {
   revalidatePath("/projects");
   revalidatePath("/leads");
   revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+  revalidatePath("/analytics");
 }
 
 const numOf = (fd: FormData, key: string): number | null => {
@@ -124,6 +128,13 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });
       await tx.lead.update({ where: { id: leadId }, data: { stage: immediateSale ? "CLOSED_WON" : "RESERVED", isArchived: true } });
+      // آخر خطوة في تايملاين متابعات العميل: «تم الحجز» — وبها تتوقّف المتابعات.
+      await tx.followUp.create({
+        data: {
+          leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
+          note: immediateSale ? "تم الشراء (كاش فوري)" : "تم الحجز",
+        },
+      });
       await tx.bookingEvent.create({
         data: { bookingId: booking.id, userId: user.id, toStage: immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION, note: immediateSale ? "تم الشراء (كاش فوري)" : "تم إنشاء الحجز" },
       });
