@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, CheckCircle2, Clock, BadgeCheck, Wallet, Coins, Search } from "lucide-react";
+import { Building2, CheckCircle2, Clock, BadgeCheck, Wallet, Coins, Search, Plus } from "lucide-react";
 import type { ProjectStatus } from "@prisma/client";
 import { projectStatusLabels, projectStatusColor } from "@/lib/labels";
 import { formatCurrency, formatNumberShort, formatDate, toArabicDigits } from "@/lib/format";
 import type { ProjectCard, ProjectsOverview } from "@/lib/data/projects";
+import { ProjectForm } from "./project-form";
 
 const priceBands: { label: string; lo: number; hi: number }[] = [
   { label: "الكل", lo: 0, hi: Infinity },
@@ -28,6 +29,7 @@ export function ProjectsView({ data }: { data: ProjectsOverview }) {
   const [q, setQ] = useState("");
   const [band, setBand] = useState(0);
   const [status, setStatus] = useState<ProjectStatus | "">("");
+  const [showAdd, setShowAdd] = useState(false);
 
   const cards = useMemo(() => {
     const { lo, hi } = priceBands[band];
@@ -51,10 +53,16 @@ export function ProjectsView({ data }: { data: ProjectsOverview }) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-foreground">المشاريع والوحدات</h1>
-        <p className="mt-1 text-sm text-muted-foreground">المخزون العقاري وحالة الوحدات</p>
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">المشاريع والوحدات</h1>
+          <p className="mt-1 text-sm text-muted-foreground">المخزون العقاري وحالة الوحدات</p>
+        </div>
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
+          <Plus className="size-4" /> إضافة مشروع
+        </button>
       </header>
+      <ProjectForm open={showAdd} onClose={() => setShowAdd(false)} />
 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         {kpis.map((k) => {

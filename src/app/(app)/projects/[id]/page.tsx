@@ -6,6 +6,7 @@ import { getProject } from "@/lib/data/projects";
 import { projectStatusLabels, projectStatusColor } from "@/lib/labels";
 import { formatCurrency, formatDate, toArabicDigits } from "@/lib/format";
 import { UnitsGrid } from "@/components/projects/units-grid";
+import { ProjectEditButton } from "@/components/projects/project-edit-button";
 import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +34,14 @@ export default async function ProjectDetailPage({
           <h1 className="text-2xl font-bold text-foreground">{p.name}</h1>
           {p.district && <p className="mt-1 text-sm text-muted-foreground">{p.district}</p>}
         </div>
-        <span className={`rounded-full border px-3 py-1 text-sm ${projectStatusColor[p.status]}`}>
-          {projectStatusLabels[p.status]}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full border px-3 py-1 text-sm ${projectStatusColor[p.status]}`}>
+            {projectStatusLabels[p.status]}
+          </span>
+          <ProjectEditButton project={p} />
+        </div>
       </header>
+      {p.description && <p className="text-sm text-muted-foreground">{p.description}</p>}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Mini label="الوحدات" value={p.units.total} />
@@ -65,7 +70,7 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      <UnitsGrid rows={p.unitRows} />
+      <UnitsGrid rows={p.unitRows} projectId={p.id} />
     </div>
   );
 }

@@ -179,6 +179,7 @@ model Project {
   id           String        @id @default(cuid())
   name         String
   district     String? // الحي
+  description  String? // وصف المشروع
   status       ProjectStatus @default(AVAILABLE)
   priceMin     Decimal?      @db.Decimal(14, 2)
   priceMax     Decimal?      @db.Decimal(14, 2)
@@ -204,6 +205,7 @@ model Unit {
   area      Decimal?   @db.Decimal(8, 2) // المساحة م²
   price     Decimal?   @db.Decimal(14, 2)
   status    UnitStatus @default(AVAILABLE)
+  notes     String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 

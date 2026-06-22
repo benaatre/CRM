@@ -9,6 +9,7 @@ export type ProjectCard = {
   id: string;
   name: string;
   district: string | null;
+  description: string | null;
   status: ProjectStatus;
   deliveryDate: Date | null;
   priceMin: number | null;
@@ -53,6 +54,7 @@ export async function getProjectsOverview(): Promise<ProjectsOverview> {
       id: p.id,
       name: p.name,
       district: p.district,
+      description: p.description,
       status: p.status,
       deliveryDate: p.deliveryDate,
       priceMin: dec(p.priceMin),
@@ -83,6 +85,7 @@ export type UnitRow = {
   area: number | null;
   price: number | null;
   status: UnitStatus;
+  notes: string | null;
   buyerName: string | null;
   bookingId: string | null;
 };
@@ -112,6 +115,7 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
     id: p.id,
     name: p.name,
     district: p.district,
+    description: p.description,
     status: p.status,
     deliveryDate: p.deliveryDate,
     priceMin: dec(p.priceMin),
@@ -126,6 +130,7 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
       area: dec(u.area),
       price: dec(u.price),
       status: u.status,
+      notes: u.notes,
       buyerName: u.booking?.lead.name ?? null,
       bookingId: u.booking?.id ?? null,
     })),
