@@ -2,35 +2,26 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ActivityType, Channel, LeadStage, Priority, UnitType, PurchaseMethod, PurchaseGoal } from "@prisma/client";
+import type { Channel, LeadStage, Priority, UnitType, PurchaseMethod, PurchaseGoal } from "@prisma/client";
 import {
   X, Phone, MessageCircle, Loader2, Sparkles, Copy, Check,
 } from "lucide-react";
 import {
   stageOrder, stageLabels, stageColor, channelLabels, priorityLabels,
-  unitTypeLabels, activityTypeLabels, purchaseMethodLabels, purchaseGoalLabels, districtOptions,
+  unitTypeLabels, purchaseMethodLabels, purchaseGoalLabels, districtOptions,
 } from "@/lib/labels";
-import { formatDate, timeAgo } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
 import {
-  fetchLeadDetail, updateLeadStage, updateLeadFields, addActivity,
+  fetchLeadDetail, updateLeadStage, updateLeadFields,
   reassignLead, updateLead,
 } from "@/lib/actions/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { cancelBooking } from "@/lib/actions/bookings";
+import { FollowUpsPanel } from "./followups-panel";
 
 type Employee = { id: string; name: string };
 type Tab = "data" | "timeline" | "ai";
 type Analysis = { temperature: string; interest: number; nextStep: string; whatsapp: string; source?: string };
-
-const resultButtons: { label: string; type: ActivityType; stage?: LeadStage }[] = [
-  { label: "اتصال", type: "CALL" },
-  { label: "لم يرد", type: "CALL", stage: "ATTEMPTED" },
-  { label: "مهتم", type: "NOTE", stage: "INTERESTED" },
-  { label: "زيارة", type: "VISIT", stage: "VIEWING" },
-  { label: "تفاوض", type: "NOTE", stage: "NEGOTIATION" },
-  { label: "ملاحظة", type: "NOTE" },
-];
 
 const tempColor: Record<string, string> = {
   "حار": "bg-destructive/15 text-destructive",
@@ -51,7 +42,6 @@ export function LeadDrawer({
   const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("data");
-  const [note, setNote] = useState("");
   const [showBooking, setShowBooking] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -97,16 +87,6 @@ export function LeadDrawer({
     if (!confirm("متأكد تبي تلغي حجز هذا العميل؟ الوحدة بترجع «متاحة».")) return;
     const reason = prompt("سبب الإلغاء (اختياري):") ?? undefined;
     startTransition(async () => { await cancelBooking(lead.bookingId!, reason || undefined); refresh(); });
-  }
-
-  function logResult(type: ActivityType, stage?: LeadStage) {
-    if (!lead) return;
-    startTransition(async () => {
-      await addActivity(lead.id, type, note);
-      if (stage && stage !== lead.stage) await updateLeadStage(lead.id, stage);
-      setNote("");
-      refresh();
-    });
   }
 
   async function analyze() {
@@ -251,38 +231,9 @@ export function LeadDrawer({
                 </form>
               )}
 
-              {/* تبويب المتابعة */}
+              {/* تبويب المتابعة — النظام الذكي الجديد (FollowUp) */}
               {tab === "timeline" && (
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="تفاصيل المتابعة (اختياري)…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-                    <div className="flex flex-wrap gap-1.5">
-                      {resultButtons.map((b) => (
-                        <button key={b.label} type="button" disabled={pending} onClick={() => logResult(b.type, b.stage)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold disabled:opacity-50">{b.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="mb-3 text-sm font-medium text-foreground">السجل الزمني ({lead.activities.length})</div>
-                    {lead.activities.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">ما فيه متابعات بعد.</p>
-                    ) : (
-                      <ol className="space-y-4 border-r border-border pr-4">
-                        {lead.activities.map((a) => (
-                          <li key={a.id} className="relative">
-                            <span className="absolute -right-[1.30rem] top-1.5 size-2 rounded-full bg-gold" />
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-foreground">{activityTypeLabels[a.type]}</span>
-                              <span className="text-xs text-muted-foreground">{timeAgo(a.createdAt)}</span>
-                            </div>
-                            {a.note && <p className="mt-0.5 text-sm text-muted-foreground">{a.note}</p>}
-                            {a.userName && <p className="mt-0.5 text-xs text-muted-foreground/70">{a.userName}</p>}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </div>
-                </div>
+                <FollowUpsPanel leadId={lead.id} stage={lead.stage} onChanged={refresh} />
               )}
 
               {/* تبويب مساعد كلود */}
