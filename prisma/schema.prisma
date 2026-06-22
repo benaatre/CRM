@@ -176,6 +176,7 @@ model User {
   auditLogs     AuditLog[]
   /// المشاريع المسموح للموظف بيعها
   allowedProjects Project[] @relation("AllowedSellers")
+  notifications Notification[]
 
   @@index([role])
 }
@@ -365,6 +366,22 @@ model Activity {
   @@index([type])
 }
 
+/// إشعار لمستخدم (toast + جرس).
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String // lead.new | booking.created | booking.cancelled | followup.due | ...
+  title     String
+  body      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
 /// سجل التدقيق العام (من غيّر + متى + ماذا).
 model AuditLog {
   id        String   @id @default(cuid())
@@ -393,6 +410,8 @@ model Settings {
   googleSheetUrl String?
   /// آخر مزامنة ناجحة للشيت
   lastSyncAt  DateTime?
+  /// إعدادات الإشعارات (JSON): {sound, volume, types:{}, followupBeforeHours, staleHours}
+  notifyConfig Json?
   updatedAt   DateTime @updatedAt
 }
 

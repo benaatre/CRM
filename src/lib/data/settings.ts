@@ -9,6 +9,7 @@ export type AppSettings = {
   autoAssign: boolean;
   googleSheetUrl: string | null;
   lastSyncAt: Date | null;
+  notify: { followupBeforeHours: number; staleHours: number };
 };
 
 /** يرجّع إعدادات الشركة (سجل singleton) — ينشئه إن ما كان موجودًا. */
@@ -25,5 +26,9 @@ export async function getSettings(): Promise<AppSettings> {
     autoAssign: s.autoAssign,
     googleSheetUrl: s.googleSheetUrl,
     lastSyncAt: s.lastSyncAt,
+    notify: {
+      followupBeforeHours: (s.notifyConfig as { followupBeforeHours?: number } | null)?.followupBeforeHours ?? 2,
+      staleHours: (s.notifyConfig as { staleHours?: number } | null)?.staleHours ?? 48,
+    },
   };
 }

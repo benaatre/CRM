@@ -11,6 +11,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
+import { notify, activeUserIds } from "@/lib/notify";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -129,6 +130,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       });
     });
 
+    await notify(prisma, await activeUserIds(prisma), "booking.created", "وحدة اتحجزت", `وحدة ${unit.number} في ${unit.project?.name ?? "—"}`);
     revalidateBookings();
     return { ok: true };
   } catch (e) {
@@ -163,6 +165,7 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
       await tx.booking.delete({ where: { id: bookingId } }); // يحذف أحداث الحجز تلقائيًا (cascade)
     });
 
+    await notify(prisma, await activeUserIds(prisma), "booking.cancelled", "تم إلغاء حجز", `وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}`);
     revalidateBookings();
     return { ok: true };
   } catch (e) {

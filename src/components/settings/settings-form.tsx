@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Bell } from "lucide-react";
 import { timeAgo } from "@/lib/format";
 import type { AppSettings } from "@/lib/data/settings";
-import { updateSettings, updateMyPin, syncGoogleSheet } from "@/lib/actions/settings";
+import { updateSettings, updateMyPin, syncGoogleSheet, updateNotifyConfig } from "@/lib/actions/settings";
 
 export function SettingsForm({ settings }: { settings: AppSettings }) {
   const router = useRouter();
@@ -62,7 +62,68 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
       </form>
 
       <SheetSync configured={!!settings.googleSheetUrl} lastSyncAt={settings.lastSyncAt} />
+      <NotificationSettings notify={settings.notify} />
       <PinForm />
+    </div>
+  );
+}
+
+function NotificationSettings({ notify }: { notify: { followupBeforeHours: number; staleHours: number } }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [sound, setSound] = useState(true);
+  const [volume, setVolume] = useState(0.2);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      setSound(localStorage.getItem("notifySound") !== "off");
+      setVolume(Number(localStorage.getItem("notifyVolume") ?? "0.2"));
+    } catch {}
+  }, []);
+
+  function setSoundPref(on: boolean) { setSound(on); try { localStorage.setItem("notifySound", on ? "on" : "off"); } catch {} }
+  function setVolPref(v: number) { setVolume(v); try { localStorage.setItem("notifyVolume", String(v)); } catch {} }
+
+  function saveTimings(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setMsg(null);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const res = await updateNotifyConfig(fd);
+      setMsg(res.ok ? "تم الحفظ ✅" : res.error ?? "صار خطأ");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="glass max-w-xl space-y-4 rounded-2xl p-6">
+      <div className="flex items-center gap-2"><Bell className="size-5 text-gold" /><h2 className="font-semibold text-foreground">الإشعارات والتنبيهات</h2></div>
+
+      <label className="flex items-center justify-between rounded-xl border border-border p-3">
+        <span className="text-sm text-foreground">صوت الإشعارات</span>
+        <input type="checkbox" checked={sound} onChange={(e) => setSoundPref(e.target.checked)} className="size-5 accent-[var(--gold)]" />
+      </label>
+      <label className="block space-y-1.5">
+        <span className="text-xs text-muted-foreground">مستوى الصوت</span>
+        <input type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => setVolPref(Number(e.target.value))} className="w-full accent-[var(--gold)]" disabled={!sound} />
+      </label>
+
+      <form onSubmit={saveTimings} className="space-y-3 border-t border-border pt-4">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block space-y-1.5">
+            <span className="text-xs text-muted-foreground">تنبيه قبل موعد المتابعة (ساعات)</span>
+            <input name="followupBeforeHours" inputMode="numeric" dir="ltr" defaultValue={notify.followupBeforeHours} className="select-base" />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-xs text-muted-foreground">تنبيه ركود الموظف بعد (ساعات)</span>
+            <input name="staleHours" inputMode="numeric" dir="ltr" defaultValue={notify.staleHours} className="select-base" />
+          </label>
+        </div>
+        <p className="text-xs text-muted-foreground/70">التنبيهات الزمنية (المتابعة/الركود) تُشغّل عبر cron — راجع التوثيق.</p>
+        {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
+        <button type="submit" disabled={pending} className="rounded-xl border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 disabled:opacity-50">{pending ? "جارٍ…" : "حفظ التوقيتات"}</button>
+      </form>
     </div>
   );
 }

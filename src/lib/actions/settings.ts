@@ -48,6 +48,23 @@ export async function syncGoogleSheet(): Promise<SyncResult> {
   }
 }
 
+/** حفظ إعدادات توقيتات الإشعارات. */
+export async function updateNotifyConfig(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireManager();
+    const followupBeforeHours = Number(String(formData.get("followupBeforeHours") ?? "2").replace(/\D/g, "")) || 2;
+    const staleHours = Number(String(formData.get("staleHours") ?? "48").replace(/\D/g, "")) || 48;
+    await prisma.settings.update({
+      where: { id: "singleton" },
+      data: { notifyConfig: { followupBeforeHours, staleHours } },
+    });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** تغيير رمز PIN للمستخدم الحالي (المالك/المدير من شاشة الإعدادات). */
 export async function updateMyPin(formData: FormData): Promise<ActionResult> {
   try {

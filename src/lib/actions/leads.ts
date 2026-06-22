@@ -12,6 +12,7 @@ import type { PurchaseMethod, PurchaseGoal } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
+import { notify, managerIds } from "@/lib/notify";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -103,6 +104,8 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     },
   });
   await logAudit(prisma, { userId: user.id, action: "lead.created", entity: "lead", entityId: lead.id, summary: `أضاف عميل ${name}` });
+  const mgrs = await managerIds(prisma);
+  await notify(prisma, [...mgrs, assignedToId], "lead.new", "عميل جديد وصل", name);
 
   revalidateLeads();
   return { ok: true };

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { signOutAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 type Employee = { id: string; name: string };
 
@@ -102,6 +103,8 @@ export function Topbar({
           <button onClick={() => setLang("ar")} className={`rounded-lg px-2 py-1 ${lang === "ar" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>ع</button>
           <button onClick={() => setLang("en")} className={`rounded-lg px-2 py-1 ${lang === "en" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>EN</button>
         </div>
+
+        <NotificationBell />
 
         {/* ليل / نهار */}
         <button
