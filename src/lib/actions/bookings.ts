@@ -69,6 +69,9 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const subjectToTax = String(formData.get("subjectToTax") ?? "") === "yes";
     const taxAmount = subjectToTax ? Math.round(finalPrice * 0.05) : null;
 
+    // «تم الشراء» الفوري (كاش): يُسجَّل مباعًا مباشرة بدل حجز
+    const immediateSale = String(formData.get("immediateSale") ?? "") === "yes";
+
     // تفاصيل الدفعات [{amount, date}]
     let installments: { amount: number; date: string }[] | null = null;
     const installmentsRaw = String(formData.get("installments") ?? "");
@@ -110,8 +113,8 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           phone: lead?.phone ?? null,
           paymentMethod, bankName,
           deposit, price, discount, finalPrice,
-          stage: BookingStage.RESERVATION,
-          stageIndex: 0,
+          stage: immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION,
+          stageIndex: immediateSale ? 5 : 0,
           financePercent, financeRequestNo, cashAmount,
           expectedCheckDate, expectedTransferDate, cashPaymentType,
           installmentsCount, installmentAmount,
@@ -119,10 +122,10 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           subjectToTax, taxAmount,
         },
       });
-      await tx.unit.update({ where: { id: unitId }, data: { status: "RESERVED" } });
-      await tx.lead.update({ where: { id: leadId }, data: { stage: "RESERVED", isArchived: true } });
+      await tx.unit.update({ where: { id: unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });
+      await tx.lead.update({ where: { id: leadId }, data: { stage: immediateSale ? "CLOSED_WON" : "RESERVED", isArchived: true } });
       await tx.bookingEvent.create({
-        data: { bookingId: booking.id, userId: user.id, toStage: BookingStage.RESERVATION, note: "تم إنشاء الحجز" },
+        data: { bookingId: booking.id, userId: user.id, toStage: immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION, note: immediateSale ? "تم الشراء (كاش فوري)" : "تم إنشاء الحجز" },
       });
       await logAudit(tx, {
         userId: user.id, action: "booking.created", entity: "booking", entityId: booking.id,

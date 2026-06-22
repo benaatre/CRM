@@ -54,7 +54,7 @@ function suggestionsFor(stage: LeadStage): Suggestion[] {
   }
 }
 
-export function FollowUpsPanel({ leadId, stage, onChanged }: { leadId: string; stage: LeadStage; onChanged?: () => void }) {
+export function FollowUpsPanel({ leadId, stage, onChanged, readOnly = false }: { leadId: string; stage: LeadStage; onChanged?: () => void; readOnly?: boolean }) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -98,7 +98,9 @@ export function FollowUpsPanel({ leadId, stage, onChanged }: { leadId: string; s
 
   return (
     <div className="space-y-4">
-      {!showForm ? (
+      {readOnly ? (
+        <div className="rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-center text-sm text-success">✅ تم الحجز — توقّفت المتابعات</div>
+      ) : !showForm ? (
         <button onClick={() => setShowForm(true)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
           <Plus className="size-4" /> أضف متابعة
         </button>

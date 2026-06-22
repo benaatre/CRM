@@ -12,7 +12,7 @@ import type { ProjectWithUnits } from "@/lib/data/bookings";
 type CashType = "CHECK" | "TRANSFER" | "INSTALLMENTS";
 
 export function BookingForm({
-  open, onClose, leadId, leadName, onDone, presetUnitId,
+  open, onClose, leadId, leadName, onDone, presetUnitId, immediateSale = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -20,6 +20,7 @@ export function BookingForm({
   leadName: string;
   onDone?: () => void;
   presetUnitId?: string;
+  immediateSale?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -78,6 +79,7 @@ export function BookingForm({
     const fd = new FormData(e.currentTarget);
     fd.set("leadId", leadId);
     fd.set("subjectToTax", taxed ? "yes" : "no");
+    if (immediateSale) fd.set("immediateSale", "yes");
     if (showCash && cashType === "INSTALLMENTS") {
       const rows = instRows
         .filter((r) => r.amount)
@@ -98,7 +100,7 @@ export function BookingForm({
       <div className="glass relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-y-auto rounded-2xl p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-foreground">حجز جديد</h2>
+            <h2 className="text-lg font-bold text-foreground">{immediateSale ? "تسجيل شراء (كاش فوري)" : "حجز جديد"}</h2>
             <p className="text-xs text-muted-foreground">للعميل: {leadName}</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"><X className="size-5" /></button>
