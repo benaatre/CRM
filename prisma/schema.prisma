@@ -258,6 +258,13 @@ model Unit {
   @@index([status])
 }
 
+/// المرحلة الأولى — يحدّدها الموظف مرة واحدة فقط ولا تُعدّل لاحقًا.
+enum FirstContactStage {
+  CONTACTED // تم التواصل (أخضر)
+  NO_ANSWER // لم يتم الرد (أحمر)
+  NOT_SUITABLE // غير مناسب (رمادي/برتقالي)
+}
+
 /// العملاء / الليدات — قلب النظام.
 model Lead {
   id           String      @id @default(cuid())
@@ -273,8 +280,21 @@ model Lead {
   purchaseMethod PurchaseMethod?
   /// هدف الشراء (سكن/استثمار/الاثنين)
   purchaseGoal PurchaseGoal?
-  /// الحي المفضّل (المهدية/ظهرة لبن/لبن الشرقي/أخرى)
+  /// الحي المفضّل (قديم — حقل واحد). الجديد: preferredAreas (متعدّد)
   preferredDistrict String?
+  /// رينج السعر المناسب
+  priceMin     Int?
+  priceMax     Int?
+  /// الأحياء المناسبة (يكتبها يدويًا، متعدّد)
+  preferredAreas String[]
+  /// المشاريع المناسبة (معرّفات/أسماء من النظام، متعدّد)
+  preferredProjects String[]
+  /// المرحلة الأولى — تُحدَّد مرة واحدة فقط
+  firstContactStage FirstContactStage?
+  /// تاريخ أول تواصل (يُعرض في الجدول)
+  firstContactDate DateTime?
+  /// مؤرشف — للعملاء المحجوزين/المشترين (ينتقلون لتبويب «تم الحجز/الشراء»)
+  isArchived   Boolean     @default(false)
   stage        LeadStage   @default(NEW)
   priority     Priority    @default(MEDIUM)
   /// عدد محاولات التواصل
@@ -302,6 +322,7 @@ model Lead {
   @@index([stage])
   @@index([assignedToId])
   @@index([nextFollowup])
+  @@index([isArchived])
 }
 
 /// متابعة عميل — نوع + نتيجة + موعد قادم (سجل ذكي مرتّب).

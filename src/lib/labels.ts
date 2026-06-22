@@ -17,6 +17,7 @@ import type {
   CashPaymentType,
   FollowUpType,
   FollowUpResult,
+  FirstContactStage,
 } from "@prisma/client";
 
 // تسميات عربية — استيراد الأنواع فقط (type-only) عشان الوحدة آمنة للاستخدام
@@ -172,7 +173,19 @@ export const purchaseMethodLabels: Record<PurchaseMethod, string> = {
 export const purchaseGoalLabels: Record<PurchaseGoal, string> = {
   RESIDENCE: "سكن",
   INVESTMENT: "استثمار",
-  BOTH: "الاثنين معًا",
+  BOTH: "سكن + استثمار",
+};
+
+// المرحلة الأولى (تُحدَّد مرة واحدة)
+export const firstContactStageLabels: Record<FirstContactStage, string> = {
+  CONTACTED: "تم التواصل",
+  NO_ANSWER: "لم يتم الرد",
+  NOT_SUITABLE: "غير مناسب",
+};
+export const firstContactStageColor: Record<FirstContactStage, string> = {
+  CONTACTED: "text-success bg-success/10 border-success/30",
+  NO_ANSWER: "text-destructive bg-destructive/10 border-destructive/30",
+  NOT_SUITABLE: "text-warning bg-warning/10 border-warning/30",
 };
 
 export const cashPaymentTypeLabels: Record<CashPaymentType, string> = {
