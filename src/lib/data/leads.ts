@@ -121,15 +121,51 @@ const rowInclude = {
   _count: { select: { activities: true } },
 } as const;
 
-/** كل العملاء (مُحجّمين) — للجدول. archived=false: جاري العمل · true: تم الحجز/الشراء. */
-export async function getLeads(archived = false): Promise<LeadRow[]> {
-  const { where } = await scopeForUser();
+export type LeadFilters = {
+  archived?: boolean;
+  stages?: LeadStage[];
+  assigneeIds?: string[];
+  includeUnassigned?: boolean;
+  q?: string;
+};
+
+/**
+ * العملاء (مُحجّمين) — للجدول مع فلترة server-side.
+ * الموظف يُقصر دائمًا على عملائه؛ فلتر الموظفين يُطبَّق للمدير فقط.
+ */
+export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
+  const { where, manager } = await scopeForUser();
+  const { archived = false, stages, assigneeIds, includeUnassigned, q } = filters;
+
+  const and: Record<string, unknown>[] = [];
+  if (stages && stages.length) and.push({ stage: { in: stages } });
+  if (manager && ((assigneeIds && assigneeIds.length) || includeUnassigned)) {
+    const or: Record<string, unknown>[] = [];
+    if (assigneeIds && assigneeIds.length) or.push({ assignedToId: { in: assigneeIds } });
+    if (includeUnassigned) or.push({ assignedToId: null });
+    and.push({ OR: or });
+  }
+  if (q && q.trim()) {
+    const term = q.trim();
+    and.push({ OR: [{ name: { contains: term } }, { phone: { contains: term } }] });
+  }
+
   const leads = await prisma.lead.findMany({
-    where: { ...where, isArchived: archived },
+    where: { ...where, isArchived: archived, ...(and.length ? { AND: and } : {}) },
     orderBy: [{ createdAt: "desc" }],
     include: rowInclude,
   });
   return leads.map(toRow);
+}
+
+/** أعداد التبويبين (جاري العمل / مؤرشف) ضمن صلاحية المستخدم — لشارات التبويبات. */
+export async function getLeadCounts(): Promise<{ working: number; archived: number }> {
+  const { where } = await scopeForUser();
+  const [working, archived] = await Promise.all([
+    prisma.lead.count({ where: { ...where, isArchived: false } }),
+    prisma.lead.count({ where: { ...where, isArchived: true } }),
+  ]);
+  return { working, archived };
 }
 
 /** العملاء مجمّعين حسب المرحلة — للكانبان. */

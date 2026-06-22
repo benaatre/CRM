@@ -162,7 +162,7 @@ export function BookingForm({
 
           {maxDiscount != null && (
             <p className={`rounded-lg px-3 py-2 text-xs ${discountExceeds ? "bg-destructive/10 text-destructive" : "bg-secondary/50 text-muted-foreground"}`}>
-              {discountExceeds ? "⚠️ تجاوز الحد الأقصى المسموح للخصم" : `الحد الأقصى للخصم: ${formatCurrencyFull(maxDiscount)}`}
+              {discountExceeds ? "تجاوز الحد الأقصى المسموح للخصم" : `الحد الأقصى للخصم: ${formatCurrencyFull(maxDiscount)}`}
             </p>
           )}
 

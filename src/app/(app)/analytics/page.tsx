@@ -65,7 +65,7 @@ export default async function AnalyticsPage() {
         </div>
         {a.finance.financeFailedCount > 0 && (
           <div className="mt-4 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            ⚠️ تنبيه تمويل فاشل: {toArabicDigits(a.finance.financeFailedCount)} حجز بقيمة {formatCurrency(a.finance.financeFailedValue)} — تحتاج متابعة.
+            تنبيه تمويل فاشل: {toArabicDigits(a.finance.financeFailedCount)} حجز بقيمة {formatCurrency(a.finance.financeFailedValue)} — تحتاج متابعة.
           </div>
         )}
 

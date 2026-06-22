@@ -235,6 +235,7 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
   NOT_INTERESTED_SPACE: "غير مهتم — المساحة",
   NOT_INTERESTED_PRICE: "غير مهتم — السعر",
   NOT_INTERESTED_FINAL: "غير مهتم نهائيًا",
+  FOLLOW_UP_SCHEDULED: "موعد لاحق — جُدولت متابعة",
   BOOKED: "تم الحجز",
 };
 
@@ -250,6 +251,7 @@ export const resultToStage: Record<FollowUpResult, LeadStage> = {
   NOT_INTERESTED_SPACE: "NEGOTIATION",
   NOT_INTERESTED_PRICE: "NEGOTIATION",
   NOT_INTERESTED_FINAL: "CLOSED_LOST",
+  FOLLOW_UP_SCHEDULED: "FOLLOW_UP_LATER",
   BOOKED: "RESERVED",
 };
 

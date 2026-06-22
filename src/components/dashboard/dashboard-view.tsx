@@ -155,7 +155,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
         {/* ليدات تنتظر أول تواصل */}
         <Section title="ليدات تنتظر أول تواصل" hint="سرعة الرد ترفع التحويل ٩ أضعاف" bar="bg-destructive">
           {data.waitingFirstContact.length === 0 ? (
-            <Empty text="ما فيه ليدات جديدة تنتظر 👌" />
+            <Empty text="ما فيه ليدات جديدة تنتظر" />
           ) : (
             <div className="space-y-2">
               {data.waitingFirstContact.map((l) => (
@@ -176,7 +176,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
         {/* متابعات اليوم */}
         <Section title="متابعات اليوم" hint="المستحقّة اليوم أو فات موعدها" bar="bg-gold">
           {data.followupsToday.length === 0 ? (
-            <Empty text="ما عندك متابعات مستحقّة 🎉" />
+            <Empty text="ما عندك متابعات مستحقّة" />
           ) : (
             <ul className="divide-y divide-border">
               {data.followupsToday.map((l) => (

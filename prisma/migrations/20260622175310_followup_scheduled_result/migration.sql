@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "FollowUpResult" ADD VALUE 'FOLLOW_UP_SCHEDULED';

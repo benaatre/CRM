@@ -167,6 +167,7 @@ enum FollowUpResult {
   NOT_INTERESTED_SPACE // غير مهتم - المساحة
   NOT_INTERESTED_PRICE // غير مهتم - السعر
   NOT_INTERESTED_FINAL // غير مهتم نهائيًا
+  FOLLOW_UP_SCHEDULED // موعد لاحق — جُدولت متابعة (سيستخير / نعاوده لاحقًا)
   BOOKED // تم الحجز
 }
 

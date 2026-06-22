@@ -359,6 +359,89 @@ export async function setFirstContactStage(leadId: string, stage: FirstContactSt
   }
 }
 
+/**
+ * تحويل عملاء لموظف — للمدير فقط. وضعان:
+ *  - "full": نقل مع كل السجل والمتابعات (تبقى البيانات كما هي).
+ *  - "fresh": نقل كعميل جديد (البيانات الأساسية فقط؛ المتابعات تبدأ من صفر).
+ */
+export async function transferLeads(
+  ids: string[],
+  toUserId: string,
+  mode: "full" | "fresh",
+): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (!isManager(user.role)) return { ok: false, error: "التحويل للمدير فقط" };
+    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
+    const target = await prisma.user.findUnique({ where: { id: toUserId }, select: { id: true, name: true } });
+    if (!target) return { ok: false, error: "الموظف غير موجود" };
+
+    await prisma.$transaction(async (tx) => {
+      if (mode === "fresh") {
+        await tx.followUp.deleteMany({ where: { leadId: { in: ids } } });
+        await tx.lead.updateMany({
+          where: { id: { in: ids } },
+          data: {
+            assignedToId: toUserId, stage: LeadStage.NEW, attempts: 0,
+            firstContactStage: null, firstContactDate: null, firstContactAt: null,
+            lastContact: null, nextFollowup: null,
+          },
+        });
+      } else {
+        await tx.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId } });
+      }
+      await tx.activity.createMany({
+        data: ids.map((leadId) => ({
+          leadId, userId: user.id, type: ActivityType.ASSIGNMENT,
+          note: mode === "fresh" ? `نُقل كعميل جديد إلى ${target.name}` : `نُقل إلى ${target.name}`,
+        })),
+      });
+      await logAudit(tx, {
+        userId: user.id, action: "lead.transferred", entity: "lead",
+        summary: `${mode === "fresh" ? "نقل كعميل جديد" : "نقل"} ${ids.length} عميل إلى ${target.name}`,
+      });
+    });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** استرداد عملاء للنظام كعملاء جدد — بدون موظف، المرحلة ترجع «جديد». للمدير فقط. */
+export async function recoverLeads(ids: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (!isManager(user.role)) return { ok: false, error: "الاسترداد للمدير فقط" };
+    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.followUp.deleteMany({ where: { leadId: { in: ids } } });
+      await tx.lead.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          assignedToId: null, stage: LeadStage.NEW, attempts: 0,
+          firstContactStage: null, firstContactDate: null, firstContactAt: null,
+          lastContact: null, nextFollowup: null,
+        },
+      });
+      await tx.activity.createMany({
+        data: ids.map((leadId) => ({
+          leadId, userId: user.id, type: ActivityType.ASSIGNMENT, note: "استُرد للنظام (بدون موظف)",
+        })),
+      });
+      await logAudit(tx, {
+        userId: user.id, action: "lead.recovered", entity: "lead",
+        summary: `استرد ${ids.length} عميل للنظام كعملاء جدد`,
+      });
+    });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** إعادة إسناد العميل لموظف آخر — للمدير فقط. */
 export async function reassignLead(
   leadId: string,

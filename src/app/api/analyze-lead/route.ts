@@ -42,7 +42,7 @@ function heuristic(
     CLOSED_LOST: "أعد إحياءه بعرض مختلف بعد فترة.",
   } as Record<LeadStage, string>;
 
-  const whatsapp = `هلا ${name} 👋 معك فريق المبيعات. عساك طيّب. حابين نكمّل معك بخصوص ${project ?? "الوحدة اللي تناسبك"} — متى يناسبك نتواصل؟`;
+  const whatsapp = `هلا ${name}، معك فريق المبيعات. عساك طيّب. حابين نكمّل معك بخصوص ${project ?? "الوحدة اللي تناسبك"} — متى يناسبك نتواصل؟`;
 
   return { temperature, interest, nextStep: nextStepByStage[stage] ?? "تابع العميل.", whatsapp };
 }

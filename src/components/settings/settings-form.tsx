@@ -21,7 +21,7 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       const res = await updateSettings(fd);
-      if (res.ok) { setMsg("تم الحفظ ✅"); router.refresh(); }
+      if (res.ok) { setMsg("تم الحفظ"); router.refresh(); }
       else setError(res.error ?? "صار خطأ");
     });
   }
@@ -91,7 +91,7 @@ function NotificationSettings({ notify }: { notify: { followupBeforeHours: numbe
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       const res = await updateNotifyConfig(fd);
-      setMsg(res.ok ? "تم الحفظ ✅" : res.error ?? "صار خطأ");
+      setMsg(res.ok ? "تم الحفظ" : res.error ?? "صار خطأ");
       router.refresh();
     });
   }
@@ -170,7 +170,7 @@ function PinForm() {
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       const res = await updateMyPin(fd);
-      if (res.ok) { setMsg("تم تغيير الرمز ✅"); (e.target as HTMLFormElement).reset(); }
+      if (res.ok) { setMsg("تم تغيير الرمز"); (e.target as HTMLFormElement).reset(); }
       else setError(res.error ?? "صار خطأ");
     });
   }
