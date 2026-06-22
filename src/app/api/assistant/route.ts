@@ -17,9 +17,16 @@ export async function POST(req: Request) {
   }
 
   let question = "";
+  let history: { role: "user" | "assistant"; content: string }[] = [];
   try {
     const body = await req.json();
     question = String(body?.question ?? "").trim();
+    if (Array.isArray(body?.history)) {
+      history = body.history
+        .filter((m: { role?: string; content?: string }) => (m.role === "user" || m.role === "assistant") && m.content)
+        .slice(-8)
+        .map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: String(m.content) }));
+    }
   } catch {
     return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 });
   }
@@ -51,6 +58,7 @@ export async function POST(req: Request) {
         max_tokens: 800,
         system: SYSTEM,
         messages: [
+          ...history,
           {
             role: "user",
             content: `بيانات النظام الحالية (JSON):\n${context}\n\nسؤال المستخدم: ${question}`,

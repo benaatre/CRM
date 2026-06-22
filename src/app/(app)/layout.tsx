@@ -16,6 +16,7 @@ import { getSettings } from "@/lib/data/settings";
 import { getEmployees } from "@/lib/data/leads";
 import { Topbar } from "@/components/layout/topbar";
 import { Heartbeat } from "@/components/layout/heartbeat";
+import { FloatingAssistant } from "@/components/layout/floating-assistant";
 
 // تخطيط المنطقة المحميّة — يتطلب دخولًا، ويعرض تنقّلًا حسب الدور.
 export default async function AppLayout({
@@ -85,6 +86,7 @@ export default async function AppLayout({
         />
         <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>
+      <FloatingAssistant />
     </div>
   );
 }
