@@ -120,7 +120,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
         },
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: "RESERVED" } });
-      await tx.lead.update({ where: { id: leadId }, data: { stage: "RESERVED" } });
+      await tx.lead.update({ where: { id: leadId }, data: { stage: "RESERVED", isArchived: true } });
       await tx.bookingEvent.create({
         data: { bookingId: booking.id, userId: user.id, toStage: BookingStage.RESERVATION, note: "تم إنشاء الحجز" },
       });
@@ -157,7 +157,7 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
 
     await prisma.$transaction(async (tx) => {
       await tx.unit.update({ where: { id: booking.unitId }, data: { status: "AVAILABLE" } });
-      await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "NEGOTIATION" } });
+      await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "NEGOTIATION", isArchived: false } });
       await logAudit(tx, {
         userId: user.id, action: "booking.cancelled", entity: "unit", entityId: booking.unitId,
         summary: `ألغى حجز وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}${booking.lead?.name ? ` (${booking.lead.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}`,

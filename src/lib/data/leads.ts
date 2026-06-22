@@ -8,6 +8,7 @@ import type {
   ActivityType,
   PurchaseMethod,
   PurchaseGoal,
+  FirstContactStage,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -29,6 +30,11 @@ export type LeadRow = {
   assignedTo: { id: string; name: string } | null;
   projectName: string | null;
   activitiesCount: number;
+  purchaseMethod: PurchaseMethod | null;
+  purchaseGoal: PurchaseGoal | null;
+  firstContactStage: FirstContactStage | null;
+  firstContactDate: Date | null;
+  isArchived: boolean;
 };
 
 export type LeadActivity = {
@@ -43,9 +49,11 @@ export type LeadDetail = LeadRow & {
   nationalId: string | null;
   notes: string | null;
   firstContactAt: Date | null;
-  purchaseMethod: PurchaseMethod | null;
-  purchaseGoal: PurchaseGoal | null;
   preferredDistrict: string | null;
+  priceMin: number | null;
+  priceMax: number | null;
+  preferredAreas: string[];
+  preferredProjects: string[];
   projectId: string | null;
   bookingId: string | null;
   activities: LeadActivity[];
@@ -75,6 +83,11 @@ type LeadWithRels = {
   assignedTo: { id: string; name: string } | null;
   project: { name: string } | null;
   _count: { activities: number };
+  purchaseMethod: PurchaseMethod | null;
+  purchaseGoal: PurchaseGoal | null;
+  firstContactStage: FirstContactStage | null;
+  firstContactDate: Date | null;
+  isArchived: boolean;
 };
 
 function toRow(l: LeadWithRels): LeadRow {
@@ -94,6 +107,11 @@ function toRow(l: LeadWithRels): LeadRow {
     assignedTo: l.assignedTo,
     projectName: l.project?.name ?? null,
     activitiesCount: l._count.activities,
+    purchaseMethod: l.purchaseMethod,
+    purchaseGoal: l.purchaseGoal,
+    firstContactStage: l.firstContactStage,
+    firstContactDate: l.firstContactDate,
+    isArchived: l.isArchived,
   };
 }
 
@@ -103,11 +121,11 @@ const rowInclude = {
   _count: { select: { activities: true } },
 } as const;
 
-/** كل العملاء (مُحجّمين) — للجدول. */
-export async function getLeads(): Promise<LeadRow[]> {
+/** كل العملاء (مُحجّمين) — للجدول. archived=false: جاري العمل · true: تم الحجز/الشراء. */
+export async function getLeads(archived = false): Promise<LeadRow[]> {
   const { where } = await scopeForUser();
   const leads = await prisma.lead.findMany({
-    where,
+    where: { ...where, isArchived: archived },
     orderBy: [{ createdAt: "desc" }],
     include: rowInclude,
   });
@@ -145,9 +163,11 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     nationalId: lead.nationalId,
     notes: lead.notes,
     firstContactAt: lead.firstContactAt,
-    purchaseMethod: lead.purchaseMethod,
-    purchaseGoal: lead.purchaseGoal,
     preferredDistrict: lead.preferredDistrict,
+    priceMin: lead.priceMin,
+    priceMax: lead.priceMax,
+    preferredAreas: lead.preferredAreas,
+    preferredProjects: lead.preferredProjects,
     projectId: lead.projectId,
     bookingId: lead.booking?.id ?? null,
     activities: lead.activities.map((a) => ({

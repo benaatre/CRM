@@ -8,7 +8,7 @@ import {
   Priority,
   UnitType,
 } from "@prisma/client";
-import type { PurchaseMethod, PurchaseGoal } from "@prisma/client";
+import type { PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
@@ -268,6 +268,56 @@ export async function updateLead(
         ...(data.preferredDistrict !== undefined ? { preferredDistrict: data.preferredDistrict || null } : {}),
       },
     });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** تحديث بيانات الاستقبال (هدف/طريقة الشراء + رينج السعر + الأحياء + المشاريع المفضّلة). */
+export async function updateLeadIntake(
+  leadId: string,
+  data: {
+    purchaseGoal?: PurchaseGoal | null;
+    purchaseMethod?: PurchaseMethod | null;
+    priceMin?: number | null;
+    priceMax?: number | null;
+    preferredAreas?: string[];
+    preferredProjects?: string[];
+  },
+): Promise<ActionResult> {
+  try {
+    await assertLeadAccess(leadId);
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        ...(data.purchaseGoal !== undefined ? { purchaseGoal: data.purchaseGoal } : {}),
+        ...(data.purchaseMethod !== undefined ? { purchaseMethod: data.purchaseMethod } : {}),
+        ...(data.priceMin !== undefined ? { priceMin: data.priceMin } : {}),
+        ...(data.priceMax !== undefined ? { priceMax: data.priceMax } : {}),
+        ...(data.preferredAreas ? { preferredAreas: data.preferredAreas } : {}),
+        ...(data.preferredProjects ? { preferredProjects: data.preferredProjects } : {}),
+      },
+    });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** تعيين المرحلة الأولى — مرة واحدة فقط، لا تُعدّل بعدها. */
+export async function setFirstContactStage(leadId: string, stage: FirstContactStage): Promise<ActionResult> {
+  try {
+    const { user } = await assertLeadAccess(leadId);
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { firstContactStage: true } });
+    if (lead?.firstContactStage) return { ok: false, error: "المرحلة الأولى محدّدة مسبقًا ولا تُعدّل" };
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { firstContactStage: stage, firstContactDate: new Date(), firstContactAt: new Date() },
+    });
+    await logAudit(prisma, { userId: user.id, action: "lead.firstStage", entity: "lead", entityId: leadId, summary: "حدّد المرحلة الأولى" });
     revalidateLeads();
     return { ok: true };
   } catch (e) {
