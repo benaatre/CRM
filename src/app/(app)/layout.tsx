@@ -15,6 +15,7 @@ import { roleLabel } from "@/lib/labels";
 import { getSettings } from "@/lib/data/settings";
 import { getEmployees } from "@/lib/data/leads";
 import { Topbar } from "@/components/layout/topbar";
+import { Heartbeat } from "@/components/layout/heartbeat";
 
 // تخطيط المنطقة المحميّة — يتطلب دخولًا، ويعرض تنقّلًا حسب الدور.
 export default async function AppLayout({
@@ -43,6 +44,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-dvh">
+      <Heartbeat />
       {/* شريط جانبي (RTL — يظهر يمين) */}
       <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 md:flex">
         <div className="mb-8">

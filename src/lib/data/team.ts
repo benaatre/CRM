@@ -14,6 +14,8 @@ export type TeamMember = {
   closed: number;
   bookings: number;
   activityRate: number;
+  lastSeenAt: Date | null;
+  online: boolean;
 };
 
 export type TeamData = {
@@ -25,7 +27,7 @@ export type TeamData = {
 export async function getTeam(): Promise<TeamData> {
   const [users, byTotal, byClosed, byNotContacted, byBookings, unassigned] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, name: true, phone: true, role: true, targetDeals: true, active: true },
+      select: { id: true, name: true, phone: true, role: true, targetDeals: true, active: true, lastSeenAt: true },
       orderBy: [{ role: "asc" }, { active: "desc" }, { name: "asc" }],
     }),
     prisma.lead.groupBy({ by: ["assignedToId"], _count: { _all: true } }),
@@ -40,6 +42,7 @@ export async function getTeam(): Promise<TeamData> {
   const notContactedMap = new Map(byNotContacted.map((r) => [r.assignedToId, r._count._all]));
   const bookMap = new Map(byBookings.map((r) => [r.sellerId, r._count._all]));
 
+  const now = Date.now();
   const members = users.map((u) => {
     const total = totalMap.get(u.id) ?? 0;
     const notContacted = notContactedMap.get(u.id) ?? 0;
@@ -54,6 +57,8 @@ export async function getTeam(): Promise<TeamData> {
       closed: closedMap.get(u.id) ?? 0,
       bookings: bookMap.get(u.id) ?? 0,
       activityRate: total > 0 ? Math.round(((total - notContacted) / total) * 100) : 0,
+      lastSeenAt: u.lastSeenAt,
+      online: !!u.lastSeenAt && now - u.lastSeenAt.getTime() < 120_000,
     };
   });
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { UserPlus, Upload, Shuffle, X } from "lucide-react";
 import type { Role } from "@prisma/client";
 import { roleLabel } from "@/lib/labels";
-import { toArabicDigits } from "@/lib/format";
+import { toArabicDigits, timeAgo } from "@/lib/format";
 import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
 import { ImportDialog } from "./import-dialog";
@@ -67,6 +67,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
               <th className="px-4 py-3 font-medium">مقفول</th>
               <th className="px-4 py-3 font-medium">الهدف</th>
               <th className="px-4 py-3 font-medium">النشاط</th>
+              <th className="px-4 py-3 font-medium">آخر ظهور</th>
               <th className="px-4 py-3 font-medium">الحالة</th>
             </tr>
           </thead>
@@ -88,6 +89,13 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
                   </div>
                 </td>
                 <td className="px-4 py-3">
+                  {m.online ? (
+                    <span className="flex items-center gap-1.5 text-success"><span className="size-2 rounded-full bg-success" /> متصل الآن</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{m.lastSeenAt ? timeAgo(m.lastSeenAt) : "—"}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
                   {m.role === "EMPLOYEE" ? (
                     <button onClick={(e) => { e.stopPropagation(); setActive(m.id, !m.active); }} disabled={pending} className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}>
                       {m.active ? "مفعّل" : "موقوف"}
@@ -99,7 +107,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
               </tr>
             ))}
             {data.members.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">ما فيه موظفين بعد.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">ما فيه موظفين بعد.</td></tr>
             )}
           </tbody>
         </table>
