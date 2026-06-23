@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PaymentMethod } from "@prisma/client";
 import { bankLabels, paymentMethodLabels } from "@/lib/labels";
 import { formatCurrencyFull, toArabicDigits } from "@/lib/format";
-import { createBooking, fetchProjectsWithUnits } from "@/lib/actions/bookings";
+import { createBooking, createCashSales, fetchProjectsWithUnits } from "@/lib/actions/bookings";
 import type { ProjectWithUnits } from "@/lib/data/bookings";
 
 type CashType = "CHECK" | "TRANSFER" | "INSTALLMENTS";
@@ -26,6 +26,7 @@ export function BookingForm({
   const [projects, setProjects] = useState<ProjectWithUnits[]>([]);
   const [projectId, setProjectId] = useState("");
   const [unitId, setUnitId] = useState("");
+  const [multiSel, setMultiSel] = useState<Set<string>>(new Set());
   const [price, setPrice] = useState("");
   const [discount, setDiscount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("CASH");
@@ -69,6 +70,7 @@ export function BookingForm({
   const discountExceeds = maxDiscount != null && discountNum > maxDiscount;
   const showCash = method === "CASH" || method === "CASH_AND_FINANCE";
   const showFinance = method === "BANK_FINANCE" || method === "CASH_AND_FINANCE";
+  const immediateTotal = units.filter((u) => multiSel.has(u.id)).reduce((s, u) => s + (u.price ?? 0), 0);
 
   if (!open) return null;
 
@@ -78,7 +80,19 @@ export function BookingForm({
     const fd = new FormData(e.currentTarget);
     fd.set("leadId", leadId);
     fd.set("subjectToTax", taxed ? "yes" : "no");
-    if (immediateSale) fd.set("immediateSale", "yes");
+
+    // شراء كاش فوري — يدعم وحدة أو أكثر (createCashSales).
+    if (immediateSale) {
+      if (multiSel.size === 0) { setError("اختر وحدة واحدة على الأقل"); return; }
+      fd.set("unitIds", [...multiSel].join(","));
+      startTransition(async () => {
+        const res = await createCashSales(fd);
+        if (res.ok) { router.refresh(); onDone?.(); onClose(); }
+        else setError(res.error ?? "صار خطأ");
+      });
+      return;
+    }
+
     if (showCash && cashType === "INSTALLMENTS") {
       const rows = instRows
         .filter((r) => r.amount)
@@ -123,28 +137,56 @@ export function BookingForm({
             </label>
           </div>
 
-          {/* المشروع والوحدة */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="المشروع *">
-              <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setUnitId(""); }} required className="select-base">
-                <option value="" disabled>اختر المشروع</option>
-                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </Field>
+          {/* المشروع */}
+          <Field label="المشروع *">
+            <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setUnitId(""); setMultiSel(new Set()); }} required className="select-base">
+              <option value="" disabled>اختر المشروع</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+
+          {/* الوحدة: اختيار متعدد للشراء الفوري، واحدة للحجز */}
+          {immediateSale ? (
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground">الوحدات * (تقدر تختار أكثر من وحدة)</span>
+              {!projectId ? (
+                <p className="text-xs text-muted-foreground">اختر المشروع أول</p>
+              ) : units.length === 0 ? (
+                <p className="text-xs text-muted-foreground">ما فيه وحدات متاحة</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-border p-3">
+                  {units.map((u) => (
+                    <label key={u.id} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={multiSel.has(u.id)} onChange={(e) => setMultiSel((s) => { const n = new Set(s); e.target.checked ? n.add(u.id) : n.delete(u.id); return n; })} />
+                      <span>{u.number}{u.price ? ` — ${toArabicDigits(u.price.toLocaleString("en-US"))}` : " — بدون سعر"}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {multiSel.size > 0 && (
+                <div className="flex justify-between rounded-lg bg-secondary/50 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">عدد الوحدات: {toArabicDigits(multiSel.size)}</span>
+                  <span className="font-bold text-gold">{formatCurrencyFull(immediateTotal)}</span>
+                </div>
+              )}
+            </div>
+          ) : (
             <Field label="الوحدة *">
               <select name="unitId" value={unitId} onChange={(e) => { setUnitId(e.target.value); const u = units.find((x) => x.id === e.target.value); if (u?.price) setPrice(String(u.price)); }} required disabled={!projectId} className="select-base">
                 <option value="" disabled>{projectId ? (units.length ? "اختر الوحدة" : "ما فيه وحدات متاحة") : "اختر المشروع أول"}</option>
                 {units.map((u) => <option key={u.id} value={u.id}>{u.number}{u.price ? ` — ${toArabicDigits(u.price.toLocaleString("en-US"))}` : ""}</option>)}
               </select>
             </Field>
-          </div>
+          )}
 
-          {/* المبالغ */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="سعر الشقة *"><input name="price" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} required inputMode="numeric" dir="ltr" className="select-base" /></Field>
-            <Field label="الخصم"><input name="discount" value={discount} onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
-            <Field label="العربون"><input name="deposit" inputMode="numeric" dir="ltr" className="select-base" /></Field>
-          </div>
+          {/* المبالغ (للحجز فقط) */}
+          {!immediateSale && (
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="سعر الشقة *"><input name="price" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} required inputMode="numeric" dir="ltr" className="select-base" /></Field>
+              <Field label="الخصم"><input name="discount" value={discount} onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
+              <Field label="العربون"><input name="deposit" inputMode="numeric" dir="ltr" className="select-base" /></Field>
+            </div>
+          )}
 
           {/* ضريبة التصرفات العقارية */}
           <div className="rounded-xl border border-border p-3">
@@ -159,13 +201,14 @@ export function BookingForm({
             </div>
           </div>
 
-          {maxDiscount != null && (
+          {!immediateSale && maxDiscount != null && (
             <p className={`rounded-lg px-3 py-2 text-xs ${discountExceeds ? "bg-destructive/10 text-destructive" : "bg-secondary/50 text-muted-foreground"}`}>
               {discountExceeds ? "تجاوز الحد الأقصى المسموح للخصم" : `الحد الأقصى للخصم: ${formatCurrencyFull(maxDiscount)}`}
             </p>
           )}
 
-          {/* ملخّص السعر */}
+          {/* ملخّص السعر + الدفع (للحجز فقط) */}
+          {!immediateSale && (<>
           <div className="space-y-1 rounded-lg bg-secondary/50 px-3 py-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">السعر بعد الخصم</span><span className="text-foreground">{formatCurrencyFull(finalPrice)}</span></div>
             {taxed && <div className="flex justify-between"><span className="text-muted-foreground">الضريبة (٥٪)</span><span className="text-warning">{formatCurrencyFull(tax)}</span></div>}
@@ -237,13 +280,14 @@ export function BookingForm({
               </div>
             </div>
           )}
+          </>)}
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">{error}</p>}
 
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
             <button type="submit" disabled={pending} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-              {pending ? "جارٍ…" : "سجّل الحجز"}
+              {pending ? "جارٍ…" : immediateSale ? "سجّل الشراء" : "سجّل الحجز"}
             </button>
           </div>
         </form>

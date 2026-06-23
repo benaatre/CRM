@@ -101,9 +101,8 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { name: true, phone: true, nationality: true, nationalId: true, booking: { select: { id: true } } },
+      select: { name: true, phone: true, nationality: true, nationalId: true },
     });
-    if (lead?.booking) return { ok: false, error: "العميل عنده حجز مسبق" };
 
     const nationalityRaw = String(formData.get("nationality") ?? "");
     const nationality = nationalityRaw ? (nationalityRaw as Nationality) : lead?.nationality ?? null;
@@ -152,6 +151,79 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
   }
 }
 
+/**
+ * شراء كاش فوري لعدة وحدات لنفس العميل — يُنشئ حجزًا «مباع» لكل وحدة.
+ * يدعم وحدة واحدة أو أكثر. كل الوحدات لازم تكون متاحة وعليها سعر.
+ */
+export async function createCashSales(formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const leadId = String(formData.get("leadId") ?? "");
+    const unitIds = String(formData.get("unitIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (!leadId) return { ok: false, error: "العميل غير محدّد" };
+    if (unitIds.length === 0) return { ok: false, error: "اختر وحدة واحدة على الأقل" };
+
+    const subjectToTax = String(formData.get("subjectToTax") ?? "") === "yes";
+    const nationalityRaw = String(formData.get("nationality") ?? "");
+    const formNationalId = String(formData.get("nationalId") ?? "").trim() || null;
+
+    const units = await prisma.unit.findMany({
+      where: { id: { in: unitIds } },
+      select: { id: true, number: true, price: true, booking: { select: { id: true } }, project: { select: { name: true } } },
+    });
+    if (units.length !== unitIds.length) return { ok: false, error: "بعض الوحدات غير موجودة" };
+    const booked = units.filter((u) => u.booking);
+    if (booked.length) return { ok: false, error: `وحدات محجوزة مسبقًا: ${booked.map((u) => u.number).join("، ")}` };
+    const noPrice = units.filter((u) => !u.price);
+    if (noPrice.length) return { ok: false, error: `وحدات بدون سعر محدّد: ${noPrice.map((u) => u.number).join("، ")}` };
+
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { name: true, phone: true, nationality: true, nationalId: true },
+    });
+    const nationality = nationalityRaw ? (nationalityRaw as Nationality) : lead?.nationality ?? null;
+    const nationalId = formNationalId || lead?.nationalId || null;
+
+    await prisma.$transaction(async (tx) => {
+      for (const u of units) {
+        const price = Number(u.price);
+        const taxAmount = subjectToTax ? Math.round(price * 0.05) : null;
+        const booking = await tx.booking.create({
+          data: {
+            leadId, unitId: u.id, sellerId: user.id,
+            nationality, nationalId, phone: lead?.phone ?? null,
+            paymentMethod: PaymentMethod.CASH,
+            price, discount: 0, finalPrice: price,
+            stage: BookingStage.SOLD, stageIndex: 5,
+            subjectToTax, taxAmount,
+          },
+        });
+        await tx.unit.update({ where: { id: u.id }, data: { status: "SOLD" } });
+        await tx.bookingEvent.create({
+          data: { bookingId: booking.id, userId: user.id, toStage: BookingStage.SOLD, note: "تم الشراء (كاش فوري)" },
+        });
+      }
+      await tx.lead.update({ where: { id: leadId }, data: { stage: "CLOSED_WON", isArchived: true } });
+      await tx.followUp.create({
+        data: {
+          leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
+          note: `تم الشراء (كاش فوري) — ${units.length} وحدة: ${units.map((u) => u.number).join("، ")}`,
+        },
+      });
+      await logAudit(tx, {
+        userId: user.id, action: "booking.created", entity: "lead", entityId: leadId,
+        summary: `شراء ${units.length} وحدة${lead?.name ? ` للعميل ${lead.name}` : ""} (${units.map((u) => u.number).join("، ")})`,
+      });
+    });
+
+    await notify(prisma, await activeUserIds(prisma), "booking.created", "تم تسجيل شراء", `${units.length} وحدة${lead?.name ? ` للعميل ${lead.name}` : ""}`);
+    revalidateBookings();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** إلغاء الحجز — يحرّر الوحدة، يرجّع العميل لـ«تفاوض»، يحذف الحجز، ويسجّل في التدقيق. */
 export async function cancelBooking(bookingId: string, reason?: string): Promise<ActionResult> {
   try {
@@ -172,6 +244,14 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
     await prisma.$transaction(async (tx) => {
       await tx.unit.update({ where: { id: booking.unitId }, data: { status: "AVAILABLE" } });
       await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "NEGOTIATION", isArchived: false } });
+      // سطر في تايملاين متابعات العميل: «تم إلغاء الحجز + السبب».
+      await tx.followUp.create({
+        data: {
+          leadId: booking.leadId, createdBy: user.id,
+          type: FollowUpType.OTHER, result: FollowUpResult.NEGOTIATING,
+          note: `تم إلغاء الحجز — وحدة ${booking.unit.number}${booking.unit.project?.name ? ` (${booking.unit.project.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}`,
+        },
+      });
       await logAudit(tx, {
         userId: user.id, action: "booking.cancelled", entity: "unit", entityId: booking.unitId,
         summary: `ألغى حجز وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}${booking.lead?.name ? ` (${booking.lead.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}`,

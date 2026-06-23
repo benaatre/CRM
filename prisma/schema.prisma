@@ -315,7 +315,7 @@ model Lead {
   createdBy    User?    @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  booking    Booking?
+  bookings   Booking[]
   activities Activity[]
   followUps  FollowUp[]
   referrals  Referral[]
@@ -347,7 +347,7 @@ model FollowUp {
 /// حجز وحدة لعميل — بطاقة خط المبيعات.
 model Booking {
   id            String         @id @default(cuid())
-  leadId        String         @unique
+  leadId        String
   unitId        String         @unique
   sellerId      String?
   nationality   Nationality?
@@ -402,6 +402,7 @@ model Booking {
 
   @@index([stage])
   @@index([sellerId])
+  @@index([leadId])
 }
 
 /// سجل تغييرات مرحلة الحجز (من غيّرها ومتى) — لخط المبيعات المرئي للكل.
