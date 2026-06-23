@@ -8,8 +8,13 @@ import type { LeadFilterValues } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
 
+// عنصر مختار: أخضر #22c55e بخلفية خضراء شفافة. غير مختار: رمادي محايد.
 function chip(active: boolean) {
   return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`;
+}
+// زر «الكل»: ذهبي #CBA45E عند تفعيله (لا فلتر محدّد).
+function chipAll(active: boolean) {
+  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`;
 }
 
 /**
@@ -67,7 +72,7 @@ export function LeadsFilterBar({
     <div className="space-y-3">
       {/* فلتر المراحل */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <button onClick={() => go({ stages: [] })} className={chip(filters.stages.length === 0)}>كل المراحل</button>
+        <button onClick={() => go({ stages: [] })} className={chipAll(filters.stages.length === 0)}>كل المراحل</button>
         {stageOrder.map((s) => (
           <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
         ))}
@@ -76,7 +81,7 @@ export function LeadsFilterBar({
       {/* فلتر الموظفين (للمدير) */}
       {isManager && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <button onClick={() => go({ emps: [] })} className={chip(filters.emps.length === 0)}>كل الموظفين</button>
+          <button onClick={() => go({ emps: [] })} className={chipAll(filters.emps.length === 0)}>كل الموظفين</button>
           {employees.map((e) => (
             <button key={e.id} onClick={() => toggleEmp(e.id)} className={chip(filters.emps.includes(e.id))}>{e.name}</button>
           ))}

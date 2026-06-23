@@ -3,7 +3,6 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { FirstContactStage } from "@prisma/client";
 import {
   purchaseMethodLabels, purchaseGoalLabels,
   firstContactStageLabels, firstContactStageColor,
@@ -11,7 +10,7 @@ import {
 import { formatDate, toArabicDigits } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import {
-  setFirstContactStage, transferLeads, recoverLeads, bulkArchive,
+  transferLeads, recoverLeads, bulkArchive,
 } from "@/lib/actions/leads";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
@@ -84,9 +83,6 @@ export function LeadsView({
     });
   }
 
-  function setStage(id: string, s: FirstContactStage) {
-    run(() => setFirstContactStage(id, s));
-  }
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -132,7 +128,7 @@ export function LeadsView({
 
       {/* الجدول */}
       <div className="overflow-x-auto rounded-2xl border border-border bg-card">
-        <table className="w-full text-right text-sm">
+        <table className="w-full min-w-[1100px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
               <th className="px-3 py-3"><input type="checkbox" checked={allOnPage} onChange={toggleAll} aria-label="تحديد الكل" /></th>
@@ -168,16 +164,17 @@ export function LeadsView({
                     {l.firstContactStage ? (
                       <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${firstContactStageColor[l.firstContactStage]}`}>{firstContactStageLabels[l.firstContactStage]}</span>
                     ) : (
-                      <select defaultValue="" disabled={pending} onChange={(e) => e.target.value && setStage(l.id, e.target.value as FirstContactStage)} className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-                        <option value="" disabled>حدّد…</option>
-                        {(Object.keys(firstContactStageLabels) as FirstContactStage[]).map((s) => <option key={s} value={s}>{firstContactStageLabels[s]}</option>)}
-                      </select>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setFuLead(l)} className="rounded-lg border border-border px-2.5 py-1 text-xs text-gold hover:bg-gold/10">
-                      {toArabicDigits(l.followUpsCount)} متابعة
-                    </button>
+                    {l.followUpsCount > 0 ? (
+                      <button onClick={() => setFuLead(l)} className="rounded-lg border border-border px-2.5 py-1 text-xs text-gold hover:bg-gold/10">
+                        {toArabicDigits(l.followUpsCount)}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{l.firstContactDate ? formatDate(l.firstContactDate) : "—"}</td>
                   <td className="relative px-3 py-3">
