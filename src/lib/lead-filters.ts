@@ -11,6 +11,17 @@ export type ParsedLeadFilters = {
   values: LeadFilterValues;
 };
 
+/** بناء سلسلة استعلام GET /api/leads من التبويب + الفلاتر. */
+export function buildLeadsQuery(tab: "working" | "archived" | "all", v: LeadFilterValues): string {
+  const p = new URLSearchParams();
+  if (tab === "archived") p.set("tab", "archived");
+  else if (tab === "all") p.set("tab", "all");
+  if (v.q) p.set("q", v.q);
+  if (v.stages.length) p.set("stages", v.stages.join(","));
+  if (v.emps.length) p.set("emps", v.emps.join(","));
+  return p.toString();
+}
+
 /** تحويل searchParams إلى فلاتر موحّدة — يستخدمه الجدول والكانبان و GET /api/leads. */
 export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: string }): ParsedLeadFilters {
   const q = sp.q ?? "";

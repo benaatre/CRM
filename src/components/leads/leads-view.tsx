@@ -16,6 +16,7 @@ import {
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
+import { useLeads } from "./use-leads";
 
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived";
@@ -23,9 +24,9 @@ type Filters = { q: string; stages: string[]; emps: string[] };
 const PAGE_SIZE = 12;
 
 export function LeadsView({
-  rows, counts, tab, isManager, employees, filters,
+  query, counts, tab, isManager, employees, filters,
 }: {
-  rows: LeadRow[];
+  query: string;
   counts: { working: number; archived: number };
   tab: Tab;
   isManager: boolean;
@@ -33,6 +34,7 @@ export function LeadsView({
   filters: Filters;
 }) {
   const router = useRouter();
+  const { leads: rows, loading, reload } = useLeads(query);
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
@@ -77,7 +79,8 @@ export function LeadsView({
     startTransition(async () => {
       const res = await fn();
       if (!res.ok && res.error) alert(res.error);
-      router.refresh();
+      reload();          // يعيد قراءة الصفوف من نفس الـ API
+      router.refresh();  // يحدّث أعداد التبويبات
     });
   }
 
@@ -148,7 +151,7 @@ export function LeadsView({
           </thead>
           <tbody>
             {pageRows.length === 0 ? (
-              <tr><td colSpan={12} className="px-4 py-10 text-center text-muted-foreground">ما فيه عملاء.</td></tr>
+              <tr><td colSpan={12} className="px-4 py-10 text-center text-muted-foreground">{loading ? "جارٍ التحميل…" : "ما فيه عملاء."}</td></tr>
             ) : (
               pageRows.map((l, i) => (
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
@@ -233,7 +236,7 @@ export function LeadsView({
       )}
 
       <NewLeadDialog open={showNew} onClose={() => setShowNew(false)} isManager={isManager} employees={employees} />
-      <FollowUpsDrawer leadId={fuLead?.id ?? null} leadName={fuLead?.name ?? ""} stage={fuLead?.stage ?? "NEW"} onClose={() => setFuLead(null)} onChanged={() => router.refresh()} />
+      <FollowUpsDrawer leadId={fuLead?.id ?? null} leadName={fuLead?.name ?? ""} stage={fuLead?.stage ?? "NEW"} onClose={() => setFuLead(null)} onChanged={() => { reload(); router.refresh(); }} />
     </div>
   );
 }

@@ -1,8 +1,7 @@
 import { requireUser, isManager } from "@/lib/auth-guards";
-import { getLeads, getEmployees } from "@/lib/data/leads";
-import { parseLeadFilters } from "@/lib/lead-filters";
+import { getEmployees } from "@/lib/data/leads";
+import { parseLeadFilters, buildLeadsQuery } from "@/lib/lead-filters";
 import { KanbanBoard } from "@/components/leads/kanban-board";
-import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -15,18 +14,11 @@ export default async function PipelinePage({
   const manager = isManager(user.role);
 
   const sp = await searchParams;
-  const { q, stages, assigneeIds, includeUnassigned, values } = parseLeadFilters(sp);
+  const { values } = parseLeadFilters(sp);
+  const employees = manager ? await getEmployees() : [];
 
-  const [leads, employees] = await Promise.all([
-    // نفس مصدر بيانات جدول العملاء — مع كل المراحل (مؤرشف + جاري العمل).
-    getLeads({ archived: "all", stages, assigneeIds, includeUnassigned, q }),
-    manager ? getEmployees() : Promise.resolve([]),
-  ]);
+  // الكانبان يقرأ كل المراحل من نفس الـ API GET /api/leads.
+  const query = buildLeadsQuery("all", values);
 
-  return (
-    <>
-      <AutoRefresh seconds={30} />
-      <KanbanBoard leads={leads} isManager={manager} employees={employees} filters={values} />
-    </>
-  );
+  return <KanbanBoard query={query} isManager={manager} employees={employees} filters={values} />;
 }

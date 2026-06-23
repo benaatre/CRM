@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import type { LeadStage } from "@prisma/client";
 import type { Priority } from "@prisma/client";
 import { stageOrder, stageLabels, channelLabel, priorityLabels } from "@/lib/labels";
 import { formatCurrency, toArabicDigits } from "@/lib/format";
-import type { LeadRow } from "@/lib/data/leads";
 import type { LeadFilterValues } from "@/lib/lead-filters";
 import { updateLeadStage } from "@/lib/actions/leads";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { LeadDrawer } from "./lead-drawer";
+import { useLeads } from "./use-leads";
 
 type Employee = { id: string; name: string };
 
@@ -21,23 +20,20 @@ const priorityBorder: Record<Priority, string> = {
 };
 
 export function KanbanBoard({
-  leads,
+  query,
   isManager,
   employees,
   filters,
 }: {
-  leads: LeadRow[];
+  query: string;
   isManager: boolean;
   employees: Employee[];
   filters: LeadFilterValues;
 }) {
-  const router = useRouter();
-  const [items, setItems] = useState<LeadRow[]>(leads);
+  const { leads: items, loading, reload, setLeads } = useLeads(query);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overStage, setOverStage] = useState<LeadStage | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  useEffect(() => setItems(leads), [leads]);
 
   async function moveTo(stage: LeadStage) {
     const id = dragId;
@@ -47,14 +43,10 @@ export function KanbanBoard({
     const lead = items.find((l) => l.id === id);
     if (!lead || lead.stage === stage) return;
 
-    const prev = items;
-    setItems((cur) => cur.map((l) => (l.id === id ? { ...l, stage } : l))); // متفائل
+    setLeads((cur) => cur.map((l) => (l.id === id ? { ...l, stage } : l))); // متفائل
     const res = await updateLeadStage(id, stage);
-    if (!res.ok) {
-      setItems(prev); // تراجع عند الفشل
-    } else {
-      router.refresh();
-    }
+    if (!res.ok && res.error) alert(res.error);
+    reload(); // يقرأ الحقيقة من نفس الـ API (يؤكّد أو يتراجع)
   }
 
   return (
@@ -62,7 +54,7 @@ export function KanbanBoard({
       <header className="mb-4">
         <h1 className="text-2xl font-bold text-foreground">مراحل العملاء</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          اسحب البطاقة لتغيير مرحلة العميل — {toArabicDigits(items.length)} عميل
+          اسحب البطاقة لتغيير مرحلة العميل — {toArabicDigits(items.length)} عميل{loading ? " · جارٍ التحديث…" : ""}
         </p>
       </header>
 
@@ -138,7 +130,7 @@ export function KanbanBoard({
 
       <LeadDrawer
         leadId={selectedId}
-        onClose={() => setSelectedId(null)}
+        onClose={() => { setSelectedId(null); reload(); }}
         isManager={isManager}
         employees={employees}
       />
