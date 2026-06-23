@@ -353,7 +353,7 @@ function UnassignedTools({
                   onClick={() => dist(() => distributeCustom(loads.map((e) => ({ userId: e.id, count: Number(alloc[e.id]) || 0 }))))}
                   disabled={pending || over || totalWanted === 0}
                   className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-                >وزّع</button>
+                >وزّع الآن</button>
               </div>
               {over && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">المجموع أكبر من عدد العملاء المتاح ({toArabicDigits(availableUnassigned)}).</p>}
             </>
