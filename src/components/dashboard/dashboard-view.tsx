@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useTransition, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Phone, LayoutGrid, BarChart2, Rows3, Check } from "lucide-react";
 import { stageLabels, stageColor } from "@/lib/labels";
 import { formatCurrency, formatNumberShort, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
-import { distributeUnassigned } from "@/lib/actions/team";
+import { DistributeDialog } from "@/components/leads/distribute-dialog";
 
 type ViewMode = "compact" | "analytical" | "glass";
 
@@ -30,14 +30,7 @@ const glassStyle: CSSProperties = {
 export function DashboardView({ data }: { data: DashboardData }) {
   const router = useRouter();
   const [view, setView] = useState<ViewMode>("glass");
-  const [pending, startTransition] = useTransition();
-
-  function distribute() {
-    startTransition(async () => {
-      await distributeUnassigned();
-      router.refresh();
-    });
-  }
+  const [showDist, setShowDist] = useState(false);
 
   const V = view === "compact" ? 0 : view === "analytical" ? 1 : 2;
   const glass = V === 2;
@@ -135,11 +128,10 @@ export function DashboardView({ data }: { data: DashboardData }) {
 
               {c.action && (
                 <button
-                  onClick={distribute}
-                  disabled={pending}
-                  className="mt-3 w-fit rounded-lg bg-destructive/15 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/25 disabled:opacity-50"
+                  onClick={() => setShowDist(true)}
+                  className="mt-3 w-fit rounded-lg bg-destructive/15 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/25"
                 >
-                  {pending ? "جارٍ التوزيع…" : "وزّعهم الآن"}
+                  وزّع الآن
                 </button>
               )}
 
@@ -267,6 +259,14 @@ export function DashboardView({ data }: { data: DashboardData }) {
             ))}
           </div>
         </Section>
+      )}
+
+      {showDist && (
+        <DistributeDialog
+          availableUnassigned={k.unassigned}
+          onClose={() => setShowDist(false)}
+          onDone={() => router.refresh()}
+        />
       )}
     </div>
   );
