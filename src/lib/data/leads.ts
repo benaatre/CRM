@@ -123,7 +123,7 @@ const rowInclude = {
 } as const;
 
 export type LeadFilters = {
-  archived?: boolean;
+  archived?: boolean | "all";
   stages?: LeadStage[];
   assigneeIds?: string[];
   includeUnassigned?: boolean;
@@ -131,8 +131,9 @@ export type LeadFilters = {
 };
 
 /**
- * العملاء (مُحجّمين) — للجدول مع فلترة server-side.
+ * العملاء (مُحجّمين) — مصدر بيانات موحّد للجدول والكانبان مع فلترة server-side.
  * الموظف يُقصر دائمًا على عملائه؛ فلتر الموظفين يُطبَّق للمدير فقط.
+ * archived: false = جاري العمل · true = مؤرشف · "all" = الكل (للكانبان).
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { where, manager } = await scopeForUser();
@@ -151,8 +152,9 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
     and.push({ OR: [{ name: { contains: term } }, { phone: { contains: term } }] });
   }
 
+  const archivedWhere = archived === "all" ? {} : { isArchived: archived };
   const leads = await prisma.lead.findMany({
-    where: { ...where, isArchived: archived, ...(and.length ? { AND: and } : {}) },
+    where: { ...where, ...archivedWhere, ...(and.length ? { AND: and } : {}) },
     orderBy: [{ createdAt: "desc" }],
     include: rowInclude,
   });

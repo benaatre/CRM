@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import type { Priority } from "@prisma/client";
 import { stageOrder, stageLabels, channelLabel, priorityLabels } from "@/lib/labels";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, toArabicDigits } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
+import type { LeadFilterValues } from "@/lib/lead-filters";
 import { updateLeadStage } from "@/lib/actions/leads";
+import { LeadsFilterBar } from "./leads-filter-bar";
 import { LeadDrawer } from "./lead-drawer";
 
 type Employee = { id: string; name: string };
@@ -22,10 +24,12 @@ export function KanbanBoard({
   leads,
   isManager,
   employees,
+  filters,
 }: {
   leads: LeadRow[];
   isManager: boolean;
   employees: Employee[];
+  filters: LeadFilterValues;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<LeadRow[]>(leads);
@@ -55,12 +59,17 @@ export function KanbanBoard({
 
   return (
     <div className="mx-auto max-w-[1600px]">
-      <header className="mb-6">
+      <header className="mb-4">
         <h1 className="text-2xl font-bold text-foreground">مراحل العملاء</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          اسحب البطاقة لتغيير مرحلة العميل — {items.length} عميل
+          اسحب البطاقة لتغيير مرحلة العميل — {toArabicDigits(items.length)} عميل
         </p>
       </header>
+
+      {/* نفس شريط فلاتر جدول العملاء (server-side) */}
+      <div className="mb-4">
+        <LeadsFilterBar basePath="/pipeline" isManager={isManager} employees={employees} filters={filters} />
+      </div>
 
       <div className="flex gap-4 overflow-x-auto pb-4">
         {stageOrder.map((stage) => {

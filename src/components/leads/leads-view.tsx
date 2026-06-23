@@ -3,17 +3,17 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { FirstContactStage, LeadStage } from "@prisma/client";
+import type { FirstContactStage } from "@prisma/client";
 import {
   purchaseMethodLabels, purchaseGoalLabels,
   firstContactStageLabels, firstContactStageColor,
-  stageLabels, stageOrder,
 } from "@/lib/labels";
 import { formatDate, toArabicDigits } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import {
   setFirstContactStage, transferLeads, recoverLeads, bulkArchive,
 } from "@/lib/actions/leads";
+import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
 
@@ -40,46 +40,20 @@ export function LeadsView({
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<{ ids: string[] } | null>(null);
-  const [qLocal, setQLocal] = useState(filters.q);
 
-  // مزامنة البحث المحلي مع الرابط، وإعادة الترقيم/التحديد عند تغيّر النتائج.
-  useEffect(() => { setQLocal(filters.q); }, [filters.q]);
+  // إعادة الترقيم/التحديد عند تغيّر النتائج.
   useEffect(() => { setPage(1); setSel(new Set()); }, [rows]);
 
-  function buildHref(next: Partial<{ tab: Tab; q: string; stages: string[]; emps: string[] }>) {
+  // تبديل التبويب مع الحفاظ على بقية الفلاتر.
+  function goTab(v: Tab) {
     const p = new URLSearchParams();
-    const tabV = next.tab ?? tab;
-    if (tabV === "archived") p.set("tab", "archived");
-    const qV = next.q ?? filters.q;
-    if (qV) p.set("q", qV);
-    const stagesV = next.stages ?? filters.stages;
-    if (stagesV.length) p.set("stages", stagesV.join(","));
-    const empsV = next.emps ?? filters.emps;
-    if (empsV.length) p.set("emps", empsV.join(","));
+    if (v === "archived") p.set("tab", "archived");
+    if (filters.q) p.set("q", filters.q);
+    if (filters.stages.length) p.set("stages", filters.stages.join(","));
+    if (filters.emps.length) p.set("emps", filters.emps.join(","));
     const s = p.toString();
-    return s ? `/leads?${s}` : "/leads";
+    startTransition(() => router.push(s ? `/leads?${s}` : "/leads"));
   }
-  function go(next: Partial<{ tab: Tab; q: string; stages: string[]; emps: string[] }>) {
-    startTransition(() => router.push(buildHref(next)));
-  }
-
-  // بحث فوري مع debounce
-  useEffect(() => {
-    const t = setTimeout(() => { if (qLocal !== filters.q) go({ q: qLocal }); }, 400);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qLocal]);
-
-  function toggleStage(s: string) {
-    const nx = filters.stages.includes(s) ? filters.stages.filter((x) => x !== s) : [...filters.stages, s];
-    go({ stages: nx });
-  }
-  function toggleEmp(token: string) {
-    const nx = filters.emps.includes(token) ? filters.emps.filter((x) => x !== token) : [...filters.emps, token];
-    go({ emps: nx });
-  }
-
-  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0;
 
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const curPage = Math.min(page, pages);
@@ -123,40 +97,21 @@ export function LeadsView({
       {/* التبويبان الرئيسيان */}
       <div className="mb-4 flex gap-1 rounded-xl border border-border bg-card p-1">
         {([["working", "جاري العمل", counts.working], ["archived", "تم الحجز / الشراء", counts.archived]] as const).map(([v, label, count]) => (
-          <button key={v} onClick={() => go({ tab: v })} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>
+          <button key={v} onClick={() => goTab(v)} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>
             {label} <span className="text-xs">({toArabicDigits(count)})</span>
           </button>
         ))}
       </div>
 
-      {/* فلتر المراحل — اختيار متعدد */}
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <button onClick={() => go({ stages: [] })} className={chip(filters.stages.length === 0)}>كل المراحل</button>
-        {stageOrder.map((s) => (
-          <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
-        ))}
-      </div>
-
-      {/* فلتر الموظفين — اختيار متعدد (للمدير) */}
-      {isManager && (
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <button onClick={() => go({ emps: [] })} className={chip(filters.emps.length === 0)}>كل الموظفين</button>
-          {employees.map((e) => (
-            <button key={e.id} onClick={() => toggleEmp(e.id)} className={chip(filters.emps.includes(e.id))}>{e.name}</button>
-          ))}
-          <button onClick={() => toggleEmp("none")} className={chip(filters.emps.includes("none"))}>غير موزّع</button>
-        </div>
-      )}
-
-      {/* البحث + مسح الكل */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <input value={qLocal} onChange={(e) => setQLocal(e.target.value)} placeholder="ابحث بالاسم أو الجوال…" className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-gold" />
-        </div>
-        {hasFilters && (
-          <button onClick={() => { setQLocal(""); startTransition(() => router.push(tab === "archived" ? "/leads?tab=archived" : "/leads")); }} className="rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground">مسح الكل</button>
-        )}
-        {pending && <span className="text-xs text-muted-foreground">جارٍ التحديث…</span>}
+      {/* شريط الفلاتر المشترك (نفسه في الكانبان) */}
+      <div className="mb-4">
+        <LeadsFilterBar
+          basePath="/leads"
+          isManager={isManager}
+          employees={employees}
+          filters={filters}
+          preserve={{ tab: tab === "archived" ? "archived" : "" }}
+        />
       </div>
 
       {/* شريط التحديد المتعدد */}
@@ -281,10 +236,6 @@ export function LeadsView({
       <FollowUpsDrawer leadId={fuLead?.id ?? null} leadName={fuLead?.name ?? ""} stage={fuLead?.stage ?? "NEW"} onClose={() => setFuLead(null)} onChanged={() => router.refresh()} />
     </div>
   );
-}
-
-function chip(active: boolean) {
-  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`;
 }
 
 type TransferMode = "full" | "fresh" | "recover";
