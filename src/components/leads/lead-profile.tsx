@@ -11,7 +11,7 @@ import { updateLeadIntake } from "@/lib/actions/leads";
 import { cancelBooking } from "@/lib/actions/bookings";
 import { formatDate } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
-import { BookingForm } from "@/components/bookings/booking-form";
+import { ReserveDialog } from "./reserve-dialog";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { useFollowUps } from "./use-followups";
@@ -29,10 +29,9 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("data");
-  const [booking, setBooking] = useState<null | "reserve" | "sale">(null);
+  const [reserving, setReserving] = useState(false);
   const { items, loading, reload } = useFollowUps(detail.id);
 
-  const canBook = !detail.isArchived && (detail.stage === "INTERESTED" || detail.stage === "NEGOTIATION" || detail.stage === "VIEWING");
   const wa = `https://wa.me/966${detail.phone.replace(/^0/, "")}`;
 
   function cancel(bookingId: string) {
@@ -101,7 +100,7 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
               stage={detail.stage}
               projects={projects}
               onSaved={() => { reload(); router.refresh(); }}
-              onBook={canBook ? () => setBooking("reserve") : undefined}
+              onBook={() => setReserving(true)}
             />
           )}
           <FollowUpsTimeline items={items} loading={loading} />
@@ -110,13 +109,11 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
 
       {tab === "ai" && <AiTab leadId={detail.id} phone={detail.phone} />}
 
-      {booking && (
-        <BookingForm
-          open={!!booking}
-          immediateSale={booking === "sale"}
-          onClose={() => setBooking(null)}
+      {reserving && (
+        <ReserveDialog
           leadId={detail.id}
           leadName={detail.name}
+          onClose={() => setReserving(false)}
           onDone={() => { reload(); router.refresh(); }}
         />
       )}

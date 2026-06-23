@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
+import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
@@ -16,7 +16,7 @@ function isManager(role: string) {
 async function authorize(leadId: string) {
   const session = await auth();
   if (!session?.user) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, firstContactAt: true } });
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, firstContactAt: true, firstContactStage: true } });
   if (!lead) return { error: NextResponse.json({ error: "العميل غير موجود" }, { status: 404 }) };
   if (!isManager(session.user.role) && lead.assignedToId !== session.user.id) {
     return { error: NextResponse.json({ error: "ما عندك صلاحية على هذا العميل" }, { status: 403 }) };
@@ -75,6 +75,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const newStage = body.stage && body.stage in LeadStage ? (body.stage as LeadStage) : resultToStage[result];
   const bumpsAttempt = type === "CALL" || type === "WHATSAPP";
 
+  // المرحلة الأولى تُحدَّد مرة واحدة من أول متابعة (حسب قسمها).
+  const sectionToFirst: Record<FollowUpSection, FirstContactStage> = {
+    INTERESTED: FirstContactStage.CONTACTED,
+    NO_ANSWER: FirstContactStage.NO_ANSWER,
+    NOT_INTERESTED: FirstContactStage.NOT_SUITABLE,
+  };
+  const firstStage = !lead.firstContactStage && section ? sectionToFirst[section] : null;
+
   const created = await prisma.$transaction(async (tx) => {
     const fu = await tx.followUp.create({
       data: { leadId: id, type, result, section, stageAfter: newStage, note: body.note?.trim() || null, nextDate, createdBy: user.id },
@@ -86,6 +94,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         stage: newStage,
         lastContact: new Date(),
         firstContactAt: lead.firstContactAt ?? new Date(),
+        ...(firstStage ? { firstContactStage: firstStage, firstContactDate: new Date() } : {}),
         ...(nextDate ? { nextFollowup: nextDate } : {}),
         ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
       },
