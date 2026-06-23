@@ -9,7 +9,7 @@ import type { LeadFilterValues } from "@/lib/lead-filters";
 type Employee = { id: string; name: string };
 
 function chip(active: boolean) {
-  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`;
+  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`;
 }
 
 /**

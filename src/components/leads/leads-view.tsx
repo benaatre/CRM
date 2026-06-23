@@ -140,6 +140,7 @@ export function LeadsView({
               <th className="px-4 py-3 font-medium">الاسم</th>
               <th className="px-4 py-3 font-medium">الجوال</th>
               <th className="px-4 py-3 font-medium">تاريخ الإضافة</th>
+              <th className="px-4 py-3 font-medium">الموظف</th>
               <th className="px-4 py-3 font-medium">طريقة الشراء</th>
               <th className="px-4 py-3 font-medium">هدف الشراء</th>
               <th className="px-4 py-3 font-medium">المرحلة الأولى</th>
@@ -151,7 +152,7 @@ export function LeadsView({
           </thead>
           <tbody>
             {pageRows.length === 0 ? (
-              <tr><td colSpan={12} className="px-4 py-10 text-center text-muted-foreground">{loading ? "جارٍ التحميل…" : "ما فيه عملاء."}</td></tr>
+              <tr><td colSpan={13} className="px-4 py-10 text-center text-muted-foreground">{loading ? "جارٍ التحميل…" : "ما فيه عملاء."}</td></tr>
             ) : (
               pageRows.map((l, i) => (
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
@@ -160,6 +161,7 @@ export function LeadsView({
                   <td className="px-4 py-3 font-medium text-foreground">{l.name}</td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
                   <td className="px-4 py-3 text-muted-foreground">{formatDate(l.createdAt)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{l.assignedTo?.name ?? "غير موزّع"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"}</td>
                   <td className="px-4 py-3">
