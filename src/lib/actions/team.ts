@@ -141,7 +141,46 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
 
     revalidatePath("/admin");
     revalidatePath("/leads");
+    revalidatePath("/pipeline");
+    revalidatePath("/dashboard");
     return { ok: true, message: `وُزّع ${list.length} عميل على ${emps.length} موظف` };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** توزيع غير الموزّعين على الأخفّ حملًا — كل عميل يروح للموظف الأقل عملاءً وقتها. */
+export async function distributeLeastLoaded(): Promise<ActionResult> {
+  try {
+    await requireManager();
+    const [emps, unassigned] = await Promise.all([
+      prisma.user.findMany({
+        where: { role: "EMPLOYEE", active: true },
+        select: { id: true, _count: { select: { assignedLeads: true } } },
+      }),
+      prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } }),
+    ]);
+    if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
+    if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
+
+    const load = new Map(emps.map((e) => [e.id, e._count.assignedLeads]));
+    const updates = unassigned.map((lead) => {
+      let best = emps[0].id;
+      let min = Infinity;
+      for (const e of emps) {
+        const l = load.get(e.id) ?? 0;
+        if (l < min) { min = l; best = e.id; }
+      }
+      load.set(best, (load.get(best) ?? 0) + 1);
+      return prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: best } });
+    });
+    await prisma.$transaction(updates);
+
+    revalidatePath("/admin");
+    revalidatePath("/leads");
+    revalidatePath("/pipeline");
+    revalidatePath("/dashboard");
+    return { ok: true, message: `وُزّع ${unassigned.length} عميل على الأخفّ حملًا` };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

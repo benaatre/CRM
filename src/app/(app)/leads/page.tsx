@@ -14,7 +14,8 @@ export default async function LeadsPage({
   const manager = isManager(user.role);
 
   const sp = await searchParams;
-  const tab: "working" | "archived" = sp.tab === "archived" ? "archived" : "working";
+  const tab: "working" | "archived" | "unassigned" =
+    sp.tab === "archived" ? "archived" : sp.tab === "unassigned" ? "unassigned" : "working";
   const { values } = parseLeadFilters(sp);
 
   const [counts, employees] = await Promise.all([
@@ -23,7 +24,10 @@ export default async function LeadsPage({
   ]);
 
   // الجدول يقرأ صفوفه من نفس الـ API GET /api/leads.
-  const query = buildLeadsQuery(tab, values);
+  // تبويب «غير موزّعين»: نفس الـ API مع emps=none (غير الموزّعين فقط، غير مؤرشف).
+  const query = tab === "unassigned"
+    ? buildLeadsQuery("working", { q: values.q, stages: values.stages, emps: ["none"] })
+    : buildLeadsQuery(tab, values);
 
   return (
     <LeadsView

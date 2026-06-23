@@ -163,14 +163,15 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   return leads.map(toRow);
 }
 
-/** أعداد التبويبين (جاري العمل / مؤرشف) ضمن صلاحية المستخدم — لشارات التبويبات. */
-export async function getLeadCounts(): Promise<{ working: number; archived: number }> {
+/** أعداد التبويبات (جاري العمل / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
+export async function getLeadCounts(): Promise<{ working: number; archived: number; unassigned: number }> {
   const { where } = await scopeForUser();
-  const [working, archived] = await Promise.all([
+  const [working, archived, unassigned] = await Promise.all([
     prisma.lead.count({ where: { ...where, isArchived: false } }),
     prisma.lead.count({ where: { ...where, isArchived: true } }),
+    prisma.lead.count({ where: { ...where, isArchived: false, assignedToId: null } }),
   ]);
-  return { working, archived };
+  return { working, archived, unassigned };
 }
 
 /** العملاء مجمّعين حسب المرحلة — للكانبان. */

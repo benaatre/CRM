@@ -12,13 +12,15 @@ import type { LeadRow } from "@/lib/data/leads";
 import {
   transferLeads, recoverLeads, bulkArchive,
 } from "@/lib/actions/leads";
+import { distributeUnassigned, distributeLeastLoaded } from "@/lib/actions/team";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
+import { ImportDialog } from "@/components/team/import-dialog";
 import { useLeads } from "./use-leads";
 
 type Employee = { id: string; name: string };
-type Tab = "working" | "archived";
+type Tab = "working" | "archived" | "unassigned";
 type Filters = { q: string; stages: string[]; emps: string[] };
 const PAGE_SIZE = 12;
 
@@ -26,7 +28,7 @@ export function LeadsView({
   query, counts, tab, isManager, employees, filters,
 }: {
   query: string;
-  counts: { working: number; archived: number };
+  counts: { working: number; archived: number; unassigned: number };
   tab: Tab;
   isManager: boolean;
   employees: Employee[];
@@ -37,6 +39,7 @@ export function LeadsView({
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [fuLead, setFuLead] = useState<LeadRow | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -49,6 +52,7 @@ export function LeadsView({
   function goTab(v: Tab) {
     const p = new URLSearchParams();
     if (v === "archived") p.set("tab", "archived");
+    else if (v === "unassigned") p.set("tab", "unassigned");
     if (filters.q) p.set("q", filters.q);
     if (filters.stages.length) p.set("stages", filters.stages.join(","));
     if (filters.emps.length) p.set("emps", filters.emps.join(","));
@@ -93,25 +97,38 @@ export function LeadsView({
         </button>
       </header>
 
-      {/* التبويبان الرئيسيان */}
+      {/* التبويبات */}
       <div className="mb-4 flex gap-1 rounded-xl border border-border bg-card p-1">
-        {([["working", "جاري العمل", counts.working], ["archived", "تم الحجز / الشراء", counts.archived]] as const).map(([v, label, count]) => (
+        {(([
+          ...(isManager ? [["unassigned", "عملاء غير موزّعين", counts.unassigned] as const] : []),
+          ["working", "جاري العمل", counts.working] as const,
+          ["archived", "تم الحجز / الشراء", counts.archived] as const,
+        ])).map(([v, label, count]) => (
           <button key={v} onClick={() => goTab(v)} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>
             {label} <span className="text-xs">({toArabicDigits(count)})</span>
           </button>
         ))}
       </div>
 
-      {/* شريط الفلاتر المشترك (نفسه في الكانبان) */}
-      <div className="mb-4">
-        <LeadsFilterBar
-          basePath="/leads"
-          isManager={isManager}
+      {/* تبويب «غير موزّعين»: طرق الإضافة + التوزيع. باقي التبويبات: شريط الفلاتر. */}
+      {tab === "unassigned" && isManager ? (
+        <UnassignedTools
           employees={employees}
-          filters={filters}
-          preserve={{ tab: tab === "archived" ? "archived" : "" }}
+          onImport={() => setShowImport(true)}
+          onNew={() => setShowNew(true)}
+          onChanged={() => { reload(); router.refresh(); }}
         />
-      </div>
+      ) : (
+        <div className="mb-4">
+          <LeadsFilterBar
+            basePath="/leads"
+            isManager={isManager}
+            employees={employees}
+            filters={filters}
+            preserve={{ tab: tab === "archived" ? "archived" : "" }}
+          />
+        </div>
+      )}
 
       {/* شريط التحديد المتعدد */}
       {sel.size > 0 && (
@@ -231,7 +248,59 @@ export function LeadsView({
       )}
 
       <NewLeadDialog open={showNew} onClose={() => setShowNew(false)} isManager={isManager} employees={employees} />
+      {showImport && <ImportDialog employees={employees} onClose={() => { setShowImport(false); reload(); router.refresh(); }} />}
       <FollowUpsDrawer leadId={fuLead?.id ?? null} leadName={fuLead?.name ?? ""} stage={fuLead?.stage ?? "NEW"} onClose={() => setFuLead(null)} onChanged={() => { reload(); router.refresh(); }} />
+    </div>
+  );
+}
+
+// أدوات تبويب «غير موزّعين»: طرق الإضافة + التوزيع.
+function UnassignedTools({
+  employees, onImport, onNew, onChanged,
+}: {
+  employees: Employee[];
+  onImport: () => void;
+  onNew: () => void;
+  onChanged: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [perEmp, setPerEmp] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function dist(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await fn();
+      setMsg(res.ok ? (res.message ?? "تم التوزيع") : res.error ?? "صار خطأ");
+      onChanged();
+    });
+  }
+
+  return (
+    <div className="mb-4 space-y-3 rounded-2xl border border-border bg-card p-4">
+      {/* طرق الإضافة */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-foreground">طرق الإضافة:</span>
+        <button onClick={onNew} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">عميل جديد</button>
+        <button onClick={onImport} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary">استيراد (Excel / لصق / رابط Sheets)</button>
+        <Link href="/settings" className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">مزامنة Google Sheets (الإعدادات)</Link>
+      </div>
+
+      {/* التوزيع */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+        <span className="text-sm font-medium text-foreground">التوزيع:</span>
+        <button onClick={() => dist(() => distributeUnassigned())} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">بالتساوي</button>
+        <button onClick={() => dist(() => distributeLeastLoaded())} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">الأقل عملاءً</button>
+        <span className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground">
+          مخصص:
+          <input value={perEmp} onChange={(e) => setPerEmp(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" placeholder="٥" className="w-12 rounded border border-border bg-background px-1.5 py-1 text-center text-foreground outline-none focus:border-gold" />
+          لكل موظف
+          <button onClick={() => perEmp && dist(() => distributeUnassigned(Number(perEmp)))} disabled={pending || !perEmp} className="rounded bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground disabled:opacity-50">وزّع</button>
+        </span>
+        <span className="text-xs text-muted-foreground">— أو يدويًا: حدّد عملاء بالأسفل ثم «تحويل».</span>
+      </div>
+
+      {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">{msg}</p>}
     </div>
   );
 }
