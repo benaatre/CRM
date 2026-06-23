@@ -12,7 +12,7 @@ import type { LeadRow } from "@/lib/data/leads";
 import {
   transferLeads, recoverLeads, bulkArchive,
 } from "@/lib/actions/leads";
-import { distributeUnassigned, distributeLeastLoaded } from "@/lib/actions/team";
+import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmployeeLoads } from "@/lib/actions/team";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
@@ -114,6 +114,7 @@ export function LeadsView({
       {tab === "unassigned" && isManager ? (
         <UnassignedTools
           employees={employees}
+          availableUnassigned={counts.unassigned}
           onImport={() => setShowImport(true)}
           onNew={() => setShowNew(true)}
           onChanged={() => { reload(); router.refresh(); }}
@@ -256,16 +257,19 @@ export function LeadsView({
 
 // أدوات تبويب «غير موزّعين»: طرق الإضافة + التوزيع.
 function UnassignedTools({
-  employees, onImport, onNew, onChanged,
+  employees, availableUnassigned, onImport, onNew, onChanged,
 }: {
   employees: Employee[];
+  availableUnassigned: number;
   onImport: () => void;
   onNew: () => void;
   onChanged: () => void;
 }) {
   const [pending, startTransition] = useTransition();
-  const [perEmp, setPerEmp] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [custom, setCustom] = useState(false);
+  const [loads, setLoads] = useState<{ id: string; name: string; count: number }[] | null>(null);
+  const [alloc, setAlloc] = useState<Record<string, string>>({});
 
   function dist(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
     setMsg(null);
@@ -273,8 +277,20 @@ function UnassignedTools({
       const res = await fn();
       setMsg(res.ok ? (res.message ?? "تم التوزيع") : res.error ?? "صار خطأ");
       onChanged();
+      if (res.ok && custom) { setAlloc({}); setLoads(await getEmployeeLoads()); }
     });
   }
+
+  function openCustom() {
+    const next = !custom;
+    setCustom(next);
+    if (next && loads === null) {
+      startTransition(async () => { setLoads(await getEmployeeLoads()); });
+    }
+  }
+
+  const totalWanted = Object.values(alloc).reduce((s, v) => s + (Number(v) || 0), 0);
+  const over = totalWanted > availableUnassigned;
 
   return (
     <div className="mb-4 space-y-3 rounded-2xl border border-border bg-card p-4">
@@ -291,14 +307,59 @@ function UnassignedTools({
         <span className="text-sm font-medium text-foreground">التوزيع:</span>
         <button onClick={() => dist(() => distributeUnassigned())} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">بالتساوي</button>
         <button onClick={() => dist(() => distributeLeastLoaded())} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">الأقل عملاءً</button>
-        <span className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground">
-          مخصص:
-          <input value={perEmp} onChange={(e) => setPerEmp(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" placeholder="٥" className="w-12 rounded border border-border bg-background px-1.5 py-1 text-center text-foreground outline-none focus:border-gold" />
-          لكل موظف
-          <button onClick={() => perEmp && dist(() => distributeUnassigned(Number(perEmp)))} disabled={pending || !perEmp} className="rounded bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground disabled:opacity-50">وزّع</button>
-        </span>
+        <button onClick={openCustom} className={`rounded-lg border px-3 py-1.5 text-xs ${custom ? "border-gold bg-gold/15 text-gold" : "border-border text-foreground hover:bg-secondary"}`}>مخصص</button>
         <span className="text-xs text-muted-foreground">— أو يدويًا: حدّد عملاء بالأسفل ثم «تحويل».</span>
       </div>
+
+      {/* جدول التوزيع المخصّص */}
+      {custom && (
+        <div className="space-y-2 rounded-xl border border-gold/30 bg-gold/5 p-3">
+          {loads === null ? (
+            <p className="py-2 text-center text-xs text-muted-foreground">جارٍ التحميل…</p>
+          ) : loads.length === 0 ? (
+            <p className="py-2 text-center text-xs text-muted-foreground">ما فيه موظفون مفعّلون.</p>
+          ) : (
+            <>
+              <table className="w-full text-right text-sm">
+                <thead className="text-muted-foreground">
+                  <tr>
+                    <th className="px-2 py-1.5 font-medium">الموظف</th>
+                    <th className="px-2 py-1.5 font-medium">عملاؤه الآن</th>
+                    <th className="px-2 py-1.5 font-medium">عدد العملاء</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loads.map((e) => (
+                    <tr key={e.id} className="border-t border-border">
+                      <td className="px-2 py-2 text-foreground">{e.name}</td>
+                      <td className="px-2 py-2 text-muted-foreground">{toArabicDigits(e.count)}</td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={alloc[e.id] ?? ""}
+                          onChange={(ev) => setAlloc((a) => ({ ...a, [e.id]: ev.target.value.replace(/\D/g, "") }))}
+                          inputMode="numeric" dir="ltr" placeholder="٠"
+                          className="w-16 rounded border border-border bg-background px-2 py-1 text-center text-foreground outline-none focus:border-gold"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="flex items-center justify-between">
+                <span className={`text-xs ${over ? "text-destructive" : "text-muted-foreground"}`}>
+                  المجموع: {toArabicDigits(totalWanted)} من {toArabicDigits(availableUnassigned)} متاح
+                </span>
+                <button
+                  onClick={() => dist(() => distributeCustom(loads.map((e) => ({ userId: e.id, count: Number(alloc[e.id]) || 0 }))))}
+                  disabled={pending || over || totalWanted === 0}
+                  className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                >وزّع</button>
+              </div>
+              {over && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">المجموع أكبر من عدد العملاء المتاح ({toArabicDigits(availableUnassigned)}).</p>}
+            </>
+          )}
+        </div>
+      )}
 
       {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">{msg}</p>}
     </div>

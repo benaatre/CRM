@@ -149,6 +149,48 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
   }
 }
 
+/** أحمال الموظفين الحالية (عدد العملاء النشطين لكل موظف) — لجدول التوزيع المخصّص. */
+export async function getEmployeeLoads(): Promise<{ id: string; name: string; count: number }[]> {
+  await requireManager();
+  const emps = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", active: true },
+    select: { id: true, name: true, _count: { select: { assignedLeads: { where: { isArchived: false } } } } },
+    orderBy: { name: "asc" },
+  });
+  return emps.map((e) => ({ id: e.id, name: e.name, count: e._count.assignedLeads }));
+}
+
+/** توزيع مخصّص: عدد محدّد لكل موظف من العملاء غير الموزّعين (بترتيب الأقدم). */
+export async function distributeCustom(alloc: { userId: string; count: number }[]): Promise<ActionResult> {
+  try {
+    await requireManager();
+    const items = alloc.filter((a) => a.userId && a.count > 0);
+    if (items.length === 0) return { ok: false, error: "حدّد أعدادًا للتوزيع" };
+    const totalWanted = items.reduce((s, a) => s + a.count, 0);
+
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
+    if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
+    if (totalWanted > unassigned.length) return { ok: false, error: `المجموع ${totalWanted} أكبر من المتاح ${unassigned.length}` };
+
+    const targets: { id: string; userId: string }[] = [];
+    let i = 0;
+    for (const a of items) {
+      for (let k = 0; k < a.count && i < unassigned.length; k++, i++) {
+        targets.push({ id: unassigned[i].id, userId: a.userId });
+      }
+    }
+    await prisma.$transaction(targets.map((t) => prisma.lead.update({ where: { id: t.id }, data: { assignedToId: t.userId } })));
+
+    revalidatePath("/admin");
+    revalidatePath("/leads");
+    revalidatePath("/pipeline");
+    revalidatePath("/dashboard");
+    return { ok: true, message: `وُزّع ${targets.length} عميل حسب الأعداد المحددة` };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** توزيع غير الموزّعين على الأخفّ حملًا — كل عميل يروح للموظف الأقل عملاءً وقتها. */
 export async function distributeLeastLoaded(): Promise<ActionResult> {
   try {
