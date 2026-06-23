@@ -30,6 +30,7 @@ export type LeadRow = {
   assignedTo: { id: string; name: string } | null;
   projectName: string | null;
   activitiesCount: number;
+  followUpsCount: number;
   purchaseMethod: PurchaseMethod | null;
   purchaseGoal: PurchaseGoal | null;
   firstContactStage: FirstContactStage | null;
@@ -83,7 +84,7 @@ type LeadWithRels = {
   nextFollowup: Date | null;
   assignedTo: { id: string; name: string } | null;
   project: { name: string } | null;
-  _count: { activities: number };
+  _count: { activities: number; followUps: number };
   purchaseMethod: PurchaseMethod | null;
   purchaseGoal: PurchaseGoal | null;
   firstContactStage: FirstContactStage | null;
@@ -108,6 +109,7 @@ function toRow(l: LeadWithRels): LeadRow {
     assignedTo: l.assignedTo,
     projectName: l.project?.name ?? null,
     activitiesCount: l._count.activities,
+    followUpsCount: l._count.followUps,
     purchaseMethod: l.purchaseMethod,
     purchaseGoal: l.purchaseGoal,
     firstContactStage: l.firstContactStage,
@@ -119,7 +121,7 @@ function toRow(l: LeadWithRels): LeadRow {
 const rowInclude = {
   assignedTo: { select: { id: true, name: true } },
   project: { select: { name: true } },
-  _count: { select: { activities: true } },
+  _count: { select: { activities: true, followUps: true } },
 } as const;
 
 export type LeadFilters = {

@@ -173,13 +173,9 @@ export function LeadsView({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {l.isArchived ? (
-                      <span className="rounded-full bg-success/15 px-2 py-0.5 text-xs text-success">تم الحجز</span>
-                    ) : (
-                      <button onClick={() => setFuLead(l)} className="rounded-lg border border-border px-2.5 py-1 text-xs text-gold hover:bg-gold/10">
-                        {toArabicDigits(l.attempts)} محاولة
-                      </button>
-                    )}
+                    <button onClick={() => setFuLead(l)} className="rounded-lg border border-border px-2.5 py-1 text-xs text-gold hover:bg-gold/10">
+                      {toArabicDigits(l.followUpsCount)} متابعة
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{l.firstContactDate ? formatDate(l.firstContactDate) : "—"}</td>
                   <td className="relative px-3 py-3">
