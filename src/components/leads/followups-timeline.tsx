@@ -1,6 +1,6 @@
 "use client";
 
-import { followUpSectionLabels, followUpSectionColor, followUpResultLabels } from "@/lib/labels";
+import { followUpSectionLabels, followUpSectionColor, followUpResultLabels, stageLabels } from "@/lib/labels";
 import { formatDateTime, toArabicDigits } from "@/lib/format";
 import type { FollowUpItem } from "./use-followups";
 
@@ -35,6 +35,7 @@ export function FollowUpsTimeline({ items, loading }: { items: FollowUpItem[]; l
                 </div>
                 <p className="mt-1 text-sm font-medium text-foreground">{f.note || followUpResultLabels[f.result]}</p>
                 {f.nextDate && <p className="mt-0.5 text-xs text-info">المتابعة القادمة: {formatDateTime(f.nextDate)}</p>}
+                {f.stageAfter && <p className="mt-0.5 text-xs text-muted-foreground">انتقل إلى: {stageLabels[f.stageAfter]}</p>}
                 {f.employeeName && <p className="mt-0.5 text-xs text-muted-foreground/70">{f.employeeName}</p>}
               </li>
             );

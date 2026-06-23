@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { FollowUpType, FollowUpResult, FollowUpSection } from "@prisma/client";
+import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
 
 export type FollowUpItem = {
   id: string;
   type: FollowUpType;
   result: FollowUpResult;
   section: FollowUpSection | null;
+  stageAfter: LeadStage | null;
   note: string | null;
   nextDate: string | null;
   createdAt: string;

@@ -40,6 +40,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       type: f.type,
       result: f.result,
       section: f.section,
+      stageAfter: f.stageAfter,
       note: f.note,
       nextDate: f.nextDate,
       createdAt: f.createdAt,
@@ -75,7 +76,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const created = await prisma.$transaction(async (tx) => {
     const fu = await tx.followUp.create({
-      data: { leadId: id, type, result, section, note: body.note?.trim() || null, nextDate, createdBy: user.id },
+      data: { leadId: id, type, result, section, stageAfter: newStage, note: body.note?.trim() || null, nextDate, createdBy: user.id },
       include: { employee: { select: { name: true } } },
     });
     await tx.lead.update({

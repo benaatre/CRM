@@ -9,6 +9,8 @@ import {
   firstContactStageLabels, firstContactStageColor,
 } from "@/lib/labels";
 import { updateLeadIntake } from "@/lib/actions/leads";
+import { cancelBooking } from "@/lib/actions/bookings";
+import { formatDate } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { FollowUpsForm } from "./followups-form";
@@ -52,6 +54,18 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
         preferredProjects: [...projSel],
       });
       setMsg(res.ok ? "تم الحفظ" : res.error ?? "صار خطأ");
+      router.refresh();
+    });
+  }
+
+  function cancel(bookingId: string) {
+    const reason = window.prompt("سبب إلغاء الحجز (اختياري):");
+    if (reason === null) return; // ألغى نافذة السبب
+    if (!window.confirm("متأكد من إلغاء الحجز؟ الوحدة بترجع «متاحة» والعميل يرجع لمرحلة «تفاوض».")) return;
+    startTransition(async () => {
+      const r = await cancelBooking(bookingId, reason.trim() || undefined);
+      if (!r.ok && r.error) alert(r.error);
+      reload();
       router.refresh();
     });
   }
@@ -137,9 +151,21 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
             <button onClick={save} disabled={pending} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "جارٍ الحفظ…" : "حفظ البيانات"}</button>
           </section>
 
-          {/* نموذج المتابعة الذكي */}
+          {/* محجوز: بطاقة تفاصيل الحجز + إلغاء — وإلا نموذج المتابعة */}
           {detail.isArchived ? (
-            <div className="glass rounded-2xl p-5 text-center text-sm text-success">تم الحجز — توقّفت المتابعات</div>
+            <section className="glass space-y-3 rounded-2xl p-5">
+              <h2 className="font-semibold text-foreground">تفاصيل الحجز</h2>
+              {detail.bookings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">لا توجد تفاصيل حجز.</p>
+              ) : detail.bookings.map((b) => (
+                <div key={b.id} className="space-y-1.5 rounded-xl border border-border p-4">
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">المشروع</span><span className="text-foreground">{b.projectName ?? "—"}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">الوحدة</span><span className="text-foreground">{b.unitNumber}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">تاريخ الحجز</span><span className="text-foreground">{formatDate(b.createdAt)}</span></div>
+                  <button onClick={() => cancel(b.id)} disabled={pending} className="mt-2 w-full rounded-lg border border-destructive/40 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50">إلغاء الحجز</button>
+                </div>
+              ))}
+            </section>
           ) : (
             <FollowUpsForm
               leadId={detail.id}

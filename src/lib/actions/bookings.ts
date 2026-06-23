@@ -132,7 +132,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       await tx.followUp.create({
         data: {
           leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
-          section: FollowUpSection.INTERESTED,
+          section: FollowUpSection.INTERESTED, stageAfter: immediateSale ? "CLOSED_WON" : "RESERVED",
           note: immediateSale ? "تم الشراء (كاش فوري)" : "تم الحجز",
         },
       });
@@ -209,6 +209,7 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
       await tx.followUp.create({
         data: {
           leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
+          section: FollowUpSection.INTERESTED, stageAfter: "CLOSED_WON",
           note: `تم الشراء (كاش فوري) — ${units.length} وحدة: ${units.map((u) => u.number).join("، ")}`,
         },
       });
@@ -251,6 +252,7 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
         data: {
           leadId: booking.leadId, createdBy: user.id,
           type: FollowUpType.OTHER, result: FollowUpResult.NEGOTIATING,
+          section: FollowUpSection.INTERESTED, stageAfter: "NEGOTIATION",
           note: `تم إلغاء الحجز — وحدة ${booking.unit.number}${booking.unit.project?.name ? ` (${booking.unit.project.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}`,
         },
       });
