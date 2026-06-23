@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import type { PurchaseGoal, PurchaseMethod } from "@prisma/client";
 import {
   purchaseGoalLabels, purchaseMethodLabels, stageLabels, stageColor,
-  firstContactStageLabels, firstContactStageColor,
 } from "@/lib/labels";
 import { updateLeadIntake } from "@/lib/actions/leads";
 import { cancelBooking } from "@/lib/actions/bookings";
@@ -17,50 +16,28 @@ import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { useFollowUps } from "./use-followups";
 
+type Tab = "data" | "followups" | "ai";
+type Analysis = { temperature: string; interest: number; nextStep: string; whatsapp: string; source?: string };
+
+const tempColor: Record<string, string> = {
+  "حار": "bg-destructive/15 text-destructive",
+  "دافئ": "bg-warning/15 text-warning",
+  "بارد": "bg-info/15 text-info",
+};
+
 export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects: { id: string; name: string }[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("data");
   const [booking, setBooking] = useState<null | "reserve" | "sale">(null);
-
   const { items, loading, reload } = useFollowUps(detail.id);
 
-  const [goal, setGoal] = useState<string>(detail.purchaseGoal ?? "");
-  const [method, setMethod] = useState<string>(detail.purchaseMethod ?? "");
-  const [priceMin, setPriceMin] = useState(detail.priceMin?.toString() ?? "");
-  const [priceMax, setPriceMax] = useState(detail.priceMax?.toString() ?? "");
-  const [areas, setAreas] = useState<string[]>(detail.preferredAreas ?? []);
-  const [areaInput, setAreaInput] = useState("");
-  const [projSel, setProjSel] = useState<Set<string>>(new Set(detail.preferredProjects ?? []));
-
-  // أزرار الحجز/الشراء تظهر فقط لمرحلة مهتم أو تفاوض (وغير مؤرشف).
   const canBook = !detail.isArchived && (detail.stage === "INTERESTED" || detail.stage === "NEGOTIATION" || detail.stage === "VIEWING");
-
-  function addArea() {
-    const v = areaInput.trim();
-    if (v && !areas.includes(v)) setAreas((a) => [...a, v]);
-    setAreaInput("");
-  }
-
-  function save() {
-    setMsg(null);
-    startTransition(async () => {
-      const res = await updateLeadIntake(detail.id, {
-        purchaseGoal: (goal || null) as PurchaseGoal | null,
-        purchaseMethod: (method || null) as PurchaseMethod | null,
-        priceMin: priceMin ? Number(priceMin.replace(/\D/g, "")) : null,
-        priceMax: priceMax ? Number(priceMax.replace(/\D/g, "")) : null,
-        preferredAreas: areas,
-        preferredProjects: [...projSel],
-      });
-      setMsg(res.ok ? "تم الحفظ" : res.error ?? "صار خطأ");
-      router.refresh();
-    });
-  }
+  const wa = `https://wa.me/966${detail.phone.replace(/^0/, "")}`;
 
   function cancel(bookingId: string) {
     const reason = window.prompt("سبب إلغاء الحجز (اختياري):");
-    if (reason === null) return; // ألغى نافذة السبب
+    if (reason === null) return;
     if (!window.confirm("متأكد من إلغاء الحجز؟ الوحدة بترجع «متاحة» والعميل يرجع لمرحلة «تفاوض».")) return;
     startTransition(async () => {
       const r = await cancelBooking(bookingId, reason.trim() || undefined);
@@ -70,88 +47,40 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
     });
   }
 
-  const wa = `https://wa.me/966${detail.phone.replace(/^0/, "")}`;
-
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <Link href="/leads" className="inline-block text-sm text-muted-foreground hover:text-foreground">العملاء</Link>
-
-      {/* الرأس */}
-      <header className="glass flex flex-wrap items-start justify-between gap-4 rounded-2xl p-5">
-        <div className="flex items-center gap-3">
-          <div className="flex size-12 items-center justify-center rounded-full bg-gold/15 text-xl font-bold text-gold">{detail.name.charAt(0)}</div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">{detail.name}</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span dir="ltr">{detail.phone}</span>
-              <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[detail.stage]}`}>{stageLabels[detail.stage]}</span>
-              {detail.firstContactStage && <span className={`rounded-full border px-2 py-0.5 text-xs ${firstContactStageColor[detail.firstContactStage]}`}>{firstContactStageLabels[detail.firstContactStage]}</span>}
+    <div className="mx-auto max-w-3xl space-y-5">
+      {/* الهيدر */}
+      <header className="glass rounded-2xl p-5">
+        <div className="flex items-start justify-between gap-3">
+          <Link href="/leads" className="rounded-lg border border-border px-2.5 py-1 text-sm text-muted-foreground hover:text-foreground" title="رجوع">×</Link>
+          <div className="flex items-center gap-3 text-right">
+            <div>
+              <h1 className="text-xl font-bold text-foreground">{detail.name}</h1>
+              <div className="mt-1 flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
+                <span dir="ltr">{detail.phone}</span>
+                <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[detail.stage]}`}>{stageLabels[detail.stage]}</span>
+              </div>
             </div>
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xl font-bold text-gold">{detail.name.charAt(0)}</div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <a href={`tel:${detail.phone}`} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">اتصال</a>
-          <a href={wa} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success hover:bg-success/25">واتساب</a>
+        <div className="mt-4 flex gap-2">
+          <a href={`tel:${detail.phone}`} className="flex-1 rounded-lg bg-primary py-2.5 text-center text-sm font-medium text-primary-foreground hover:opacity-90">اتصل</a>
+          <a href={wa} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg bg-success/15 py-2.5 text-center text-sm font-medium text-success hover:bg-success/25">واتساب</a>
         </div>
       </header>
 
-      {detail.isArchived && (
-        <div className="rounded-2xl border border-success/30 bg-success/5 px-4 py-3 text-center text-sm font-medium text-success">هذا العميل مؤرشف (تم الحجز/الشراء)</div>
-      )}
+      {/* التبويبات */}
+      <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
+        {([["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]] as const).map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v)} className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+        ))}
+      </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* العمود الأيمن العريض: البيانات + نموذج المتابعة */}
-        <div className="space-y-6 lg:col-span-2">
-          {/* البيانات الأساسية */}
-          <section className="glass space-y-4 rounded-2xl p-5">
-            <h2 className="font-semibold text-foreground">البيانات الأساسية</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="هدف الشراء">
-                <select value={goal} onChange={(e) => setGoal(e.target.value)} className="select-base">
-                  <option value="">—</option>
-                  {(Object.keys(purchaseGoalLabels) as PurchaseGoal[]).map((g) => <option key={g} value={g}>{purchaseGoalLabels[g]}</option>)}
-                </select>
-              </Field>
-              <Field label="طريقة الشراء">
-                <select value={method} onChange={(e) => setMethod(e.target.value)} className="select-base">
-                  <option value="">—</option>
-                  {(Object.keys(purchaseMethodLabels) as PurchaseMethod[]).map((m) => <option key={m} value={m}>{purchaseMethodLabels[m]}</option>)}
-                </select>
-              </Field>
-              <Field label="السعر من"><input value={priceMin} onChange={(e) => setPriceMin(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
-              <Field label="السعر إلى"><input value={priceMax} onChange={(e) => setPriceMax(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
-            </div>
+      {tab === "data" && <DataTab detail={detail} projects={projects} onSaved={() => router.refresh()} />}
 
-            <div className="space-y-2">
-              <span className="text-xs text-muted-foreground">الأحياء المناسبة</span>
-              <div className="flex flex-wrap gap-2">
-                {areas.map((a) => (
-                  <span key={a} className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-foreground">{a}<button onClick={() => setAreas((xs) => xs.filter((x) => x !== a))} className="text-muted-foreground hover:text-destructive" aria-label="حذف">×</button></span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input value={areaInput} onChange={(e) => setAreaInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addArea(); } }} placeholder="اكتب حيًّا واضغط Enter…" className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-                <button onClick={addArea} className="rounded-lg border border-border px-3 text-sm text-muted-foreground hover:text-foreground">إضافة</button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-xs text-muted-foreground">المشاريع المناسبة</span>
-              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border p-3">
-                {projects.length === 0 ? <span className="text-xs text-muted-foreground">ما فيه مشاريع</span> : projects.map((p) => (
-                  <label key={p.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={projSel.has(p.id)} onChange={(e) => setProjSel((s) => { const n = new Set(s); e.target.checked ? n.add(p.id) : n.delete(p.id); return n; })} />
-                    {p.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
-            <button onClick={save} disabled={pending} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "جارٍ الحفظ…" : "حفظ البيانات"}</button>
-          </section>
-
-          {/* محجوز: بطاقة تفاصيل الحجز + إلغاء — وإلا نموذج المتابعة */}
+      {tab === "followups" && (
+        <div className="space-y-5">
           {detail.isArchived ? (
             <section className="glass space-y-3 rounded-2xl p-5">
               <h2 className="font-semibold text-foreground">تفاصيل الحجز</h2>
@@ -175,21 +104,11 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
               onBook={canBook ? () => setBooking("reserve") : undefined}
             />
           )}
-
-          {/* أزرار الحجز/الشراء */}
-          {canBook && (
-            <div className="flex flex-wrap gap-3">
-              <button onClick={() => setBooking("reserve")} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">تم الحجز</button>
-              <button onClick={() => setBooking("sale")} className="rounded-xl border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10">تم الشراء (كاش فوري)</button>
-            </div>
-          )}
-        </div>
-
-        {/* العمود الأيسر الضيق: سجل المتابعات */}
-        <div className="lg:col-span-1">
           <FollowUpsTimeline items={items} loading={loading} />
         </div>
-      </div>
+      )}
+
+      {tab === "ai" && <AiTab leadId={detail.id} phone={detail.phone} />}
 
       {booking && (
         <BookingForm
@@ -202,6 +121,144 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
         />
       )}
     </div>
+  );
+}
+
+// ===== تبويب البيانات =====
+function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: { id: string; name: string }[]; onSaved: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [goal, setGoal] = useState<string>(detail.purchaseGoal ?? "");
+  const [method, setMethod] = useState<string>(detail.purchaseMethod ?? "");
+  const [priceMin, setPriceMin] = useState(detail.priceMin?.toString() ?? "");
+  const [priceMax, setPriceMax] = useState(detail.priceMax?.toString() ?? "");
+  const [areas, setAreas] = useState<string[]>(detail.preferredAreas ?? []);
+  const [areaInput, setAreaInput] = useState("");
+  const [projSel, setProjSel] = useState<Set<string>>(new Set(detail.preferredProjects ?? []));
+
+  function addArea() {
+    const v = areaInput.trim();
+    if (v && !areas.includes(v)) setAreas((a) => [...a, v]);
+    setAreaInput("");
+  }
+  function save() {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await updateLeadIntake(detail.id, {
+        purchaseGoal: (goal || null) as PurchaseGoal | null,
+        purchaseMethod: (method || null) as PurchaseMethod | null,
+        priceMin: priceMin ? Number(priceMin.replace(/\D/g, "")) : null,
+        priceMax: priceMax ? Number(priceMax.replace(/\D/g, "")) : null,
+        preferredAreas: areas,
+        preferredProjects: [...projSel],
+      });
+      setMsg(res.ok ? "تم الحفظ" : res.error ?? "صار خطأ");
+      onSaved();
+    });
+  }
+
+  return (
+    <section className="glass space-y-4 rounded-2xl p-5">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="هدف الشراء">
+          <select value={goal} onChange={(e) => setGoal(e.target.value)} className="select-base">
+            <option value="">—</option>
+            {(Object.keys(purchaseGoalLabels) as PurchaseGoal[]).map((g) => <option key={g} value={g}>{purchaseGoalLabels[g]}</option>)}
+          </select>
+        </Field>
+        <Field label="طريقة الشراء">
+          <select value={method} onChange={(e) => setMethod(e.target.value)} className="select-base">
+            <option value="">—</option>
+            {(Object.keys(purchaseMethodLabels) as PurchaseMethod[]).map((m) => <option key={m} value={m}>{purchaseMethodLabels[m]}</option>)}
+          </select>
+        </Field>
+        <Field label="السعر من"><input value={priceMin} onChange={(e) => setPriceMin(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
+        <Field label="السعر إلى"><input value={priceMax} onChange={(e) => setPriceMax(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
+      </div>
+
+      <div className="space-y-2">
+        <span className="text-xs text-muted-foreground">الأحياء المناسبة</span>
+        <div className="flex flex-wrap gap-2">
+          {areas.map((a) => (
+            <span key={a} className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-foreground">{a}<button onClick={() => setAreas((xs) => xs.filter((x) => x !== a))} className="text-muted-foreground hover:text-destructive" aria-label="حذف">×</button></span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input value={areaInput} onChange={(e) => setAreaInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addArea(); } }} placeholder="اكتب حيًّا واضغط Enter…" className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+          <button onClick={addArea} className="rounded-lg border border-border px-3 text-sm text-muted-foreground hover:text-foreground">إضافة</button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <span className="text-xs text-muted-foreground">المشاريع المناسبة</span>
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-border p-3">
+          {projects.length === 0 ? <span className="text-xs text-muted-foreground">ما فيه مشاريع</span> : projects.map((p) => (
+            <label key={p.id} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={projSel.has(p.id)} onChange={(e) => setProjSel((s) => { const n = new Set(s); e.target.checked ? n.add(p.id) : n.delete(p.id); return n; })} />
+              {p.name}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
+      <button onClick={save} disabled={pending} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "جارٍ الحفظ…" : "حفظ البيانات"}</button>
+    </section>
+  );
+}
+
+// ===== تبويب مساعد كلود =====
+function AiTab({ leadId, phone }: { leadId: string; phone: string }) {
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function analyze() {
+    setAnalyzing(true);
+    setAnalysis(null);
+    try {
+      const res = await fetch("/api/analyze-lead", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leadId }) });
+      const data = await res.json();
+      if (res.ok) setAnalysis(data);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  return (
+    <section className="glass space-y-4 rounded-2xl p-5">
+      <button onClick={analyze} disabled={analyzing} className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+        {analyzing ? "جارٍ التحليل…" : "حلّل العميل"}
+      </button>
+
+      {analysis && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className={`rounded-full px-3 py-1 text-sm font-bold ${tempColor[analysis.temperature] ?? "bg-secondary text-foreground"}`}>{analysis.temperature}</span>
+            <div className="flex-1">
+              <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>نسبة الاهتمام</span><span className="text-gold">{analysis.interest}٪</span></div>
+              <div className="h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-gold" style={{ width: `${analysis.interest}%` }} /></div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border p-3">
+            <div className="text-xs text-muted-foreground">الخطوة القادمة</div>
+            <p className="mt-1 text-sm text-foreground">{analysis.nextStep}</p>
+          </div>
+
+          <div className="rounded-xl border border-border p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">رسالة واتساب جاهزة</span>
+              <button onClick={() => { navigator.clipboard.writeText(analysis.whatsapp); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="text-xs text-gold">{copied ? "تم النسخ" : "نسخ"}</button>
+            </div>
+            <p className="whitespace-pre-wrap text-sm text-foreground">{analysis.whatsapp}</p>
+            <a href={`https://wa.me/966${phone.replace(/^0/, "")}?text=${encodeURIComponent(analysis.whatsapp)}`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/25">إرسال واتساب</a>
+          </div>
+
+          {analysis.source && <p className="text-center text-xs text-muted-foreground/60">المصدر: {analysis.source}</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
