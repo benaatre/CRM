@@ -2,7 +2,9 @@
 
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageColor } from "@/lib/labels";
-import { FollowUpsPanel } from "./followups-panel";
+import { FollowUpsForm } from "./followups-form";
+import { FollowUpsTimeline } from "./followups-timeline";
+import { useFollowUps } from "./use-followups";
 
 export function FollowUpsDrawer({
   leadId, leadName, stage, onClose, onChanged,
@@ -14,6 +16,19 @@ export function FollowUpsDrawer({
   onChanged?: () => void;
 }) {
   if (!leadId) return null;
+  return <DrawerBody leadId={leadId} leadName={leadName} stage={stage} onClose={onClose} onChanged={onChanged} />;
+}
+
+function DrawerBody({
+  leadId, leadName, stage, onClose, onChanged,
+}: {
+  leadId: string;
+  leadName: string;
+  stage: LeadStage;
+  onClose: () => void;
+  onChanged?: () => void;
+}) {
+  const { items, loading, reload } = useFollowUps(leadId);
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -28,8 +43,9 @@ export function FollowUpsDrawer({
           </div>
           <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-secondary">إغلاق</button>
         </header>
-        <div className="flex-1 overflow-y-auto p-5">
-          <FollowUpsPanel leadId={leadId} stage={stage} onChanged={onChanged} />
+        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          <FollowUpsForm leadId={leadId} stage={stage} projects={[]} onSaved={() => { reload(); onChanged?.(); }} />
+          <FollowUpsTimeline items={items} loading={loading} />
         </div>
       </aside>
     </>

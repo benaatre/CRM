@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { FollowUpType, FollowUpResult } from "@prisma/client";
+import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
@@ -39,6 +39,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       id: f.id,
       type: f.type,
       result: f.result,
+      section: f.section,
       note: f.note,
       nextDate: f.nextDate,
       createdAt: f.createdAt,
@@ -54,7 +55,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (a.error) return a.error;
   const { user, lead } = a;
 
-  let body: { type?: string; result?: string; note?: string; nextDate?: string };
+  let body: { type?: string; result?: string; section?: string; stage?: string; note?: string; nextDate?: string };
   try {
     body = await req.json();
   } catch {
@@ -66,13 +67,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!type || !(type in FollowUpType)) return NextResponse.json({ error: "نوع المتابعة غير صحيح" }, { status: 400 });
   if (!result || !(result in FollowUpResult)) return NextResponse.json({ error: "نتيجة المتابعة غير صحيحة" }, { status: 400 });
 
+  const section = body.section && body.section in FollowUpSection ? (body.section as FollowUpSection) : null;
   const nextDate = body.nextDate ? new Date(body.nextDate) : null;
-  const newStage = resultToStage[result];
+  // المرحلة المرسلة صراحةً تُقدَّم؛ وإلا تُشتق من النتيجة.
+  const newStage = body.stage && body.stage in LeadStage ? (body.stage as LeadStage) : resultToStage[result];
   const bumpsAttempt = type === "CALL" || type === "WHATSAPP";
 
   const created = await prisma.$transaction(async (tx) => {
     const fu = await tx.followUp.create({
-      data: { leadId: id, type, result, note: body.note?.trim() || null, nextDate, createdBy: user.id },
+      data: { leadId: id, type, result, section, note: body.note?.trim() || null, nextDate, createdBy: user.id },
       include: { employee: { select: { name: true } } },
     });
     await tx.lead.update({

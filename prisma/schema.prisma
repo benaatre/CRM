@@ -146,6 +146,13 @@ enum ActivityType {
   ASSIGNMENT // توزيع/نقل
 }
 
+/// قسم المتابعة (لعرضه في سجل المتابعات وتجميعها).
+enum FollowUpSection {
+  INTERESTED // مهتم
+  NO_ANSWER // لم يرد
+  NOT_INTERESTED // غير مهتم
+}
+
 /// نوع متابعة العميل (FollowUp).
 enum FollowUpType {
   CALL // اتصال
@@ -333,6 +340,7 @@ model FollowUp {
   type      FollowUpType
   note      String?
   result    FollowUpResult
+  section   FollowUpSection?
   nextDate  DateTime?
   createdAt DateTime       @default(now())
   createdBy String

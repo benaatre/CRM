@@ -17,7 +17,9 @@ import {
 } from "@/lib/actions/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { cancelBooking } from "@/lib/actions/bookings";
-import { FollowUpsPanel } from "./followups-panel";
+import { FollowUpsForm } from "./followups-form";
+import { FollowUpsTimeline } from "./followups-timeline";
+import { useFollowUps } from "./use-followups";
 
 type Employee = { id: string; name: string };
 type Tab = "data" | "timeline" | "ai";
@@ -233,7 +235,7 @@ export function LeadDrawer({
 
               {/* تبويب المتابعة — النظام الذكي الجديد (FollowUp) */}
               {tab === "timeline" && (
-                <FollowUpsPanel leadId={lead.id} stage={lead.stage} onChanged={refresh} />
+                <DrawerFollowups leadId={lead.id} stage={lead.stage} onChanged={refresh} />
               )}
 
               {/* تبويب مساعد كلود */}
@@ -290,6 +292,16 @@ export function LeadDrawer({
         />
       )}
     </>
+  );
+}
+
+function DrawerFollowups({ leadId, stage, onChanged }: { leadId: string; stage: LeadStage; onChanged: () => void }) {
+  const { items, loading, reload } = useFollowUps(leadId);
+  return (
+    <div className="space-y-4">
+      <FollowUpsForm leadId={leadId} stage={stage} projects={[]} onSaved={() => { reload(); onChanged(); }} />
+      <FollowUpsTimeline items={items} loading={loading} />
+    </div>
   );
 }
 

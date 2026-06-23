@@ -17,6 +17,7 @@ import type {
   CashPaymentType,
   FollowUpType,
   FollowUpResult,
+  FollowUpSection,
   FirstContactStage,
 } from "@prisma/client";
 
@@ -215,6 +216,17 @@ export const nationalityLabels: Record<Nationality, string> = {
 };
 
 // ===== المتابعات (FollowUp) =====
+
+export const followUpSectionLabels: Record<FollowUpSection, string> = {
+  INTERESTED: "مهتم",
+  NO_ANSWER: "لم يرد",
+  NOT_INTERESTED: "غير مهتم",
+};
+export const followUpSectionColor: Record<FollowUpSection, string> = {
+  INTERESTED: "text-gold bg-gold/10 border-gold/30",
+  NO_ANSWER: "text-warning bg-warning/10 border-warning/30",
+  NOT_INTERESTED: "text-destructive bg-destructive/10 border-destructive/30",
+};
 
 export const followUpTypeLabels: Record<FollowUpType, string> = {
   CALL: "اتصال",

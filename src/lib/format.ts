@@ -49,6 +49,19 @@ export function formatDate(date: Date | string | null | undefined): string {
   }).format(d);
 }
 
+/** التاريخ + الساعة (لسجل المتابعات). */
+export function formatDateTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
+}
+
 /** «قبل ٣ أيام» / «اليوم» / «بكرة» — نسبيًا للحين. */
 export function timeAgo(date: Date | string | null | undefined): string {
   if (!date) return "—";

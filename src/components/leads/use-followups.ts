@@ -1,0 +1,36 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import type { FollowUpType, FollowUpResult, FollowUpSection } from "@prisma/client";
+
+export type FollowUpItem = {
+  id: string;
+  type: FollowUpType;
+  result: FollowUpResult;
+  section: FollowUpSection | null;
+  note: string | null;
+  nextDate: string | null;
+  createdAt: string;
+  employeeName: string | null;
+};
+
+/** جلب متابعات عميل (تصاعديًا) مع دالة إعادة تحميل. */
+export function useFollowUps(leadId: string) {
+  const [items, setItems] = useState<FollowUpItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/followups`);
+      const data = await res.json();
+      if (res.ok) setItems(data.items ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  return { items, loading, reload };
+}

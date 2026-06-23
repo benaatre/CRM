@@ -9,6 +9,7 @@ import {
   CashPaymentType,
   FollowUpType,
   FollowUpResult,
+  FollowUpSection,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -131,6 +132,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       await tx.followUp.create({
         data: {
           leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
+          section: FollowUpSection.INTERESTED,
           note: immediateSale ? "تم الشراء (كاش فوري)" : "تم الحجز",
         },
       });
