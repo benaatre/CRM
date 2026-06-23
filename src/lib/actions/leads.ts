@@ -39,6 +39,8 @@ async function assertLeadAccess(leadId: string) {
 function revalidateLeads() {
   revalidatePath("/leads");
   revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+  revalidatePath("/analytics");
 }
 
 /** إنشاء عميل جديد. الموظف يُسند العميل لنفسه؛ المدير يقدر يختار. */

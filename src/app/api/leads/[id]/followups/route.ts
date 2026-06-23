@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -95,6 +96,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
     return fu;
   });
+
+  // المتابعة تغيّر المرحلة → ينعكس في الجدول والكانبان ولوحة التحكم.
+  revalidatePath("/leads");
+  revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+  revalidatePath("/analytics");
 
   return NextResponse.json({
     ok: true,

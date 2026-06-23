@@ -57,5 +57,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   revalidatePath("/leads");
   revalidatePath("/pipeline");
   revalidatePath("/dashboard");
+  revalidatePath("/analytics");
   return NextResponse.json({ ok: true });
 }
