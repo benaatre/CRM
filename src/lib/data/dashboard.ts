@@ -102,30 +102,26 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   // الزيارات تُحسب من جدول FollowUp (نوع زيارة) — للموظف: ما أنشأه هو.
   const fuVisitScope = manager ? {} : { createdBy: user.id };
 
+  // فلتر الفترة على createdAt — يُطبَّق على كل المؤشرات (فاضي = الكل).
+  const periodFilter = inPeriod ? { createdAt: inPeriod } : {};
+
   const [
     totalClients,
     unassigned,
     bookings,
     visits,
     closedWon,
-    totalAll,
-    bookedAll,
   ] = await Promise.all([
-    prisma.lead.count({ where }),
-    manager ? prisma.lead.count({ where: { assignedToId: null } }) : Promise.resolve(0),
-    prisma.booking.count({ where: { ...bookingScope, ...(inPeriod ? { createdAt: inPeriod } : {}) } }),
-    prisma.followUp.count({ where: { type: { in: VISIT_TYPES }, ...fuVisitScope, ...(inPeriod ? { createdAt: inPeriod } : {}) } }),
-    prisma.lead.count({ where: { ...where, stage: "CLOSED_WON", ...(inPeriod ? { updatedAt: inPeriod } : {}) } }),
-    prisma.lead.count({ where }),
-    prisma.lead.count({ where: { ...where, isArchived: true } }),
+    prisma.lead.count({ where: { ...where, ...periodFilter } }),
+    manager ? prisma.lead.count({ where: { assignedToId: null, ...periodFilter } }) : Promise.resolve(0),
+    prisma.booking.count({ where: { ...bookingScope, ...periodFilter } }),
+    prisma.followUp.count({ where: { type: { in: VISIT_TYPES }, ...fuVisitScope, ...periodFilter } }),
+    prisma.lead.count({ where: { ...where, stage: "CLOSED_WON", ...periodFilter } }),
   ]);
 
-  // معدل التحويل = المحجوزون (المؤرشفون: محجوز/مباع) ÷ إجمالي العملاء.
-  const conversion = totalAll > 0 ? Math.round((bookedAll / totalAll) * 100) : 0;
-
-  const newInPeriod = since
-    ? await prisma.lead.count({ where: { ...where, createdAt: inPeriod } })
-    : totalClients;
+  // معدل التحويل = (الحجوزات في الفترة ÷ إجمالي العملاء في الفترة) × ١٠٠.
+  const conversion = totalClients > 0 ? Math.round((bookings / totalClients) * 100) : 0;
+  const newInPeriod = totalClients;
 
   // آخر الصفقات المقفولة (تم البيع)
   const salesRaw = await prisma.booking.findMany({

@@ -42,7 +42,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
   // الترتيب نفس التصميم: تحويل · إجمالي · غير موزّعين · حجوزات · زيارات · مقفولة
   const cards = [
     { label: "معدل التحويل", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false },
-    { label: "إجمالي العملاء", value: formatNumberShort(k.totalClients), unit: "عميل", fill: 100, up: true, chip: k.newInPeriod > 0 ? `+${toArabicDigits(k.newInPeriod)}` : null, action: false },
+    { label: "إجمالي العملاء", value: formatNumberShort(k.totalClients), unit: "عميل", fill: 100, up: true, chip: null, action: false },
     { label: "غير موزّعين", value: toArabicDigits(k.unassigned), unit: "ليد", fill: pct(k.unassigned), up: false, chip: k.unassigned > 0 ? toArabicDigits(k.unassigned) : null, action: data.manager && k.unassigned > 0 },
     { label: "عدد الحجوزات", value: formatNumberShort(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false },
     { label: "عدد الزيارات", value: formatNumberShort(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false },
