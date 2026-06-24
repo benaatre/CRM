@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
+import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
 import { stageLabels } from "@/lib/labels";
 
 type Project = { id: string; name: string };
@@ -47,10 +47,11 @@ const LABEL: Record<string, string> = {
 };
 
 export function FollowUpsForm({
-  leadId, stage, projects, onSaved, onBook,
+  leadId, stage, firstContactStage, projects, onSaved, onBook,
 }: {
   leadId: string;
   stage: LeadStage;
+  firstContactStage?: FirstContactStage | null;
   projects: Project[];
   onSaved: () => void;
   onBook?: () => void;
@@ -58,6 +59,7 @@ export function FollowUpsForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
+  const [fcSel, setFcSel] = useState<"interested" | "noanswer" | "notInterested" | null>(null);
 
   const [note, setNote] = useState("");
   const [date, setDate] = useState("");
@@ -119,6 +121,50 @@ export function FollowUpsForm({
           ? { type: "CALL", result: "FOLLOW_UP_SCHEDULED", section: "NOT_INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("غير مهتم — نحاول لاحقًا", [...reasons], note), nextDate: date }
           : { type: "CALL", result: "NOT_INTERESTED_FINAL", section: "NOT_INTERESTED", stage: "CLOSED_LOST", note: compose("غير مهتم", [...reasons], note) });
     }
+  }
+
+  // أول تواصل: ٣ خيارات إلزامية تحدّد المرحلة الأولى ومرحلة العميل.
+  const FC_MAP = {
+    interested: { result: "INTERESTED_SENT_INFO", section: "INTERESTED", stage: "INTERESTED", label: "مهتم" },
+    noanswer: { result: "NOT_ANSWERED_SCHEDULED", section: "NO_ANSWER", stage: "ATTEMPTED", label: "لا يرد" },
+    notInterested: { result: "NOT_INTERESTED_FINAL", section: "NOT_INTERESTED", stage: "CLOSED_LOST", label: "غير مهتم" },
+  } as const;
+  function submitFirstContact() {
+    if (!fcSel) return;
+    const m = FC_MAP[fcSel];
+    post({ type: "CALL", result: m.result as FollowUpResult, section: m.section as FollowUpSection, stage: m.stage as LeadStage, note: compose(`تم تسجيل أول تواصل: ${m.label}`, [], note) });
+  }
+
+  // وضع «أول تواصل»: ما تحدّدت المرحلة الأولى بعد (null صريح) → الأزرار الثلاثة الإلزامية.
+  if (firstContactStage === null) {
+    return (
+      <section className="glass space-y-3 rounded-2xl p-5">
+        <h2 className="font-semibold text-foreground">سجّل أول تواصل مع العميل</h2>
+        <p className="text-xs text-muted-foreground">اختر نتيجة أول تواصل (إلزامي):</p>
+        <div className="flex flex-wrap gap-2">
+          {(["interested", "noanswer", "notInterested"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => { setFcSel(k); setError(null); }}
+              className={`rounded-lg border px-4 py-2 text-sm transition-colors ${fcSel === k ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`}
+            >
+              {FC_MAP[k].label}
+            </button>
+          ))}
+        </div>
+        {fcSel && (
+          <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ملاحظة (اختياري)…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+            {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+            <div className="flex justify-end">
+              <button type="button" onClick={submitFirstContact} disabled={pending} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
+            </div>
+          </div>
+        )}
+        {error && !fcSel && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+      </section>
+    );
   }
 
   // تعطيل الحفظ لو الحقول الإجبارية ناقصة.

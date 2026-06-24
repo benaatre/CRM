@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { LeadStage, ActivityType } from "@prisma/client";
+import { LeadStage, ActivityType, FirstContactStage, FollowUpType, FollowUpResult, FollowUpSection } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import { stageLabels } from "@/lib/labels";
+import { stageLabels, firstContactStageLabels } from "@/lib/labels";
+
+// سحب العميل في الكانبان لإحدى مراحل «أول تواصل» الثلاث → يحدّد المرحلة الأولى تلقائيًا.
+const STAGE_TO_FIRST: Partial<Record<LeadStage, { fc: FirstContactStage; result: FollowUpResult; section: FollowUpSection }>> = {
+  INTERESTED: { fc: FirstContactStage.INTERESTED, result: FollowUpResult.INTERESTED_SENT_INFO, section: FollowUpSection.INTERESTED },
+  ATTEMPTED: { fc: FirstContactStage.NO_ANSWER, result: FollowUpResult.NOT_ANSWERED_SCHEDULED, section: FollowUpSection.NO_ANSWER },
+  CLOSED_LOST: { fc: FirstContactStage.NOT_INTERESTED, result: FollowUpResult.NOT_INTERESTED_FINAL, section: FollowUpSection.NOT_INTERESTED },
+};
 
 export const runtime = "nodejs";
 
@@ -23,7 +30,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const lead = await prisma.lead.findUnique({
     where: { id },
-    select: { id: true, assignedToId: true, stage: true },
+    select: { id: true, assignedToId: true, stage: true, firstContactStage: true, firstContactDate: true, firstContactAt: true },
   });
   if (!lead) return NextResponse.json({ error: "العميل غير موجود" }, { status: 404 });
   if (!isManager(session.user.role) && lead.assignedToId !== session.user.id) {
@@ -43,15 +50,42 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   if (lead.stage === stage) return NextResponse.json({ ok: true });
 
-  await prisma.$transaction([
-    prisma.lead.update({ where: { id }, data: { stage, lastContact: new Date() } }),
-    prisma.activity.create({
-      data: { leadId: id, userId: session.user.id, type: ActivityType.STAGE_CHANGE, note: `نُقل إلى «${stageLabels[stage]}» من الكانبان` },
-    }),
-  ]);
+  // أول تواصل تلقائيًا: لو ما تحدّدت المرحلة الأولى وسُحب لإحدى المراحل الثلاث.
+  const fc = !lead.firstContactStage ? STAGE_TO_FIRST[stage] : undefined;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.lead.update({
+      where: { id },
+      data: {
+        stage,
+        lastContact: new Date(),
+        ...(fc ? {
+          firstContactStage: fc.fc,
+          firstContactDate: lead.firstContactDate ?? new Date(),
+          firstContactAt: lead.firstContactAt ?? new Date(),
+        } : {}),
+      },
+    });
+    await tx.activity.create({
+      data: {
+        leadId: id, userId: session.user!.id, type: ActivityType.STAGE_CHANGE,
+        note: fc ? `تم تسجيل أول تواصل: ${firstContactStageLabels[fc.fc]}` : `نُقل إلى «${stageLabels[stage]}» من الكانبان`,
+      },
+    });
+    // أول تواصل من الكانبان → سجل في الـTimeline (followUpsCount + 1).
+    if (fc) {
+      await tx.followUp.create({
+        data: {
+          leadId: id, createdBy: session.user!.id, type: FollowUpType.CALL,
+          result: fc.result, section: fc.section, stageAfter: stage,
+          note: `تم تسجيل أول تواصل: ${firstContactStageLabels[fc.fc]} (من الكانبان)`,
+        },
+      });
+    }
+  });
   await logAudit(prisma, {
     userId: session.user.id, action: "lead.stage", entity: "lead", entityId: id,
-    summary: `نقل عميل إلى مرحلة «${stageLabels[stage]}» (كانبان)`,
+    summary: fc ? `أول تواصل «${firstContactStageLabels[fc.fc]}» (كانبان)` : `نقل عميل إلى مرحلة «${stageLabels[stage]}» (كانبان)`,
   });
 
   revalidatePath("/leads");

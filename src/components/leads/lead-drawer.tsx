@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Channel, LeadStage, Priority, UnitType, PurchaseMethod, PurchaseGoal } from "@prisma/client";
+import type { Channel, LeadStage, Priority, UnitType, PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/client";
 import {
   X, Phone, MessageCircle, Loader2, Sparkles, Copy, Check,
 } from "lucide-react";
@@ -235,7 +235,7 @@ export function LeadDrawer({
 
               {/* تبويب المتابعة — النظام الذكي الجديد (FollowUp) */}
               {tab === "timeline" && (
-                <DrawerFollowups leadId={lead.id} stage={lead.stage} onChanged={refresh} />
+                <DrawerFollowups leadId={lead.id} stage={lead.stage} firstContactStage={lead.firstContactStage} onChanged={refresh} />
               )}
 
               {/* تبويب مساعد كلود */}
@@ -295,11 +295,11 @@ export function LeadDrawer({
   );
 }
 
-function DrawerFollowups({ leadId, stage, onChanged }: { leadId: string; stage: LeadStage; onChanged: () => void }) {
+function DrawerFollowups({ leadId, stage, firstContactStage, onChanged }: { leadId: string; stage: LeadStage; firstContactStage?: FirstContactStage | null; onChanged: () => void }) {
   const { items, loading, reload } = useFollowUps(leadId);
   return (
     <div className="space-y-4">
-      <FollowUpsForm leadId={leadId} stage={stage} projects={[]} onSaved={() => { reload(); onChanged(); }} />
+      <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} projects={[]} onSaved={() => { reload(); onChanged(); }} />
       <FollowUpsTimeline items={items} loading={loading} />
     </div>
   );

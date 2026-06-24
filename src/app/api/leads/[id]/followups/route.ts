@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
+import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage, ActivityType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import { resultToStage, followUpResultLabels } from "@/lib/labels";
+import { resultToStage, followUpResultLabels, firstContactStageLabels } from "@/lib/labels";
 
 export const runtime = "nodejs";
 
@@ -77,9 +77,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   // المرحلة الأولى تُحدَّد مرة واحدة من أول متابعة (حسب قسمها).
   const sectionToFirst: Record<FollowUpSection, FirstContactStage> = {
-    INTERESTED: FirstContactStage.CONTACTED,
+    INTERESTED: FirstContactStage.INTERESTED,
     NO_ANSWER: FirstContactStage.NO_ANSWER,
-    NOT_INTERESTED: FirstContactStage.NOT_SUITABLE,
+    NOT_INTERESTED: FirstContactStage.NOT_INTERESTED,
   };
   const firstStage = !lead.firstContactStage && section ? sectionToFirst[section] : null;
 
@@ -102,6 +102,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
       },
     });
+    // سجل أول تواصل في الـTimeline (Activity) — مع اسم الموظف والوقت تلقائيًا.
+    if (firstStage) {
+      await tx.activity.create({
+        data: { leadId: id, userId: user.id, type: ActivityType.NOTE, note: `تم تسجيل أول تواصل: ${firstContactStageLabels[firstStage]}` },
+      });
+    }
     await logAudit(tx, {
       userId: user.id, action: "followup.added", entity: "lead", entityId: id,
       summary: `متابعة: ${followUpResultLabels[result]}`,

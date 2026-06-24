@@ -190,14 +190,14 @@ export const purchaseGoalLabels: Record<PurchaseGoal, string> = {
 
 // المرحلة الأولى (تُحدَّد مرة واحدة)
 export const firstContactStageLabels: Record<FirstContactStage, string> = {
-  CONTACTED: "تم التواصل",
-  NO_ANSWER: "لم يتم الرد",
-  NOT_SUITABLE: "غير مناسب",
+  INTERESTED: "مهتم",
+  NO_ANSWER: "لا يرد",
+  NOT_INTERESTED: "غير مهتم",
 };
 export const firstContactStageColor: Record<FirstContactStage, string> = {
-  CONTACTED: "text-success bg-success/10 border-success/30",
-  NO_ANSWER: "text-destructive bg-destructive/10 border-destructive/30",
-  NOT_SUITABLE: "text-warning bg-warning/10 border-warning/30",
+  INTERESTED: "text-success bg-success/10 border-success/30",
+  NO_ANSWER: "text-warning bg-warning/10 border-warning/30",
+  NOT_INTERESTED: "text-destructive bg-destructive/10 border-destructive/30",
 };
 
 export const cashPaymentTypeLabels: Record<CashPaymentType, string> = {

@@ -117,6 +117,7 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
             <FollowUpsForm
               leadId={detail.id}
               stage={detail.stage}
+              firstContactStage={detail.firstContactStage}
               projects={projects}
               onSaved={() => { reload(); router.refresh(); }}
               onBook={() => setReserveMode("reserve")}

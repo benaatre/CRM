@@ -253,7 +253,7 @@ export function LeadsView({
 
       <NewLeadDialog open={showNew} onClose={() => setShowNew(false)} isManager={isManager} employees={employees} />
       {showImport && <ImportDialog employees={employees} onClose={() => { setShowImport(false); reload(); router.refresh(); }} />}
-      <FollowUpsDrawer leadId={fuLead?.id ?? null} leadName={fuLead?.name ?? ""} stage={fuLead?.stage ?? "NEW"} onClose={() => setFuLead(null)} onChanged={() => { reload(); router.refresh(); }} />
+      <FollowUpsDrawer leadId={fuLead?.id ?? null} leadName={fuLead?.name ?? ""} stage={fuLead?.stage ?? "NEW"} firstContactStage={fuLead?.firstContactStage} onClose={() => setFuLead(null)} onChanged={() => { reload(); router.refresh(); }} />
     </div>
   );
 }

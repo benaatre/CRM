@@ -1,30 +1,32 @@
 "use client";
 
-import type { LeadStage } from "@prisma/client";
+import type { LeadStage, FirstContactStage } from "@prisma/client";
 import { stageLabels, stageColor } from "@/lib/labels";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { useFollowUps } from "./use-followups";
 
 export function FollowUpsDrawer({
-  leadId, leadName, stage, onClose, onChanged,
+  leadId, leadName, stage, firstContactStage, onClose, onChanged,
 }: {
   leadId: string | null;
   leadName: string;
   stage: LeadStage;
+  firstContactStage?: FirstContactStage | null;
   onClose: () => void;
   onChanged?: () => void;
 }) {
   if (!leadId) return null;
-  return <DrawerBody leadId={leadId} leadName={leadName} stage={stage} onClose={onClose} onChanged={onChanged} />;
+  return <DrawerBody leadId={leadId} leadName={leadName} stage={stage} firstContactStage={firstContactStage} onClose={onClose} onChanged={onChanged} />;
 }
 
 function DrawerBody({
-  leadId, leadName, stage, onClose, onChanged,
+  leadId, leadName, stage, firstContactStage, onClose, onChanged,
 }: {
   leadId: string;
   leadName: string;
   stage: LeadStage;
+  firstContactStage?: FirstContactStage | null;
   onClose: () => void;
   onChanged?: () => void;
 }) {
@@ -44,7 +46,7 @@ function DrawerBody({
           <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-secondary">إغلاق</button>
         </header>
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          <FollowUpsForm leadId={leadId} stage={stage} projects={[]} onSaved={() => { reload(); onChanged?.(); }} />
+          <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} projects={[]} onSaved={() => { reload(); onChanged?.(); }} />
           <FollowUpsTimeline items={items} loading={loading} />
         </div>
       </aside>
