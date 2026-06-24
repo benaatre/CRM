@@ -40,6 +40,11 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
   const newCount = previewRows.filter((r) => r.status === "new").length;
   const existsCount = previewRows.filter((r) => r.status === "exists").length;
 
+  // الحقول الإجبارية للمطابقة: الاسم (أو الأول+الأخير) + الجوال.
+  const mappedFields = Object.values(mapping);
+  const hasName = mappedFields.includes("name") || mappedFields.includes("firstName") || mappedFields.includes("lastName");
+  const hasPhone = mappedFields.includes("phone");
+
   function read(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -129,6 +134,13 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
               <span className="font-medium text-gold">تعرّفنا على الأعمدة تلقائيًا ({toArabicDigits(autoDetected.size)})</span>
               <span className="text-muted-foreground"> — هل هذه المطابقة صحيحة؟ عدّل أي عمود قبل المتابعة. «الاسم» و«الجوال» إجباريان.</span>
             </div>
+            {(!hasName || !hasPhone) && (
+              <div className="mb-3 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm font-medium text-destructive">
+                {!hasName && !hasPhone ? "لازم تطابق عمودي «الاسم» و«الجوال»."
+                  : !hasName ? "لازم تطابق عمود «الاسم»."
+                    : "لازم تطابق عمود «الجوال»."}
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto rounded-xl border border-border">
               <table className="w-full text-right text-sm">
                 <thead className="sticky top-0 bg-secondary text-muted-foreground">
@@ -154,7 +166,7 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
             </div>
             <div className="mt-4 flex justify-between">
               <button onClick={() => setStep("source")} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">رجوع</button>
-              <button onClick={preview} disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+              <button onClick={preview} disabled={pending || !hasName || !hasPhone} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
                 {pending && <Loader2 className="size-4 animate-spin" />} المطابقة صحيحة · متابعة <ArrowRight className="size-4 rotate-180" />
               </button>
             </div>

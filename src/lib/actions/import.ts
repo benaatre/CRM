@@ -80,6 +80,13 @@ function looksLikePhone(v: string): boolean {
   return /^(00966|966)?0?5\d{8}$/.test(d) || /^5\d{8}$/.test(d);
 }
 
+// اسم محتمل: نص فيه حروف (عربي/إنجليزي)، ليس رقمًا ولا جوالًا ولا رموزًا فقط.
+function looksLikeName(v: string): boolean {
+  if (looksLikePhone(v)) return false;
+  if (/^[\d\s+\-()._/]+$/.test(v)) return false; // أرقام/رموز فقط
+  return /[A-Za-z؀-ۿ]/.test(v);
+}
+
 /**
  * مطابقة مقترحة لكل عمود: أولًا من رأس العمود (احتواء كلمة مفتاحية)،
  * ثم استشعار من القيم لأعمدة الجوال/طريقة/هدف الشراء غير المطابقة.
@@ -105,6 +112,17 @@ function suggestMapping(headers: string[], rows: string[][]): string[] {
     if (!taken.has("purchaseMethod") && hit(normalizePurchaseMethod)) { result[i] = "purchaseMethod"; taken.add("purchaseMethod"); return; }
     if (!taken.has("purchaseGoal") && hit(normalizePurchaseGoal)) { result[i] = "purchaseGoal"; taken.add("purchaseGoal"); return; }
   });
+
+  // كشف عمود الاسم من القيم: أول عمود غير مطابق قيمه نصوص (عربي/إنجليزي) — غالبًا أول عمود.
+  const hasNameField = result.some((f) => f === "name" || f === "firstName" || f === "lastName");
+  if (!hasNameField) {
+    for (let i = 0; i < headers.length; i++) {
+      if (result[i]) continue;
+      const vals = sample.map((r) => (r[i] ?? "").trim()).filter(Boolean);
+      if (vals.length === 0) continue;
+      if (vals.filter(looksLikeName).length >= Math.ceil(vals.length / 2)) { result[i] = "name"; break; }
+    }
+  }
 
   return result;
 }
