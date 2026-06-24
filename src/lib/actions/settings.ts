@@ -39,6 +39,8 @@ export async function syncGoogleSheet(): Promise<SyncResult> {
     const res = await runSheetSync();
     if (res.ok) {
       revalidatePath("/leads");
+      revalidatePath("/pipeline");
+      revalidatePath("/dashboard");
       revalidatePath("/admin");
       revalidatePath("/settings");
     }

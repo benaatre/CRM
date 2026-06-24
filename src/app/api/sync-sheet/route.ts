@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { runSheetSync } from "@/lib/sheet-sync";
 
 export const runtime = "nodejs";
@@ -11,5 +12,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "غير مصرّح" }, { status: 401 });
   }
   const res = await runSheetSync();
+  // عملاء جدد وصلوا → حدّث الجدول والكانبان واللوحة فورًا.
+  if (res.ok && res.created && res.created > 0) {
+    revalidatePath("/leads");
+    revalidatePath("/pipeline");
+    revalidatePath("/dashboard");
+    revalidatePath("/admin");
+  }
   return NextResponse.json(res);
 }
