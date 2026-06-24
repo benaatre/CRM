@@ -11,11 +11,10 @@ import {
   stageLabels,
   priorityLabels,
   unitTypeLabels,
-  purchaseMethodLabels,
-  purchaseGoalLabels,
 } from "@/lib/labels";
+import { normalizePurchaseMethod, normalizePurchaseGoal } from "@/lib/value-normalize";
 
-export type ImportResult = { ok: boolean; error?: string; created?: number; skipped?: number };
+export type ImportResult = { ok: boolean; error?: string; created?: number; updated?: number; skipped?: number };
 
 // خرائط عكسية: من القيمة العربية أو اسم enum إلى enum
 function reverse<T extends string>(map: Record<T, string>): Record<string, T> {
@@ -30,8 +29,6 @@ const channelBy = reverse(channelLabels);
 const stageBy = reverse(stageLabels);
 const priorityBy = reverse(priorityLabels);
 const unitTypeBy = reverse(unitTypeLabels);
-const purchaseMethodBy = reverse(purchaseMethodLabels);
-const purchaseGoalBy = reverse(purchaseGoalLabels);
 
 // مطابقة تلقائية لاسم العمود → حقل النظام
 const HEADERS: Record<string, string[]> = {
@@ -199,12 +196,17 @@ export async function previewMapped(
   }
 }
 
-/** الخطوة ٣: تنفيذ الاستيراد للصفوف «الجديدة» فقط. يتجنّب التكرار (نفس الجوال). */
-export async function commitImport(rows: ImportRow[], assignMode: string): Promise<ImportResult> {
+/**
+ * الخطوة ٣: تنفيذ الاستيراد للصفوف «الجديدة».
+ * updateExisting = true → يعبّي القيم الفاضية للعملاء الموجودين (نفس الجوال) من بيانات الملف
+ * بدون المساس بالقيم المعبّأة أصلًا — مفيد لإصلاح عملاء استُوردوا سابقًا بقيم لم تُطابَق.
+ */
+export async function commitImport(rows: ImportRow[], assignMode: string, updateExisting = false): Promise<ImportResult> {
   try {
     const me = await requireManager();
     const fresh = rows.filter((r) => r.status === "new");
-    if (fresh.length === 0) return { ok: true, created: 0, skipped: rows.length };
+    const existing = updateExisting ? rows.filter((r) => r.status === "exists") : [];
+    if (fresh.length === 0 && existing.length === 0) return { ok: true, created: 0, updated: 0, skipped: rows.length };
 
     const employees =
       assignMode === "roundrobin"
@@ -229,8 +231,8 @@ export async function commitImport(rows: ImportRow[], assignMode: string): Promi
           priority: (r.priority && priorityBy[r.priority]) || Priority.MEDIUM,
           unitType: r.unitType ? unitTypeBy[r.unitType] ?? null : null,
           budget: r.budget ? Number(r.budget) : null,
-          purchaseMethod: r.purchaseMethod ? purchaseMethodBy[r.purchaseMethod] ?? null : null,
-          purchaseGoal: r.purchaseGoal ? purchaseGoalBy[r.purchaseGoal] ?? null : null,
+          purchaseMethod: normalizePurchaseMethod(r.purchaseMethod),
+          purchaseGoal: normalizePurchaseGoal(r.purchaseGoal),
           preferredDistrict: r.district || null,
           notes: r.notes || null,
           projectId: r.project ? projectByName.get(r.project) ?? null : null,
@@ -241,9 +243,35 @@ export async function commitImport(rows: ImportRow[], assignMode: string): Promi
       });
       created++;
     }
+
+    // تحديث الموجودين: تعبئة الفاضي فقط من بيانات الملف.
+    let updated = 0;
+    for (const r of existing) {
+      const lead = await prisma.lead.findFirst({
+        where: { phone: r.phone },
+        select: { id: true, purchaseMethod: true, purchaseGoal: true, budget: true, unitType: true, preferredDistrict: true, projectId: true },
+      });
+      if (!lead) continue;
+
+      const data: Record<string, unknown> = {};
+      const pm = normalizePurchaseMethod(r.purchaseMethod);
+      if (pm && !lead.purchaseMethod) data.purchaseMethod = pm;
+      const pg = normalizePurchaseGoal(r.purchaseGoal);
+      if (pg && !lead.purchaseGoal) data.purchaseGoal = pg;
+      if (r.budget && lead.budget == null) data.budget = Number(r.budget);
+      if (r.unitType && !lead.unitType) { const ut = unitTypeBy[r.unitType]; if (ut) data.unitType = ut; }
+      if (r.district && !lead.preferredDistrict) data.preferredDistrict = r.district;
+      if (r.project && !lead.projectId) { const pid = projectByName.get(r.project); if (pid) data.projectId = pid; }
+
+      if (Object.keys(data).length > 0) {
+        await prisma.lead.update({ where: { id: lead.id }, data });
+        updated++;
+      }
+    }
+
     revalidatePath("/admin");
     revalidatePath("/leads");
-    return { ok: true, created, skipped: rows.length - created };
+    return { ok: true, created, updated, skipped: rows.length - created - updated };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

@@ -3,8 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import {
   channelLabels, stageLabels, priorityLabels, unitTypeLabels,
-  purchaseMethodLabels, purchaseGoalLabels,
 } from "@/lib/labels";
+import { normalizePurchaseMethod, normalizePurchaseGoal } from "@/lib/value-normalize";
 
 // ===== أدوات CSV ومطابقة (مكتفية ذاتيًا لتشتغل خارج سياق "use server") =====
 
@@ -17,8 +17,6 @@ const channelBy = reverse(channelLabels);
 const stageBy = reverse(stageLabels);
 const priorityBy = reverse(priorityLabels);
 const unitTypeBy = reverse(unitTypeLabels);
-const purchaseMethodBy = reverse(purchaseMethodLabels);
-const purchaseGoalBy = reverse(purchaseGoalLabels);
 
 const HEADERS: Record<string, string[]> = {
   name: ["الاسم", "الإسم", "اسم", "الاسم الكامل", "name", "full name", "fullname"],
@@ -149,8 +147,8 @@ export async function runSheetSync(): Promise<SyncResult> {
         priority: (r.priority && priorityBy[r.priority]) || "MEDIUM",
         unitType: r.unitType ? unitTypeBy[r.unitType] ?? null : null,
         budget: r.budget ? Number(r.budget) : null,
-        purchaseMethod: r.purchaseMethod ? purchaseMethodBy[r.purchaseMethod] ?? null : null,
-        purchaseGoal: r.purchaseGoal ? purchaseGoalBy[r.purchaseGoal] ?? null : null,
+        purchaseMethod: normalizePurchaseMethod(r.purchaseMethod),
+        purchaseGoal: normalizePurchaseGoal(r.purchaseGoal),
         preferredDistrict: r.district || null,
         notes: r.notes || null,
         projectId: r.project ? projectByName.get(r.project) ?? null : null,

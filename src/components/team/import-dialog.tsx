@@ -34,8 +34,10 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
   const [result, setResult] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [assignMode, setAssignMode] = useState("self");
+  const [updateExisting, setUpdateExisting] = useState(false);
 
   const newCount = previewRows.filter((r) => r.status === "new").length;
+  const existsCount = previewRows.filter((r) => r.status === "exists").length;
 
   function read(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,9 +68,13 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
 
   function commit() {
     startTransition(async () => {
-      const res = await commitImport(previewRows, assignMode);
-      if (res.ok) { setResult(`تم استيراد ${toArabicDigits(res.created ?? 0)} عميل`); router.refresh(); setStep("source"); setPreviewRows([]); }
-      else setError(res.error ?? "صار خطأ");
+      const res = await commitImport(previewRows, assignMode, updateExisting);
+      if (res.ok) {
+        const parts = [`تم استيراد ${toArabicDigits(res.created ?? 0)} عميل`];
+        if ((res.updated ?? 0) > 0) parts.push(`وتحديث ${toArabicDigits(res.updated ?? 0)} موجود`);
+        setResult(parts.join(" "));
+        router.refresh(); setStep("source"); setPreviewRows([]);
+      } else setError(res.error ?? "صار خطأ");
     });
   }
 
@@ -165,17 +171,25 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
                 </tbody>
               </table>
             </div>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-              <button onClick={() => setStep("map")} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">رجوع للمطابقة</button>
-              <div className="flex items-center gap-2">
-                <select value={assignMode} onChange={(e) => setAssignMode(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                  <option value="self">إسناد لي</option>
-                  <option value="roundrobin">توزيع بالتساوي</option>
-                  {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
-                <button onClick={commit} disabled={pending || newCount === 0} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  استيراد ({toArabicDigits(newCount)})
-                </button>
+            <div className="mt-4 space-y-3 border-t border-border pt-4">
+              {existsCount > 0 && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
+                  حدّث القيم الفاضية للعملاء الموجودين ({toArabicDigits(existsCount)}) من بيانات الملف — يعبّي الفاضي فقط
+                </label>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button onClick={() => setStep("map")} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">رجوع للمطابقة</button>
+                <div className="flex items-center gap-2">
+                  <select value={assignMode} onChange={(e) => setAssignMode(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                    <option value="self">إسناد لي</option>
+                    <option value="roundrobin">توزيع بالتساوي</option>
+                    {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                  <button onClick={commit} disabled={pending || (newCount === 0 && !(updateExisting && existsCount > 0))} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    {newCount > 0 ? `استيراد (${toArabicDigits(newCount)})` : `تحديث (${toArabicDigits(existsCount)})`}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -168,7 +168,7 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
 export const purchaseMethodLabels: Record<PurchaseMethod, string> = {
   CASH: "كاش",
   BANK_FINANCE: "تمويل بنكي",
-  CASH_AND_FINANCE: "كاش + تمويل بنكي",
+  CASH_AND_FINANCE: "كاش + تمويل",
 };
 
 export const purchaseGoalLabels: Record<PurchaseGoal, string> = {
