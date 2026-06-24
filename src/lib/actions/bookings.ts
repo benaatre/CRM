@@ -10,6 +10,7 @@ import {
   FollowUpType,
   FollowUpResult,
   FollowUpSection,
+  ActivityType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -156,6 +157,15 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       });
       await tx.bookingEvent.create({
         data: { bookingId: booking.id, userId: user.id, toStage: immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION, note: immediateSale ? "تم الشراء (كاش فوري)" : "تم إنشاء الحجز" },
+      });
+      // سجل في تايملاين العميل (Activity) — مع اسم الموظف والوقت تلقائيًا.
+      await tx.activity.create({
+        data: {
+          leadId, userId: user.id, type: ActivityType.NOTE,
+          note: immediateSale
+            ? `تم تسجيل شراء فوري — الوحدة ${unit.number} — المشروع ${unit.project?.name ?? "—"} — المبلغ ${(finalPrice + (vatAmount ?? 0)).toLocaleString("en-US")} ر.س`
+            : `تم تسجيل حجز — الوحدة ${unit.number} — المشروع ${unit.project?.name ?? "—"}`,
+        },
       });
       await logAudit(tx, {
         userId: user.id, action: "booking.created", entity: "booking", entityId: booking.id,
