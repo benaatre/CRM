@@ -16,7 +16,7 @@ export function DistributeDialog({
 }) {
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>("equal");
-  const [loads, setLoads] = useState<{ id: string; name: string; count: number }[] | null>(null);
+  const [loads, setLoads] = useState<{ id: string; name: string; count: number; maxClients: number | null; remaining: number | null }[] | null>(null);
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +29,9 @@ export function DistributeDialog({
 
   const totalWanted = Object.values(alloc).reduce((s, v) => s + (Number(v) || 0), 0);
   const over = totalWanted > availableUnassigned;
-  const canRun = mode === "custom" ? !over && totalWanted > 0 : true;
+  // تجاوز موظفٍ لسعته المتبقية
+  const overCap = (loads ?? []).some((e) => e.remaining != null && (Number(alloc[e.id]) || 0) > e.remaining);
+  const canRun = mode === "custom" ? !over && !overCap && totalWanted > 0 : true;
 
   function run() {
     setError(null);
@@ -77,23 +79,29 @@ export function DistributeDialog({
                       <tr>
                         <th className="px-2 py-1.5 font-medium">الموظف</th>
                         <th className="px-2 py-1.5 font-medium">عملاؤه الآن</th>
+                        <th className="px-2 py-1.5 font-medium">المتبقّي له</th>
                         <th className="px-2 py-1.5 font-medium">عدد العملاء</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {loads.map((e) => (
-                        <tr key={e.id} className="border-t border-border">
-                          <td className="px-2 py-2 text-foreground">{e.name}</td>
-                          <td className="px-2 py-2 text-muted-foreground">{toArabicDigits(e.count)}</td>
-                          <td className="px-2 py-2">
-                            <input value={alloc[e.id] ?? ""} onChange={(ev) => setAlloc((a) => ({ ...a, [e.id]: ev.target.value.replace(/\D/g, "") }))} inputMode="numeric" dir="ltr" placeholder="٠" className="w-16 rounded border border-border bg-background px-2 py-1 text-center text-foreground outline-none focus:border-gold" />
-                          </td>
-                        </tr>
-                      ))}
+                      {loads.map((e) => {
+                        const rowOver = e.remaining != null && (Number(alloc[e.id]) || 0) > e.remaining;
+                        return (
+                          <tr key={e.id} className="border-t border-border">
+                            <td className="px-2 py-2 text-foreground">{e.name}</td>
+                            <td className="px-2 py-2 text-muted-foreground">{toArabicDigits(e.count)}</td>
+                            <td className="px-2 py-2 text-muted-foreground">{e.remaining == null ? "بلا حد" : toArabicDigits(e.remaining)}</td>
+                            <td className="px-2 py-2">
+                              <input value={alloc[e.id] ?? ""} onChange={(ev) => setAlloc((a) => ({ ...a, [e.id]: ev.target.value.replace(/\D/g, "") }))} inputMode="numeric" dir="ltr" placeholder="٠" className={`w-16 rounded border bg-background px-2 py-1 text-center text-foreground outline-none focus:border-gold ${rowOver ? "border-destructive" : "border-border"}`} />
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   <span className={`text-xs ${over ? "text-destructive" : "text-muted-foreground"}`}>المجموع: {toArabicDigits(totalWanted)} من {toArabicDigits(availableUnassigned)} متاح</span>
                   {over && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">المجموع أكبر من عدد العملاء المتاح ({toArabicDigits(availableUnassigned)}).</p>}
+                  {overCap && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">في موظف تجاوز سعته المتبقية — صحّح الأعداد المظللة بالأحمر.</p>}
                 </>
               )}
             </div>

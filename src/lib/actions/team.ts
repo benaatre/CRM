@@ -114,59 +114,104 @@ export async function toggleEmployeeActive(userId: string, active: boolean): Pro
   }
 }
 
+type LoadedEmployee = { id: string; name: string; maxClients: number | null; count: number; capacity: number };
+
+/** الموظفون المفعّلون مع حملهم الحالي (عملاء غير مؤرشفين) وسعتهم المتبقية (Infinity = بلا حد). */
+async function loadEmployees(): Promise<LoadedEmployee[]> {
+  const emps = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", active: true },
+    select: { id: true, name: true, maxClients: true, _count: { select: { assignedLeads: { where: { isArchived: false } } } } },
+    orderBy: { name: "asc" },
+  });
+  return emps.map((e) => ({
+    id: e.id,
+    name: e.name,
+    maxClients: e.maxClients,
+    count: e._count.assignedLeads,
+    capacity: e.maxClients == null ? Infinity : Math.max(0, e.maxClients - e._count.assignedLeads),
+  }));
+}
+
+function revalidateDistribution() {
+  revalidatePath("/admin");
+  revalidatePath("/leads");
+  revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+}
+
 /**
- * توزيع العملاء غير الموزّعين على الموظفين.
- * perEmployee غير محدّد → بالتساوي (round-robin على الكل).
- * perEmployee = N → كل موظف ياخذ حتى N عميل.
+ * توزيع العملاء غير الموزّعين على الموظفين — يحترم الحد الأقصى لكل موظف (maxClients).
+ * perEmployee غير محدّد → بالتساوي (round-robin على الكل، مع تخطّي من وصل حدّه).
+ * perEmployee = N → كل موظف ياخذ حتى N عميل (أو سعته المتبقية، الأصغر).
  */
 export async function distributeUnassigned(perEmployee?: number): Promise<ActionResult> {
   try {
     await requireManager();
-    const [emps, unassigned] = await Promise.all([
-      prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true } }),
-      prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } }),
-    ]);
+    const emps = await loadEmployees();
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
 
     const n = perEmployee && perEmployee > 0 ? perEmployee : 0;
-    const list = n ? unassigned.slice(0, n * emps.length) : unassigned;
+    // السعة لكل موظف: حدّه المتبقّي، ومع «عدد لكل موظف» نأخذ الأصغر بينه وبين n.
+    const cap = new Map(emps.map((e) => [e.id, n ? Math.min(e.capacity, n) : e.capacity]));
 
-    await prisma.$transaction(
-      list.map((lead, i) => {
-        const empIdx = n ? Math.floor(i / n) : i % emps.length;
-        return prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: emps[empIdx].id } });
-      }),
-    );
+    const order = emps.map((e) => e.id);
+    const updates: ReturnType<typeof prisma.lead.update>[] = [];
+    let idx = 0;
+    for (const lead of unassigned) {
+      let pick: string | null = null;
+      for (let tries = 0; tries < order.length; tries++) {
+        const id = order[idx % order.length];
+        idx++;
+        if ((cap.get(id) ?? 0) > 0) { pick = id; break; }
+      }
+      if (pick === null) break; // كل الموظفين وصلوا حدّهم الأقصى
+      cap.set(pick, (cap.get(pick) as number) - 1);
+      updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: pick } }));
+    }
+    if (updates.length === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
+    await prisma.$transaction(updates);
 
-    revalidatePath("/admin");
-    revalidatePath("/leads");
-    revalidatePath("/pipeline");
-    revalidatePath("/dashboard");
-    return { ok: true, message: `وُزّع ${list.length} عميل على ${emps.length} موظف` };
+    revalidateDistribution();
+    const leftover = unassigned.length - updates.length;
+    const base = `وُزّع ${updates.length} عميل على ${emps.length} موظف`;
+    return { ok: true, message: leftover > 0 ? `${base} — بقي ${leftover} بدون توزيع (الموظفون وصلوا حدّهم الأقصى)` : base };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
 }
 
-/** أحمال الموظفين الحالية (عدد العملاء النشطين لكل موظف) — لجدول التوزيع المخصّص. */
-export async function getEmployeeLoads(): Promise<{ id: string; name: string; count: number }[]> {
+/** أحمال الموظفين الحالية + السعة المتبقية — لجدول التوزيع المخصّص. */
+export async function getEmployeeLoads(): Promise<{ id: string; name: string; count: number; maxClients: number | null; remaining: number | null }[]> {
   await requireManager();
-  const emps = await prisma.user.findMany({
-    where: { role: "EMPLOYEE", active: true },
-    select: { id: true, name: true, _count: { select: { assignedLeads: { where: { isArchived: false } } } } },
-    orderBy: { name: "asc" },
-  });
-  return emps.map((e) => ({ id: e.id, name: e.name, count: e._count.assignedLeads }));
+  const emps = await loadEmployees();
+  return emps.map((e) => ({
+    id: e.id,
+    name: e.name,
+    count: e.count,
+    maxClients: e.maxClients,
+    remaining: e.capacity === Infinity ? null : e.capacity,
+  }));
 }
 
-/** توزيع مخصّص: عدد محدّد لكل موظف من العملاء غير الموزّعين (بترتيب الأقدم). */
+/** توزيع مخصّص: عدد محدّد لكل موظف من العملاء غير الموزّعين (بترتيب الأقدم) — لا يتجاوز سعة أي موظف. */
 export async function distributeCustom(alloc: { userId: string; count: number }[]): Promise<ActionResult> {
   try {
     await requireManager();
     const items = alloc.filter((a) => a.userId && a.count > 0);
     if (items.length === 0) return { ok: false, error: "حدّد أعدادًا للتوزيع" };
     const totalWanted = items.reduce((s, a) => s + a.count, 0);
+
+    const emps = await loadEmployees();
+    const capById = new Map(emps.map((e) => [e.id, e.capacity]));
+    const nameById = new Map(emps.map((e) => [e.id, e.name]));
+    for (const a of items) {
+      const capacity = capById.get(a.userId);
+      if (capacity !== undefined && capacity !== Infinity && a.count > capacity) {
+        return { ok: false, error: `${nameById.get(a.userId) ?? "موظف"}: العدد ${a.count} يتجاوز سعته المتبقية (${capacity})` };
+      }
+    }
 
     const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
@@ -181,48 +226,45 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
     }
     await prisma.$transaction(targets.map((t) => prisma.lead.update({ where: { id: t.id }, data: { assignedToId: t.userId } })));
 
-    revalidatePath("/admin");
-    revalidatePath("/leads");
-    revalidatePath("/pipeline");
-    revalidatePath("/dashboard");
+    revalidateDistribution();
     return { ok: true, message: `وُزّع ${targets.length} عميل حسب الأعداد المحددة` };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
 }
 
-/** توزيع غير الموزّعين على الأخفّ حملًا — كل عميل يروح للموظف الأقل عملاءً وقتها. */
+/** توزيع غير الموزّعين على الأخفّ حملًا — يحترم الحد الأقصى لكل موظف. */
 export async function distributeLeastLoaded(): Promise<ActionResult> {
   try {
     await requireManager();
-    const [emps, unassigned] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: "EMPLOYEE", active: true },
-        select: { id: true, _count: { select: { assignedLeads: true } } },
-      }),
-      prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } }),
-    ]);
+    const emps = await loadEmployees();
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
 
-    const load = new Map(emps.map((e) => [e.id, e._count.assignedLeads]));
-    const updates = unassigned.map((lead) => {
-      let best = emps[0].id;
+    const load = new Map(emps.map((e) => [e.id, e.count]));
+    const cap = new Map(emps.map((e) => [e.id, e.capacity]));
+    const updates: ReturnType<typeof prisma.lead.update>[] = [];
+    for (const lead of unassigned) {
+      let best: string | null = null;
       let min = Infinity;
       for (const e of emps) {
+        if ((cap.get(e.id) ?? 0) <= 0) continue;
         const l = load.get(e.id) ?? 0;
         if (l < min) { min = l; best = e.id; }
       }
+      if (best === null) break; // كل الموظفين وصلوا حدّهم الأقصى
       load.set(best, (load.get(best) ?? 0) + 1);
-      return prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: best } });
-    });
+      cap.set(best, (cap.get(best) as number) - 1);
+      updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: best } }));
+    }
+    if (updates.length === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
     await prisma.$transaction(updates);
 
-    revalidatePath("/admin");
-    revalidatePath("/leads");
-    revalidatePath("/pipeline");
-    revalidatePath("/dashboard");
-    return { ok: true, message: `وُزّع ${unassigned.length} عميل على الأخفّ حملًا` };
+    revalidateDistribution();
+    const leftover = unassigned.length - updates.length;
+    const base = `وُزّع ${updates.length} عميل على الأخفّ حملًا`;
+    return { ok: true, message: leftover > 0 ? `${base} — بقي ${leftover} بدون توزيع (الموظفون وصلوا حدّهم الأقصى)` : base };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
