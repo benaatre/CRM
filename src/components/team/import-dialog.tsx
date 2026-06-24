@@ -6,6 +6,7 @@ import { X, Copy, Check, Loader2, FileUp, ClipboardPaste, Link2, ArrowRight } fr
 import { toArabicDigits } from "@/lib/format";
 import { readSheet, previewMapped, commitImport } from "@/lib/actions/import";
 import { IMPORT_TEMPLATE, MAPPABLE_FIELDS, type ImportRow } from "@/lib/import-meta";
+import { channelLabels, channelOrder } from "@/lib/labels";
 
 type Employee = { id: string; name: string };
 type Mode = "file" | "paste" | "sheet";
@@ -36,6 +37,10 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
   const [copied, setCopied] = useState(false);
   const [assignMode, setAssignMode] = useState("self");
   const [updateExisting, setUpdateExisting] = useState(false);
+  const [defaultChannel, setDefaultChannel] = useState("");
+
+  const hasChannelColumn = Object.values(mapping).includes("channel");
+  const channelReady = hasChannelColumn || !!defaultChannel;
 
   const newCount = previewRows.filter((r) => r.status === "new").length;
   const existsCount = previewRows.filter((r) => r.status === "exists").length;
@@ -76,7 +81,7 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
 
   function commit() {
     startTransition(async () => {
-      const res = await commitImport(previewRows, assignMode, updateExisting);
+      const res = await commitImport(previewRows, assignMode, updateExisting, defaultChannel || undefined);
       if (res.ok) {
         const parts = [`تم استيراد ${toArabicDigits(res.created ?? 0)} عميل`];
         if ((res.updated ?? 0) > 0) parts.push(`وتحديث ${toArabicDigits(res.updated ?? 0)} موجود`);
@@ -193,6 +198,26 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
               </table>
             </div>
             <div className="mt-4 space-y-3 border-t border-border pt-4">
+              {/* القناة (المنصة) — إجبارية: عمود في الملف أو قناة موحّدة للكل */}
+              {!hasChannelColumn ? (
+                <div className="space-y-1.5">
+                  <span className="text-xs text-muted-foreground">المنصة / القناة لكل العملاء في الملف *</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {channelOrder.map((c) => (
+                      <button
+                        type="button"
+                        key={c}
+                        onClick={() => setDefaultChannel(c)}
+                        className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${defaultChannel === c ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {channelLabels[c]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">القناة تُقرأ من عمود في الملف.</p>
+              )}
               {existsCount > 0 && (
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
@@ -207,7 +232,7 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
                     <option value="roundrobin">توزيع بالتساوي</option>
                     {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
                   </select>
-                  <button onClick={commit} disabled={pending || (newCount === 0 && !(updateExisting && existsCount > 0))} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                  <button onClick={commit} disabled={pending || !channelReady || (newCount === 0 && !(updateExisting && existsCount > 0))} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                     {newCount > 0 ? `استيراد (${toArabicDigits(newCount)})` : `تحديث (${toArabicDigits(existsCount)})`}
                   </button>
                 </div>

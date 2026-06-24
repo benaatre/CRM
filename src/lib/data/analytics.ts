@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Channel, LeadStage } from "@prisma/client";
+import type { Channel, LeadStage, PurchaseMethod, PurchaseGoal } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const num = (v: { toNumber(): number } | null) => (v ? v.toNumber() : 0);
@@ -38,6 +38,8 @@ export type AnalyticsData = {
   };
   funnel: { stage: LeadStage; count: number; convFromPrev: number | null }[];
   channels: { channel: Channel; count: number }[];
+  purchaseMethods: { method: PurchaseMethod; count: number }[];
+  purchaseGoals: { goal: PurchaseGoal; count: number }[];
   team: { name: string; closed: number; bookings: number }[];
 };
 
@@ -52,7 +54,7 @@ const FUNNEL: LeadStage[] = [
 ];
 
 export async function getAnalytics(): Promise<AnalyticsData> {
-  const [bookings, leads, channelGroups, stageGroups, employees, closedByEmp, bookingsByEmp] =
+  const [bookings, leads, channelGroups, stageGroups, employees, closedByEmp, bookingsByEmp, methodGroups, goalGroups] =
     await Promise.all([
       prisma.booking.findMany({
         include: { unit: { select: { project: { select: { id: true, name: true } } } } },
@@ -65,6 +67,8 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true } }),
       prisma.lead.groupBy({ by: ["assignedToId"], where: { stage: "CLOSED_WON" }, _count: { _all: true } }),
       prisma.booking.groupBy({ by: ["sellerId"], _count: { _all: true } }),
+      prisma.lead.groupBy({ by: ["purchaseMethod"], where: { purchaseMethod: { not: null } }, _count: { _all: true } }),
+      prisma.lead.groupBy({ by: ["purchaseGoal"], where: { purchaseGoal: { not: null } }, _count: { _all: true } }),
     ]);
 
   // ===== المالية =====
@@ -138,6 +142,16 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     .map((g) => ({ channel: g.channel, count: g._count._all }))
     .sort((a, b) => b.count - a.count);
 
+  // ===== طريقة وهدف الشراء =====
+  const purchaseMethods = methodGroups
+    .filter((g) => g.purchaseMethod)
+    .map((g) => ({ method: g.purchaseMethod as PurchaseMethod, count: g._count._all }))
+    .sort((a, b) => b.count - a.count);
+  const purchaseGoals = goalGroups
+    .filter((g) => g.purchaseGoal)
+    .map((g) => ({ goal: g.purchaseGoal as PurchaseGoal, count: g._count._all }))
+    .sort((a, b) => b.count - a.count);
+
   // ===== الفريق =====
   const closedMap = new Map(closedByEmp.map((r) => [r.assignedToId, r._count._all]));
   const bookMap = new Map(bookingsByEmp.map((r) => [r.sellerId, r._count._all]));
@@ -163,6 +177,8 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     },
     funnel,
     channels,
+    purchaseMethods,
+    purchaseGoals,
     team,
   };
 }

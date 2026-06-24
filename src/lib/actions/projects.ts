@@ -2,13 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
-import { ProjectStatus, UnitType, UnitStatus } from "@prisma/client";
+import { ProjectStatus, UnitType, UnitStatus, Floor } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { unitTypeLabels, unitStatusLabels } from "@/lib/labels";
 
 export type Result = { ok: boolean; error?: string };
+
+/** تطبيع نص الدور إلى enum (أرضي/أول/ثاني/علوي) — للاستيراد. */
+function normalizeFloor(raw?: string | null): Floor | null {
+  if (!raw) return null;
+  const s = raw.replace(/[ـً-ْ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").trim().toLowerCase();
+  if (!s) return null;
+  if (/ارض|ground/.test(s)) return Floor.GROUND;
+  if (/علو|اخير|روف|top|pent/.test(s)) return Floor.TOP;
+  if (/اول|first|(^|\D)1(\D|$)/.test(s)) return Floor.FIRST;
+  if (/ثاني|second|(^|\D)2(\D|$)/.test(s)) return Floor.SECOND;
+  return null;
+}
 
 const num = (fd: FormData, key: string): number | null => {
   const v = String(fd.get(key) ?? "").replace(/[^\d.]/g, "");
@@ -88,10 +100,13 @@ export async function createUnit(projectId: string, formData: FormData): Promise
         number,
         type: (String(formData.get("type") ?? "APARTMENT") as UnitType),
         floor: str(formData, "floor"),
+        floorLevel: (() => { const f = String(formData.get("floorLevel") ?? ""); return f && f in Floor ? (f as Floor) : null; })(),
         area: num(formData, "area"),
+        totalArea: num(formData, "totalArea"),
         price: num(formData, "price"),
         status: (String(formData.get("status") ?? "AVAILABLE") as UnitStatus),
         discountPercent: num(formData, "discountPercent"),
+        discountedPrice: num(formData, "discountedPrice"),
         notes: str(formData, "notes"),
       },
     });
@@ -115,10 +130,13 @@ export async function updateUnit(unitId: string, formData: FormData): Promise<Re
         number,
         type: (String(formData.get("type") ?? "APARTMENT") as UnitType),
         floor: str(formData, "floor"),
+        floorLevel: (() => { const f = String(formData.get("floorLevel") ?? ""); return f && f in Floor ? (f as Floor) : null; })(),
         area: num(formData, "area"),
+        totalArea: num(formData, "totalArea"),
         price: num(formData, "price"),
         status: (String(formData.get("status") ?? "AVAILABLE") as UnitStatus),
         discountPercent: num(formData, "discountPercent"),
+        discountedPrice: num(formData, "discountedPrice"),
         notes: str(formData, "notes"),
       },
       select: { projectId: true },
@@ -156,17 +174,25 @@ function reverse<T extends string>(map: Record<T, string>): Record<string, T> {
 const unitTypeBy = reverse(unitTypeLabels);
 const unitStatusBy = reverse(unitStatusLabels);
 
-const U_HEADERS: Record<string, string[]> = {
-  number: ["رقم الوحدة", "رقم", "الوحدة", "number", "unit", "no"],
-  type: ["النوع", "نوع الوحدة", "type"],
-  floor: ["الدور", "دور", "floor"],
-  area: ["المساحة", "مساحة", "area"],
-  price: ["السعر", "سعر", "price"],
-  status: ["الحالة", "حالة", "status"],
-};
+// مطابقة بالاحتواء (الأكثر تحديدًا أولًا).
+const U_HEADERS: [string, string[]][] = [
+  ["number", ["رقم الوحدة", "رقم", "الوحدة", "number", "unit", "no"]],
+  ["type", ["نوع", "type"]],
+  ["floor", ["دور", "floor", "الطابق"]],
+  ["totalArea", ["المساحة الاجمالية", "المساحة الإجمالية", "اجمالي المساحة", "total area", "gross"]],
+  ["area", ["مساحة", "area", "صافي"]],
+  ["discountedPrice", ["السعر بعد الخصم", "بعد الخصم", "discounted", "net price", "final price"]],
+  ["price", ["السعر", "سعر", "price"]],
+  ["status", ["حالة", "status"]],
+  ["notes", ["ملاحظ", "notes", "note"]],
+];
+function normH(s: string): string {
+  return s.replace(/[ـً-ْ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, " ").trim().toLowerCase();
+}
 function matchUnitField(h: string): string | null {
-  const x = h.trim().toLowerCase();
-  for (const f in U_HEADERS) if (U_HEADERS[f].some((s) => s.toLowerCase() === x)) return f;
+  const x = normH(h);
+  if (!x) return null;
+  for (const [f, keys] of U_HEADERS) if (keys.some((s) => x.includes(normH(s)))) return f;
   return null;
 }
 
@@ -200,7 +226,8 @@ async function parseXlsx(buf: ArrayBuffer): Promise<string[][]> {
 }
 
 export type UnitImportRow = {
-  number: string; type?: string; floor?: string; area?: string; price?: string; status?: string;
+  number: string; type?: string; floor?: string; area?: string; totalArea?: string;
+  price?: string; discountedPrice?: string; status?: string; notes?: string;
   exists: boolean;
 };
 
@@ -232,7 +259,9 @@ export async function parseUnitsSheet(
       row.forEach((v, i) => { if (colMap[i]) rec[colMap[i]] = v.trim(); });
       return {
         number: rec.number ?? "", type: rec.type, floor: rec.floor,
-        area: rec.area?.replace(/[^\d.]/g, ""), price: rec.price?.replace(/[^\d]/g, ""), status: rec.status,
+        area: rec.area?.replace(/[^\d.]/g, ""), totalArea: rec.totalArea?.replace(/[^\d.]/g, ""),
+        price: rec.price?.replace(/[^\d]/g, ""), discountedPrice: rec.discountedPrice?.replace(/[^\d]/g, ""),
+        status: rec.status, notes: rec.notes,
         exists: !!rec.number && existingSet.has(rec.number),
       };
     }).filter((r) => r.number);
@@ -253,9 +282,13 @@ export async function commitUnits(
       const data = {
         type: r.type ? unitTypeBy[r.type] ?? UnitType.APARTMENT : UnitType.APARTMENT,
         floor: r.floor || null,
+        floorLevel: normalizeFloor(r.floor),
         area: r.area ? Number(r.area) : null,
+        totalArea: r.totalArea ? Number(r.totalArea) : null,
         price: r.price ? Number(r.price) : null,
+        discountedPrice: r.discountedPrice ? Number(r.discountedPrice) : null,
         status: r.status ? unitStatusBy[r.status] ?? UnitStatus.AVAILABLE : UnitStatus.AVAILABLE,
+        notes: r.notes || null,
       };
       if (r.exists) {
         if (!updateExisting) { skipped++; continue; }

@@ -3,7 +3,7 @@
 import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Phone, LayoutGrid, BarChart2, Rows3, Check } from "lucide-react";
+import { Phone, MessageCircle, LayoutGrid, BarChart2, Rows3, Check } from "lucide-react";
 import { stageLabels, stageColor } from "@/lib/labels";
 import { formatCurrency, formatNumberShort, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
@@ -144,21 +144,30 @@ export function DashboardView({ data }: { data: DashboardData }) {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* ليدات تنتظر أول تواصل */}
-        <Section title="ليدات تنتظر أول تواصل" hint="سرعة الرد ترفع التحويل ٩ أضعاف" bar="bg-destructive">
+        {/* ليدات تنتظر أول تواصل (NEW + مُسند) */}
+        <Section title="ليدات تنتظر أول تواصل" hint="سرعة الرد ترفع التحويل ٩ أضعاف" bar="bg-destructive" count={data.waitingCount}>
           {data.waitingFirstContact.length === 0 ? (
             <Empty text="ما فيه ليدات جديدة تنتظر" />
           ) : (
             <div className="space-y-2">
               {data.waitingFirstContact.map((l) => (
-                <div key={l.id} className="flex items-center justify-between rounded-xl border border-border p-3">
-                  <div>
-                    <div className="font-medium text-foreground">{l.name}</div>
-                    <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">{timeAgo(l.createdAt)}</span>
+                <div key={l.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-foreground">{l.name}</span>
+                      <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">{timeAgo(l.createdAt)}</span>
+                    </div>
+                    {data.manager && l.assignedToName && <div className="mt-0.5 text-xs text-muted-foreground/70">{l.assignedToName}</div>}
                   </div>
-                  <a href={`tel:${l.phone}`} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90">
-                    <Phone className="size-3.5" /> اتصال
-                  </a>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <a href={`tel:${l.phone}`} className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90" title="اتصال">
+                      <Phone className="size-3.5" /> اتصال
+                    </a>
+                    <a href={`https://wa.me/966${l.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 rounded-lg bg-success/15 px-2.5 py-1.5 text-xs font-medium text-success hover:bg-success/25" title="واتساب">
+                      <MessageCircle className="size-3.5" /> واتساب
+                    </a>
+                    <Link href={`/leads/${l.id}`} className="rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold" title="فتح ملف العميل">←</Link>
+                  </div>
                 </div>
               ))}
             </div>
@@ -272,13 +281,18 @@ export function DashboardView({ data }: { data: DashboardData }) {
   );
 }
 
-function Section({ title, hint, bar, children }: { title: string; hint?: string; bar?: string; children: React.ReactNode }) {
+function Section({ title, hint, bar, count, children }: { title: string; hint?: string; bar?: string; count?: number; children: React.ReactNode }) {
   return (
     <section className="glass rounded-2xl p-5">
       <div className="mb-4 flex items-center gap-2">
         {bar && <span className={`h-5 w-1 rounded-full ${bar}`} />}
-        <div>
-          <h2 className="font-semibold text-foreground">{title}</h2>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-foreground">{title}</h2>
+            {count != null && count > 0 && (
+              <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-bold text-destructive">{toArabicDigits(count)}</span>
+            )}
+          </div>
           {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
         </div>
       </div>

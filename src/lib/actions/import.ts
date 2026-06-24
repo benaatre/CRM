@@ -275,7 +275,7 @@ export async function previewMapped(
  * updateExisting = true → يعبّي القيم الفاضية للعملاء الموجودين (نفس الجوال) من بيانات الملف
  * بدون المساس بالقيم المعبّأة أصلًا — مفيد لإصلاح عملاء استُوردوا سابقًا بقيم لم تُطابَق.
  */
-export async function commitImport(rows: ImportRow[], assignMode: string, updateExisting = false): Promise<ImportResult> {
+export async function commitImport(rows: ImportRow[], assignMode: string, updateExisting = false, defaultChannel?: string): Promise<ImportResult> {
   try {
     const me = await requireManager();
     const fresh = rows.filter((r) => r.status === "new");
@@ -303,7 +303,7 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
         data: {
           name: r.name,
           phone: r.phone,
-          channel: (r.channel && channelBy[r.channel]) || Channel.OTHER,
+          channel: (r.channel && channelBy[r.channel]) || (defaultChannel && defaultChannel in Channel ? (defaultChannel as Channel) : Channel.OTHER),
           stage: (r.stage && stageBy[r.stage]) || LeadStage.NEW,
           priority: (r.priority && priorityBy[r.priority]) || Priority.MEDIUM,
           unitType: r.unitType ? unitTypeBy[r.unitType] ?? null : null,

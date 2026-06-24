@@ -275,6 +275,19 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
   };
 }
 
+/**
+ * عدد «لم يتم التواصل» = NEW + مُسند لموظف فعلي (ليس مالكًا) + غير مؤرشف.
+ * assigneeIds (اختياري): يقصر العدّ على موظفين محدّدين (للمدير).
+ */
+export async function getNotContactedCount(assigneeIds?: string[]): Promise<number> {
+  const { where } = await scopeForUser();
+  const ownerIds = await getOwnerIds();
+  const assignee = assigneeIds && assigneeIds.length
+    ? { in: assigneeIds }
+    : { not: null, ...(ownerIds.length ? { notIn: ownerIds } : {}) };
+  return prisma.lead.count({ where: { ...where, stage: "NEW", isArchived: false, assignedToId: assignee } });
+}
+
 /** قائمة الموظفين (لفلتر المدير وإعادة الإسناد). */
 export async function getEmployees() {
   return prisma.user.findMany({

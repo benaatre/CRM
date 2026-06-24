@@ -1,6 +1,6 @@
 import { requireManager } from "@/lib/auth-guards";
 import { getAnalytics } from "@/lib/data/analytics";
-import { stageLabels, channelLabels } from "@/lib/labels";
+import { stageLabels, channelLabels, purchaseMethodLabels, purchaseGoalLabels } from "@/lib/labels";
 import { formatCurrency, toArabicDigits } from "@/lib/format";
 import { AiAssistant } from "@/components/analytics/ai-assistant";
 
@@ -155,6 +155,18 @@ export default async function AnalyticsPage() {
         </section>
       </div>
 
+      {/* طريقة الشراء + هدف الشراء */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="glass rounded-2xl p-5">
+          <h2 className="mb-4 font-semibold text-foreground">طريقة الشراء</h2>
+          <Dist items={a.purchaseMethods.map((m) => ({ label: purchaseMethodLabels[m.method], count: m.count }))} color="var(--gold)" />
+        </section>
+        <section className="glass rounded-2xl p-5">
+          <h2 className="mb-4 font-semibold text-foreground">هدف الشراء</h2>
+          <Dist items={a.purchaseGoals.map((g) => ({ label: purchaseGoalLabels[g.goal], count: g.count }))} color="var(--info)" />
+        </section>
+      </div>
+
       {/* أداء الموظفين (أعمدة) */}
       <section className="glass rounded-2xl p-5">
         <h2 className="mb-4 font-semibold text-foreground">أداء الموظفين (صفقات مقفولة)</h2>
@@ -172,6 +184,27 @@ export default async function AnalyticsPage() {
           {a.team.length === 0 && <p className="text-sm text-muted-foreground">ما فيه موظفين.</p>}
         </div>
       </section>
+    </div>
+  );
+}
+
+function Dist({ items, color }: { items: { label: string; count: number }[]; color: string }) {
+  if (items.length === 0) return <p className="text-sm text-muted-foreground">ما فيه بيانات.</p>;
+  const total = items.reduce((s, i) => s + i.count, 0) || 1;
+  const max = Math.max(...items.map((i) => i.count), 1);
+  return (
+    <div className="space-y-3">
+      {items.map((it) => (
+        <div key={it.label} className="flex items-center gap-3">
+          <span className="w-24 shrink-0 text-sm text-muted-foreground">{it.label}</span>
+          <div className="h-6 flex-1 overflow-hidden rounded-lg bg-secondary">
+            <div className="flex h-full items-center justify-end rounded-lg px-2 text-xs font-medium text-primary-foreground" style={{ width: `${Math.max((it.count / max) * 100, 8)}%`, background: color }}>
+              {toArabicDigits(it.count)}
+            </div>
+          </div>
+          <span className="w-10 shrink-0 text-left text-xs text-gold">{toArabicDigits(Math.round((it.count / total) * 100))}٪</span>
+        </div>
+      ))}
     </div>
   );
 }

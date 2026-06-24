@@ -95,10 +95,15 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     // تحقق توفّر الوحدة
     const unit = await prisma.unit.findUnique({
       where: { id: unitId },
-      select: { status: true, number: true, project: { select: { name: true } }, booking: { select: { id: true } } },
+      select: { status: true, number: true, project: { select: { name: true, maxDiscountPercent: true } }, booking: { select: { id: true } } },
     });
     if (!unit) return { ok: false, error: "الوحدة غير موجودة" };
     if (unit.booking) return { ok: false, error: "الوحدة محجوزة مسبقًا" };
+
+    // تحذير تجاوز الخصم المسموح للمشروع (الحجز يتم، لكن يُوسم للمدير).
+    const discountPct = price > 0 ? (discount / price) * 100 : 0;
+    const maxPct = unit.project?.maxDiscountPercent != null ? Number(unit.project.maxDiscountPercent) : null;
+    const discountExceeded = maxPct != null && discountPct > maxPct + 0.001;
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -119,6 +124,9 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           deposit, price, discount, finalPrice,
           stage: immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION,
           stageIndex: immediateSale ? 5 : 0,
+          discountExceeded,
+          discountPercentAtBooking: Math.round(discountPct * 100) / 100,
+          maxDiscountPercentAtBooking: maxPct,
           financePercent, financeRequestNo, cashAmount,
           expectedCheckDate, expectedTransferDate, cashPaymentType,
           installmentsCount, installmentAmount,

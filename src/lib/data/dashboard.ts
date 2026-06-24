@@ -3,7 +3,7 @@ import "server-only";
 import type { LeadStage } from "@prisma/client";
 import { FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { scopeForUser } from "@/lib/data/leads";
+import { scopeForUser, getOwnerIds } from "@/lib/data/leads";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 // المتوقّع من اللمسات (متابعات) لكل عميل عند حساب نسبة النشاط.
@@ -82,6 +82,7 @@ export type DashboardData = {
   };
   followupsToday: MiniLead[];
   waitingFirstContact: MiniLead[];
+  waitingCount: number; // إجمالي «لم يتم التواصل» (NEW + مُسند)
   recentSales: RecentSale[];
   funnel: { stage: LeadStage; count: number }[];
   team: TeamRow[];
@@ -91,8 +92,11 @@ const CLOSED: LeadStage[] = ["CLOSED_WON", "CLOSED_LOST"];
 
 export async function getDashboard(period: Period): Promise<DashboardData> {
   const { user, where, manager } = await scopeForUser();
+  const ownerIds = await getOwnerIds();
   const since = sinceFor(period);
   const inPeriod = since ? { gte: since } : undefined;
+  // «لم يتم التواصل»: جديد + مُسند لموظف فعلي (المُسند لمالك = غير موزّع).
+  const waitingWhere = { ...where, stage: "NEW" as const, assignedToId: { not: null, ...(ownerIds.length ? { notIn: ownerIds } : {}) } };
 
   const bookingScope = manager ? {} : { sellerId: user.id };
   // الزيارات تُحسب من جدول FollowUp (نوع زيارة) — للموظف: ما أنشأه هو.
@@ -152,13 +156,16 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     include: { assignedTo: { select: { name: true } } },
   });
 
-  // ليدات تنتظر أول تواصل
-  const waitingRaw = await prisma.lead.findMany({
-    where: { ...where, stage: "NEW" },
-    orderBy: { createdAt: "asc" },
-    take: 8,
-    include: { assignedTo: { select: { name: true } } },
-  });
+  // ليدات تنتظر أول تواصل (NEW + مُسند) + العدد الكلي
+  const [waitingRaw, waitingCount] = await Promise.all([
+    prisma.lead.findMany({
+      where: waitingWhere,
+      orderBy: { createdAt: "asc" },
+      take: 8,
+      include: { assignedTo: { select: { name: true } } },
+    }),
+    prisma.lead.count({ where: waitingWhere }),
+  ]);
 
   const toMini = (l: (typeof followupsRaw)[number]): MiniLead => ({
     id: l.id,
@@ -247,6 +254,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     kpis: { totalClients, newInPeriod, unassigned, bookings, visits, closedWon, conversion },
     followupsToday: followupsRaw.map(toMini),
     waitingFirstContact: waitingRaw.map(toMini),
+    waitingCount,
     recentSales,
     funnel,
     team,

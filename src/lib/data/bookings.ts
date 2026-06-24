@@ -38,6 +38,9 @@ export type BookingCard = {
   deliveryStatus: DeliveryStatus;
   financeRejected: boolean;
   financeRejectedReason: string | null;
+  discountExceeded: boolean;
+  discountPercentAtBooking: number | null;
+  maxDiscountPercentAtBooking: number | null;
   collected: number;
   sellerName: string | null;
   // حقول الدفع المرنة
@@ -101,6 +104,9 @@ export async function getBookings(): Promise<BookingsData> {
     deliveryStatus: b.deliveryStatus,
     financeRejected: b.financeRejected,
     financeRejectedReason: b.financeRejectedReason,
+    discountExceeded: b.discountExceeded,
+    discountPercentAtBooking: dec(b.discountPercentAtBooking),
+    maxDiscountPercentAtBooking: dec(b.maxDiscountPercentAtBooking),
     collected: b.collected.toNumber(),
     sellerName: b.seller?.name ?? null,
     expectedCheckDate: b.expectedCheckDate,

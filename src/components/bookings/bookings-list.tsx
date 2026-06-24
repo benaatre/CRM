@@ -68,14 +68,14 @@ export function BookingsList({ data }: { data: BookingsData }) {
         <p className="py-12 text-center text-muted-foreground">ما فيه حجوزات{filter === "mine" ? " لك" : ""} بعد.</p>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
-          {cards.map((b) => <BookingCardView key={b.id} b={b} />)}
+          {cards.map((b) => <BookingCardView key={b.id} b={b} manager={data.manager} />)}
         </div>
       )}
     </div>
   );
 }
 
-function BookingCardView({ b }: { b: BookingCard }) {
+function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +124,14 @@ function BookingCardView({ b }: { b: BookingCard }) {
           </div>
           <div className="mt-1 text-sm text-gold">{b.projectName ?? "—"} · وحدة <span dir="ltr">{b.unitNumber}</span></div>
         </div>
-        {b.financeRejected && (
-          <span className="flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-1 text-xs text-destructive"><AlertTriangle className="size-3.5" /> رفض تمويل</span>
-        )}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {b.financeRejected && (
+            <span className="flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-1 text-xs text-destructive"><AlertTriangle className="size-3.5" /> رفض تمويل</span>
+          )}
+          {manager && b.discountExceeded && (
+            <span className="flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-1 text-xs text-destructive"><AlertTriangle className="size-3.5" /> تجاوز الخصم</span>
+          )}
+        </div>
       </div>
 
       {/* شريط تقدّم البيع */}
@@ -164,6 +169,13 @@ function BookingCardView({ b }: { b: BookingCard }) {
 
       {b.financeRejected && b.financeRejectedReason && (
         <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">السبب: {b.financeRejectedReason}</p>
+      )}
+
+      {manager && b.discountExceeded && b.discountPercentAtBooking != null && (
+        <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          تم تجاوز الخصم المسموح: الخصم {toArabicDigits(b.discountPercentAtBooking)}٪ والمسموح {toArabicDigits(b.maxDiscountPercentAtBooking ?? 0)}٪
+          {b.maxDiscountPercentAtBooking != null && ` (فرق ${toArabicDigits(Math.round((b.discountPercentAtBooking - b.maxDiscountPercentAtBooking) * 100) / 100)}٪)`}
+        </p>
       )}
 
       {/* تحكم */}

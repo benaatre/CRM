@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageOrder } from "@/lib/labels";
+import { toArabicDigits } from "@/lib/format";
 import type { LeadFilterValues } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
@@ -23,7 +24,7 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false,
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted,
 }: {
   basePath: string;
   isManager: boolean;
@@ -31,6 +32,7 @@ export function LeadsFilterBar({
   filters: LeadFilterValues;
   preserve?: Record<string, string>;
   hideUnassignedEmp?: boolean;
+  notContacted?: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -68,9 +70,22 @@ export function LeadsFilterBar({
   }
 
   const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0;
+  const notContactedActive = filters.stages.length === 1 && filters.stages[0] === "NEW";
 
   return (
     <div className="space-y-3">
+      {/* فلتر «لم يتم التواصل» — أحمر مع العدد */}
+      {notContacted != null && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => go({ stages: notContactedActive ? [] : ["NEW"] })}
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${notContactedActive ? "border-destructive bg-destructive/20 text-destructive" : "border-destructive/40 text-destructive hover:bg-destructive/10"}`}
+          >
+            لم يتم التواصل <span className="font-bold">({toArabicDigits(notContacted)})</span>
+          </button>
+        </div>
+      )}
+
       {/* فلتر المراحل */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button onClick={() => go({ stages: [] })} className={chipAll(filters.stages.length === 0)}>كل المراحل</button>

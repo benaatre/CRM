@@ -29,7 +29,7 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("data");
-  const [reserving, setReserving] = useState(false);
+  const [reserveMode, setReserveMode] = useState<"reserve" | "instant" | null>(null);
   const { items, loading, reload } = useFollowUps(detail.id);
 
   const wa = `https://wa.me/966${detail.phone.replace(/^0/, "")}`;
@@ -100,7 +100,7 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
               stage={detail.stage}
               projects={projects}
               onSaved={() => { reload(); router.refresh(); }}
-              onBook={() => setReserving(true)}
+              onBook={() => setReserveMode("reserve")}
             />
           )}
           <FollowUpsTimeline items={items} loading={loading} />
@@ -109,11 +109,20 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
 
       {tab === "ai" && <AiTab leadId={detail.id} phone={detail.phone} />}
 
-      {reserving && (
+      {/* زرّان ثابتان دائمًا (إلا لو العميل محجوز/مشترٍ مسبقًا) */}
+      {!detail.isArchived && (
+        <div className="sticky bottom-3 z-30 flex gap-2 rounded-2xl border border-border bg-card/90 p-2 shadow-2xl backdrop-blur">
+          <button onClick={() => setReserveMode("reserve")} className="flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">تم الحجز</button>
+          <button onClick={() => setReserveMode("instant")} className="flex-1 rounded-xl bg-success/15 py-3 text-sm font-semibold text-success hover:bg-success/25">شراء فوري</button>
+        </div>
+      )}
+
+      {reserveMode && (
         <ReserveDialog
           leadId={detail.id}
           leadName={detail.name}
-          onClose={() => setReserving(false)}
+          mode={reserveMode}
+          onClose={() => setReserveMode(null)}
           onDone={() => { reload(); router.refresh(); }}
         />
       )}

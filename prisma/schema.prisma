@@ -74,6 +74,14 @@ enum UnitStatus {
   SOLD // مباعة
 }
 
+/// دور الوحدة (مُهيكل).
+enum Floor {
+  GROUND // أرضي
+  FIRST // أول
+  SECOND // ثاني
+  TOP // علوي
+}
+
 enum PaymentMethod {
   CASH // كاش
   BANK_FINANCE // تمويل بنكي
@@ -249,11 +257,17 @@ model Unit {
   projectId String
   number    String // رقم الوحدة
   type      UnitType   @default(APARTMENT)
-  floor     String? // الدور
+  floor     String? // الدور (نص قديم — للتوافق)
+  /// الدور المُهيكل (أرضي/أول/ثاني/علوي)
+  floorLevel Floor?
   area      Decimal?   @db.Decimal(8, 2) // المساحة م²
+  /// المساحة الإجمالية م²
+  totalArea Decimal?   @db.Decimal(8, 2)
   price     Decimal?   @db.Decimal(14, 2)
   /// نسبة خصم الوحدة % (اختياري) — السعر بعد الخصم يُحسب منها
   discountPercent Decimal? @db.Decimal(5, 2)
+  /// السعر بعد الخصم (صريح) — يُعرض فقط لو موجود
+  discountedPrice Decimal? @db.Decimal(14, 2)
   status    UnitStatus @default(AVAILABLE)
   notes     String?
   createdAt DateTime   @default(now())
@@ -371,6 +385,11 @@ model Booking {
   finalPrice    Decimal        @db.Decimal(14, 2) // السعر بعد الخصم
   stage         BookingStage   @default(RESERVATION)
   deliveryStatus DeliveryStatus @default(PENDING)
+  /// تجاوز الخصم الحد المسموح للمشروع (يظهر تحذير أحمر للمدير)
+  discountExceeded Boolean     @default(false)
+  /// نسبة الخصم وقت الحجز و الحد المسموح وقتها (لعرض تفاصيل التجاوز)
+  discountPercentAtBooking Decimal? @db.Decimal(5, 2)
+  maxDiscountPercentAtBooking Decimal? @db.Decimal(5, 2)
   /// فشل تمويل / رفض بنك (يظهر بأحمر)
   financeRejected Boolean      @default(false)
   /// سبب فشل التمويل

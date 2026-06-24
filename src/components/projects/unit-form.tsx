@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import type { UnitType, UnitStatus } from "@prisma/client";
-import { unitTypeLabels, unitStatusLabels } from "@/lib/labels";
+import type { UnitType, UnitStatus, Floor } from "@prisma/client";
+import { unitTypeLabels, unitStatusLabels, floorLabels } from "@/lib/labels";
 import { createUnit, updateUnit } from "@/lib/actions/projects";
 import type { UnitRow } from "@/lib/data/projects";
 
@@ -43,9 +43,16 @@ export function UnitForm({ open, onClose, projectId, unit }: { open: boolean; on
                 {(Object.keys(unitTypeLabels) as UnitType[]).map((t) => <option key={t} value={t}>{unitTypeLabels[t]}</option>)}
               </select>
             </Field>
-            <Field label="الدور"><input name="floor" defaultValue={unit?.floor ?? ""} className="select-base" /></Field>
+            <Field label="الدور">
+              <select name="floorLevel" defaultValue={unit?.floorLevel ?? ""} className="select-base">
+                <option value="">—</option>
+                {(Object.keys(floorLabels) as Floor[]).map((f) => <option key={f} value={f}>{floorLabels[f]}</option>)}
+              </select>
+            </Field>
             <Field label="المساحة م²"><input name="area" inputMode="numeric" dir="ltr" defaultValue={unit?.area ?? ""} className="select-base" /></Field>
-            <Field label="السعر"><input name="price" inputMode="numeric" dir="ltr" defaultValue={unit?.price ?? ""} className="select-base" /></Field>
+            <Field label="المساحة الإجمالية م²"><input name="totalArea" inputMode="numeric" dir="ltr" defaultValue={unit?.totalArea ?? ""} className="select-base" placeholder="اختياري" /></Field>
+            <Field label="السعر الأصلي"><input name="price" inputMode="numeric" dir="ltr" defaultValue={unit?.price ?? ""} className="select-base" /></Field>
+            <Field label="السعر بعد الخصم"><input name="discountedPrice" inputMode="numeric" dir="ltr" defaultValue={unit?.discountedPrice ?? ""} className="select-base" placeholder="اختياري" /></Field>
             <Field label="نسبة الخصم %"><input name="discountPercent" inputMode="numeric" dir="ltr" defaultValue={unit?.discountPercent ?? ""} className="select-base" placeholder="اختياري" /></Field>
             <Field label="الحالة">
               <select name="status" defaultValue={unit?.status ?? "AVAILABLE"} className="select-base">

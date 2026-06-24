@@ -4,6 +4,7 @@ import type {
   Channel,
   Priority,
   UnitType,
+  Floor,
   ActivityType,
   ProjectStatus,
   UnitStatus,
@@ -78,10 +79,20 @@ export const channelLabels: Record<Channel, string> = {
   GOOGLE: "جوجل",
   AQAR: "عقار",
   REFERRAL: "إحالة",
-  VISIT: "زيارة",
+  VISIT: "زيارة مباشرة",
   OTHER: "أخرى",
 };
 export const channelLabel = (c: Channel) => channelLabels[c] ?? c;
+// ترتيب عرض القنوات (chips) عند إضافة عميل.
+export const channelOrder: Channel[] = ["META", "SNAPCHAT", "TIKTOK", "GOOGLE", "WHATSAPP", "VISIT", "REFERRAL", "AQAR", "OTHER"];
+
+// الدور (Floor) — عرض عربي.
+export const floorLabels: Record<Floor, string> = {
+  GROUND: "أرضي",
+  FIRST: "أول",
+  SECOND: "ثاني",
+  TOP: "علوي",
+};
 
 export const priorityLabels: Record<Priority, string> = {
   HIGH: "عالية",

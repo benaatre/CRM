@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { ProjectStatus, UnitStatus, UnitType } from "@prisma/client";
+import type { ProjectStatus, UnitStatus, UnitType, Floor } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const dec = (v: { toNumber(): number } | null) => (v ? v.toNumber() : null);
@@ -86,9 +86,12 @@ export type UnitRow = {
   number: string;
   type: UnitType;
   floor: string | null;
+  floorLevel: Floor | null;
   area: number | null;
+  totalArea: number | null;
   price: number | null;
   discountPercent: number | null;
+  discountedPrice: number | null;
   finalPrice: number | null;
   status: UnitStatus;
   notes: string | null;
@@ -135,11 +138,16 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
       number: u.number,
       type: u.type,
       floor: u.floor,
+      floorLevel: u.floorLevel,
       area: dec(u.area),
+      totalArea: dec(u.totalArea),
       price: dec(u.price),
       discountPercent: dec(u.discountPercent),
+      discountedPrice: dec(u.discountedPrice),
       finalPrice: (() => {
         const pr = dec(u.price);
+        const explicit = dec(u.discountedPrice);
+        if (explicit != null) return explicit;
         const dp = dec(u.discountPercent);
         return pr != null && dp ? Math.round(pr * (1 - dp / 100)) : pr;
       })(),

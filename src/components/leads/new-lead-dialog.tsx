@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { channelLabels, unitTypeLabels } from "@/lib/labels";
-import type { Channel, UnitType } from "@prisma/client";
+import { channelLabels, channelOrder, unitTypeLabels } from "@/lib/labels";
+import type { UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
 
 type Employee = { id: string; name: string };
@@ -22,12 +22,14 @@ export function NewLeadDialog({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [channel, setChannel] = useState<string>("");
 
   if (!open) return null;
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    if (!channel) { setError("اختر القناة (المنصة)"); return; }
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
       const res = await createLead(formData);
@@ -57,13 +59,23 @@ export function NewLeadDialog({
             <Field label="الجوال *">
               <input name="phone" required inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" />
             </Field>
-            <Field label="القناة">
-              <select name="channel" className="select-base" defaultValue="WHATSAPP">
-                {(Object.keys(channelLabels) as Channel[]).map((c) => (
-                  <option key={c} value={c}>{channelLabels[c]}</option>
-                ))}
-              </select>
-            </Field>
+            <div className="col-span-2">
+              <Field label="المنصة / القناة *">
+                <div className="flex flex-wrap gap-1.5">
+                  {channelOrder.map((c) => (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={() => setChannel(c)}
+                      className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${channel === c ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {channelLabels[c]}
+                    </button>
+                  ))}
+                </div>
+                <input type="hidden" name="channel" value={channel} />
+              </Field>
+            </div>
             <Field label="نوع الوحدة">
               <select name="unitType" className="select-base" defaultValue="">
                 <option value="">—</option>

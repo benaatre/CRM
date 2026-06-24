@@ -25,10 +25,11 @@ type Filters = { q: string; stages: string[]; emps: string[] };
 const PAGE_SIZE = 12;
 
 export function LeadsView({
-  query, counts, tab, isManager, employees, filters,
+  query, counts, notContacted, tab, isManager, employees, filters,
 }: {
   query: string;
   counts: { working: number; archived: number; unassigned: number };
+  notContacted: number;
   tab: Tab;
   isManager: boolean;
   employees: Employee[];
@@ -128,6 +129,7 @@ export function LeadsView({
             filters={filters}
             preserve={{ tab: tab === "archived" ? "archived" : "" }}
             hideUnassignedEmp={tab === "working"}
+            notContacted={tab === "working" ? notContacted : undefined}
           />
         </div>
       )}
