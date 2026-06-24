@@ -42,6 +42,34 @@ export function normalizePurchaseMethod(raw: string | null | undefined): Purchas
 }
 
 /**
+ * توحيد رقم الجوال السعودي إلى صيغة موحّدة «05XXXXXXXX».
+ *  +9665XXXXXXXX · 9665XXXXXXXX · 05XXXXXXXX · 5XXXXXXXX → 05XXXXXXXX
+ * أي صيغة لا تطابق → يُرجَع الأرقام كما هي (تُلتقط لاحقًا كغير صالحة).
+ */
+export function normalizePhone(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let d = String(raw).replace(/\D/g, "");
+  if (d.startsWith("00966")) d = d.slice(5);
+  else if (d.startsWith("966")) d = d.slice(3);
+  d = d.replace(/^0+/, ""); // إزالة الأصفار البادئة → 5XXXXXXXX
+  if (d.length === 9 && d.startsWith("5")) return "0" + d;
+  return d;
+}
+
+/** صيغ الجوال المحتملة في القاعدة لرقم موحّد — للمطابقة (إزالة التكرار/التحديث). */
+export function phoneVariants(canonical: string): string[] {
+  const set = new Set<string>([canonical]);
+  if (/^05\d{8}$/.test(canonical)) {
+    const local = canonical.slice(1); // 5XXXXXXXX
+    set.add(local);
+    set.add("966" + local);
+    set.add("00966" + local);
+    set.add("+966" + local);
+  }
+  return [...set];
+}
+
+/**
  * هدف الشراء:
  *  «للسكن» / «سكن» / «سكني» → RESIDENCE
  *  «للاستثمار» / «استثمار» → INVESTMENT

@@ -29,6 +29,7 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
   const [headers, setHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [autoDetected, setAutoDetected] = useState<Set<number>>(new Set());
   const [previewRows, setPreviewRows] = useState<ImportRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -50,8 +51,10 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
       setHeaders(res.headers ?? []);
       setRawRows(res.rows ?? []);
       const init: Record<string, string> = {};
-      (res.suggested ?? []).forEach((f, i) => { init[i] = f || ""; });
+      const auto = new Set<number>();
+      (res.suggested ?? []).forEach((f, i) => { init[i] = f || ""; if (f) auto.add(i); });
       setMapping(init);
+      setAutoDetected(auto);
       setStep("map");
     });
   }
@@ -122,7 +125,10 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
         {/* الخطوة ٢: مطابقة الأعمدة */}
         {step === "map" && (
           <div className="flex flex-1 flex-col overflow-hidden">
-            <p className="mb-3 text-xs text-muted-foreground">طابق كل عمود في ملفك بحقل النظام. «الاسم» (أو الأول+الأخير) و«الجوال» إجباريان.</p>
+            <div className="mb-3 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2.5 text-sm">
+              <span className="font-medium text-gold">تعرّفنا على الأعمدة تلقائيًا ({toArabicDigits(autoDetected.size)})</span>
+              <span className="text-muted-foreground"> — هل هذه المطابقة صحيحة؟ عدّل أي عمود قبل المتابعة. «الاسم» و«الجوال» إجباريان.</span>
+            </div>
             <div className="flex-1 overflow-y-auto rounded-xl border border-border">
               <table className="w-full text-right text-sm">
                 <thead className="sticky top-0 bg-secondary text-muted-foreground">
@@ -133,10 +139,13 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
                     <tr key={i} className="border-t border-border">
                       <td className="px-3 py-2 text-foreground">{h || `عمود ${toArabicDigits(i + 1)}`}<div className="text-xs text-muted-foreground/70" dir="ltr">{rawRows[0]?.[i] ?? ""}</div></td>
                       <td className="px-3 py-2">
-                        <select value={mapping[i] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [i]: e.target.value }))} className="select-base">
-                          <option value="">تجاهل</option>
-                          {MAPPABLE_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                        </select>
+                        <div className="flex items-center gap-2">
+                          <select value={mapping[i] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [i]: e.target.value }))} className="select-base">
+                            <option value="">تجاهل</option>
+                            {MAPPABLE_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                          </select>
+                          {autoDetected.has(i) && mapping[i] && <span className="shrink-0 rounded-full border border-[#22c55e] bg-[#22c55e]/15 px-2 py-0.5 text-[10px] text-[#22c55e]">تلقائي</span>}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -146,7 +155,7 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
             <div className="mt-4 flex justify-between">
               <button onClick={() => setStep("source")} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">رجوع</button>
               <button onClick={preview} disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-                {pending && <Loader2 className="size-4 animate-spin" />} معاينة <ArrowRight className="size-4 rotate-180" />
+                {pending && <Loader2 className="size-4 animate-spin" />} المطابقة صحيحة · متابعة <ArrowRight className="size-4 rotate-180" />
               </button>
             </div>
           </div>

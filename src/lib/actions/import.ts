@@ -12,7 +12,7 @@ import {
   priorityLabels,
   unitTypeLabels,
 } from "@/lib/labels";
-import { normalizePurchaseMethod, normalizePurchaseGoal } from "@/lib/value-normalize";
+import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
 
 export type ImportResult = { ok: boolean; error?: string; created?: number; updated?: number; skipped?: number };
 
@@ -30,30 +30,83 @@ const stageBy = reverse(stageLabels);
 const priorityBy = reverse(priorityLabels);
 const unitTypeBy = reverse(unitTypeLabels);
 
-// مطابقة تلقائية لاسم العمود → حقل النظام
-const HEADERS: Record<string, string[]> = {
-  name: ["الاسم", "الإسم", "اسم", "الاسم الكامل", "name", "full name", "fullname"],
-  firstName: ["الاسم الأول", "الاسم الاول", "first name", "firstname", "first"],
-  lastName: ["الاسم الأخير", "الاسم الاخير", "العائلة", "last name", "lastname", "last"],
-  phone: ["الجوال", "الجوّال", "الهاتف", "جوال", "رقم الجوال", "phone", "mobile", "phone number"],
-  channel: ["القناة", "قناة", "المصدر", "channel", "source"],
-  project: ["المشروع", "مشروع", "project"],
-  budget: ["الميزانية", "ميزانية", "budget"],
-  purchaseMethod: ["طريقة الشراء", "طريقة الدفع", "purchase method"],
-  purchaseGoal: ["هدف الشراء", "الهدف", "purchase goal"],
-  district: ["الحي", "الحي المفضل", "المنطقة", "district", "area"],
-  unitType: ["نوع الوحدة", "الوحدة", "unit", "unittype"],
-  stage: ["المرحلة", "مرحلة", "stage"],
-  priority: ["الأولوية", "أولوية", "priority"],
-  notes: ["ملاحظات", "ملاحظة", "notes"],
-};
+// تطبيع رأس العمود: إزالة تشكيل/تطويل + توحيد الألف/الياء/التاء — للمطابقة بالاحتواء.
+function normHeader(s: string): string {
+  return s
+    .replace(/[ـً-ْ]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
 
-function matchField(header: string): string | null {
-  const h = header.trim().toLowerCase();
-  for (const field in HEADERS) {
-    if (HEADERS[field].some((s) => s.toLowerCase() === h)) return field;
+// كلمات مفتاحية لكل حقل — تُطابَق بالاحتواء داخل رأس العمود (مطبّعة).
+const HEADER_KEYWORDS: Record<string, string[]> = {
+  phone: ["جوال", "هاتف", "تلفون", "موبايل", "رقم", "phone", "mobile", "tel"],
+  purchaseMethod: ["طريقه", "طريقة", "تمويل", "كاش", "نقد", "دفع", "method", "payment"],
+  purchaseGoal: ["هدف", "غرض", "سكن", "استثمار", "goal", "purpose"],
+  channel: ["قناه", "مصدر", "channel", "source"],
+  project: ["مشروع", "project"],
+  budget: ["ميزانيه", "ميزانية", "budget"],
+  district: ["حي", "منطقه", "منطقة", "district", "area"],
+  unitType: ["نوع", "وحده", "وحدة", "unit"],
+  stage: ["مرحله", "مرحلة", "stage"],
+  priority: ["اولويه", "اولوية", "priority"],
+  notes: ["ملاحظ", "تعليق", "notes", "note"],
+  firstName: ["الاسم الاول", "الاول", "first"],
+  lastName: ["الاسم الاخير", "الاخير", "العائله", "last"],
+  name: ["اسم", "name"],
+};
+// ترتيب الفحص: الأكثر تحديدًا أولًا، و«الاسم» أخيرًا (كلمته عامة).
+const FIELD_ORDER = [
+  "phone", "purchaseMethod", "purchaseGoal", "channel", "project", "budget",
+  "district", "unitType", "stage", "priority", "notes", "firstName", "lastName", "name",
+];
+
+function matchByHeader(header: string): string | null {
+  const h = normHeader(header);
+  if (!h) return null;
+  for (const field of FIELD_ORDER) {
+    if ((HEADER_KEYWORDS[field] ?? []).some((k) => h.includes(normHeader(k)))) return field;
   }
   return null;
+}
+
+// رقم جوال سعودي محتمل (بأي صيغة) — لاستشعار عمود الجوال من القيم.
+function looksLikePhone(v: string): boolean {
+  const d = v.replace(/[^\d]/g, "");
+  return /^(00966|966)?0?5\d{8}$/.test(d) || /^5\d{8}$/.test(d);
+}
+
+/**
+ * مطابقة مقترحة لكل عمود: أولًا من رأس العمود (احتواء كلمة مفتاحية)،
+ * ثم استشعار من القيم لأعمدة الجوال/طريقة/هدف الشراء غير المطابقة.
+ * كل حقل يُسنَد لعمود واحد على الأكثر.
+ */
+function suggestMapping(headers: string[], rows: string[][]): string[] {
+  const result: string[] = new Array(headers.length).fill("");
+  const taken = new Set<string>();
+
+  headers.forEach((h, i) => {
+    const field = matchByHeader(h);
+    if (field && !taken.has(field)) { result[i] = field; taken.add(field); }
+  });
+
+  const sample = rows.slice(0, 20);
+  headers.forEach((_, i) => {
+    if (result[i]) return;
+    const vals = sample.map((r) => (r[i] ?? "").trim()).filter(Boolean);
+    if (vals.length === 0) return;
+    const half = Math.ceil(vals.length / 2);
+    const hit = (fn: (v: string) => unknown) => vals.filter((v) => fn(v)).length >= half;
+    if (!taken.has("phone") && hit(looksLikePhone)) { result[i] = "phone"; taken.add("phone"); return; }
+    if (!taken.has("purchaseMethod") && hit(normalizePurchaseMethod)) { result[i] = "purchaseMethod"; taken.add("purchaseMethod"); return; }
+    if (!taken.has("purchaseGoal") && hit(normalizePurchaseGoal)) { result[i] = "purchaseGoal"; taken.add("purchaseGoal"); return; }
+  });
+
+  return result;
 }
 
 function parseCsv(text: string): string[][] {
@@ -130,7 +183,7 @@ export async function readSheet(
     if (raw.length < 1) return { ok: false, error: "الملف فاضي" };
     const headers = raw[0];
     const rows = raw.slice(1);
-    const suggested = headers.map((h) => matchField(h) ?? "");
+    const suggested = suggestMapping(headers, rows);
     return { ok: true, headers, rows, suggested };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -149,7 +202,7 @@ function buildRecords(rows: string[][], mapping: Record<string, string>): Omit<I
     }
     return {
       name,
-      phone: (rec.phone ?? "").replace(/[^\d]/g, ""),
+      phone: normalizePhone(rec.phone),
       channel: rec.channel,
       project: rec.project,
       budget: rec.budget?.replace(/[^\d]/g, ""),
@@ -178,8 +231,10 @@ export async function previewMapped(
     }
     const records = buildRecords(rows, mapping);
     const phones = records.map((r) => r.phone).filter(Boolean);
-    const existing = await prisma.lead.findMany({ where: { phone: { in: phones } }, select: { phone: true } });
-    const existingSet = new Set(existing.map((e) => e.phone));
+    // الجوال يُخزَّن بصيغ مختلفة → طابق عبر كل الصيغ المحتملة ثم وحّدها.
+    const allVariants = [...new Set(phones.flatMap((p) => phoneVariants(p)))];
+    const existing = await prisma.lead.findMany({ where: { phone: { in: allVariants } }, select: { phone: true } });
+    const existingSet = new Set(existing.map((e) => normalizePhone(e.phone)));
     const seen = new Set<string>();
 
     const out: ImportRow[] = records.map((r) => {
@@ -248,7 +303,7 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
     let updated = 0;
     for (const r of existing) {
       const lead = await prisma.lead.findFirst({
-        where: { phone: r.phone },
+        where: { phone: { in: phoneVariants(r.phone) } },
         select: { id: true, purchaseMethod: true, purchaseGoal: true, budget: true, unitType: true, preferredDistrict: true, projectId: true },
       });
       if (!lead) continue;

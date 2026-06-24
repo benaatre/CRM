@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   channelLabels, stageLabels, priorityLabels, unitTypeLabels,
 } from "@/lib/labels";
-import { normalizePurchaseMethod, normalizePurchaseGoal } from "@/lib/value-normalize";
+import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
 
 // ===== أدوات CSV ومطابقة (مكتفية ذاتيًا لتشتغل خارج سياق "use server") =====
 
@@ -105,7 +105,7 @@ export async function runSheetSync(): Promise<SyncResult> {
     if (!name && (rec.firstName || rec.lastName)) name = `${rec.firstName ?? ""} ${rec.lastName ?? ""}`.trim();
     return {
       name,
-      phone: (rec.phone ?? "").replace(/[^\d]/g, ""),
+      phone: normalizePhone(rec.phone),
       channel: rec.channel, project: rec.project, budget: (rec.budget ?? "").replace(/[^\d]/g, ""),
       purchaseMethod: rec.purchaseMethod, purchaseGoal: rec.purchaseGoal, district: rec.district,
       unitType: rec.unitType, stage: rec.stage, priority: rec.priority, notes: rec.notes,
@@ -113,8 +113,9 @@ export async function runSheetSync(): Promise<SyncResult> {
   });
 
   const phones = records.map((r) => r.phone).filter(Boolean);
-  const existing = await prisma.lead.findMany({ where: { phone: { in: phones } }, select: { phone: true } });
-  const existingSet = new Set(existing.map((e) => e.phone));
+  const allVariants = [...new Set(phones.flatMap((p) => phoneVariants(p)))];
+  const existing = await prisma.lead.findMany({ where: { phone: { in: allVariants } }, select: { phone: true } });
+  const existingSet = new Set(existing.map((e) => normalizePhone(e.phone)));
   const projects = await prisma.project.findMany({ select: { id: true, name: true } });
   const projectByName = new Map(projects.map((p) => [p.name.trim(), p.id]));
 
