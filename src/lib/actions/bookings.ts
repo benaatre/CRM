@@ -316,15 +316,24 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
       await tx.bookingEvent.create({
         data: { bookingId, userId: user.id, fromStage: booking.stage, toStage: stage },
       });
-      if (stage === BookingStage.SOLD) {
+      if (stage === BookingStage.SOLD || stage === BookingStage.DELIVERED) {
+        // بيع/تسليم: الوحدة مباعة والعميل مقفول-بيع.
         await tx.unit.update({ where: { id: booking.unitId }, data: { status: "SOLD" } });
         await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "CLOSED_WON" } });
       } else {
         await tx.unit.update({ where: { id: booking.unitId }, data: { status: "RESERVED" } });
       }
+      // تم الاستلام: سجل في تايملاين العميل (Activity) — مع اسم الموظف والوقت تلقائيًا.
+      if (stage === BookingStage.DELIVERED) {
+        await tx.activity.create({
+          data: { leadId: booking.leadId, userId: user.id, type: ActivityType.NOTE, note: "تم تسليم الوحدة للعميل" },
+        });
+      }
       await logAudit(tx, {
         userId: user.id, action: "booking.stage", entity: "booking", entityId: bookingId,
-        summary: `نقل حجز وحدة ${booking.unit.number} إلى مرحلة جديدة${stage === BookingStage.SOLD ? " (تم البيع)" : ""}`,
+        summary: stage === BookingStage.DELIVERED
+          ? `تم تسليم وحدة ${booking.unit.number} للعميل`
+          : `نقل حجز وحدة ${booking.unit.number} إلى مرحلة جديدة${stage === BookingStage.SOLD ? " (تم البيع)" : ""}`,
       });
     });
 

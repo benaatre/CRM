@@ -17,6 +17,7 @@ import { updateBookingStage, setFinanceRejected, cancelBooking } from "@/lib/act
 export function BookingsList({ data }: { data: BookingsData }) {
   const router = useRouter();
   const [filter, setFilter] = useState<"all" | "mine">("all");
+  const [stageFilter, setStageFilter] = useState<"all" | "working" | "delivered">("all");
 
   // تحديث تلقائي كل ٣٠ ثانية (خط مبيعات مشترك)
   useEffect(() => {
@@ -24,10 +25,13 @@ export function BookingsList({ data }: { data: BookingsData }) {
     return () => clearInterval(t);
   }, [router]);
 
-  const cards = useMemo(
-    () => (filter === "mine" ? data.cards.filter((c) => c.sellerId === data.currentUserId) : data.cards),
-    [data.cards, data.currentUserId, filter],
-  );
+  // الفلاتر تعمل مع بعض: الملكية (الكل/حجوزاتي) + المرحلة (جاري العمل/تم التسليم).
+  const cards = useMemo(() => {
+    let c = filter === "mine" ? data.cards.filter((x) => x.sellerId === data.currentUserId) : data.cards;
+    if (stageFilter === "working") c = c.filter((x) => x.stage !== "DELIVERED");
+    else if (stageFilter === "delivered") c = c.filter((x) => x.stage === "DELIVERED");
+    return c;
+  }, [data.cards, data.currentUserId, filter, stageFilter]);
 
   const kpis = [
     { label: "إجمالي الحجوزات", value: formatNumberShort(data.kpis.total), icon: Building2, accent: "text-gold" },
@@ -44,10 +48,17 @@ export function BookingsList({ data }: { data: BookingsData }) {
           <h1 className="text-2xl font-bold text-foreground">خط المبيعات</h1>
           <p className="mt-1 text-sm text-muted-foreground">كل الحجوزات مرئية للفريق · يتحدّث تلقائيًا</p>
         </div>
-        <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
-          {([["all", "كل الحجوزات"], ["mine", "حجوزاتي فقط"]] as const).map(([v, label]) => (
-            <button key={v} onClick={() => setFilter(v)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${filter === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
+            {([["all", "كل الحجوزات"], ["mine", "حجوزاتي فقط"]] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setFilter(v)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${filter === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+            ))}
+          </div>
+          <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
+            {([["working", "جاري العمل"], ["delivered", "تم البيع والتسليم"]] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setStageFilter((cur) => (cur === v ? "all" : v))} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${stageFilter === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -112,8 +123,9 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
     });
   }
 
+  const delivered = b.stage === "DELIVERED";
   return (
-    <article className={`glass rounded-2xl p-5 ${b.financeRejected ? "border-destructive/50" : ""}`}>
+    <article className={`glass rounded-2xl p-5 ${delivered ? "border-[#16a34a] bg-[#16a34a]/[0.08]" : b.financeRejected ? "border-destructive/50" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-bold text-foreground">{b.leadName}</h3>
@@ -125,6 +137,9 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
           <div className="mt-1 text-sm text-gold">{b.projectName ?? "—"} · وحدة <span dir="ltr">{b.unitNumber}</span></div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
+          {delivered && (
+            <span className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium" style={{ color: "#16a34a", background: "rgba(22,163,74,0.15)" }}><BadgeCheck className="size-3.5" /> تم الاستلام</span>
+          )}
           {b.financeRejected && (
             <span className="flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-1 text-xs text-destructive"><AlertTriangle className="size-3.5" /> رفض تمويل</span>
           )}

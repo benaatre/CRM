@@ -160,6 +160,7 @@ export const bookingStageOrder: BookingStage[] = [
   "SIGNING",
   "TRANSFER",
   "SOLD",
+  "DELIVERED",
 ];
 export const bookingStageLabels: Record<BookingStage, string> = {
   RESERVATION: "حجز",
@@ -168,6 +169,7 @@ export const bookingStageLabels: Record<BookingStage, string> = {
   SIGNING: "توقيع",
   TRANSFER: "إفراغ",
   SOLD: "بيع",
+  DELIVERED: "تم الاستلام",
 };
 
 export const paymentMethodLabels: Record<PaymentMethod, string> = {

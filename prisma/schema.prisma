@@ -136,6 +136,7 @@ enum BookingStage {
   SIGNING // توقيع
   TRANSFER // إفراغ
   SOLD // بيع
+  DELIVERED // تم الاستلام
 }
 
 enum DeliveryStatus {
