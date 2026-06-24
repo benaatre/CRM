@@ -117,6 +117,7 @@ enum SaudiBank {
   ALBILAD // البلاد
   ALINMA // الإنماء
   SAB // ساب
+  SAMBA // سامبا
   ANB // العربي الوطني
   ALJAZIRA // الجزيرة
   OTHER // أخرى
@@ -377,6 +378,8 @@ model Booking {
   nationality   Nationality?
   nationalId    String?
   phone         String?
+  /// رقم اختياري إضافي للمشتري
+  secondaryPhone String?
   paymentMethod PaymentMethod  @default(CASH)
   bankName      SaudiBank?
   deposit       Decimal?       @db.Decimal(14, 2) // العربون
@@ -410,10 +413,14 @@ model Booking {
   installments      Json?
   /// مبلغ الكاش في خيار كاش+تمويل
   cashAmount        Decimal?       @db.Decimal(14, 2)
-  /// خاضع لضريبة التصرفات العقارية (5%)؟
+  /// خاضع لضريبة التصرفات العقارية (5%)؟ (قديم — للتوافق)
   subjectToTax      Boolean        @default(false)
-  /// قيمة الضريبة المحسوبة
+  /// قيمة الضريبة المحسوبة (قديم)
   taxAmount         Decimal?       @db.Decimal(14, 2)
+  /// يشمل ضريبة القيمة المضافة (15%)؟
+  includesVAT       Boolean        @default(false)
+  /// قيمة ضريبة القيمة المضافة المحسوبة (15%)
+  vatAmount         Decimal?       @db.Decimal(14, 2)
   /// مؤشّر المرحلة الحالية ضمن قائمة المراحل الديناميكية (القسم ٢)
   stageIndex        Int            @default(0)
   /// نسبة التمويل %

@@ -70,9 +70,13 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const transferDateRaw = String(formData.get("expectedTransferDate") ?? "");
     const expectedTransferDate = transferDateRaw ? new Date(transferDateRaw) : null;
 
-    // ضريبة التصرفات العقارية (5% على السعر بعد الخصم)
+    // ضريبة التصرفات العقارية (5% — قديم)
     const subjectToTax = String(formData.get("subjectToTax") ?? "") === "yes";
     const taxAmount = subjectToTax ? Math.round(finalPrice * 0.05) : null;
+    // ضريبة القيمة المضافة VAT (15% على السعر بعد الخصم)
+    const includesVAT = String(formData.get("includesVAT") ?? "") === "yes";
+    const vatAmount = includesVAT ? Math.round(finalPrice * 0.15) : null;
+    const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
 
     // «تم الشراء» الفوري (كاش): يُسجَّل مباعًا مباشرة بدل حجز
     const immediateSale = String(formData.get("immediateSale") ?? "") === "yes";
@@ -132,6 +136,8 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           installmentsCount, installmentAmount,
           installments: installments ?? undefined,
           subjectToTax, taxAmount,
+          includesVAT, vatAmount,
+          secondaryPhone,
         },
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });

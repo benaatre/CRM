@@ -55,6 +55,9 @@ export type BookingCard = {
   financeRequestNo: string | null;
   subjectToTax: boolean;
   taxAmount: number | null;
+  includesVAT: boolean;
+  vatAmount: number | null;
+  secondaryPhone: string | null;
   stageIndex: number;
   events: BookingEventDTO[];
 };
@@ -120,6 +123,9 @@ export async function getBookings(): Promise<BookingsData> {
     financeRequestNo: b.financeRequestNo,
     subjectToTax: b.subjectToTax,
     taxAmount: dec(b.taxAmount),
+    includesVAT: b.includesVAT,
+    vatAmount: dec(b.vatAmount),
+    secondaryPhone: b.secondaryPhone,
     stageIndex: b.stageIndex,
     events: b.events.map((e) => ({
       toStage: e.toStage,

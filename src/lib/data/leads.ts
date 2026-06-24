@@ -10,9 +10,14 @@ import type {
   PurchaseGoal,
   FirstContactStage,
   Role,
+  Nationality,
+  PaymentMethod,
+  SaudiBank,
+  CashPaymentType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
+import { floorLabels } from "@/lib/labels";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
 export type LeadRow = {
@@ -58,8 +63,32 @@ export type LeadDetail = LeadRow & {
   preferredProjects: string[];
   projectId: string | null;
   bookingId: string | null;
-  bookings: { id: string; unitNumber: string; projectName: string | null; createdAt: Date }[];
+  bookings: BookingSummary[];
   activities: LeadActivity[];
+};
+
+export type BookingSummary = {
+  id: string;
+  createdAt: Date;
+  unitNumber: string;
+  floor: string | null;
+  projectName: string | null;
+  nationality: Nationality | null;
+  nationalId: string | null;
+  secondaryPhone: string | null;
+  price: number;
+  discount: number;
+  finalPrice: number;
+  deposit: number | null;
+  paymentMethod: PaymentMethod;
+  bankName: SaudiBank | null;
+  cashPaymentType: CashPaymentType | null;
+  installments: { amount: number; date: string }[] | null;
+  installmentsCount: number | null;
+  includesVAT: boolean;
+  vatAmount: number | null;
+  discountExceeded: boolean;
+  sellerName: string | null;
 };
 
 // ===== التحجيم حسب الدور (الصلاحية على الخادم) =====
@@ -241,7 +270,13 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     where: { id, ...where },
     include: {
       ...rowInclude,
-      bookings: { select: { id: true, createdAt: true, unit: { select: { number: true, project: { select: { name: true } } } } } },
+      bookings: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          unit: { select: { number: true, floor: true, floorLevel: true, project: { select: { name: true } } } },
+          seller: { select: { name: true } },
+        },
+      },
       activities: {
         orderBy: { createdAt: "desc" },
         include: { user: { select: { name: true } } },
@@ -263,9 +298,26 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     bookingId: lead.bookings[0]?.id ?? null,
     bookings: lead.bookings.map((b) => ({
       id: b.id,
-      unitNumber: b.unit?.number ?? "—",
-      projectName: b.unit?.project?.name ?? null,
       createdAt: b.createdAt,
+      unitNumber: b.unit?.number ?? "—",
+      floor: b.unit?.floorLevel ? floorLabels[b.unit.floorLevel] : (b.unit?.floor ?? null),
+      projectName: b.unit?.project?.name ?? null,
+      nationality: b.nationality,
+      nationalId: b.nationalId,
+      secondaryPhone: b.secondaryPhone,
+      price: b.price.toNumber(),
+      discount: b.discount.toNumber(),
+      finalPrice: b.finalPrice.toNumber(),
+      deposit: b.deposit ? b.deposit.toNumber() : null,
+      paymentMethod: b.paymentMethod,
+      bankName: b.bankName,
+      cashPaymentType: b.cashPaymentType,
+      installments: (b.installments as { amount: number; date: string }[] | null) ?? null,
+      installmentsCount: b.installmentsCount,
+      includesVAT: b.includesVAT,
+      vatAmount: b.vatAmount ? b.vatAmount.toNumber() : null,
+      discountExceeded: b.discountExceeded,
+      sellerName: b.seller?.name ?? null,
     })),
     activities: lead.activities.map((a) => ({
       id: a.id,

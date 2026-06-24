@@ -216,6 +216,7 @@ export const bankLabels: Record<SaudiBank, string> = {
   ALBILAD: "البلاد",
   ALINMA: "الإنماء",
   SAB: "ساب",
+  SAMBA: "سامبا",
   ANB: "العربي ANB",
   ALJAZIRA: "الجزيرة",
   OTHER: "أخرى",

@@ -32,7 +32,7 @@ export function BookingForm({
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [cashType, setCashType] = useState<CashType>("CHECK");
   const [nationality, setNationality] = useState<"SAUDI" | "RESIDENT">("SAUDI");
-  const [taxed, setTaxed] = useState(false);
+  const [vatIncluded, setVatIncluded] = useState(false);
   const [instRows, setInstRows] = useState<{ amount: string; date: string }[]>([{ amount: "", date: "" }]);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,7 +58,7 @@ export function BookingForm({
   const priceNum = Number(price.replace(/\D/g, "")) || 0;
   const discountNum = Number(discount.replace(/\D/g, "")) || 0;
   const finalPrice = priceNum - discountNum;
-  const tax = taxed ? Math.round(finalPrice * 0.05) : 0;
+  const vat = vatIncluded ? Math.round(finalPrice * 0.15) : 0;
 
   // الحد الأقصى للخصم من إعدادات المشروع
   const selProject = projects.find((p) => p.id === projectId);
@@ -79,7 +79,7 @@ export function BookingForm({
     setError(null);
     const fd = new FormData(e.currentTarget);
     fd.set("leadId", leadId);
-    fd.set("subjectToTax", taxed ? "yes" : "no");
+    fd.set("includesVAT", vatIncluded ? "yes" : "no");
 
     // شراء كاش فوري — يدعم وحدة أو أكثر (createCashSales).
     if (immediateSale) {
@@ -135,6 +135,10 @@ export function BookingForm({
               <span className="text-xs text-muted-foreground">{nationality === "SAUDI" ? "رقم الهوية (١٠ أرقام) *" : "رقم الإقامة *"}</span>
               <input name="nationalId" required inputMode="numeric" dir="ltr" maxLength={nationality === "SAUDI" ? 10 : 12} pattern={nationality === "SAUDI" ? "\\d{10}" : "\\d{8,12}"} className="select-base" />
             </label>
+            <label className="mt-3 block space-y-1.5">
+              <span className="text-xs text-muted-foreground">رقم إضافي (اختياري)</span>
+              <input name="secondaryPhone" inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" />
+            </label>
           </div>
 
           {/* المشروع */}
@@ -188,18 +192,20 @@ export function BookingForm({
             </div>
           )}
 
-          {/* ضريبة التصرفات العقارية */}
-          <div className="rounded-xl border border-border p-3">
-            <div className="mb-2 text-sm text-foreground">هل العميل خاضع لضريبة التصرفات العقارية (٥٪)؟</div>
-            <div className="grid grid-cols-2 gap-2">
-              {([[true, "نعم"], [false, "لا (معفي)"]] as const).map(([v, label]) => (
-                <label key={String(v)} className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-sm ${taxed === v ? "border-gold/50 bg-gold/10 text-gold" : "border-border text-muted-foreground"}`}>
-                  <input type="radio" name="taxRadio" checked={taxed === v} onChange={() => setTaxed(v)} className="hidden" />
-                  {label}
-                </label>
-              ))}
+          {/* ضريبة القيمة المضافة (VAT 15%) */}
+          {!immediateSale && (
+            <div className="rounded-xl border border-border p-3">
+              <div className="mb-2 text-sm text-foreground">هل يشمل ضريبة القيمة المضافة (١٥٪)؟</div>
+              <div className="grid grid-cols-2 gap-2">
+                {([[true, "نعم"], [false, "لا"]] as const).map(([v, label]) => (
+                  <label key={String(v)} className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-sm ${vatIncluded === v ? "border-gold/50 bg-gold/10 text-gold" : "border-border text-muted-foreground"}`}>
+                    <input type="radio" name="vatRadio" checked={vatIncluded === v} onChange={() => setVatIncluded(v)} className="hidden" />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {!immediateSale && maxDiscount != null && (
             <p className={`rounded-lg px-3 py-2 text-xs ${discountExceeds ? "bg-destructive/10 text-destructive" : "bg-secondary/50 text-muted-foreground"}`}>
@@ -211,8 +217,8 @@ export function BookingForm({
           {!immediateSale && (<>
           <div className="space-y-1 rounded-lg bg-secondary/50 px-3 py-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">السعر بعد الخصم</span><span className="text-foreground">{formatCurrencyFull(finalPrice)}</span></div>
-            {taxed && <div className="flex justify-between"><span className="text-muted-foreground">الضريبة (٥٪)</span><span className="text-warning">{formatCurrencyFull(tax)}</span></div>}
-            <div className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">الإجمالي</span><span className="font-bold text-gold">{formatCurrencyFull(finalPrice + tax)}</span></div>
+            {vatIncluded && <div className="flex justify-between"><span className="text-muted-foreground">ضريبة القيمة المضافة (١٥٪)</span><span className="text-warning">{formatCurrencyFull(vat)}</span></div>}
+            <div className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">الإجمالي</span><span className="font-bold text-gold">{formatCurrencyFull(finalPrice + vat)}</span></div>
           </div>
 
           {/* طريقة الدفع */}

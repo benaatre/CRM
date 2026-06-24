@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import type { PurchaseGoal, PurchaseMethod } from "@prisma/client";
 import {
   purchaseGoalLabels, purchaseMethodLabels, stageLabels, stageColor,
+  paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels,
 } from "@/lib/labels";
 import { updateLeadIntake } from "@/lib/actions/leads";
 import { cancelBooking } from "@/lib/actions/bookings";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatCurrencyFull } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
-import { ReserveDialog } from "./reserve-dialog";
+import { BookingForm } from "@/components/bookings/booking-form";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { useFollowUps } from "./use-followups";
@@ -86,10 +87,28 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
               {detail.bookings.length === 0 ? (
                 <p className="text-sm text-muted-foreground">لا توجد تفاصيل حجز.</p>
               ) : detail.bookings.map((b) => (
-                <div key={b.id} className="space-y-1.5 rounded-xl border border-border p-4">
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">المشروع</span><span className="text-foreground">{b.projectName ?? "—"}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">الوحدة</span><span className="text-foreground">{b.unitNumber}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">تاريخ الحجز</span><span className="text-foreground">{formatDate(b.createdAt)}</span></div>
+                <div key={b.id} className="space-y-2 rounded-xl border border-border p-4">
+                  {b.discountExceeded && (
+                    <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">تم تجاوز الخصم المسموح — تحذير للمدير.</p>
+                  )}
+                  <BRow label="المشروع" value={b.projectName ?? "—"} />
+                  <BRow label="الوحدة" value={b.unitNumber} ltr />
+                  <BRow label="الدور" value={b.floor ?? "—"} />
+                  <BRow label="الجنسية" value={b.nationality ? nationalityLabels[b.nationality] : "—"} />
+                  <BRow label={b.nationality === "RESIDENT" ? "رقم الإقامة" : "رقم الهوية"} value={b.nationalId ?? "—"} ltr />
+                  {b.secondaryPhone && <BRow label="رقم إضافي" value={b.secondaryPhone} ltr />}
+                  <div className="my-1 border-t border-border" />
+                  <BRow label="سعر الوحدة" value={formatCurrencyFull(b.price)} />
+                  <BRow label="الخصم" value={b.discount > 0 ? `- ${formatCurrencyFull(b.discount)}` : "—"} />
+                  <BRow label="السعر النهائي" value={formatCurrencyFull(b.finalPrice)} strong />
+                  {b.includesVAT && b.vatAmount != null && <BRow label="ضريبة القيمة المضافة (١٥٪)" value={formatCurrencyFull(b.vatAmount)} />}
+                  {b.includesVAT && b.vatAmount != null && <BRow label="الإجمالي مع الضريبة" value={formatCurrencyFull(b.finalPrice + b.vatAmount)} strong />}
+                  <BRow label="العربون" value={b.deposit != null ? formatCurrencyFull(b.deposit) : "—"} />
+                  <div className="my-1 border-t border-border" />
+                  <BRow label="طريقة الدفع" value={`${paymentMethodLabels[b.paymentMethod]}${b.bankName ? ` · ${bankLabels[b.bankName]}` : ""}`} />
+                  {b.cashPaymentType && <BRow label="دفع الكاش" value={`${cashPaymentTypeLabels[b.cashPaymentType]}${b.installmentsCount ? ` (${b.installmentsCount} دفعة)` : ""}`} />}
+                  <BRow label="تاريخ الحجز" value={formatDate(b.createdAt)} />
+                  {b.sellerName && <BRow label="الموظف" value={b.sellerName} />}
                   <button onClick={() => cancel(b.id)} disabled={pending} className="mt-2 w-full rounded-lg border border-destructive/40 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50">إلغاء الحجز</button>
                 </div>
               ))}
@@ -118,10 +137,11 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
       )}
 
       {reserveMode && (
-        <ReserveDialog
+        <BookingForm
+          open={!!reserveMode}
           leadId={detail.id}
           leadName={detail.name}
-          mode={reserveMode}
+          immediateSale={reserveMode === "instant"}
           onClose={() => setReserveMode(null)}
           onDone={() => { reload(); router.refresh(); }}
         />
@@ -270,4 +290,13 @@ function AiTab({ leadId, phone }: { leadId: string; phone: string }) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">{label}</span>{children}</label>;
+}
+
+function BRow({ label, value, strong, ltr }: { label: string; value: string; strong?: boolean; ltr?: boolean }) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={strong ? "font-bold text-gold" : "text-foreground"} dir={ltr ? "ltr" : undefined}>{value}</span>
+    </div>
+  );
 }
