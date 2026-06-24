@@ -9,6 +9,7 @@ import type {
   PurchaseMethod,
   PurchaseGoal,
   FirstContactStage,
+  Role,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -82,7 +83,7 @@ type LeadWithRels = {
   createdAt: Date;
   lastContact: Date | null;
   nextFollowup: Date | null;
-  assignedTo: { id: string; name: string } | null;
+  assignedTo: { id: string; name: string; role: Role } | null;
   project: { name: string } | null;
   _count: { activities: number; followUps: number };
   purchaseMethod: PurchaseMethod | null;
@@ -106,7 +107,8 @@ function toRow(l: LeadWithRels): LeadRow {
     createdAt: l.createdAt,
     lastContact: l.lastContact,
     nextFollowup: l.nextFollowup,
-    assignedTo: l.assignedTo,
+    // المُسند لمالك يُعرض «غير موزّع» (المالك ليس موظف مبيعات).
+    assignedTo: l.assignedTo && l.assignedTo.role !== "OWNER" ? { id: l.assignedTo.id, name: l.assignedTo.name } : null,
     projectName: l.project?.name ?? null,
     activitiesCount: l._count.activities,
     followUpsCount: l._count.followUps,
@@ -119,7 +121,7 @@ function toRow(l: LeadWithRels): LeadRow {
 }
 
 const rowInclude = {
-  assignedTo: { select: { id: true, name: true } },
+  assignedTo: { select: { id: true, name: true, role: true } },
   project: { select: { name: true } },
   _count: { select: { activities: true, followUps: true } },
 } as const;

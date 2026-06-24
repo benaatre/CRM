@@ -16,7 +16,7 @@ function isManager(role: string) {
 async function authorize(leadId: string) {
   const session = await auth();
   if (!session?.user) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, firstContactAt: true, firstContactStage: true } });
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
   if (!lead) return { error: NextResponse.json({ error: "العميل غير موجود" }, { status: 404 }) };
   if (!isManager(session.user.role) && lead.assignedToId !== session.user.id) {
     return { error: NextResponse.json({ error: "ما عندك صلاحية على هذا العميل" }, { status: 403 }) };
@@ -93,8 +93,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       data: {
         stage: newStage,
         lastContact: new Date(),
+        // أول تواصل: الوقت والتاريخ يُحفظان مرة واحدة فقط (عند أول متابعة).
         firstContactAt: lead.firstContactAt ?? new Date(),
-        ...(firstStage ? { firstContactStage: firstStage, firstContactDate: new Date() } : {}),
+        firstContactDate: lead.firstContactDate ?? new Date(),
+        // المرحلة الأولى تُحدَّد مرة واحدة من قسم أول متابعة.
+        ...(firstStage ? { firstContactStage: firstStage } : {}),
         ...(nextDate ? { nextFollowup: nextDate } : {}),
         ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
       },

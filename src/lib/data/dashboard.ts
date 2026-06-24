@@ -153,7 +153,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     where: { ...where, stage: { notIn: CLOSED }, nextFollowup: { lte: new Date() } },
     orderBy: [{ priority: "asc" }, { nextFollowup: "asc" }],
     take: 8,
-    include: { assignedTo: { select: { name: true } } },
+    include: { assignedTo: { select: { name: true, role: true } } },
   });
 
   // ليدات تنتظر أول تواصل (NEW + مُسند) + العدد الكلي
@@ -162,7 +162,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
       where: waitingWhere,
       orderBy: { createdAt: "asc" },
       take: 8,
-      include: { assignedTo: { select: { name: true } } },
+      include: { assignedTo: { select: { name: true, role: true } } },
     }),
     prisma.lead.count({ where: waitingWhere }),
   ]);
@@ -175,7 +175,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     budget: l.budget ? l.budget.toNumber() : null,
     createdAt: l.createdAt,
     nextFollowup: l.nextFollowup,
-    assignedToName: l.assignedTo?.name ?? null,
+    assignedToName: l.assignedTo && l.assignedTo.role !== "OWNER" ? l.assignedTo.name : null,
   });
 
   // قمع المبيعات
