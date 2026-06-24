@@ -34,8 +34,10 @@ yarn-error.log*
 .env*
 !.env.example
 
-# claude code local settings
+# claude code local settings + preview/dev artifacts
 .claude/settings.local.json
+.claude/launch.json
+dev.log
 
 # vercel
 .vercel
