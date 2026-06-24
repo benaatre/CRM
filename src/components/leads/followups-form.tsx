@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
+import { stageLabels } from "@/lib/labels";
 
 type Project = { id: string; name: string };
 type SaveBody = {
@@ -15,18 +16,24 @@ type SaveBody = {
 
 const NI_REASONS = ["الموقع", "السعر", "المساحة", "غير مهتم نهائيًا"];
 
-// أزرار نتيجة المتابعة المتاحة حسب مرحلة العميل الحالية.
+// أزرار نتيجة المتابعة المتاحة حسب مرحلة العميل الحالية — كل مرحلة تعرض خطواتها
+// المباشرة التالية فقط (حسب قمع المبيعات)، لا كل الخيارات مع بعض.
 function resultsFor(stage: LeadStage): string[] {
   switch (stage) {
+    // أول تواصل: لسة ما تأكّد اهتمامه → نتائج الاتصال الأول فقط.
     case "NEW":
     case "ATTEMPTED":
-      return ["interested", "noanswer", "appointment", "visit", "negotiation", "notInterested"];
+      return ["interested", "noanswer", "appointment", "notInterested"];
+    // مهتم: نحرّكه للأمام (موعد/زيارة/تفاوض) أو لم يرد أو ينسحب.
     case "INTERESTED":
-      return ["noanswer", "appointment", "visit", "negotiation", "notInterested"];
+      return ["appointment", "visit", "negotiation", "noanswer", "notInterested"];
+    // موعد لاحق: نعاود ونحاول نوصله لزيارة.
     case "FOLLOW_UP_LATER":
-      return ["noanswer", "visit", "negotiation", "notInterested"];
+      return ["interested", "noanswer", "visit", "notInterested"];
+    // زار المشروع: إما تفاوض أو ينسحب.
     case "VIEWING":
       return ["negotiation", "notInterested"];
+    // تفاوض: إما يحجز أو ينسحب.
     case "NEGOTIATION":
       return ["booked", "notInterested"];
     default:
@@ -132,7 +139,10 @@ export function FollowUpsForm({
 
   return (
     <section className="glass space-y-3 rounded-2xl p-5">
-      <h2 className="font-semibold text-foreground">سجّل نتيجة المتابعة</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold text-foreground">سجّل نتيجة المتابعة</h2>
+        <span className="text-xs text-muted-foreground">الخيارات حسب المرحلة الحالية: <span className="text-gold">{stageLabels[stage]}</span></span>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         {buttons.map((k) => {
