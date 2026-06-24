@@ -23,11 +23,8 @@ export default async function LeadsPage({
     manager ? getEmployees() : Promise.resolve([]),
   ]);
 
-  // الجدول يقرأ صفوفه من نفس الـ API GET /api/leads.
-  // تبويب «غير موزّعين»: نفس الـ API مع emps=none (غير الموزّعين فقط، غير مؤرشف).
-  const query = tab === "unassigned"
-    ? buildLeadsQuery("working", { q: values.q, stages: values.stages, emps: ["none"] })
-    : buildLeadsQuery(tab, values);
+  // الجدول يقرأ صفوفه من نفس الـ API GET /api/leads — كل تبويب بقيوده على الخادم.
+  const query = buildLeadsQuery(tab, values);
 
   return (
     <LeadsView

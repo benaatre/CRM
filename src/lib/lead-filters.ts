@@ -11,11 +11,10 @@ export type ParsedLeadFilters = {
   values: LeadFilterValues;
 };
 
-/** بناء سلسلة استعلام GET /api/leads من التبويب + الفلاتر. */
-export function buildLeadsQuery(tab: "working" | "archived" | "all", v: LeadFilterValues): string {
+/** بناء سلسلة استعلام GET /api/leads من التبويب + الفلاتر. (working = الافتراضي بلا بارامتر). */
+export function buildLeadsQuery(tab: "working" | "archived" | "unassigned" | "all", v: LeadFilterValues): string {
   const p = new URLSearchParams();
-  if (tab === "archived") p.set("tab", "archived");
-  else if (tab === "all") p.set("tab", "all");
+  if (tab !== "working") p.set("tab", tab);
   if (v.q) p.set("q", v.q);
   if (v.stages.length) p.set("stages", v.stages.join(","));
   if (v.emps.length) p.set("emps", v.emps.join(","));

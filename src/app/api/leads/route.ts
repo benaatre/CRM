@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/leads — مصدر بيانات العملاء الموحّد (الجدول والكانبان).
- * فلاتر: q، stages، emps (مع "none" لغير الموزّع). tab: working | archived | all.
+ * فلاتر: q، stages، emps (مع "none" لغير الموزّع في الكانبان). tab: working | archived | unassigned | all.
  * الصلاحيات على الخادم: الموظف يشوف عملاءه فقط (داخل getLeads).
  */
 export async function GET(req: Request) {
@@ -16,8 +16,11 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
 
   const url = new URL(req.url);
-  const tab = url.searchParams.get("tab");
-  const archived: boolean | "all" = tab === "archived" ? true : tab === "all" ? "all" : false;
+  const tabParam = url.searchParams.get("tab");
+  const tab = tabParam === "archived" ? "archived"
+    : tabParam === "unassigned" ? "unassigned"
+      : tabParam === "all" ? "all"
+        : "working";
 
   const { q, stages, assigneeIds, includeUnassigned } = parseLeadFilters({
     q: url.searchParams.get("q") ?? undefined,
@@ -25,6 +28,6 @@ export async function GET(req: Request) {
     emps: url.searchParams.get("emps") ?? undefined,
   });
 
-  const leads = await getLeads({ archived, stages, assigneeIds, includeUnassigned, q });
+  const leads = await getLeads({ tab, stages, assigneeIds, includeUnassigned, q });
   return NextResponse.json({ leads });
 }

@@ -23,13 +23,14 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {},
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false,
 }: {
   basePath: string;
   isManager: boolean;
   employees: Employee[];
   filters: LeadFilterValues;
   preserve?: Record<string, string>;
+  hideUnassignedEmp?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -85,7 +86,9 @@ export function LeadsFilterBar({
           {employees.map((e) => (
             <button key={e.id} onClick={() => toggleEmp(e.id)} className={chip(filters.emps.includes(e.id))}>{e.name}</button>
           ))}
-          <button onClick={() => toggleEmp("none")} className={chip(filters.emps.includes("none"))}>غير موزّع</button>
+          {!hideUnassignedEmp && (
+            <button onClick={() => toggleEmp("none")} className={chip(filters.emps.includes("none"))}>غير موزّع</button>
+          )}
         </div>
       )}
 

@@ -127,6 +127,7 @@ export function LeadsView({
             employees={employees}
             filters={filters}
             preserve={{ tab: tab === "archived" ? "archived" : "" }}
+            hideUnassignedEmp={tab === "working"}
           />
         </div>
       )}

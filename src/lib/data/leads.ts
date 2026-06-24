@@ -124,52 +124,80 @@ const rowInclude = {
   _count: { select: { activities: true, followUps: true } },
 } as const;
 
+export type LeadTab = "working" | "archived" | "unassigned" | "all";
+
 export type LeadFilters = {
-  archived?: boolean | "all";
+  tab?: LeadTab;
   stages?: LeadStage[];
   assigneeIds?: string[];
   includeUnassigned?: boolean;
   q?: string;
 };
 
+// مراحل تُستثنى من «جاري العمل» (محجوز/مقفول-بيع/خاسر).
+const NON_WORKING_STAGES: LeadStage[] = ["RESERVED", "CLOSED_WON", "CLOSED_LOST"];
+// مراحل تبويب «تم الحجز / الشراء».
+const BOOKED_STAGES: LeadStage[] = ["RESERVED", "CLOSED_WON"];
+
+/** شرط التبويب الأساسي (قبل فلاتر المستخدم). */
+function tabWhere(tab: LeadTab): Record<string, unknown> | null {
+  switch (tab) {
+    case "unassigned": // غير موزّعين: بلا موظف + مرحلة «جديد» فقط + غير مؤرشف
+      return { assignedToId: null, stage: "NEW", isArchived: false };
+    case "archived": // تم الحجز/الشراء: محجوز أو مقفول-بيع، أو مؤرشف
+      return { OR: [{ stage: { in: BOOKED_STAGES } }, { isArchived: true }] };
+    case "working": // جاري العمل: موزّع على موظف + غير مؤرشف + ليس محجوزًا/مقفولًا
+      return { assignedToId: { not: null }, isArchived: false, stage: { notIn: NON_WORKING_STAGES } };
+    default: // all (الكانبان): بلا قيد تبويب
+      return null;
+  }
+}
+
 /**
  * العملاء (مُحجّمين) — مصدر بيانات موحّد للجدول والكانبان مع فلترة server-side.
  * الموظف يُقصر دائمًا على عملائه؛ فلتر الموظفين يُطبَّق للمدير فقط.
- * archived: false = جاري العمل · true = مؤرشف · "all" = الكل (للكانبان).
+ * tab: working = جاري العمل · archived = تم الحجز/الشراء · unassigned = غير موزّعين · all = الكل (للكانبان).
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { where, manager } = await scopeForUser();
-  const { archived = false, stages, assigneeIds, includeUnassigned, q } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, q } = filters;
 
   const and: Record<string, unknown>[] = [];
+  const base = tabWhere(tab);
+  if (base) and.push(base);
+
   if (stages && stages.length) and.push({ stage: { in: stages } });
-  if (manager && ((assigneeIds && assigneeIds.length) || includeUnassigned)) {
-    const or: Record<string, unknown>[] = [];
-    if (assigneeIds && assigneeIds.length) or.push({ assignedToId: { in: assigneeIds } });
-    if (includeUnassigned) or.push({ assignedToId: null });
-    and.push({ OR: or });
+  // فلتر الموظفين للمدير: خيار «غير موزّع» يُحترم في الكانبان فقط.
+  if (manager) {
+    if (tab === "all" && ((assigneeIds && assigneeIds.length) || includeUnassigned)) {
+      const or: Record<string, unknown>[] = [];
+      if (assigneeIds && assigneeIds.length) or.push({ assignedToId: { in: assigneeIds } });
+      if (includeUnassigned) or.push({ assignedToId: null });
+      and.push({ OR: or });
+    } else if (tab !== "all" && assigneeIds && assigneeIds.length) {
+      and.push({ assignedToId: { in: assigneeIds } });
+    }
   }
   if (q && q.trim()) {
     const term = q.trim();
     and.push({ OR: [{ name: { contains: term } }, { phone: { contains: term } }] });
   }
 
-  const archivedWhere = archived === "all" ? {} : { isArchived: archived };
   const leads = await prisma.lead.findMany({
-    where: { ...where, ...archivedWhere, ...(and.length ? { AND: and } : {}) },
+    where: { ...where, ...(and.length ? { AND: and } : {}) },
     orderBy: [{ createdAt: "desc" }],
     include: rowInclude,
   });
   return leads.map(toRow);
 }
 
-/** أعداد التبويبات (جاري العمل / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
+/** أعداد التبويبات (جاري العمل / تم الحجز / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
 export async function getLeadCounts(): Promise<{ working: number; archived: number; unassigned: number }> {
   const { where } = await scopeForUser();
   const [working, archived, unassigned] = await Promise.all([
-    prisma.lead.count({ where: { ...where, isArchived: false } }),
-    prisma.lead.count({ where: { ...where, isArchived: true } }),
-    prisma.lead.count({ where: { ...where, isArchived: false, assignedToId: null } }),
+    prisma.lead.count({ where: { ...where, ...tabWhere("working") } }),
+    prisma.lead.count({ where: { ...where, ...tabWhere("archived") } }),
+    prisma.lead.count({ where: { ...where, ...tabWhere("unassigned") } }),
   ]);
   return { working, archived, unassigned };
 }
