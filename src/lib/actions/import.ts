@@ -13,6 +13,7 @@ import {
   unitTypeLabels,
 } from "@/lib/labels";
 import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
+import { getOwnerIds } from "@/lib/data/leads";
 
 export type ImportResult = { ok: boolean; error?: string; created?: number; updated?: number; skipped?: number };
 
@@ -287,6 +288,7 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
         : [];
     const projects = await prisma.project.findMany({ select: { id: true, name: true } });
     const projectByName = new Map(projects.map((p) => [p.name.trim(), p.id]));
+    const ownerIds = await getOwnerIds(); // الإسناد للمالك = غير موزّع
 
     let created = 0;
     let rr = 0;
@@ -294,6 +296,8 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
       let assignedToId: string | null = me.id;
       if (assignMode === "roundrobin" && employees.length > 0) { assignedToId = employees[rr % employees.length].id; rr++; }
       else if (assignMode !== "self" && assignMode !== "roundrobin") assignedToId = assignMode;
+      // ما تم تحديد موظف فعلي (الإسناد للمالك) → غير موزّع.
+      if (assignedToId && ownerIds.includes(assignedToId)) assignedToId = null;
 
       await prisma.lead.create({
         data: {

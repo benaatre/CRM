@@ -139,15 +139,32 @@ const NON_WORKING_STAGES: LeadStage[] = ["RESERVED", "CLOSED_WON", "CLOSED_LOST"
 // مراحل تبويب «تم الحجز / الشراء».
 const BOOKED_STAGES: LeadStage[] = ["RESERVED", "CLOSED_WON"];
 
-/** شرط التبويب الأساسي (قبل فلاتر المستخدم). */
-function tabWhere(tab: LeadTab): Record<string, unknown> | null {
+/** معرّفات المالكين — العميل المُسند لمالك يُعامَل كـ«غير موزّع». */
+export async function getOwnerIds(): Promise<string[]> {
+  const owners = await prisma.user.findMany({ where: { role: "OWNER" }, select: { id: true } });
+  return owners.map((o) => o.id);
+}
+
+/**
+ * شرط التبويب الأساسي (قبل فلاتر المستخدم).
+ * ownerIds: العملاء المُسندون لمالك يُحتسبون «غير موزّعين» (لا في «جاري العمل»).
+ */
+function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | null {
   switch (tab) {
-    case "unassigned": // غير موزّعين: بلا موظف + مرحلة «جديد» فقط + غير مؤرشف
-      return { assignedToId: null, stage: "NEW", isArchived: false };
+    case "unassigned": // غير موزّعين: بلا موظف (أو مُسند لمالك) + مرحلة «جديد» فقط + غير مؤرشف
+      return {
+        OR: [{ assignedToId: null }, ...(ownerIds.length ? [{ assignedToId: { in: ownerIds } }] : [])],
+        stage: "NEW",
+        isArchived: false,
+      };
     case "archived": // تم الحجز/الشراء: محجوز أو مقفول-بيع، أو مؤرشف
       return { OR: [{ stage: { in: BOOKED_STAGES } }, { isArchived: true }] };
-    case "working": // جاري العمل: موزّع على موظف + غير مؤرشف + ليس محجوزًا/مقفولًا
-      return { assignedToId: { not: null }, isArchived: false, stage: { notIn: NON_WORKING_STAGES } };
+    case "working": // جاري العمل: موزّع على موظف (ليس مالكًا) + غير مؤرشف + ليس محجوزًا/مقفولًا
+      return {
+        assignedToId: { not: null, ...(ownerIds.length ? { notIn: ownerIds } : {}) },
+        isArchived: false,
+        stage: { notIn: NON_WORKING_STAGES },
+      };
     default: // all (الكانبان): بلا قيد تبويب
       return null;
   }
@@ -162,8 +179,9 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { where, manager } = await scopeForUser();
   const { tab = "working", stages, assigneeIds, includeUnassigned, q } = filters;
 
+  const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
-  const base = tabWhere(tab);
+  const base = tabWhere(tab, ownerIds);
   if (base) and.push(base);
 
   if (stages && stages.length) and.push({ stage: { in: stages } });
@@ -194,10 +212,11 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
 /** أعداد التبويبات (جاري العمل / تم الحجز / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
 export async function getLeadCounts(): Promise<{ working: number; archived: number; unassigned: number }> {
   const { where } = await scopeForUser();
+  const ownerIds = await getOwnerIds();
   const [working, archived, unassigned] = await Promise.all([
-    prisma.lead.count({ where: { ...where, ...tabWhere("working") } }),
-    prisma.lead.count({ where: { ...where, ...tabWhere("archived") } }),
-    prisma.lead.count({ where: { ...where, ...tabWhere("unassigned") } }),
+    prisma.lead.count({ where: { ...where, ...tabWhere("working", ownerIds) } }),
+    prisma.lead.count({ where: { ...where, ...tabWhere("archived", ownerIds) } }),
+    prisma.lead.count({ where: { ...where, ...tabWhere("unassigned", ownerIds) } }),
   ]);
   return { working, archived, unassigned };
 }
