@@ -161,8 +161,6 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
         <Row label="محصّل" value={formatCurrencyFull(b.collected)} />
         {b.expectedTransferDate && <Row label="موعد التحويل" value={formatDate(b.expectedTransferDate)} />}
         {b.installments && b.installments.length > 0 && <Row label="الدفعات" value={`${toArabicDigits(b.installments.length)} دفعة`} />}
-        {b.financePercent != null && <Row label="نسبة التمويل" value={`${toArabicDigits(b.financePercent)}٪`} />}
-        {b.financeRequestNo && <Row label="رقم الطلب" value={b.financeRequestNo} />}
         {b.cashAmount != null && <Row label="مبلغ الكاش" value={formatCurrencyFull(b.cashAmount)} />}
         {b.expectedCheckDate && <Row label="موعد الشيك" value={formatDate(b.expectedCheckDate)} />}
         {b.cashPaymentType && <Row label="دفع الكاش" value={cashPaymentTypeLabels[b.cashPaymentType] + (b.installmentsCount ? ` (${toArabicDigits(b.installmentsCount)})` : "")} />}

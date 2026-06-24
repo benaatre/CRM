@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { LeadStage, Priority } from "@prisma/client";
 import { stageOrder, stageLabels, purchaseGoalLabels, purchaseMethodLabels, priorityLabels } from "@/lib/labels";
-import { toArabicDigits } from "@/lib/format";
+import { toArabicDigits, formatCurrency } from "@/lib/format";
 import type { LeadFilterValues } from "@/lib/lead-filters";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { LeadDrawer } from "./lead-drawer";
@@ -104,6 +104,12 @@ export function KanbanBoard({
                       <span className="text-muted-foreground">{toArabicDigits(l.followUpsCount)} متابعة</span>
                       {isManager && l.assignedTo && <span className="text-muted-foreground/70">{l.assignedTo.name}</span>}
                     </div>
+                    {l.booking && (
+                      <div className="mt-2 space-y-0.5 rounded-lg border border-border bg-secondary/40 px-2 py-1.5 text-xs">
+                        <div className="flex justify-between"><span className="text-muted-foreground">محصّل</span><span className="text-success">{formatCurrency(l.booking.collected)}</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">متبقي</span><span className="text-gold">{formatCurrency(l.booking.remaining)}</span></div>
+                      </div>
+                    )}
                     <Link
                       href={`/leads/${l.id}`}
                       onClick={(e) => e.stopPropagation()}

@@ -42,6 +42,8 @@ export type LeadRow = {
   firstContactStage: FirstContactStage | null;
   firstContactDate: Date | null;
   isArchived: boolean;
+  // الحجز النشط (لعرض المحصّل/المتبقي في بطاقة الكانبان)
+  booking: { collected: number; remaining: number } | null;
 };
 
 export type LeadActivity = {
@@ -120,6 +122,7 @@ type LeadWithRels = {
   firstContactStage: FirstContactStage | null;
   firstContactDate: Date | null;
   isArchived: boolean;
+  bookings?: { collectedAmount: { toNumber(): number }; remainingAmount: { toNumber(): number } }[];
 };
 
 function toRow(l: LeadWithRels): LeadRow {
@@ -146,6 +149,9 @@ function toRow(l: LeadWithRels): LeadRow {
     firstContactStage: l.firstContactStage,
     firstContactDate: l.firstContactDate,
     isArchived: l.isArchived,
+    booking: l.bookings && l.bookings[0]
+      ? { collected: l.bookings[0].collectedAmount.toNumber(), remaining: l.bookings[0].remainingAmount.toNumber() }
+      : null,
   };
 }
 
@@ -153,6 +159,7 @@ const rowInclude = {
   assignedTo: { select: { id: true, name: true, role: true } },
   project: { select: { name: true } },
   _count: { select: { activities: true, followUps: true } },
+  bookings: { select: { collectedAmount: true, remainingAmount: true }, orderBy: { createdAt: "desc" }, take: 1 },
 } as const;
 
 export type LeadTab = "working" | "archived" | "unassigned" | "all";

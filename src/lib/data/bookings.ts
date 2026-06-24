@@ -51,8 +51,6 @@ export type BookingCard = {
   installmentAmount: number | null;
   installments: { amount: number; date: string }[] | null;
   cashAmount: number | null;
-  financePercent: number | null;
-  financeRequestNo: string | null;
   subjectToTax: boolean;
   taxAmount: number | null;
   includesVAT: boolean;
@@ -119,8 +117,6 @@ export async function getBookings(): Promise<BookingsData> {
     installmentAmount: dec(b.installmentAmount),
     installments: (b.installments as { amount: number; date: string }[] | null) ?? null,
     cashAmount: dec(b.cashAmount),
-    financePercent: dec(b.financePercent),
-    financeRequestNo: b.financeRequestNo,
     subjectToTax: b.subjectToTax,
     taxAmount: dec(b.taxAmount),
     includesVAT: b.includesVAT,

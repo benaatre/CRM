@@ -58,8 +58,6 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     // حقول الدفع المرنة
     const bankRaw = String(formData.get("bankName") ?? "");
     const bankName = bankRaw ? (bankRaw as SaudiBank) : null;
-    const financePercent = numOf(formData, "financePercent");
-    const financeRequestNo = String(formData.get("financeRequestNo") ?? "").trim() || null;
     const cashAmount = numOf(formData, "cashAmount");
     const checkDateRaw = String(formData.get("expectedCheckDate") ?? "");
     const expectedCheckDate = checkDateRaw ? new Date(checkDateRaw) : null;
@@ -77,6 +75,11 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const includesVAT = String(formData.get("includesVAT") ?? "") === "yes";
     const vatAmount = includesVAT ? Math.round(finalPrice * 0.15) : null;
     const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
+
+    // المحصّل = العربون · المتبقي = الإجمالي (مع VAT لو مفعّل) − العربون
+    const totalAfterDiscount = finalPrice + (vatAmount ?? 0);
+    const collectedAmount = deposit ?? 0;
+    const remainingAmount = totalAfterDiscount - collectedAmount;
 
     // «تم الشراء» الفوري (كاش): يُسجَّل مباعًا مباشرة بدل حجز
     const immediateSale = String(formData.get("immediateSale") ?? "") === "yes";
@@ -131,13 +134,14 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           discountExceeded,
           discountPercentAtBooking: Math.round(discountPct * 100) / 100,
           maxDiscountPercentAtBooking: maxPct,
-          financePercent, financeRequestNo, cashAmount,
+          cashAmount,
           expectedCheckDate, expectedTransferDate, cashPaymentType,
           installmentsCount, installmentAmount,
           installments: installments ?? undefined,
           subjectToTax, taxAmount,
           includesVAT, vatAmount,
           secondaryPhone,
+          collectedAmount, remainingAmount,
         },
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });
@@ -212,6 +216,7 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
             price, discount: 0, finalPrice: price,
             stage: BookingStage.SOLD, stageIndex: 5,
             subjectToTax, taxAmount,
+            collectedAmount: price, remainingAmount: 0,
           },
         });
         await tx.unit.update({ where: { id: u.id }, data: { status: "SOLD" } });

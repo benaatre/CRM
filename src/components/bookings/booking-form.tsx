@@ -29,6 +29,8 @@ export function BookingForm({
   const [multiSel, setMultiSel] = useState<Set<string>>(new Set());
   const [price, setPrice] = useState("");
   const [discount, setDiscount] = useState("");
+  const [deposit, setDeposit] = useState("");
+  const [idNumber, setIdNumber] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [cashType, setCashType] = useState<CashType>("CHECK");
   const [nationality, setNationality] = useState<"SAUDI" | "RESIDENT">("SAUDI");
@@ -59,6 +61,10 @@ export function BookingForm({
   const discountNum = Number(discount.replace(/\D/g, "")) || 0;
   const finalPrice = priceNum - discountNum;
   const vat = vatIncluded ? Math.round(finalPrice * 0.15) : 0;
+  // المحصّل (العربون) والمتبقي — لحظيًا.
+  const depositNum = Number(deposit.replace(/\D/g, "")) || 0;
+  const totalAfterDiscount = finalPrice + vat;
+  const remaining = totalAfterDiscount - depositNum;
 
   // الحد الأقصى للخصم من إعدادات المشروع
   const selProject = projects.find((p) => p.id === projectId);
@@ -115,6 +121,9 @@ export function BookingForm({
           <div>
             <h2 className="text-lg font-bold text-foreground">{immediateSale ? "تسجيل شراء (كاش فوري)" : "حجز جديد"}</h2>
             <p className="text-xs text-muted-foreground">للعميل: {leadName}</p>
+            {idNumber.trim() && (
+              <p className="text-xs text-muted-foreground">{nationality === "SAUDI" ? "رقم الهوية" : "رقم الإقامة"}: <span dir="ltr">{idNumber.trim()}</span></p>
+            )}
           </div>
           <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-secondary">إغلاق</button>
         </div>
@@ -133,7 +142,7 @@ export function BookingForm({
             </div>
             <label className="mt-3 block space-y-1.5">
               <span className="text-xs text-muted-foreground">{nationality === "SAUDI" ? "رقم الهوية (١٠ أرقام) *" : "رقم الإقامة *"}</span>
-              <input name="nationalId" required inputMode="numeric" dir="ltr" maxLength={nationality === "SAUDI" ? 10 : 12} pattern={nationality === "SAUDI" ? "\\d{10}" : "\\d{8,12}"} className="select-base" />
+              <input name="nationalId" value={idNumber} onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, ""))} required inputMode="numeric" dir="ltr" maxLength={nationality === "SAUDI" ? 10 : 12} pattern={nationality === "SAUDI" ? "\\d{10}" : "\\d{8,12}"} className="select-base" />
             </label>
             <label className="mt-3 block space-y-1.5">
               <span className="text-xs text-muted-foreground">رقم إضافي (اختياري)</span>
@@ -188,7 +197,7 @@ export function BookingForm({
             <div className="grid grid-cols-3 gap-3">
               <Field label="سعر الشقة *"><input name="price" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} required inputMode="numeric" dir="ltr" className="select-base" /></Field>
               <Field label="الخصم"><input name="discount" value={discount} onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
-              <Field label="العربون"><input name="deposit" inputMode="numeric" dir="ltr" className="select-base" /></Field>
+              <Field label="العربون"><input name="deposit" value={deposit} onChange={(e) => setDeposit(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
             </div>
           )}
 
@@ -218,8 +227,11 @@ export function BookingForm({
           <div className="space-y-1 rounded-lg bg-secondary/50 px-3 py-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">السعر بعد الخصم</span><span className="text-foreground">{formatCurrencyFull(finalPrice)}</span></div>
             {vatIncluded && <div className="flex justify-between"><span className="text-muted-foreground">ضريبة القيمة المضافة (١٥٪)</span><span className="text-warning">{formatCurrencyFull(vat)}</span></div>}
-            <div className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">الإجمالي</span><span className="font-bold text-gold">{formatCurrencyFull(finalPrice + vat)}</span></div>
+            <div className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">الإجمالي</span><span className="font-bold text-gold">{formatCurrencyFull(totalAfterDiscount)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">المبلغ المحصّل</span><span className="text-success">{formatCurrencyFull(depositNum)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">المبلغ المتبقي</span><span className={remaining < 0 ? "font-bold text-destructive" : "font-bold text-foreground"}>{formatCurrencyFull(remaining)}</span></div>
           </div>
+          {remaining < 0 && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">العربون أكبر من سعر الشقة</p>}
 
           {/* طريقة الدفع */}
           <Field label="طريقة الدفع *">
@@ -280,10 +292,6 @@ export function BookingForm({
                   {(Object.keys(bankLabels) as (keyof typeof bankLabels)[]).map((b) => <option key={b} value={b}>{bankLabels[b]}</option>)}
                 </select>
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="نسبة التمويل %"><input name="financePercent" inputMode="numeric" dir="ltr" className="select-base" placeholder="مثال: 90" /></Field>
-                <Field label="رقم طلب التمويل"><input name="financeRequestNo" dir="ltr" className="select-base" placeholder="اختياري" /></Field>
-              </div>
             </div>
           )}
           </>)}
