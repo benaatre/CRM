@@ -8,6 +8,7 @@ import {
   Handshake,
   BarChart3,
   ScrollText,
+  MessagesSquare,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -15,6 +16,7 @@ import { roleLabel } from "@/lib/labels";
 import { getSettings } from "@/lib/data/settings";
 import { getEmployees } from "@/lib/data/leads";
 import { Topbar } from "@/components/layout/topbar";
+import { Brand } from "@/components/layout/brand";
 import { Heartbeat } from "@/components/layout/heartbeat";
 import { FloatingAssistant } from "@/components/layout/floating-assistant";
 
@@ -37,6 +39,7 @@ export default async function AppLayout({
     { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true },
     { href: "/projects", label: "المشاريع", icon: Building2, show: true },
     { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true },
+    { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, show: true },
     { href: "/analytics", label: "التحليلات", icon: BarChart3, show: manager },
     { href: "/admin", label: "الفريق", icon: Users2, show: manager },
     { href: "/audit", label: "سجل التدقيق", icon: ScrollText, show: manager },
@@ -49,7 +52,7 @@ export default async function AppLayout({
       {/* شريط جانبي (RTL — يظهر يمين) */}
       <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 md:flex">
         <div className="mb-8">
-          <span className="font-logo text-2xl font-bold text-gold">{settings.companyName}</span>
+          <Brand companyName={settings.companyName} logoUrl={settings.logoUrl} textClassName="text-2xl" imgClassName="h-10 w-auto" />
           <p className="mt-0.5 text-xs text-muted-foreground">إدارة المبيعات العقارية</p>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
@@ -81,6 +84,7 @@ export default async function AppLayout({
           userName={user.name ?? "مستخدم"}
           roleLabel={roleLabel(user.role)}
           companyName={settings.companyName}
+          logoUrl={settings.logoUrl}
           falLicense={settings.falLicense ?? null}
           isManager={manager}
           employees={employees}

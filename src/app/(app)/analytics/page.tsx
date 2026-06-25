@@ -3,6 +3,7 @@ import { getAnalytics } from "@/lib/data/analytics";
 import { stageLabels, channelLabels, purchaseMethodLabels, purchaseGoalLabels } from "@/lib/labels";
 import { formatCurrency, toArabicDigits } from "@/lib/format";
 import { AiAssistant } from "@/components/analytics/ai-assistant";
+import { AnalyticsTabs } from "@/components/analytics/analytics-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,8 @@ export default async function AnalyticsPage() {
 
       <AiAssistant />
 
+      <AnalyticsTabs team={a.team}>
+        <div className="space-y-6">
       {/* المؤشرات الاحترافية */}
       <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
         {metricCards.map((m) => (
@@ -184,6 +187,8 @@ export default async function AnalyticsPage() {
           {a.team.length === 0 && <p className="text-sm text-muted-foreground">ما فيه موظفين.</p>}
         </div>
       </section>
+        </div>
+      </AnalyticsTabs>
     </div>
   );
 }

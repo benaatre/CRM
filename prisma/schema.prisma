@@ -211,6 +211,9 @@ model User {
   active       Boolean  @default(true)
   /// آخر ظهور (heartbeat) — لحالة الاتصال «متصل الآن / آخر ظهور»
   lastSeenAt   DateTime?
+  /// رمز دعوة تغيير الـ PIN (يُرسل بالإيميل) — bcrypt-free، عشوائي + انتهاء
+  pinResetToken String?  @unique
+  pinResetExp   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -225,8 +228,25 @@ model User {
   allowedProjects Project[] @relation("AllowedSellers")
   notifications Notification[]
   followUps     FollowUp[] @relation("FollowUpCreator")
+  sentMessages     ChatMessage[] @relation("ChatSender")
+  receivedMessages ChatMessage[] @relation("ChatRecipient")
 
   @@index([role])
+}
+
+/// رسائل الشات الداخلي — جماعي (recipientId = null) أو خاص بين موظفين.
+model ChatMessage {
+  id          String   @id @default(cuid())
+  body        String
+  senderId    String
+  sender      User     @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  /// المستلم — null يعني الشات الجماعي (كل الفريق)
+  recipientId String?
+  recipient   User?    @relation("ChatRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 /// المشاريع العقارية (مثال: مشروع السلطان 79 / 80).
@@ -298,6 +318,8 @@ model Lead {
   nationalId   String? // رقم الهوية
   nationality  Nationality?
   channel      Channel     @default(OTHER)
+  /// مصدر العميل عند الاستيراد (نص حرّ — يعكس القناة المختارة للدفعة)
+  source       String?
   projectId    String?
   unitType     UnitType?
   budget       Decimal?    @db.Decimal(14, 2)
@@ -511,6 +533,8 @@ model AuditLog {
 model Settings {
   id          String   @id @default("singleton")
   companyName String   @default("مشاريع السلطان")
+  /// لوجو الشركة (Data URL base64 أو رابط) — يظهر بالهيدر والدخول
+  logoUrl     String?
   falLicense  String?
   phone       String?
   /// إسناد العملاء الجدد تلقائيًا لموظف (الأقل حملًا) عند إنشائهم من المدير

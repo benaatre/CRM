@@ -15,7 +15,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
-import { notify, activeUserIds } from "@/lib/notify";
+import { notify, activeUserIds, managerIds } from "@/lib/notify";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -174,6 +174,19 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     });
 
     await notify(prisma, await activeUserIds(prisma), "booking.created", "وحدة اتحجزت", `وحدة ${unit.number} في ${unit.project?.name ?? "—"}`);
+
+    // تجاوز الخصم المسموح: إشعار خاص للمدير والمالك فقط (يظهر في جرس الهيدر).
+    if (discountExceeded) {
+      const maxAllowed = maxPct != null ? Math.round((price * maxPct) / 100) : 0;
+      await notify(
+        prisma,
+        await managerIds(prisma),
+        "discount.exceeded",
+        "تجاوز خصم",
+        `تجاوز خصم: ${user.name ?? "موظف"} طلب خصم ${discount.toLocaleString("en-US")} ر.س على وحدة ${unit.number} في ${unit.project?.name ?? "—"} — الحد المسموح ${maxAllowed.toLocaleString("en-US")} ر.س`,
+      );
+    }
+
     revalidateBookings();
     return { ok: true };
   } catch (e) {

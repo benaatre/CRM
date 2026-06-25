@@ -93,7 +93,7 @@ export function LeadsView({
     <div className="mx-auto max-w-7xl">
       <header className="mb-4 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-foreground">العملاء</h1>
-        <button onClick={() => setShowNew(true)} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
+        <button onClick={() => setShowNew(true)} className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
           عميل جديد
         </button>
       </header>
@@ -162,7 +162,7 @@ export function LeadsView({
                   </div>
                   <a href={`tel:${l.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{l.phone}</a>
                 </div>
-                <Link href={`/leads/${l.id}`} className="shrink-0 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">فتح</Link>
+                <Link href={`/leads/${l.id}`} className="flex min-h-11 shrink-0 items-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground hover:opacity-90">فتح</Link>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                 {l.firstContactStage ? (

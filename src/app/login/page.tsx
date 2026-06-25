@@ -1,6 +1,7 @@
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/data/settings";
+import { Brand } from "@/components/layout/brand";
 import { LoginForm, type LoginUser } from "./login-form";
 
 // صفحة الدخول — تجيب المستخدمين المفعّلين (id + الاسم + الدور فقط، بدون الرمز).
@@ -10,6 +11,7 @@ export default async function LoginPage() {
   let employees: LoginUser[] = [];
   let managers: LoginUser[] = [];
   let companyName = "مشاريع السلطان";
+  let logoUrl: string | null = null;
   let falLicense: string | null = null;
 
   try {
@@ -26,6 +28,7 @@ export default async function LoginPage() {
       (u) => u.role === Role.OWNER || u.role === Role.ADMIN,
     );
     companyName = settings.companyName;
+    logoUrl = settings.logoUrl;
     falLicense = settings.falLicense;
   } catch {
     // قاعدة البيانات غير مهيّأة بعد — الفورم يعرض رسالة مناسبة.
@@ -35,9 +38,13 @@ export default async function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center px-6 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="font-logo text-4xl font-bold text-gold">
-            {companyName}
-          </h1>
+          {logoUrl ? (
+            <div className="flex justify-center">
+              <Brand companyName={companyName} logoUrl={logoUrl} imgClassName="h-16 w-auto" />
+            </div>
+          ) : (
+            <h1 className="font-logo text-4xl font-bold text-gold">{companyName}</h1>
+          )}
           <p className="mt-2 text-sm text-muted-foreground">
             نظام إدارة المبيعات — سجّل دخولك للمتابعة
           </p>

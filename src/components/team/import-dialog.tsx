@@ -108,6 +108,20 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
         {/* الخطوة ١: المصدر */}
         {step === "source" && (
           <>
+            {/* مصدر العملاء — إلزامي لكل الدفعة (أعلى كل تبويب) */}
+            <div className="mb-4 space-y-1.5">
+              <label className="text-xs font-medium text-foreground">مصدر العملاء *</label>
+              <select
+                value={defaultChannel}
+                onChange={(e) => setDefaultChannel(e.target.value)}
+                required
+                className={`select-base ${!defaultChannel ? "border-gold/50" : ""}`}
+              >
+                <option value="" disabled>اختر المصدر…</option>
+                {channelOrder.map((c) => <option key={c} value={c}>{channelLabels[c]}</option>)}
+              </select>
+              <p className="text-[0.7rem] text-muted-foreground">يُسجَّل لكل العملاء في هذه الدفعة.</p>
+            </div>
             <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-secondary p-1">
               {([["file", "رفع ملف", FileUp], ["paste", "لصق", ClipboardPaste], ["sheet", "رابط الشيت", Link2]] as const).map(([v, label, Icon]) => (
                 <button key={v} onClick={() => setMode(v)} className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${mode === v ? "bg-card text-gold" : "text-muted-foreground hover:text-foreground"}`}>
@@ -125,8 +139,8 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
               {mode === "file" && <input type="file" name="file" accept=".csv,.xlsx,.xls" required className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-foreground" />}
               {mode === "paste" && <textarea name="text" required rows={5} dir="ltr" placeholder={"name,phone,...\nعبدالله,0551234567,..."} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />}
               {mode === "sheet" && <input name="sheetUrl" required dir="ltr" placeholder="رابط Google Sheet (عام)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />}
-              <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {pending && <Loader2 className="size-4 animate-spin" />} اقرأ الملف
+              <button type="submit" disabled={pending || !defaultChannel} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {pending && <Loader2 className="size-4 animate-spin" />} {!defaultChannel ? "اختر المصدر أولاً" : "اقرأ الملف"}
               </button>
             </form>
           </>
@@ -198,23 +212,11 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
               </table>
             </div>
             <div className="mt-4 space-y-3 border-t border-border pt-4">
-              {/* القناة (المنصة) — إجبارية: عمود في الملف أو قناة موحّدة للكل */}
+              {/* مصدر العملاء — تأكيد (يُختار في الخطوة الأولى) */}
               {!hasChannelColumn ? (
-                <div className="space-y-1.5">
-                  <span className="text-xs text-muted-foreground">المنصة / القناة لكل العملاء في الملف *</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {channelOrder.map((c) => (
-                      <button
-                        type="button"
-                        key={c}
-                        onClick={() => setDefaultChannel(c)}
-                        className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${defaultChannel === c ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}
-                      >
-                        {channelLabels[c]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  المصدر: <span className="font-medium text-gold">{defaultChannel ? channelLabels[defaultChannel as keyof typeof channelLabels] : "—"}</span> — لكل العملاء في هذه الدفعة.
+                </p>
               ) : (
                 <p className="text-xs text-muted-foreground">القناة تُقرأ من عمود في الملف.</p>
               )}

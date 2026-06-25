@@ -13,6 +13,7 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [auto, setAuto] = useState(settings.autoAssign);
+  const [logoPreview, setLogoPreview] = useState<string | null>(settings.logoUrl);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,10 +30,42 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
   return (
     <div className="space-y-6">
       <form onSubmit={submit} className="glass max-w-xl space-y-4 rounded-2xl p-6">
-        <h2 className="font-semibold text-foreground">بيانات الشركة</h2>
-        <Field label="اسم الشركة *">
+        <h2 className="font-semibold text-foreground">هوية الشركة</h2>
+        <Field label="اسم الشركة * (يظهر في كل الواجهات)">
           <input name="companyName" required defaultValue={settings.companyName} className="select-base" />
         </Field>
+
+        {/* لوجو الشركة */}
+        <div className="space-y-2">
+          <span className="text-sm text-muted-foreground">لوجو الشركة (يظهر بالهيدر وصفحة الدخول)</span>
+          <div className="flex items-center gap-3">
+            <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-background">
+              {logoPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoPreview} alt="لوجو" className="size-full object-contain" />
+              ) : (
+                <span className="font-logo text-xs text-gold">لا يوجد</span>
+              )}
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <input
+                type="file"
+                name="logo"
+                accept="image/*"
+                onChange={(e) => { const f = e.target.files?.[0]; setLogoPreview(f ? URL.createObjectURL(f) : settings.logoUrl); }}
+                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-foreground"
+              />
+              <p className="text-[0.7rem] text-muted-foreground">PNG/JPG/SVG — أقل من ٥٠٠ كيلوبايت.</p>
+              {settings.logoUrl && (
+                <label className="flex items-center gap-2 text-xs text-destructive">
+                  <input type="checkbox" name="removeLogo" onChange={(e) => { if (e.target.checked) setLogoPreview(null); }} />
+                  إزالة اللوجو الحالي
+                </label>
+              )}
+            </div>
+          </div>
+        </div>
+
         <Field label="رقم ترخيص فال (REGA)">
           <input name="falLicense" defaultValue={settings.falLicense ?? ""} dir="ltr" className="select-base" placeholder="مثال: 1200000000" />
         </Field>

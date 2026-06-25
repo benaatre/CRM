@@ -1,7 +1,10 @@
 import "server-only";
 
 import type { Channel, LeadStage, PurchaseMethod, PurchaseGoal } from "@prisma/client";
+import { FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+
+const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 
 const num = (v: { toNumber(): number } | null) => (v ? v.toNumber() : 0);
 
@@ -40,7 +43,18 @@ export type AnalyticsData = {
   channels: { channel: Channel; count: number }[];
   purchaseMethods: { method: PurchaseMethod; count: number }[];
   purchaseGoals: { goal: PurchaseGoal; count: number }[];
-  team: { name: string; closed: number; bookings: number }[];
+  team: {
+    id: string;
+    name: string;
+    assigned: number;   // العملاء المعيّنون
+    followups: number;  // المتابعات
+    visits: number;     // الزيارات
+    bookings: number;   // الحجوزات
+    closed: number;     // صفقات مقفولة
+    conversion: number; // معدل التحويل % (مقفول/معيّن)
+    target: number;     // الهدف الشهري
+    progress: number | null; // % نحو الهدف
+  }[];
 };
 
 const FUNNEL: LeadStage[] = [
@@ -54,7 +68,7 @@ const FUNNEL: LeadStage[] = [
 ];
 
 export async function getAnalytics(): Promise<AnalyticsData> {
-  const [bookings, leads, channelGroups, stageGroups, employees, closedByEmp, bookingsByEmp, methodGroups, goalGroups] =
+  const [bookings, leads, channelGroups, stageGroups, employees, closedByEmp, bookingsByEmp, methodGroups, goalGroups, assignedByEmp, followUpsByEmp, visitsByEmp] =
     await Promise.all([
       prisma.booking.findMany({
         include: { unit: { select: { project: { select: { id: true, name: true } } } } },
@@ -64,11 +78,14 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       }),
       prisma.lead.groupBy({ by: ["channel"], _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["stage"], _count: { _all: true } }),
-      prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true } }),
+      prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true, targetDeals: true } }),
       prisma.lead.groupBy({ by: ["assignedToId"], where: { stage: "CLOSED_WON" }, _count: { _all: true } }),
       prisma.booking.groupBy({ by: ["sellerId"], _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["purchaseMethod"], where: { purchaseMethod: { not: null } }, _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["purchaseGoal"], where: { purchaseGoal: { not: null } }, _count: { _all: true } }),
+      prisma.lead.groupBy({ by: ["assignedToId"], _count: { _all: true } }),
+      prisma.followUp.groupBy({ by: ["createdBy"], _count: { _all: true } }),
+      prisma.followUp.groupBy({ by: ["createdBy"], where: { type: { in: VISIT_TYPES } }, _count: { _all: true } }),
     ]);
 
   // ===== المالية =====
@@ -155,11 +172,25 @@ export async function getAnalytics(): Promise<AnalyticsData> {
   // ===== الفريق =====
   const closedMap = new Map(closedByEmp.map((r) => [r.assignedToId, r._count._all]));
   const bookMap = new Map(bookingsByEmp.map((r) => [r.sellerId, r._count._all]));
-  const team = employees.map((e) => ({
-    name: e.name,
-    closed: closedMap.get(e.id) ?? 0,
-    bookings: bookMap.get(e.id) ?? 0,
-  }));
+  const assignedMap = new Map(assignedByEmp.map((r) => [r.assignedToId, r._count._all]));
+  const followUpsMap = new Map(followUpsByEmp.map((r) => [r.createdBy, r._count._all]));
+  const visitsMap = new Map(visitsByEmp.map((r) => [r.createdBy, r._count._all]));
+  const team = employees.map((e) => {
+    const assigned = assignedMap.get(e.id) ?? 0;
+    const closed = closedMap.get(e.id) ?? 0;
+    return {
+      id: e.id,
+      name: e.name,
+      assigned,
+      followups: followUpsMap.get(e.id) ?? 0,
+      visits: visitsMap.get(e.id) ?? 0,
+      bookings: bookMap.get(e.id) ?? 0,
+      closed,
+      conversion: assigned > 0 ? Math.round((closed / assigned) * 100) : 0,
+      target: e.targetDeals,
+      progress: e.targetDeals > 0 ? Math.round((closed / e.targetDeals) * 100) : null,
+    };
+  });
 
   return {
     finance: {

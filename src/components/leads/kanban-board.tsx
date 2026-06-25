@@ -93,7 +93,7 @@ export function KanbanBoard({
                     <div className="font-medium text-foreground">{l.name}</div>
                     <a href={`tel:${l.phone}`} className="text-xs text-gold" dir="ltr">{l.phone}</a>
                   </div>
-                  <Link href={`/leads/${l.id}`} className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold">فتح</Link>
+                  <Link href={`/leads/${l.id}`} className="flex min-h-11 shrink-0 items-center rounded-lg border border-border px-3 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold">فتح</Link>
                 </div>
                 <div className="mt-1.5 text-xs text-muted-foreground">
                   {l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"} · {l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}

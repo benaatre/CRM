@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ONLINE_THRESHOLD_MS } from "@/lib/format";
 
 export type TeamMember = {
   id: string;
@@ -58,7 +59,7 @@ export async function getTeam(): Promise<TeamData> {
       bookings: bookMap.get(u.id) ?? 0,
       activityRate: total > 0 ? Math.round(((total - notContacted) / total) * 100) : 0,
       lastSeenAt: u.lastSeenAt,
-      online: !!u.lastSeenAt && now - u.lastSeenAt.getTime() < 120_000,
+      online: !!u.lastSeenAt && now - u.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS,
     };
   });
 

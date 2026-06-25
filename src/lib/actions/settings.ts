@@ -18,10 +18,24 @@ export async function updateSettings(formData: FormData): Promise<ActionResult> 
     const googleSheetUrl = String(formData.get("googleSheetUrl") ?? "").trim() || null;
     if (!companyName) return { ok: false, error: "اكتب اسم الشركة" };
 
+    // لوجو الشركة — يُخزَّن كـ Data URL (base64). الحد ٥٠٠ كيلوبايت.
+    let logoUpdate: { logoUrl?: string | null } = {};
+    const removeLogo = formData.get("removeLogo") === "on";
+    const logo = formData.get("logo");
+    if (removeLogo) {
+      logoUpdate = { logoUrl: null };
+    } else if (logo && typeof logo === "object" && "arrayBuffer" in logo && (logo as File).size > 0) {
+      const file = logo as File;
+      if (!file.type.startsWith("image/")) return { ok: false, error: "اللوجو لازم يكون صورة" };
+      if (file.size > 500 * 1024) return { ok: false, error: "حجم اللوجو لازم أقل من ٥٠٠ كيلوبايت" };
+      const b64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+      logoUpdate = { logoUrl: `data:${file.type};base64,${b64}` };
+    }
+
     await prisma.settings.upsert({
       where: { id: "singleton" },
-      update: { companyName, falLicense, phone, autoAssign, googleSheetUrl },
-      create: { id: "singleton", companyName, falLicense, phone, autoAssign, googleSheetUrl },
+      update: { companyName, falLicense, phone, autoAssign, googleSheetUrl, ...logoUpdate },
+      create: { id: "singleton", companyName, falLicense, phone, autoAssign, googleSheetUrl, ...logoUpdate },
     });
 
     revalidatePath("/", "layout");

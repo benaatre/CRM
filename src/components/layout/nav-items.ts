@@ -7,6 +7,7 @@ import {
   BarChart3,
   Users2,
   ScrollText,
+  MessagesSquare,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, managerOnly: false },
   { href: "/projects", label: "المشاريع", icon: Building2, managerOnly: false },
   { href: "/bookings", label: "خط المبيعات", icon: Handshake, managerOnly: false },
+  { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, managerOnly: false },
   { href: "/analytics", label: "التحليلات", icon: BarChart3, managerOnly: true },
   { href: "/admin", label: "الفريق", icon: Users2, managerOnly: true },
   { href: "/audit", label: "سجل التدقيق", icon: ScrollText, managerOnly: true },

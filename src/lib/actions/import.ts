@@ -299,11 +299,16 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
       // ما تم تحديد موظف فعلي (الإسناد للمالك) → غير موزّع.
       if (assignedToId && ownerIds.includes(assignedToId)) assignedToId = null;
 
+      const resolvedChannel: Channel =
+        (r.channel && channelBy[r.channel]) ||
+        (defaultChannel && defaultChannel in Channel ? (defaultChannel as Channel) : Channel.OTHER);
       await prisma.lead.create({
         data: {
           name: r.name,
           phone: r.phone,
-          channel: (r.channel && channelBy[r.channel]) || (defaultChannel && defaultChannel in Channel ? (defaultChannel as Channel) : Channel.OTHER),
+          channel: resolvedChannel,
+          // مصدر العميل كنص حرّ — نفس القناة المختارة للدفعة (عربي).
+          source: channelLabels[resolvedChannel],
           stage: (r.stage && stageBy[r.stage]) || LeadStage.NEW,
           priority: (r.priority && priorityBy[r.priority]) || Priority.MEDIUM,
           unitType: r.unitType ? unitTypeBy[r.unitType] ?? null : null,

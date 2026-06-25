@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X, Loader2 } from "lucide-react";
 import type { Role } from "@prisma/client";
-import { fetchEmployeeDetail, fetchProjectsList, updateEmployee, type EmployeeDetail } from "@/lib/actions/team";
+import { fetchEmployeeDetail, fetchProjectsList, updateEmployee, inviteEmployee, type EmployeeDetail } from "@/lib/actions/team";
 
 export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; onClose: () => void }) {
   const router = useRouter();
@@ -14,6 +14,15 @@ export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; on
   const [allowed, setAllowed] = useState<Set<string>>(new Set());
   const [active, setActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [inviteMsg, setInviteMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function sendInvite() {
+    setInviteMsg(null);
+    startTransition(async () => {
+      const res = await inviteEmployee(userId);
+      setInviteMsg({ ok: res.ok, text: res.ok ? (res.message ?? "تم الإرسال") : (res.error ?? "صار خطأ") });
+    });
+  }
 
   useEffect(() => {
     Promise.all([fetchEmployeeDetail(userId), fetchProjectsList()]).then(([d, p]) => {
@@ -52,6 +61,7 @@ export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; on
             <div className="grid grid-cols-2 gap-3">
               <Field label="الاسم"><input name="name" required defaultValue={detail.name} className="select-base" /></Field>
               <Field label="الجوال"><input name="phone" dir="ltr" defaultValue={detail.phone ?? ""} className="select-base" /></Field>
+              <Field label="الإيميل (اختياري)"><input name="email" type="email" dir="ltr" defaultValue={detail.email ?? ""} className="select-base" placeholder="name@example.com" /></Field>
               <Field label="الدور">
                 <select name="role" defaultValue={detail.role} className="select-base">
                   <option value="EMPLOYEE">موظف مبيعات</option>
@@ -76,6 +86,23 @@ export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; on
             </Field>
 
             <Field label="ملاحظات خاصة"><textarea name="staffNotes" rows={2} defaultValue={detail.staffNotes ?? ""} className="select-base" /></Field>
+
+            {/* دعوة الإيميل لتعيين الـ PIN */}
+            {detail.email ? (
+              <div className="space-y-2 rounded-xl border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">دعوة تغيير الرمز</div>
+                    <div className="text-xs text-muted-foreground">يُرسل رابط على إيميل الموظف لتعيين رمز الدخول.</div>
+                  </div>
+                  <button type="button" onClick={sendInvite} disabled={pending} className="shrink-0 rounded-xl border border-gold/40 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/10 disabled:opacity-50">إرسال دعوة</button>
+                </div>
+                {inviteMsg && <p className={`rounded-lg px-3 py-2 text-xs ${inviteMsg.ok ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>{inviteMsg.text}</p>}
+                <p className="text-[0.7rem] text-muted-foreground/70">لو غيّرت الإيميل، احفظ أولاً ثم أرسل الدعوة.</p>
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">أضف إيميلًا واحفظ لتفعيل «إرسال دعوة» تغيير الرمز.</p>
+            )}
 
             <label className="flex items-center justify-between rounded-xl border border-border p-3 text-sm">
               <span className="text-foreground">الحساب مفعّل</span>

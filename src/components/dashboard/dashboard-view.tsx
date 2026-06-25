@@ -160,13 +160,13 @@ export function DashboardView({ data }: { data: DashboardData }) {
                     {data.manager && l.assignedToName && <div className="mt-0.5 text-xs text-muted-foreground/70">{l.assignedToName}</div>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <a href={`tel:${l.phone}`} className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90" title="اتصال">
+                    <a href={`tel:${l.phone}`} className="flex min-h-11 items-center gap-1 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90" title="اتصال">
                       <Phone className="size-3.5" /> اتصال
                     </a>
-                    <a href={`https://wa.me/966${l.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 rounded-lg bg-success/15 px-2.5 py-1.5 text-xs font-medium text-success hover:bg-success/25" title="واتساب">
+                    <a href={`https://wa.me/966${l.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-1 rounded-lg bg-success/15 px-2.5 text-xs font-medium text-success hover:bg-success/25" title="واتساب">
                       <MessageCircle className="size-3.5" /> واتساب
                     </a>
-                    <Link href={`/leads/${l.id}`} className="rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold" title="فتح ملف العميل">←</Link>
+                    <Link href={`/leads/${l.id}`} className="flex min-h-11 items-center rounded-lg border border-border px-2 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold" title="فتح ملف العميل">←</Link>
                   </div>
                 </div>
               ))}

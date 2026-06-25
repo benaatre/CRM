@@ -1,6 +1,23 @@
 // دوال تنسيق سعودية — أرقام عربية، اختصار (٦٩٠ك / ١.٢م)، عملة ر.س، تواريخ.
 
+import { formatDistanceToNow } from "date-fns";
+import { ar } from "date-fns/locale";
+
 const AR_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+
+/** عتبة «متصل الآن» — آخر نشاط أقل من ٥ دقائق. */
+export const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+
+/**
+ * «آخر ظهور» بصيغة نسبية بالعربي عبر date-fns:
+ * أقل من ٥ دقائق → «متصل الآن» · غير ذلك → «منذ ٣ ساعات» / «منذ يومين» … (بأرقام عربية).
+ */
+export function lastSeenAgo(date: Date | string | null | undefined): string {
+  if (!date) return "لم يظهر بعد";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Date.now() - d.getTime() < ONLINE_THRESHOLD_MS) return "متصل الآن";
+  return toArabicDigits(formatDistanceToNow(d, { addSuffix: true, locale: ar }));
+}
 
 export function toArabicDigits(input: string | number): string {
   return String(input).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);

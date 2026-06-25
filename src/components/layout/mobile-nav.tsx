@@ -1,25 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, SunMoon, LogOut } from "lucide-react";
 import { signOutAction } from "@/lib/actions/auth";
 import { navForRole } from "./nav-items";
+import { Brand } from "./brand";
 
 /** زر القائمة (☰) + درج جانبي من اليمين للجوال — يُغلق تلقائيًا عند الضغط على رابط. */
 export function MobileNav({
   isManager,
   companyName,
+  logoUrl,
   falLicense,
 }: {
   isManager: boolean;
   companyName: string;
+  logoUrl?: string | null;
   falLicense: string | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const nav = navForRole(isManager);
+
+  // الدرج يُحقن في <body> عبر portal حتى لا يتأثر بـ backdrop-filter في الهيدر
+  // (الذي يكسر fixed ويجعل محتوى الدرج يتسرّب فوق الصفحة).
+  useEffect(() => setMounted(true), []);
 
   function toggleTheme() {
     const isLight = document.documentElement.classList.toggle("light");
@@ -40,8 +49,8 @@ export function MobileNav({
         <Menu className="size-5" />
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 md:hidden">
+      {mounted && open && createPortal(
+        <div className="fixed inset-0 z-[80] md:hidden">
           {/* طبقة معتمة */}
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
 
@@ -49,7 +58,7 @@ export function MobileNav({
           <aside className="absolute inset-0 flex w-full flex-col bg-card p-5 shadow-2xl">
             <div className="mb-6 flex items-start justify-between">
               <div>
-                <span className="font-logo text-xl font-bold text-gold">{companyName}</span>
+                <Brand companyName={companyName} logoUrl={logoUrl} textClassName="text-xl" imgClassName="h-9 w-auto" />
                 <p className="mt-0.5 text-xs text-muted-foreground">إدارة المبيعات العقارية</p>
               </div>
               <button onClick={() => setOpen(false)} aria-label="إغلاق" className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary">
@@ -103,7 +112,8 @@ export function MobileNav({
               )}
             </div>
           </aside>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { UserPlus, Upload, Shuffle, X } from "lucide-react";
 import type { Role } from "@prisma/client";
 import { roleLabel } from "@/lib/labels";
-import { toArabicDigits, timeAgo } from "@/lib/format";
+import { toArabicDigits, lastSeenAgo } from "@/lib/format";
 import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
 import { ImportDialog } from "./import-dialog";
@@ -43,7 +43,8 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
             {toArabicDigits(data.employeeCount)} موظف · {toArabicDigits(data.unassigned)} عميل غير موزّع
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {/* الأزرار — قابلة للتمرير أفقيًا على الجوال */}
+        <div className="-mx-4 flex w-full gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:px-0 sm:pb-0 [&>button]:min-h-11 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
             <Upload className="size-4" /> استيراد عملاء
           </button>
@@ -56,7 +57,69 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
         </div>
       </header>
 
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+      {/* بطاقات الجوال (بدل الجدول) */}
+      <div className="space-y-3 md:hidden">
+        {data.members.length === 0 ? (
+          <p className="rounded-2xl border border-border bg-card px-4 py-10 text-center text-muted-foreground">ما فيه موظفين بعد.</p>
+        ) : (
+          data.members.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setEditEmp(m.id)}
+              className={`block w-full rounded-2xl border border-border bg-card p-4 text-right ${m.active ? "" : "opacity-50"}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium text-foreground">{m.name}</div>
+                  {m.phone && <div className="mt-0.5 text-sm text-muted-foreground" dir="ltr">{m.phone}</div>}
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${roleBadge[m.role]}`}>{roleLabel(m.role)}</span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                {m.online ? (
+                  <span className="flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-0.5 text-success"><span className="size-2 rounded-full bg-success" /> متصل الآن</span>
+                ) : (
+                  <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">{lastSeenAgo(m.lastSeenAt)}</span>
+                )}
+                {m.role === "EMPLOYEE" ? (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setActive(m.id, !m.active); }}
+                    className={`rounded-full px-2 py-0.5 ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}
+                  >
+                    {m.active ? "مفعّل" : "موقوف"}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-secondary px-2 py-0.5 text-success">مفعّل</span>
+                )}
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-lg bg-secondary/50 py-2">
+                  <div className="text-base font-bold text-foreground">{toArabicDigits(m.total)}</div>عملاء
+                </div>
+                <div className="rounded-lg bg-secondary/50 py-2">
+                  <div className="text-base font-bold text-success">{toArabicDigits(m.closed)}</div>مقفول
+                </div>
+                <div className="rounded-lg bg-secondary/50 py-2">
+                  <div className="text-base font-bold text-gold">{m.target > 0 ? toArabicDigits(m.target) : "—"}</div>الهدف
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <span className="shrink-0 text-xs text-muted-foreground">النشاط</span>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
+                  <div className="h-full rounded-full bg-gold" style={{ width: `${m.activityRate}%` }} />
+                </div>
+                <span className="shrink-0 text-xs text-muted-foreground">{toArabicDigits(m.activityRate)}٪</span>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+
+      {/* الجدول (سطح المكتب) */}
+      <div className="hidden overflow-x-auto rounded-2xl border border-border bg-card md:block">
         <table className="w-full text-right text-sm">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
@@ -92,7 +155,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
                   {m.online ? (
                     <span className="flex items-center gap-1.5 text-success"><span className="size-2 rounded-full bg-success" /> متصل الآن</span>
                   ) : (
-                    <span className="text-xs text-muted-foreground">{m.lastSeenAt ? timeAgo(m.lastSeenAt) : "—"}</span>
+                    <span className="text-xs text-muted-foreground">{lastSeenAgo(m.lastSeenAt)}</span>
                   )}
                 </td>
                 <td className="px-4 py-3">

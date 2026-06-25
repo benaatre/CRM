@@ -27,6 +27,9 @@ export const authConfig = {
         return true;
       }
 
+      // صفحة تعيين الـ PIN عبر رابط الدعوة — عامة (الرمز هو التحقق).
+      if (pathname.startsWith("/reset-pin")) return true;
+
       // منطقة المدير فقط.
       if (pathname.startsWith("/admin")) {
         if (!isLoggedIn) return false; // → يُحوّل لصفحة الدخول

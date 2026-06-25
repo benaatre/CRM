@@ -1,10 +1,12 @@
 "use server";
 
+import crypto from "crypto";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/auth-guards";
+import { sendMail } from "@/lib/mailer";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -43,7 +45,7 @@ export async function addEmployee(formData: FormData): Promise<ActionResult> {
 }
 
 export type EmployeeDetail = {
-  id: string; name: string; phone: string | null; role: Role;
+  id: string; name: string; phone: string | null; email: string | null; role: Role;
   targetDeals: number; maxClients: number | null; staffNotes: string | null;
   active: boolean; allowedProjectIds: string[];
 };
@@ -53,7 +55,7 @@ export async function fetchEmployeeDetail(userId: string): Promise<EmployeeDetai
   await requireManager();
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, phone: true, role: true, targetDeals: true, maxClients: true, staffNotes: true, active: true, allowedProjects: { select: { id: true } } },
+    select: { id: true, name: true, phone: true, email: true, role: true, targetDeals: true, maxClients: true, staffNotes: true, active: true, allowedProjects: { select: { id: true } } },
   });
   if (!u) return null;
   return { ...u, allowedProjectIds: u.allowedProjects.map((p) => p.id) };
@@ -72,6 +74,7 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
     const name = String(formData.get("name") ?? "").trim();
     if (!name) return { ok: false, error: "اكتب الاسم" };
     const phone = String(formData.get("phone") ?? "").trim() || null;
+    const email = String(formData.get("email") ?? "").trim().toLowerCase() || null;
     const role = (String(formData.get("role") ?? "EMPLOYEE") as Role);
     const targetDeals = Number(String(formData.get("target") ?? "0").replace(/\D/g, "")) || 0;
     const maxClientsRaw = String(formData.get("maxClients") ?? "").replace(/\D/g, "");
@@ -85,18 +88,55 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
       const exists = await prisma.user.findFirst({ where: { phone, NOT: { id: userId } } });
       if (exists) return { ok: false, error: "الجوال مسجّل لمستخدم ثاني" };
     }
+    if (email) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "صيغة الإيميل غير صحيحة" };
+      const exists = await prisma.user.findFirst({ where: { email, NOT: { id: userId } } });
+      if (exists) return { ok: false, error: "الإيميل مسجّل لمستخدم ثاني" };
+    }
     if (pin && !/^\d{4,6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٤–٦ أرقام" };
 
     await prisma.user.update({
       where: { id: userId },
       data: {
-        name, phone, role, targetDeals, maxClients, staffNotes, active,
+        name, phone, email, role, targetDeals, maxClients, staffNotes, active,
         ...(pin ? { pinHash: bcrypt.hashSync(pin, 10) } : {}),
         allowedProjects: { set: allowedProjectIds.map((id) => ({ id })) },
       },
     });
     revalidatePath("/admin");
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** إرسال دعوة بالإيميل لتعيين/تغيير رمز الـ PIN — يولّد رمزًا صالحًا ٢٤ ساعة. */
+export async function inviteEmployee(userId: string): Promise<ActionResult> {
+  try {
+    await requireManager();
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+    if (!u) return { ok: false, error: "الموظف غير موجود" };
+    if (!u.email) return { ok: false, error: "أضف إيميل الموظف واحفظ أولاً" };
+
+    const token = crypto.randomBytes(24).toString("hex");
+    const exp = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await prisma.user.update({ where: { id: userId }, data: { pinResetToken: token, pinResetExp: exp } });
+
+    const base = (process.env.AUTH_URL || process.env.NEXTAUTH_URL || "http://localhost:3000").replace(/\/$/, "");
+    const link = `${base}/reset-pin?token=${token}`;
+    const html = `
+      <div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;background:#0a0a0b;color:#ededf0;padding:24px;border-radius:12px">
+        <h2 style="color:#cba45e;margin:0 0 8px">مرحبًا ${u.name}</h2>
+        <p>تمت دعوتك لتعيين رمز الدخول (PIN) الخاص بك في نظام <b>مشاريع السلطان</b>.</p>
+        <p style="margin:20px 0">
+          <a href="${link}" style="background:#cba45e;color:#0a0a0b;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">تعيين رمز الدخول</a>
+        </p>
+        <p style="color:#9a9aa3;font-size:13px">الرابط صالح ٢٤ ساعة. إذا لم تطلب هذا تجاهل الرسالة.</p>
+        <p style="color:#6b665b;font-size:11px;direction:ltr;word-break:break-all">${link}</p>
+      </div>`;
+    const res = await sendMail(u.email, "دعوة لتعيين رمز الدخول — مشاريع السلطان", html);
+    if (!res.ok) return { ok: false, error: `تعذّر الإرسال: ${res.error}` };
+    return { ok: true, message: `تم إرسال الدعوة إلى ${u.email}` };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

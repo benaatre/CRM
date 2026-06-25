@@ -58,7 +58,7 @@ export function ProjectsView({ data }: { data: ProjectsOverview }) {
           <h1 className="text-2xl font-bold text-foreground">المشاريع والوحدات</h1>
           <p className="mt-1 text-sm text-muted-foreground">المخزون العقاري وحالة الوحدات</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
+        <button onClick={() => setShowAdd(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
           <Plus className="size-4" /> إضافة مشروع
         </button>
       </header>

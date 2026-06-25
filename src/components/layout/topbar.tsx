@@ -15,6 +15,7 @@ import { signOutAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { Brand } from "@/components/layout/brand";
 
 type Employee = { id: string; name: string };
 
@@ -22,6 +23,7 @@ export function Topbar({
   userName,
   roleLabel,
   companyName,
+  logoUrl,
   falLicense,
   isManager,
   employees,
@@ -29,6 +31,7 @@ export function Topbar({
   userName: string;
   roleLabel: string;
   companyName: string;
+  logoUrl?: string | null;
   falLicense: string | null;
   isManager: boolean;
   employees: Employee[];
@@ -59,10 +62,9 @@ export function Topbar({
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-3 backdrop-blur-md md:px-6">
-      {/* يمين: قائمة الجوال + المستخدم + خروج */}
+      {/* يمين: اللوجو فقط (جوال) · المستخدم + خروج (سطح المكتب) */}
       <div className="flex items-center gap-3">
-        <MobileNav isManager={isManager} companyName={companyName} falLicense={falLicense} />
-        <span className="font-logo text-lg font-bold text-gold md:hidden">{companyName}</span>
+        <span className="md:hidden"><Brand companyName={companyName} logoUrl={logoUrl} textClassName="text-lg" imgClassName="h-7 w-auto" /></span>
         <div className="hidden text-left sm:block">
           <div className="text-sm font-medium text-foreground">{userName}</div>
           <div className="text-xs text-gold">{roleLabel}</div>
@@ -126,16 +128,19 @@ export function Topbar({
           <Plus className="size-4" />
           <span>عميل جديد</span>
         </button>
-      </div>
 
-      {/* زر «عميل جديد» ثابت أسفل الشاشة — على الجوال فقط (أسفل اليسار لتفادي المساعد العائم) */}
-      <button
-        onClick={() => setShowNew(true)}
-        className="fixed bottom-6 left-6 z-40 flex min-h-14 items-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-primary-foreground shadow-2xl hover:opacity-90 md:hidden"
-      >
-        <Plus className="size-5" />
-        عميل جديد
-      </button>
+        {/* أدوات الجوال: إشعارات + تبديل ثيم + زر القائمة ☰ */}
+        <span className="md:hidden"><NotificationBell /></span>
+        <button
+          onClick={toggleTheme}
+          title={dark ? "الوضع النهاري" : "الوضع الليلي"}
+          aria-label="تبديل الثيم"
+          className="flex size-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:text-gold md:hidden"
+        >
+          {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+        </button>
+        <MobileNav isManager={isManager} companyName={companyName} logoUrl={logoUrl} falLicense={falLicense} />
+      </div>
 
       <NewLeadDialog
         open={showNew}

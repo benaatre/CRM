@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export type AppSettings = {
   companyName: string;
+  logoUrl: string | null;
   falLicense: string | null;
   phone: string | null;
   autoAssign: boolean;
@@ -21,6 +22,7 @@ export async function getSettings(): Promise<AppSettings> {
   });
   return {
     companyName: s.companyName,
+    logoUrl: s.logoUrl,
     falLicense: s.falLicense,
     phone: s.phone,
     autoAssign: s.autoAssign,
