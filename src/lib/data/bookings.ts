@@ -130,13 +130,14 @@ export async function getBookings(): Promise<BookingsData> {
     })),
   }));
 
-  const sold = cards.filter((c) => c.stage === "SOLD");
+  // «تم البيع والاستلام» = SOLD أو DELIVERED (مدموجان).
+  const sold = cards.filter((c) => c.stage === "SOLD" || c.stage === "DELIVERED");
   return {
     manager,
     currentUserId: user.id,
     kpis: {
       total: cards.length,
-      inProgress: cards.filter((c) => c.stage !== "SOLD").length,
+      inProgress: cards.filter((c) => c.stage !== "SOLD" && c.stage !== "DELIVERED").length,
       sold: sold.length,
       deposits: cards.reduce((s, c) => s + (c.deposit ?? 0), 0),
       salesValue: sold.reduce((s, c) => s + c.finalPrice, 0),

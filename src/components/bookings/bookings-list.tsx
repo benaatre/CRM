@@ -36,7 +36,7 @@ export function BookingsList({ data }: { data: BookingsData }) {
   const kpis = [
     { label: "إجمالي الحجوزات", value: formatNumberShort(data.kpis.total), icon: Building2, accent: "text-gold" },
     { label: "قيد البيع", value: formatNumberShort(data.kpis.inProgress), icon: Clock, accent: "text-warning" },
-    { label: "تم البيع", value: formatNumberShort(data.kpis.sold), icon: BadgeCheck, accent: "text-success" },
+    { label: "تم البيع والاستلام", value: formatNumberShort(data.kpis.sold), icon: BadgeCheck, accent: "text-success", green: true },
     { label: "إجمالي العرابين", value: formatCurrency(data.kpis.deposits), icon: Coins, accent: "text-info" },
     { label: "قيمة المبيعات", value: formatCurrency(data.kpis.salesValue), icon: Wallet, accent: "text-gold" },
   ];
@@ -65,11 +65,12 @@ export function BookingsList({ data }: { data: BookingsData }) {
       <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
         {kpis.map((k) => {
           const Icon = k.icon;
+          const green = k.label === "تم البيع والاستلام";
           return (
-            <div key={k.label} className="glass rounded-2xl p-4">
+            <div key={k.label} className={`rounded-2xl p-4 ${green ? "border border-success/40 bg-success/10" : "glass"}`}>
               <Icon className={`size-5 ${k.accent}`} />
               <div className={`mt-2 text-lg font-bold ${k.accent}`}>{k.value}</div>
-              <div className="text-xs text-muted-foreground">{k.label}</div>
+              <div className={`text-xs ${green ? "text-success" : "text-muted-foreground"}`}>{k.label}</div>
             </div>
           );
         })}
@@ -93,7 +94,10 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
   const [showLog, setShowLog] = useState(false);
-  const currentIdx = bookingStageOrder.indexOf(b.stage);
+  // SOLD وDELIVERED مدموجان في «تم البيع والاستلام» (= DELIVERED). نخفي SOLD من الواجهة.
+  const STAGES = bookingStageOrder.filter((s) => s !== "SOLD");
+  const effStage: BookingStage = b.stage === "SOLD" ? "DELIVERED" : b.stage;
+  const currentIdx = STAGES.indexOf(effStage);
 
   function setStage(stage: BookingStage) {
     setError(null);
@@ -123,7 +127,7 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
     });
   }
 
-  const delivered = b.stage === "DELIVERED";
+  const delivered = effStage === "DELIVERED";
   return (
     <article className={`glass rounded-2xl p-5 ${delivered ? "border-[#16a34a] bg-[#16a34a]/[0.08]" : b.financeRejected ? "border-destructive/50" : ""}`}>
       <div className="flex items-start justify-between gap-3">
@@ -138,7 +142,7 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           {delivered && (
-            <span className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium" style={{ color: "#16a34a", background: "rgba(22,163,74,0.15)" }}><BadgeCheck className="size-3.5" /> تم الاستلام</span>
+            <span className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium" style={{ color: "#16a34a", background: "rgba(22,163,74,0.15)" }}><BadgeCheck className="size-3.5" /> تم البيع والاستلام</span>
           )}
           {b.financeRejected && (
             <span className="flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-1 text-xs text-destructive"><AlertTriangle className="size-3.5" /> رفض تمويل</span>
@@ -152,12 +156,12 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
       {/* شريط تقدّم البيع */}
       <div className="mt-4">
         <div className="flex gap-1">
-          {bookingStageOrder.map((s, i) => (
+          {STAGES.map((s, i) => (
             <div key={s} className={`h-1.5 flex-1 rounded-full ${i <= currentIdx ? "bg-gold" : "bg-secondary"}`} title={bookingStageLabels[s]} />
           ))}
         </div>
         <div className="mt-1.5 flex justify-between text-[0.65rem] text-muted-foreground">
-          {bookingStageOrder.map((s, i) => <span key={s} className={i === currentIdx ? "font-bold text-gold" : ""}>{bookingStageLabels[s]}</span>)}
+          {STAGES.map((s, i) => <span key={s} className={i === currentIdx ? "font-bold text-gold" : ""}>{bookingStageLabels[s]}</span>)}
         </div>
       </div>
 
@@ -196,8 +200,8 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
 
       {/* تحكم */}
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <select value={b.stage} disabled={pending} onChange={(e) => setStage(e.target.value as BookingStage)} className="select-base w-auto">
-          {bookingStageOrder.map((s) => <option key={s} value={s}>{bookingStageLabels[s]}</option>)}
+        <select value={effStage} disabled={pending} onChange={(e) => setStage(e.target.value as BookingStage)} className="select-base w-auto">
+          {STAGES.map((s) => <option key={s} value={s}>{bookingStageLabels[s]}</option>)}
         </select>
         {b.financeRejected ? (
           <button onClick={clearRejected} disabled={pending} className="rounded-lg border border-success/40 px-3 py-2 text-xs text-success hover:bg-success/10">ألغِ رفض التمويل</button>

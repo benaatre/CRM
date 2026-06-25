@@ -169,7 +169,7 @@ export const bookingStageLabels: Record<BookingStage, string> = {
   SIGNING: "توقيع",
   TRANSFER: "إفراغ",
   SOLD: "بيع",
-  DELIVERED: "تم الاستلام",
+  DELIVERED: "تم البيع والاستلام",
 };
 
 export const paymentMethodLabels: Record<PaymentMethod, string> = {
