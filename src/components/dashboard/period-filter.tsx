@@ -24,12 +24,12 @@ export function PeriodFilter({ current }: { current: Period }) {
   }
 
   return (
-    <div className={`flex gap-1 rounded-xl border border-border bg-card p-1 ${pending ? "opacity-60" : ""}`}>
+    <div className={`flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1 ${pending ? "opacity-60" : ""}`}>
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => select(o.value)}
-          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+          className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
             current === o.value
               ? "bg-secondary text-gold"
               : "text-muted-foreground hover:text-foreground"

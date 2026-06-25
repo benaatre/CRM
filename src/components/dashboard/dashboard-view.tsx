@@ -51,8 +51,8 @@ export function DashboardView({ data }: { data: DashboardData }) {
 
   return (
     <div className="space-y-7">
-      {/* أنماط العرض */}
-      <div className="flex justify-end">
+      {/* أنماط العرض — مخفيّة على الجوال (تظهر md+) */}
+      <div className="hidden justify-end md:flex">
         <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
           {([
             ["compact", "مكثّف", Rows3],
@@ -120,7 +120,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
               <div style={{ flex: 1 }} />
 
               <div className="flex items-baseline gap-1.5">
-                <span style={{ fontSize: numSize, fontWeight: 700, letterSpacing: "-1px", color: goldNum ? "#E2C078" : "var(--text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                <span className="kpi-value" style={{ fontSize: numSize, fontWeight: 700, letterSpacing: "-1px", color: goldNum ? "#E2C078" : "var(--text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
                   {c.value}
                 </span>
                 {c.unit && <span className="text-xs text-muted-foreground">{c.unit}</span>}

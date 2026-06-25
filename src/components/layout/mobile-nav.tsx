@@ -45,8 +45,8 @@ export function MobileNav({
           {/* طبقة معتمة */}
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
 
-          {/* الدرج — من اليمين (RTL) */}
-          <aside className="absolute inset-y-0 right-0 flex w-72 max-w-[85%] flex-col border-l border-border bg-card p-5 shadow-2xl">
+          {/* الدرج — يغطّي الشاشة كاملة على الجوال */}
+          <aside className="absolute inset-0 flex w-full flex-col bg-card p-5 shadow-2xl">
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <span className="font-logo text-xl font-bold text-gold">{companyName}</span>
@@ -66,7 +66,7 @@ export function MobileNav({
                     key={item.href}
                     href={item.href}
                     onClick={() => setOpen(false)}
-                    className={`flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm transition-colors ${
+                    className={`flex min-h-14 items-center gap-3 rounded-xl px-3 text-base transition-colors ${
                       active ? "bg-secondary text-gold" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`}
                   >

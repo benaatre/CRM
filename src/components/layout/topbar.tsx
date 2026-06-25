@@ -121,12 +121,21 @@ export function Topbar({
 
         <button
           onClick={() => setShowNew(true)}
-          className="flex min-h-11 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          className="hidden min-h-11 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 md:flex"
         >
           <Plus className="size-4" />
-          <span className="hidden sm:inline">عميل جديد</span>
+          <span>عميل جديد</span>
         </button>
       </div>
+
+      {/* زر «عميل جديد» ثابت أسفل الشاشة — على الجوال فقط (أسفل اليسار لتفادي المساعد العائم) */}
+      <button
+        onClick={() => setShowNew(true)}
+        className="fixed bottom-6 left-6 z-40 flex min-h-14 items-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-primary-foreground shadow-2xl hover:opacity-90 md:hidden"
+      >
+        <Plus className="size-5" />
+        عميل جديد
+      </button>
 
       <NewLeadDialog
         open={showNew}

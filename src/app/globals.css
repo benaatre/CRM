@@ -174,13 +174,18 @@
   }
 }
 
-/* لوحة التحكم: مؤشرات Bento بعمود واحد على الجوال (أقل من 768px) */
+/* لوحة التحكم: مؤشرات Bento بعمودين على الجوال (أقل من 768px) */
 @media (max-width: 767px) {
   .kpi-grid {
-    grid-template-columns: 1fr !important;
-    gap: 1rem !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem !important;
   }
   .kpi-grid > * {
     grid-column: auto !important;
+    min-height: 118px !important;
+    padding: 1rem !important;
+  }
+  .kpi-grid .kpi-value {
+    font-size: 2rem !important; /* رقم أكبر وأوضح */
   }
 }
