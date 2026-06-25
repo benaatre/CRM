@@ -14,6 +14,7 @@ import {
 import { signOutAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { MobileNav } from "@/components/layout/mobile-nav";
 
 type Employee = { id: string; name: string };
 
@@ -21,12 +22,14 @@ export function Topbar({
   userName,
   roleLabel,
   companyName,
+  falLicense,
   isManager,
   employees,
 }: {
   userName: string;
   roleLabel: string;
   companyName: string;
+  falLicense: string | null;
   isManager: boolean;
   employees: Employee[];
 }) {
@@ -56,14 +59,15 @@ export function Topbar({
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-3 backdrop-blur-md md:px-6">
-      {/* يمين: المستخدم + خروج */}
+      {/* يمين: قائمة الجوال + المستخدم + خروج */}
       <div className="flex items-center gap-3">
+        <MobileNav isManager={isManager} companyName={companyName} falLicense={falLicense} />
         <span className="font-logo text-lg font-bold text-gold md:hidden">{companyName}</span>
         <div className="hidden text-left sm:block">
           <div className="text-sm font-medium text-foreground">{userName}</div>
           <div className="text-xs text-gold">{roleLabel}</div>
         </div>
-        <form action={signOutAction}>
+        <form action={signOutAction} className="hidden md:block">
           <button
             type="submit"
             title="خروج"
@@ -99,25 +103,25 @@ export function Topbar({
         />
 
         {/* EN / ع */}
-        <div className="hidden items-center rounded-xl border border-border p-0.5 text-xs sm:flex">
+        <div className="hidden items-center rounded-xl border border-border p-0.5 text-xs md:flex">
           <button onClick={() => setLang("ar")} className={`rounded-lg px-2 py-1 ${lang === "ar" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>ع</button>
           <button onClick={() => setLang("en")} className={`rounded-lg px-2 py-1 ${lang === "en" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>EN</button>
         </div>
 
-        <NotificationBell />
+        <span className="hidden md:inline-flex"><NotificationBell /></span>
 
         {/* ليل / نهار */}
         <button
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
-          className="rounded-xl border border-border p-2 text-muted-foreground transition-colors hover:text-gold"
+          className="hidden rounded-xl border border-border p-2 text-muted-foreground transition-colors hover:text-gold md:block"
         >
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
 
         <button
           onClick={() => setShowNew(true)}
-          className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          className="flex min-h-11 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
           <Plus className="size-4" />
           <span className="hidden sm:inline">عميل جديد</span>

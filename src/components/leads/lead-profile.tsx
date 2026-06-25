@@ -70,10 +70,10 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
         </div>
       </header>
 
-      {/* التبويبات */}
-      <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
+      {/* التبويبات — قابلة للتمرير أفقيًا على الجوال */}
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
         {([["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+          <button key={v} onClick={() => setTab(v)} className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
         ))}
       </div>
 
@@ -132,8 +132,8 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
       {/* زرّان ثابتان دائمًا (إلا لو العميل محجوز/مشترٍ مسبقًا) */}
       {!detail.isArchived && (
         <div className="sticky bottom-3 z-30 flex gap-2 rounded-2xl border border-border bg-card/90 p-2 shadow-2xl backdrop-blur">
-          <button onClick={() => setReserveMode("reserve")} className="flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">تم الحجز</button>
-          <button onClick={() => setReserveMode("instant")} className="flex-1 rounded-xl bg-success/15 py-3 text-sm font-semibold text-success hover:bg-success/25">شراء فوري</button>
+          <button onClick={() => setReserveMode("reserve")} className="min-h-12 flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">تم الحجز</button>
+          <button onClick={() => setReserveMode("instant")} className="min-h-12 flex-1 rounded-xl bg-success/15 py-3 text-sm font-semibold text-success hover:bg-success/25">شراء فوري</button>
         </div>
       )}
 

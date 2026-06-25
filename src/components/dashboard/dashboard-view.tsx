@@ -73,8 +73,8 @@ export function DashboardView({ data }: { data: DashboardData }) {
         </div>
       </div>
 
-      {/* مؤشرات Bento — شبكة ١٢ عمود، النمط يغيّر الشكل بالضبط */}
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(12,1fr)", gap: 20, alignItems: "stretch" }}>
+      {/* مؤشرات Bento — شبكة ١٢ عمود (سطح المكتب)، عمود واحد على الجوال (kpi-grid في globals.css) */}
+      <section className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(12,1fr)", gap: 20, alignItems: "stretch" }}>
         {cards.map((c, i) => {
           const span = spans[i];
           const accent = !glass && i === 0;

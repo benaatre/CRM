@@ -81,6 +81,7 @@ export default async function AppLayout({
           userName={user.name ?? "مستخدم"}
           roleLabel={roleLabel(user.role)}
           companyName={settings.companyName}
+          falLicense={settings.falLicense ?? null}
           isManager={manager}
           employees={employees}
         />

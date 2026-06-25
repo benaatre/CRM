@@ -33,17 +33,13 @@ export function KanbanBoard({
   const [dragId, setDragId] = useState<string | null>(null);
   const [overStage, setOverStage] = useState<LeadStage | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mobileStage, setMobileStage] = useState<LeadStage>("NEW");
 
-  async function moveTo(stage: LeadStage) {
-    const id = dragId;
-    setDragId(null);
-    setOverStage(null);
-    if (!id) return;
+  // تغيير مرحلة عميل (مشترك بين السحب على سطح المكتب وأزرار النقل على الجوال).
+  async function changeStage(id: string, stage: LeadStage) {
     const lead = items.find((l) => l.id === id);
     if (!lead || lead.stage === stage) return;
-
     setLeads((cur) => cur.map((l) => (l.id === id ? { ...l, stage } : l))); // متفائل
-    // التحديث المباشر في قاعدة البيانات عبر PATCH /api/leads/[id]
     const res = await fetch(`/api/leads/${id}`, {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ stage }),
     });
@@ -52,6 +48,13 @@ export function KanbanBoard({
       alert(data?.error ?? "تعذّر تغيير المرحلة");
     }
     reload(); // يقرأ الحقيقة من نفس الـ API (يؤكّد أو يتراجع)
+  }
+
+  function moveTo(stage: LeadStage) {
+    const id = dragId;
+    setDragId(null);
+    setOverStage(null);
+    if (id) changeStage(id, stage);
   }
 
   return (
@@ -68,7 +71,48 @@ export function KanbanBoard({
         <LeadsFilterBar basePath="/pipeline" isManager={isManager} employees={employees} filters={filters} />
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      {/* عرض الجوال: عمود واحد + اختيار المرحلة + أزرار نقل بدل السحب */}
+      <div className="md:hidden">
+        <select
+          value={mobileStage}
+          onChange={(e) => setMobileStage(e.target.value as LeadStage)}
+          className="select-base mb-3 font-medium"
+        >
+          {stageOrder.map((s) => (
+            <option key={s} value={s}>{stageLabels[s]} ({toArabicDigits(items.filter((l) => l.stage === s).length)})</option>
+          ))}
+        </select>
+        <div className="space-y-3">
+          {items.filter((l) => l.stage === mobileStage).length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">ما فيه عملاء في «{stageLabels[mobileStage]}».</p>
+          ) : (
+            items.filter((l) => l.stage === mobileStage).map((l) => (
+              <article key={l.id} className={`rounded-xl border border-r-4 border-border bg-card p-4 ${priorityBorder[l.priority]}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-foreground">{l.name}</div>
+                    <a href={`tel:${l.phone}`} className="text-xs text-gold" dir="ltr">{l.phone}</a>
+                  </div>
+                  <Link href={`/leads/${l.id}`} className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold">فتح</Link>
+                </div>
+                <div className="mt-1.5 text-xs text-muted-foreground">
+                  {l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"} · {l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}
+                  {isManager && l.assignedTo && <> · {l.assignedTo.name}</>}
+                </div>
+                <label className="mt-3 block space-y-1">
+                  <span className="text-xs text-muted-foreground">نقل لمرحلة:</span>
+                  <select value={l.stage} onChange={(e) => changeStage(l.id, e.target.value as LeadStage)} className="select-base min-h-12">
+                    {stageOrder.map((s) => <option key={s} value={s}>{stageLabels[s]}</option>)}
+                  </select>
+                </label>
+              </article>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* عرض سطح المكتب: أعمدة بالسحب والإفلات */}
+      <div className="hidden gap-4 overflow-x-auto pb-4 md:flex">
         {stageOrder.map((stage) => {
           const cards = items.filter((l) => l.stage === stage);
           return (

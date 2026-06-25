@@ -154,8 +154,8 @@ export function BookingForm({
             </select>
           </Field>
 
-          {/* المبالغ */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* المبالغ — عمود واحد على الجوال */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="سعر الشقة *"><input name="price" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} required inputMode="numeric" dir="ltr" className="select-base" /></Field>
             <Field label="الخصم"><input name="discount" value={discount} onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
             <Field label="العربون"><input name="deposit" value={deposit} onChange={(e) => setDeposit(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
@@ -254,9 +254,9 @@ export function BookingForm({
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">{error}</p>}
 
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
-            <button type="submit" disabled={pending} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="min-h-12 flex-1 rounded-xl border border-border px-4 text-sm text-muted-foreground sm:flex-none">إلغاء</button>
+            <button type="submit" disabled={pending} className="min-h-12 flex-1 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
               {pending ? "جارٍ…" : immediateSale ? "سجّل الشراء" : "سجّل الحجز"}
             </button>
           </div>

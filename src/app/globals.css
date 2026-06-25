@@ -173,3 +173,14 @@
     border-color: var(--gold);
   }
 }
+
+/* لوحة التحكم: مؤشرات Bento بعمود واحد على الجوال (أقل من 768px) */
+@media (max-width: 767px) {
+  .kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+  .kpi-grid > * {
+    grid-column: auto !important;
+  }
+}

@@ -147,8 +147,41 @@ export function LeadsView({
         </div>
       )}
 
-      {/* الجدول */}
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+      {/* بطاقات الجوال (بدل الجدول) */}
+      <div className="space-y-3 md:hidden">
+        {pageRows.length === 0 ? (
+          <p className="rounded-2xl border border-border bg-card px-4 py-10 text-center text-muted-foreground">{loading ? "جارٍ التحميل…" : "ما فيه عملاء."}</p>
+        ) : (
+          pageRows.map((l) => (
+            <div key={l.id} className="rounded-2xl border border-border bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} />
+                    <span className="font-medium text-foreground">{l.name}</span>
+                  </div>
+                  <a href={`tel:${l.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{l.phone}</a>
+                </div>
+                <Link href={`/leads/${l.id}`} className="shrink-0 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">فتح</Link>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                {l.firstContactStage ? (
+                  <span className={`rounded-full border px-2 py-0.5 ${firstContactStageColor[l.firstContactStage]}`}>{firstContactStageLabels[l.firstContactStage]}</span>
+                ) : (
+                  <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground">بلا مرحلة</span>
+                )}
+                <span className="text-muted-foreground">الموظف: {l.assignedTo?.name ?? "غير موزّع"}</span>
+                {l.followUpsCount > 0 && (
+                  <button onClick={() => setFuLead(l)} className="rounded-full border border-border px-2 py-0.5 text-gold">{toArabicDigits(l.followUpsCount)} متابعة</button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* الجدول (سطح المكتب) */}
+      <div className="hidden overflow-x-auto rounded-2xl border border-border bg-card md:block">
         <table className="w-full min-w-[1100px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
