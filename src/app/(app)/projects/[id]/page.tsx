@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
-import { requireUser } from "@/lib/auth-guards";
+import { requireUser, isManager } from "@/lib/auth-guards";
 import { getProject } from "@/lib/data/projects";
 import { projectStatusLabels, projectStatusColor } from "@/lib/labels";
 import { formatCurrency, formatDate, toArabicDigits } from "@/lib/format";
@@ -16,7 +16,8 @@ export default async function ProjectDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
+  const canManage = isManager(user.role);
   const { id } = await params;
   const p = await getProject(id);
   if (!p) notFound();
@@ -38,7 +39,7 @@ export default async function ProjectDetailPage({
           <span className={`rounded-full border px-3 py-1 text-sm ${projectStatusColor[p.status]}`}>
             {projectStatusLabels[p.status]}
           </span>
-          <ProjectEditButton project={p} />
+          {canManage && <ProjectEditButton project={p} />}
         </div>
       </header>
       {p.description && <p className="text-sm text-muted-foreground">{p.description}</p>}
@@ -70,7 +71,7 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      <UnitsGrid rows={p.unitRows} projectId={p.id} />
+      <UnitsGrid rows={p.unitRows} projectId={p.id} canManage={canManage} />
     </div>
   );
 }

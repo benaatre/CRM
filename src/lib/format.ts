@@ -23,6 +23,14 @@ export function toArabicDigits(input: string | number): string {
   return String(input).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);
 }
 
+/**
+ * ترتيب طبيعي لأرقام الوحدات النصّية: ٢ قبل ١٠ (وليس معجميًا "١٠" قبل "٢").
+ * يدعم الأرقام والمختلط (A2 قبل A10) عبر مقارنة numeric.
+ */
+export function compareUnitNumbers(a: string, b: string): number {
+  return a.localeCompare(b, "en", { numeric: true, sensitivity: "base" });
+}
+
 /** اختصار الأرقام الكبيرة: 690000 → ٦٩٠ك ، 1200000 → ١.٢م */
 export function formatNumberShort(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";

@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
 import { ProjectStatus, UnitType, UnitStatus, Floor } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireManager } from "@/lib/auth-guards";
+import { requireManagerAction } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { unitTypeLabels, unitStatusLabels } from "@/lib/labels";
+import { compareUnitNumbers } from "@/lib/format";
 
 export type Result = { ok: boolean; error?: string };
 
@@ -32,7 +33,7 @@ const str = (fd: FormData, key: string): string | null => String(fd.get(key) ?? 
 
 export async function createProject(formData: FormData): Promise<Result> {
   try {
-    const user = await requireManager();
+    const user = await requireManagerAction();
     const name = String(formData.get("name") ?? "").trim();
     if (!name) return { ok: false, error: "اكتب اسم المشروع" };
     const dateRaw = String(formData.get("deliveryDate") ?? "");
@@ -60,7 +61,7 @@ export async function createProject(formData: FormData): Promise<Result> {
 
 export async function updateProject(projectId: string, formData: FormData): Promise<Result> {
   try {
-    await requireManager();
+    await requireManagerAction();
     const name = String(formData.get("name") ?? "").trim();
     if (!name) return { ok: false, error: "اكتب اسم المشروع" };
     const dateRaw = String(formData.get("deliveryDate") ?? "");
@@ -91,7 +92,7 @@ export async function updateProject(projectId: string, formData: FormData): Prom
 
 export async function createUnit(projectId: string, formData: FormData): Promise<Result> {
   try {
-    await requireManager();
+    await requireManagerAction();
     const number = String(formData.get("number") ?? "").trim();
     if (!number) return { ok: false, error: "اكتب رقم الوحدة" };
     await prisma.unit.create({
@@ -121,7 +122,7 @@ export async function createUnit(projectId: string, formData: FormData): Promise
 
 export async function updateUnit(unitId: string, formData: FormData): Promise<Result> {
   try {
-    await requireManager();
+    await requireManagerAction();
     const number = String(formData.get("number") ?? "").trim();
     if (!number) return { ok: false, error: "اكتب رقم الوحدة" };
     const unit = await prisma.unit.update({
@@ -151,7 +152,7 @@ export async function updateUnit(unitId: string, formData: FormData): Promise<Re
 
 export async function deleteUnit(unitId: string): Promise<Result> {
   try {
-    await requireManager();
+    await requireManagerAction();
     const unit = await prisma.unit.findUnique({ where: { id: unitId }, select: { projectId: true, booking: { select: { id: true } } } });
     if (!unit) return { ok: false, error: "الوحدة غير موجودة" };
     if (unit.booking) return { ok: false, error: "الوحدة عليها حجز — ألغِ الحجز أول" };
@@ -235,7 +236,7 @@ export async function parseUnitsSheet(
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string; rows?: UnitImportRow[] }> {
   try {
-    await requireManager();
+    await requireManagerAction();
     const projectId = String(formData.get("projectId") ?? "");
     const mode = String(formData.get("mode") ?? "file");
     let raw: string[][];
@@ -264,7 +265,8 @@ export async function parseUnitsSheet(
         status: rec.status, notes: rec.notes,
         exists: !!rec.number && existingSet.has(rec.number),
       };
-    }).filter((r) => r.number);
+    }).filter((r) => r.number)
+      .sort((a, b) => compareUnitNumbers(a.number, b.number)); // ترتيب طبيعي للمعاينة
     return { ok: true, rows };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -275,7 +277,7 @@ export async function commitUnits(
   projectId: string, rows: UnitImportRow[], updateExisting: boolean,
 ): Promise<{ ok: boolean; error?: string; created?: number; updated?: number; skipped?: number }> {
   try {
-    await requireManager();
+    await requireManagerAction();
     let created = 0, updated = 0, skipped = 0;
     for (const r of rows) {
       if (!r.number) { skipped++; continue; }

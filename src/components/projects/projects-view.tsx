@@ -25,7 +25,7 @@ const statusFilters: { label: string; value: ProjectStatus | "" }[] = [
   { label: "مكتمل", value: "COMPLETED" },
 ];
 
-export function ProjectsView({ data }: { data: ProjectsOverview }) {
+export function ProjectsView({ data, canManage }: { data: ProjectsOverview; canManage: boolean }) {
   const [q, setQ] = useState("");
   const [band, setBand] = useState(0);
   const [status, setStatus] = useState<ProjectStatus | "">("");
@@ -58,11 +58,13 @@ export function ProjectsView({ data }: { data: ProjectsOverview }) {
           <h1 className="text-2xl font-bold text-foreground">المشاريع والوحدات</h1>
           <p className="mt-1 text-sm text-muted-foreground">المخزون العقاري وحالة الوحدات</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
-          <Plus className="size-4" /> إضافة مشروع
-        </button>
+        {canManage && (
+          <button onClick={() => setShowAdd(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
+            <Plus className="size-4" /> إضافة مشروع
+          </button>
+        )}
       </header>
-      <ProjectForm open={showAdd} onClose={() => setShowAdd(false)} />
+      {canManage && <ProjectForm open={showAdd} onClose={() => setShowAdd(false)} />}
 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         {kpis.map((k) => {

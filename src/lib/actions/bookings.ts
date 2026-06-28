@@ -15,7 +15,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
-import { notify, activeUserIds, managerIds } from "@/lib/notify";
+import { notify, activeUserIds, ownerIds } from "@/lib/notify";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -103,15 +103,31 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     // تحقق توفّر الوحدة
     const unit = await prisma.unit.findUnique({
       where: { id: unitId },
-      select: { status: true, number: true, project: { select: { name: true, maxDiscountPercent: true } }, booking: { select: { id: true } } },
+      select: {
+        status: true, number: true, price: true, discountedPrice: true,
+        project: { select: { name: true, maxDiscountPercent: true, maxDiscountAmount: true } },
+        booking: { select: { id: true } },
+      },
     });
     if (!unit) return { ok: false, error: "الوحدة غير موجودة" };
     if (unit.booking) return { ok: false, error: "الوحدة محجوزة مسبقًا" };
 
-    // تحذير تجاوز الخصم المسموح للمشروع (الحجز يتم، لكن يُوسم للمدير).
+    // النسبة وقت الحجز (تُخزَّن لعرض التفاصيل).
     const discountPct = price > 0 ? (discount / price) * 100 : 0;
     const maxPct = unit.project?.maxDiscountPercent != null ? Number(unit.project.maxDiscountPercent) : null;
-    const discountExceeded = maxPct != null && discountPct > maxPct + 0.001;
+
+    // ===== منطق تجاوز الخصم المقرر بالمبلغ (المهمة ٢) — الحجز يتم، لكن يُوسم =====
+    // (١) لو للوحدة «سعر بعد الخصم»: البيع تحته تجاوز = discountedPrice − السعر المباع.
+    // (٢) غير ذلك: «مبلغ الخصم المسموح» للمشروع → التجاوز = الخصم − المسموح.
+    const unitDiscountedPrice = unit.discountedPrice != null ? Number(unit.discountedPrice) : null;
+    const projMaxDiscountAmount = unit.project?.maxDiscountAmount != null ? Number(unit.project.maxDiscountAmount) : null;
+    let discountOverage = 0;
+    if (unitDiscountedPrice != null) {
+      if (finalPrice < unitDiscountedPrice) discountOverage = Math.round(unitDiscountedPrice - finalPrice);
+    } else if (projMaxDiscountAmount != null) {
+      if (discount > projMaxDiscountAmount) discountOverage = Math.round(discount - projMaxDiscountAmount);
+    }
+    const discountExceeded = discountOverage > 0;
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -133,6 +149,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           stage: immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION,
           stageIndex: immediateSale ? 5 : 0,
           discountExceeded,
+          discountOverage: discountOverage > 0 ? discountOverage : null,
           discountPercentAtBooking: Math.round(discountPct * 100) / 100,
           maxDiscountPercentAtBooking: maxPct,
           cashAmount,
@@ -175,15 +192,14 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
 
     await notify(prisma, await activeUserIds(prisma), "booking.created", "وحدة اتحجزت", `وحدة ${unit.number} في ${unit.project?.name ?? "—"}`);
 
-    // تجاوز الخصم المسموح: إشعار خاص للمدير والمالك فقط (يظهر في جرس الهيدر).
-    if (discountExceeded) {
-      const maxAllowed = maxPct != null ? Math.round((price * maxPct) / 100) : 0;
+    // تجاوز الخصم المقرر: إشعار للمالك (OWNER) — يظهر في جرس الهيدر.
+    if (discountOverage > 0) {
       await notify(
         prisma,
-        await managerIds(prisma),
+        await ownerIds(prisma),
         "discount.exceeded",
-        "تجاوز خصم",
-        `تجاوز خصم: ${user.name ?? "موظف"} طلب خصم ${discount.toLocaleString("en-US")} ر.س على وحدة ${unit.number} في ${unit.project?.name ?? "—"} — الحد المسموح ${maxAllowed.toLocaleString("en-US")} ر.س`,
+        "إشعار خصم",
+        `تجاوز خصم: ${user.name ?? "موظف"} باع وحدة ${unit.number} في ${unit.project?.name ?? "—"} بتجاوز ${discountOverage.toLocaleString("en-US")} ر.س عن الخصم المقرر`,
       );
     }
 

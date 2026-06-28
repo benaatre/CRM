@@ -6,27 +6,39 @@ import type { AnalyticsData } from "@/lib/data/analytics";
 
 type Team = AnalyticsData["team"];
 
-export function AnalyticsTabs({ team, children }: { team: Team; children: React.ReactNode }) {
-  const [tab, setTab] = useState<"general" | "employees">("general");
+/** هيكل ٣ تبويبات منفصلة للتحليلات — كل تبويب يعرض محتواه فقط. الافتراضي «المؤشرات العامة». */
+export function AnalyticsTabs({
+  general, projectFinance, employees,
+}: {
+  general: React.ReactNode;
+  projectFinance: React.ReactNode;
+  employees: React.ReactNode;
+}) {
+  const [tab, setTab] = useState<"general" | "finance" | "employees">("general");
+  const tabs = [
+    ["general", "المؤشرات العامة"],
+    ["finance", "تحليل المشاريع المالي"],
+    ["employees", "أداء الموظفين"],
+  ] as const;
   return (
     <div className="space-y-6">
-      <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
-        {([["general", "المؤشرات العامة"], ["employees", "أداء الموظفين"]] as const).map(([v, label]) => (
+      <div className="flex flex-wrap gap-1 rounded-xl border border-border bg-card p-1">
+        {tabs.map(([v, label]) => (
           <button
             key={v}
             onClick={() => setTab(v)}
-            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}
+            className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}
           >
             {label}
           </button>
         ))}
       </div>
-      {tab === "general" ? children : <EmployeeKpis team={team} />}
+      {tab === "general" ? general : tab === "finance" ? projectFinance : employees}
     </div>
   );
 }
 
-function EmployeeKpis({ team }: { team: Team }) {
+export function EmployeeKpis({ team }: { team: Team }) {
   if (team.length === 0) {
     return <p className="glass rounded-2xl p-8 text-center text-muted-foreground">ما فيه موظفون.</p>;
   }

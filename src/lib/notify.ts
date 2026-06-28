@@ -30,3 +30,9 @@ export async function managerIds(db: Db): Promise<string[]> {
   const us = await db.user.findMany({ where: { active: true, role: { in: ["OWNER", "ADMIN"] } }, select: { id: true } });
   return us.map((u) => u.id);
 }
+
+/** معرّفات المالك (OWNER) المفعّلين — لإشعارات المالك (مثل تجاوز الخصم). */
+export async function ownerIds(db: Db): Promise<string[]> {
+  const us = await db.user.findMany({ where: { active: true, role: "OWNER" }, select: { id: true } });
+  return us.map((u) => u.id);
+}

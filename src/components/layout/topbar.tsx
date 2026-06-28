@@ -8,8 +8,6 @@ import {
   Moon,
   Plus,
   LogOut,
-  Smartphone,
-  Monitor,
 } from "lucide-react";
 import { signOutAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
@@ -39,7 +37,6 @@ export function Topbar({
   const router = useRouter();
   const [dark, setDark] = useState(true);
   const [lang, setLang] = useState<"ar" | "en">("ar");
-  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [q, setQ] = useState("");
   const [showNew, setShowNew] = useState(false);
 
@@ -93,17 +90,6 @@ export function Topbar({
           />
         </form>
 
-        {/* معاينة جوال/سطح مكتب */}
-        <Segmented
-          className="hidden md:flex"
-          options={[
-            { v: "desktop", icon: Monitor },
-            { v: "mobile", icon: Smartphone },
-          ]}
-          value={device}
-          onChange={(v) => setDevice(v as "desktop" | "mobile")}
-        />
-
         {/* EN / ع */}
         <div className="hidden items-center rounded-xl border border-border p-0.5 text-xs md:flex">
           <button onClick={() => setLang("ar")} className={`rounded-lg px-2 py-1 ${lang === "ar" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>ع</button>
@@ -149,34 +135,5 @@ export function Topbar({
         employees={employees}
       />
     </header>
-  );
-}
-
-function Segmented({
-  options,
-  value,
-  onChange,
-  className = "",
-}: {
-  options: { v: string; icon: typeof Monitor }[];
-  value: string;
-  onChange: (v: string) => void;
-  className?: string;
-}) {
-  return (
-    <div className={`items-center rounded-xl border border-border p-0.5 ${className}`}>
-      {options.map((o) => {
-        const Icon = o.icon;
-        return (
-          <button
-            key={o.v}
-            onClick={() => onChange(o.v)}
-            className={`rounded-lg p-1.5 ${value === o.v ? "bg-secondary text-gold" : "text-muted-foreground"}`}
-          >
-            <Icon className="size-4" />
-          </button>
-        );
-      })}
-    </div>
   );
 }

@@ -1,15 +1,35 @@
-import { requireManager } from "@/lib/auth-guards";
-import { getAnalytics } from "@/lib/data/analytics";
+import { requireUser, isManager } from "@/lib/auth-guards";
+import { getAnalytics, getEmployeeDeepAnalysis, getProjectsForFinance, getEmployeesList } from "@/lib/data/analytics";
 import { stageLabels, channelLabels, purchaseMethodLabels, purchaseGoalLabels } from "@/lib/labels";
-import { formatCurrency, toArabicDigits } from "@/lib/format";
+import { formatCurrencyFull, toArabicDigits } from "@/lib/format";
 import { AiAssistant } from "@/components/analytics/ai-assistant";
-import { AnalyticsTabs } from "@/components/analytics/analytics-tabs";
+import { AnalyticsTabs, EmployeeKpis } from "@/components/analytics/analytics-tabs";
+import { EmployeeAnalysisPanel, EmployeeAnalysisView } from "@/components/analytics/employee-analysis";
+import { ProjectFinancialAnalysis } from "@/components/analytics/project-financial-analysis";
 
 export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage() {
-  await requireManager();
+  const user = await requireUser();
+
+  // الموظف العادي: يرى تحليله العميق لنفسه فقط (نطاقه) — لا بيانات بقية الفريق.
+  if (!isManager(user.role)) {
+    const me = await getEmployeeDeepAnalysis(user.id, Date.now());
+    return (
+      <div className="mx-auto max-w-4xl space-y-6">
+        <header>
+          <h1 className="text-2xl font-bold text-foreground">أدائي</h1>
+          <p className="mt-1 text-sm text-muted-foreground">تحليل أدائك الشخصي</p>
+        </header>
+        {me ? <EmployeeAnalysisView data={me} /> : <p className="text-muted-foreground">تعذّر تحميل البيانات.</p>}
+      </div>
+    );
+  }
+
+  // المالك/المدير: التحليلات الكاملة.
   const a = await getAnalytics();
+  const financeProjects = await getProjectsForFinance();
+  const employeesList = await getEmployeesList();
 
   const metricCards = [
     { label: "نسبة الفوز", value: `${toArabicDigits(a.metrics.winRate)}٪` },
@@ -34,17 +54,11 @@ export default async function AnalyticsPage() {
     })
     .join(", ");
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-foreground">التحليلات والذكاء</h1>
-        <p className="mt-1 text-sm text-muted-foreground">مؤشرات الأداء والتحصيل والمبيعات</p>
-      </header>
-
+  // ===== تبويب «المؤشرات العامة» =====
+  const generalTab = (
+    <div className="space-y-6">
       <AiAssistant />
 
-      <AnalyticsTabs team={a.team}>
-        <div className="space-y-6">
       {/* المؤشرات الاحترافية */}
       <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
         {metricCards.map((m) => (
@@ -68,7 +82,7 @@ export default async function AnalyticsPage() {
         </div>
         {a.finance.financeFailedCount > 0 && (
           <div className="mt-4 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            تنبيه تمويل فاشل: {toArabicDigits(a.finance.financeFailedCount)} حجز بقيمة {formatCurrency(a.finance.financeFailedValue)} — تحتاج متابعة.
+            تنبيه تمويل فاشل: {toArabicDigits(a.finance.financeFailedCount)} حجز بقيمة {formatCurrencyFull(a.finance.financeFailedValue)} — تحتاج متابعة.
           </div>
         )}
 
@@ -89,11 +103,11 @@ export default async function AnalyticsPage() {
                 {a.finance.perProject.map((p) => (
                   <tr key={p.projectId} className="border-t border-border">
                     <td className="py-2 font-medium text-foreground">{p.projectName}</td>
-                    <td className="py-2 text-muted-foreground">{formatCurrency(p.basePrice)}</td>
-                    <td className="py-2 text-gold">{formatCurrency(p.afterDiscount)}</td>
-                    <td className="py-2 text-success">{formatCurrency(p.collected)}</td>
-                    <td className="py-2 text-destructive">{formatCurrency(p.notCollected)}</td>
-                    <td className="py-2 text-info">{formatCurrency(p.reservedValue)}</td>
+                    <td className="py-2 text-muted-foreground">{formatCurrencyFull(p.basePrice)}</td>
+                    <td className="py-2 text-gold">{formatCurrencyFull(p.afterDiscount)}</td>
+                    <td className="py-2 text-success">{formatCurrencyFull(p.collected)}</td>
+                    <td className="py-2 text-destructive">{formatCurrencyFull(p.notCollected)}</td>
+                    <td className="py-2 text-info">{formatCurrencyFull(p.reservedValue)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -169,8 +183,17 @@ export default async function AnalyticsPage() {
           <Dist items={a.purchaseGoals.map((g) => ({ label: purchaseGoalLabels[g.goal], count: g.count }))} color="var(--info)" />
         </section>
       </div>
+    </div>
+  );
 
-      {/* أداء الموظفين (أعمدة) */}
+  // ===== تبويب «أداء الموظفين» =====
+  const employeesTab = (
+    <div className="space-y-6">
+      {/* تحليل موظف محدّد بعمق */}
+      <EmployeeAnalysisPanel employees={employeesList} />
+      {/* نظرة عامة على الفريق */}
+      <EmployeeKpis team={a.team} />
+      {/* أداء الموظفين (صفقات مقفولة) — رسم أعمدة */}
       <section className="glass rounded-2xl p-5">
         <h2 className="mb-4 font-semibold text-foreground">أداء الموظفين (صفقات مقفولة)</h2>
         <div className="flex items-end gap-4 overflow-x-auto pb-2" style={{ minHeight: "160px" }}>
@@ -187,8 +210,21 @@ export default async function AnalyticsPage() {
           {a.team.length === 0 && <p className="text-sm text-muted-foreground">ما فيه موظفين.</p>}
         </div>
       </section>
-        </div>
-      </AnalyticsTabs>
+    </div>
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold text-foreground">التحليلات والذكاء</h1>
+        <p className="mt-1 text-sm text-muted-foreground">مؤشرات الأداء والتحصيل والمبيعات</p>
+      </header>
+
+      <AnalyticsTabs
+        general={generalTab}
+        projectFinance={<ProjectFinancialAnalysis projects={financeProjects} />}
+        employees={employeesTab}
+      />
     </div>
   );
 }
@@ -217,7 +253,7 @@ function Dist({ items, color }: { items: { label: string; count: number }[]; col
 function Fin({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
     <div className="rounded-xl border border-border p-3">
-      <div className={`text-base font-bold ${accent ?? "text-foreground"}`}>{formatCurrency(value)}</div>
+      <div className={`text-base font-bold ${accent ?? "text-foreground"}`}>{formatCurrencyFull(value)}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
     </div>
   );

@@ -1,8 +1,12 @@
 import "server-only";
 
-import type { Channel, LeadStage, PurchaseMethod, PurchaseGoal } from "@prisma/client";
+import type {
+  Channel, LeadStage, PurchaseMethod, PurchaseGoal,
+  BookingStage, PaymentMethod, SaudiBank, Nationality, Floor, ProjectStatus,
+} from "@prisma/client";
 import { FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { compareUnitNumbers } from "@/lib/format";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 
@@ -212,4 +216,364 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     purchaseGoals,
     team,
   };
+}
+
+// ===== أداء الموظف نفسه (نطاقه فقط) — للمهمة ٤ =====
+export type EmployeePerformance = {
+  name: string;
+  assigned: number;   // عملاؤه
+  followups: number;  // متابعاته
+  visits: number;     // زياراته
+  bookings: number;   // حجوزاته
+  closed: number;     // صفقاته المقفولة
+  conversion: number; // معدل تحويله %
+  target: number;     // هدفه الشهري
+  progress: number | null; // % نحو الهدف
+};
+
+/** تحليلات موظف واحد محصورة في بياناته فقط — لا يرى بقية الموظفين. */
+export async function getEmployeePerformance(userId: string): Promise<EmployeePerformance> {
+  const [me, assigned, closed, bookings, followups, visits] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { name: true, targetDeals: true } }),
+    prisma.lead.count({ where: { assignedToId: userId } }),
+    prisma.lead.count({ where: { assignedToId: userId, stage: "CLOSED_WON" } }),
+    prisma.booking.count({ where: { sellerId: userId } }),
+    prisma.followUp.count({ where: { createdBy: userId } }),
+    prisma.followUp.count({ where: { createdBy: userId, type: { in: VISIT_TYPES } } }),
+  ]);
+  const target = me?.targetDeals ?? 0;
+  return {
+    name: me?.name ?? "أنا",
+    assigned, followups, visits, bookings, closed,
+    conversion: assigned > 0 ? Math.round((closed / assigned) * 100) : 0,
+    target,
+    progress: target > 0 ? Math.round((closed / target) * 100) : null,
+  };
+}
+
+// ===== تحليل مالي لكل مشروع (للمالك/المدير فقط) — المهمة ٣ =====
+const dnum = (v: { toNumber(): number } | null) => (v ? v.toNumber() : 0);
+const pct1 = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
+
+export type ProjectFinanceRow = {
+  unitNumber: string;
+  floor: string | null;
+  floorLevel: Floor | null;
+  leadName: string | null;
+  leadPhone: string | null;
+  nationality: Nationality | null;
+  nationalId: string | null;
+  originalPrice: number; // السعر الأصلي (قبل الخصم)
+  soldPrice: number;     // باع بكم (بعد الخصم)
+  discount: number;
+  discountPct: number;   // نسبة الخصم %
+  paymentMethod: PaymentMethod;
+  bankName: SaudiBank | null;
+  sellerName: string | null;
+  stage: BookingStage;   // محجوز / مباع / مستلم
+};
+
+export type ProjectFinance = {
+  projectId: string;
+  projectName: string;
+  constructionStatus: ProjectStatus;
+  // قسم أ — نظرة المشروع (من الوحدات)
+  unitsTotal: number;
+  listValue: number;        // أصل المبلغ الإجمالي عند الطرح = Σ Unit.price
+  plannedDiscount: number;  // Σ(price − discountedPrice)
+  plannedDiscountPct: number;
+  netAfterDiscount: number; // Σ discountedPrice (أو price إن لا خصم)
+  // قسم ب — الإنجاز
+  soldCount: number;
+  reservedCount: number;
+  availableCount: number;
+  completionPct: number;    // (مباع + محجوز) / الكل
+  // قسم ج — المبيعات الفعلية (من الحجوزات)
+  count: number;            // عدد الوحدات المباعة/المحجوزة
+  bookedOriginal: number;   // قيمة طرح الوحدات المباعة/المحجوزة (Σ booking.price)
+  totalSales: number;       // Σ booking.finalPrice
+  totalDiscount: number;    // Σ booking.discount
+  actualDiscountPct: number;
+  avgDiscount: number;      // متوسط الخصم لكل شقة
+  totalCollected: number;
+  totalRemaining: number;
+  remainingBankFinance: number;
+  remainingInstallments: number;
+  remainingOther: number;
+  // قسم د — الجدول
+  rows: ProjectFinanceRow[];
+};
+
+/** صف مقارنة لكل المشاريع — قسم هـ. */
+export type AllProjectsFinanceRow = {
+  projectId: string;
+  projectName: string;
+  listValue: number;     // قيمة الطرح
+  unitsTotal: number;
+  sold: number;          // مباع (وحدات)
+  completionPct: number;
+  totalSales: number;
+  totalDiscount: number;
+  discountPct: number;
+  collected: number;
+  remaining: number;
+};
+
+/** قائمة المشاريع المختصرة لاختيارها في التحليل المالي. */
+export async function getProjectsForFinance(): Promise<{ id: string; name: string }[]> {
+  return prisma.project.findMany({ select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+}
+
+/** قائمة الموظفين المفعّلين لاختيارهم في تحليل الأداء. */
+export async function getEmployeesList(): Promise<{ id: string; name: string }[]> {
+  return prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+}
+
+/** تحليل مالي مفصّل لمشروع — وحدات (الطرح/الإنجاز) + حجوزات (مبيعات فعلية). */
+export async function getProjectFinance(projectId: string): Promise<ProjectFinance | null> {
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true, status: true } });
+  if (!project) return null;
+
+  const [units, bookings] = await Promise.all([
+    prisma.unit.findMany({ where: { projectId }, select: { price: true, discountedPrice: true, status: true } }),
+    prisma.booking.findMany({
+      where: { unit: { projectId } },
+      select: {
+        price: true, finalPrice: true, discount: true, collected: true, remainingAmount: true,
+        paymentMethod: true, bankName: true, cashPaymentType: true, stage: true,
+        nationality: true, nationalId: true, phone: true,
+        unit: { select: { number: true, floor: true, floorLevel: true } },
+        lead: { select: { name: true, phone: true } },
+        seller: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  // قسم أ + ب — من الوحدات
+  let listValue = 0, plannedDiscount = 0, netAfterDiscount = 0;
+  let soldCount = 0, reservedCount = 0, availableCount = 0;
+  for (const u of units) {
+    const price = dnum(u.price);
+    const disc = dnum(u.discountedPrice);
+    listValue += price;
+    netAfterDiscount += disc > 0 ? disc : price;
+    if (disc > 0 && price > disc) plannedDiscount += price - disc;
+    if (u.status === "SOLD") soldCount++;
+    else if (u.status === "RESERVED") reservedCount++;
+    else availableCount++;
+  }
+  const unitsTotal = units.length;
+
+  // قسم ج + د — من الحجوزات
+  let bookedOriginal = 0, totalDiscount = 0, totalSales = 0, totalCollected = 0, totalRemaining = 0;
+  let remainingBankFinance = 0, remainingInstallments = 0, remainingOther = 0;
+  const rows: ProjectFinanceRow[] = bookings.map((b) => {
+    const originalPrice = dnum(b.price);
+    const soldPrice = dnum(b.finalPrice);
+    const discount = dnum(b.discount);
+    const remaining = dnum(b.remainingAmount);
+    bookedOriginal += originalPrice;
+    totalDiscount += discount;
+    totalSales += soldPrice;
+    totalCollected += dnum(b.collected);
+    totalRemaining += remaining;
+    if (b.paymentMethod === "BANK_FINANCE" || b.paymentMethod === "CASH_AND_FINANCE") remainingBankFinance += remaining;
+    else if (b.cashPaymentType === "INSTALLMENTS") remainingInstallments += remaining;
+    else remainingOther += remaining;
+    return {
+      unitNumber: b.unit.number,
+      floor: b.unit.floor,
+      floorLevel: b.unit.floorLevel,
+      leadName: b.lead?.name ?? null,
+      leadPhone: b.lead?.phone ?? b.phone ?? null,
+      nationality: b.nationality,
+      nationalId: b.nationalId,
+      originalPrice, soldPrice, discount,
+      discountPct: pct1(discount, originalPrice),
+      paymentMethod: b.paymentMethod,
+      bankName: b.bankName,
+      sellerName: b.seller?.name ?? null,
+      stage: b.stage,
+    };
+  }).sort((a, b) => compareUnitNumbers(a.unitNumber, b.unitNumber));
+
+  return {
+    projectId: project.id,
+    projectName: project.name,
+    constructionStatus: project.status,
+    unitsTotal, listValue, plannedDiscount,
+    plannedDiscountPct: pct1(plannedDiscount, listValue),
+    netAfterDiscount,
+    soldCount, reservedCount, availableCount,
+    completionPct: unitsTotal > 0 ? Math.round(((soldCount + reservedCount) / unitsTotal) * 100) : 0,
+    count: rows.length,
+    bookedOriginal, totalSales, totalDiscount,
+    actualDiscountPct: pct1(totalDiscount, bookedOriginal),
+    avgDiscount: rows.length > 0 ? Math.round(totalDiscount / rows.length) : 0,
+    totalCollected, totalRemaining,
+    remainingBankFinance, remainingInstallments, remainingOther,
+    rows,
+  };
+}
+
+// ===== أداء الموظف العميق — المهمة ٤ =====
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
+
+export type DistItem = { key: string; count: number; pct: number };
+export type StuckLead = { name: string; phone: string; reason: string };
+
+export type EmployeeDeepAnalysis = {
+  id: string;
+  name: string;
+  // حجم الشغل
+  total: number;
+  active: number;
+  archived: number;
+  byGoal: DistItem[];   // purchaseGoal: RESIDENCE/INVESTMENT/BOTH/NONE
+  byMethod: DistItem[]; // purchaseMethod: CASH/BANK_FINANCE/CASH_AND_FINANCE/NONE
+  // النشاط والاستجابة
+  followups: number;
+  visits: number;
+  calls: number;
+  avgResponseHours: number | null;     // متوسط تأخر أول تواصل
+  fastestResponseHours: number | null;
+  slowestResponseHours: number | null;
+  // النتائج
+  bookings: number;
+  sales: number;       // SOLD/DELIVERED
+  closed: number;      // مقفول-بيع
+  conversion: number;  // %
+  target: number;
+  targetPct: number | null;
+  // التشخيص
+  lost: number;        // مهمل/خاسر
+  lostPct: number;
+  stuck: StuckLead[];  // محتاجين متابعة
+  // مقارنة الفريق
+  teamAvgConversion: number;
+  teamAvgResponseHours: number | null;
+};
+
+function distFrom(items: { key: string }[], keys: string[]): DistItem[] {
+  const total = items.length || 1;
+  const map = new Map<string, number>();
+  for (const it of items) map.set(it.key, (map.get(it.key) ?? 0) + 1);
+  return keys.map((k) => {
+    const count = map.get(k) ?? 0;
+    return { key: k, count, pct: Math.round((count / total) * 100) };
+  });
+}
+
+/** تحليل أداء موظف واحد بعمق — محصور في بياناته، مع مقارنة بمتوسط الفريق. */
+export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Promise<EmployeeDeepAnalysis | null> {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, targetDeals: true } });
+  if (!me) return null;
+
+  const [allLeads, fuByType, employees, myBookings] = await Promise.all([
+    prisma.lead.findMany({
+      select: { assignedToId: true, stage: true, isArchived: true, purchaseGoal: true, purchaseMethod: true, createdAt: true, firstContactAt: true, nextFollowup: true, lastContact: true, name: true, phone: true },
+    }),
+    prisma.followUp.groupBy({ by: ["createdBy", "type"], _count: { _all: true } }),
+    prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true } }),
+    prisma.booking.findMany({ where: { sellerId: userId }, select: { stage: true } }),
+  ]);
+
+  const myLeads = allLeads.filter((l) => l.assignedToId === userId);
+  const total = myLeads.length;
+  const archived = myLeads.filter((l) => l.isArchived).length;
+
+  // التوزيعات
+  const byGoal = distFrom(myLeads.map((l) => ({ key: l.purchaseGoal ?? "NONE" })), ["RESIDENCE", "INVESTMENT", "BOTH", "NONE"]);
+  const byMethod = distFrom(myLeads.map((l) => ({ key: l.purchaseMethod ?? "NONE" })), ["CASH", "BANK_FINANCE", "CASH_AND_FINANCE", "NONE"]);
+
+  // النشاط
+  const myFu = fuByType.filter((f) => f.createdBy === userId);
+  const sumFu = (pred: (t: string) => boolean) => myFu.filter((f) => pred(f.type)).reduce((s, f) => s + f._count._all, 0);
+  const followups = myFu.reduce((s, f) => s + f._count._all, 0);
+  const visits = sumFu((t) => t === "VISIT_PROJECT" || t === "VISIT_OFFICE");
+  const calls = sumFu((t) => t === "CALL");
+
+  // سرعة الاستجابة (ساعات)
+  const respHours = myLeads.filter((l) => l.firstContactAt).map((l) => (l.firstContactAt!.getTime() - l.createdAt.getTime()) / HOUR).filter((h) => h >= 0);
+  const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
+  const avgResponseHours = avg(respHours);
+  const fastestResponseHours = respHours.length ? Math.round(Math.min(...respHours) * 10) / 10 : null;
+  const slowestResponseHours = respHours.length ? Math.round(Math.max(...respHours) * 10) / 10 : null;
+
+  // النتائج
+  const closed = myLeads.filter((l) => l.stage === "CLOSED_WON").length;
+  const sales = myBookings.filter((b) => b.stage === "SOLD" || b.stage === "DELIVERED").length;
+  const conversion = total > 0 ? Math.round((closed / total) * 100) : 0;
+  const target = me.targetDeals;
+  const targetPct = target > 0 ? Math.round((closed / target) * 100) : null;
+
+  // التشخيص
+  const lost = myLeads.filter((l) => l.stage === "CLOSED_LOST").length;
+  const lostPct = total > 0 ? Math.round((lost / total) * 100) : 0;
+  const stuck: StuckLead[] = myLeads
+    .filter((l) => !l.isArchived && l.stage !== "CLOSED_WON" && l.stage !== "CLOSED_LOST")
+    .map((l) => {
+      if (l.nextFollowup && l.nextFollowup.getTime() < nowMs) return { name: l.name, phone: l.phone, reason: "فات موعد المتابعة" };
+      if (l.lastContact && nowMs - l.lastContact.getTime() > 7 * DAY) return { name: l.name, phone: l.phone, reason: "ما فيه تواصل من أكثر من أسبوع" };
+      if (!l.firstContactAt && nowMs - l.createdAt.getTime() > 3 * DAY) return { name: l.name, phone: l.phone, reason: "لم يُتواصل معه إطلاقًا" };
+      return null;
+    })
+    .filter((x): x is StuckLead => x !== null)
+    .slice(0, 50);
+
+  // متوسطات الفريق
+  const empIds = new Set(employees.map((e) => e.id));
+  const convs: number[] = [];
+  for (const e of employees) {
+    const eLeads = allLeads.filter((l) => l.assignedToId === e.id);
+    if (eLeads.length > 0) convs.push((eLeads.filter((l) => l.stage === "CLOSED_WON").length / eLeads.length) * 100);
+  }
+  const teamAvgConversion = convs.length ? Math.round(convs.reduce((a, b) => a + b, 0) / convs.length) : 0;
+  const teamResp = allLeads.filter((l) => l.assignedToId && empIds.has(l.assignedToId) && l.firstContactAt).map((l) => (l.firstContactAt!.getTime() - l.createdAt.getTime()) / HOUR).filter((h) => h >= 0);
+  const teamAvgResponseHours = avg(teamResp);
+
+  return {
+    id: userId, name: me.name,
+    total, active: total - archived, archived,
+    byGoal, byMethod,
+    followups, visits, calls,
+    avgResponseHours, fastestResponseHours, slowestResponseHours,
+    bookings: myBookings.length, sales, closed, conversion,
+    target, targetPct,
+    lost, lostPct, stuck,
+    teamAvgConversion, teamAvgResponseHours,
+  };
+}
+
+/** مقارنة شاملة لكل المشاريع — قسم هـ. */
+export async function getAllProjectsFinance(): Promise<AllProjectsFinanceRow[]> {
+  const [projects, units, bookings] = await Promise.all([
+    prisma.project.findMany({ select: { id: true, name: true }, orderBy: { createdAt: "asc" } }),
+    prisma.unit.findMany({ select: { projectId: true, price: true, status: true } }),
+    prisma.booking.findMany({
+      select: { price: true, finalPrice: true, discount: true, collected: true, remainingAmount: true, unit: { select: { projectId: true } } },
+    }),
+  ]);
+  return projects.map((p) => {
+    const pu = units.filter((u) => u.projectId === p.id);
+    const pb = bookings.filter((b) => b.unit.projectId === p.id);
+    const unitsTotal = pu.length;
+    const sold = pu.filter((u) => u.status === "SOLD").length;
+    const reserved = pu.filter((u) => u.status === "RESERVED").length;
+    const bookedOriginal = pb.reduce((s, b) => s + dnum(b.price), 0);
+    const totalDiscount = pb.reduce((s, b) => s + dnum(b.discount), 0);
+    return {
+      projectId: p.id,
+      projectName: p.name,
+      listValue: pu.reduce((s, u) => s + dnum(u.price), 0),
+      unitsTotal, sold,
+      completionPct: unitsTotal > 0 ? Math.round(((sold + reserved) / unitsTotal) * 100) : 0,
+      totalSales: pb.reduce((s, b) => s + dnum(b.finalPrice), 0),
+      totalDiscount,
+      discountPct: pct1(totalDiscount, bookedOriginal),
+      collected: pb.reduce((s, b) => s + dnum(b.collected), 0),
+      remaining: pb.reduce((s, b) => s + dnum(b.remainingAmount), 0),
+    };
+  });
 }

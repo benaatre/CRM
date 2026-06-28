@@ -129,7 +129,13 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
 
   const delivered = effStage === "DELIVERED";
   return (
-    <article className={`glass rounded-2xl p-5 ${delivered ? "border-[#16a34a] bg-[#16a34a]/[0.08]" : b.financeRejected ? "border-destructive/50" : ""}`}>
+    <article className={`glass overflow-hidden rounded-2xl p-5 ${delivered ? "border-[#16a34a] bg-[#16a34a]/[0.08]" : b.discountOverage > 0 ? "border-destructive" : b.financeRejected ? "border-destructive/50" : ""}`}>
+      {/* شريط تجاوز الخصم — بارز فوق الكرت */}
+      {b.discountOverage > 0 && (
+        <div className="-mx-5 -mt-5 mb-4 bg-destructive px-4 py-2.5 text-center text-sm font-bold text-white">
+          ⚠️ تم تجاوز الخصم المقرر بـ {formatCurrencyFull(b.discountOverage)}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-bold text-foreground">{b.leadName}</h3>

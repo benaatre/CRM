@@ -417,6 +417,8 @@ model Booking {
   /// نسبة الخصم وقت الحجز و الحد المسموح وقتها (لعرض تفاصيل التجاوز)
   discountPercentAtBooking Decimal? @db.Decimal(5, 2)
   maxDiscountPercentAtBooking Decimal? @db.Decimal(5, 2)
+  /// مبلغ تجاوز الخصم المقرر (ر.س) — شريط أحمر بالكرت + إشعار للمالك
+  discountOverage Decimal? @db.Decimal(14, 2)
   /// فشل تمويل / رفض بنك (يظهر بأحمر)
   financeRejected Boolean      @default(false)
   /// سبب فشل التمويل

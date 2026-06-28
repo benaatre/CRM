@@ -40,7 +40,7 @@ export default async function AppLayout({
     { href: "/projects", label: "المشاريع", icon: Building2, show: true },
     { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true },
     { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, show: true },
-    { href: "/analytics", label: "التحليلات", icon: BarChart3, show: manager },
+    { href: "/analytics", label: "التحليلات", icon: BarChart3, show: true },
     { href: "/admin", label: "الفريق", icon: Users2, show: manager },
     { href: "/audit", label: "سجل التدقيق", icon: ScrollText, show: manager },
     { href: "/settings", label: "الإعدادات", icon: SettingsIcon, show: manager },

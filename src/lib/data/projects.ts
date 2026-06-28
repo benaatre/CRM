@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ProjectStatus, UnitStatus, UnitType, Floor } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { compareUnitNumbers } from "@/lib/format";
 
 const dec = (v: { toNumber(): number } | null) => (v ? v.toNumber() : null);
 
@@ -106,12 +107,14 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
     where: { id },
     include: {
       units: {
-        orderBy: { number: "asc" },
         include: { booking: { include: { lead: { select: { name: true } } } } },
       },
     },
   });
   if (!p) return null;
+
+  // ترتيب طبيعي لأرقام الوحدات (٢ قبل ١٠) — لا يكفي ترتيب قاعدة البيانات النصّي.
+  p.units.sort((a, b) => compareUnitNumbers(a.number, b.number));
 
   const counts = { available: 0, reserved: 0, sold: 0, total: p.units.length };
   for (const u of p.units) {

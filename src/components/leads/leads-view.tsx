@@ -10,7 +10,7 @@ import {
 import { formatDate, toArabicDigits } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import {
-  transferLeads, recoverLeads, bulkArchive,
+  transferLeads, recoverLeads, bulkArchive, bulkDelete,
 } from "@/lib/actions/leads";
 import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmployeeLoads } from "@/lib/actions/team";
 import { LeadsFilterBar } from "./leads-filter-bar";
@@ -64,18 +64,15 @@ export function LeadsView({
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const curPage = Math.min(page, pages);
   const pageRows = rows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
-  const allOnPage = pageRows.length > 0 && pageRows.every((r) => sel.has(r.id));
+  // «تحديد الكل» على مستوى التبويب الحالي كامل (كل العملاء المطابقين، مو الصفحة فقط).
+  const allSelected = rows.length > 0 && rows.every((r) => sel.has(r.id));
+  const someSelected = sel.size > 0 && !allSelected;
 
   function toggleSel(id: string) {
     setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
-  function toggleAll() {
-    setSel((s) => {
-      const n = new Set(s);
-      if (allOnPage) pageRows.forEach((r) => n.delete(r.id));
-      else pageRows.forEach((r) => n.add(r.id));
-      return n;
-    });
+  function toggleSelectAll() {
+    setSel(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
   }
   function clearSel() { setSel(new Set()); }
 
@@ -134,16 +131,31 @@ export function LeadsView({
         </div>
       )}
 
-      {/* شريط التحديد المتعدد */}
-      {sel.size > 0 && (
+      {/* شريط أدوات التحديد — ظاهر دائمًا (مع عدّاد واضح + زر «تحديد الكل») */}
+      {rows.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 px-4 py-2.5 text-sm">
-          <span className="font-medium text-foreground">محدّد: {toArabicDigits(sel.size)}</span>
+          <span className="font-medium text-foreground">محدّد: {toArabicDigits(sel.size)} من {toArabicDigits(rows.length)}</span>
+          <button
+            onClick={toggleSelectAll}
+            className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${allSelected ? "border-gold bg-gold/15 text-gold" : "border-border text-foreground hover:bg-secondary"}`}
+          >{allSelected ? "إلغاء تحديد الكل" : "تحديد الكل"}</button>
           <div className="flex-1" />
-          {isManager && (
-            <button onClick={() => setTransfer({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">تحويل</button>
+          {sel.size > 0 && (
+            <>
+              {isManager && (
+                <button onClick={() => setTransfer({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">تحويل</button>
+              )}
+              <button onClick={() => run(async () => { const r = await bulkArchive([...sel]); clearSel(); return r; })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">أرشفة</button>
+              {isManager && (
+                <button
+                  onClick={() => { if (confirm(`متأكد تبي تحذف ${toArabicDigits(sel.size)} عميل نهائيًا؟ ما يمكن التراجع.`)) run(async () => { const r = await bulkDelete([...sel]); clearSel(); return r; }); }}
+                  disabled={pending}
+                  className="rounded-lg border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                >حذف</button>
+              )}
+              <button onClick={clearSel} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">إلغاء التحديد</button>
+            </>
           )}
-          <button onClick={() => run(async () => { const r = await bulkArchive([...sel]); clearSel(); return r; })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">أرشفة</button>
-          <button onClick={clearSel} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">إلغاء التحديد</button>
         </div>
       )}
 
@@ -185,7 +197,7 @@ export function LeadsView({
         <table className="w-full min-w-[1100px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
-              <th className="px-3 py-3"><input type="checkbox" checked={allOnPage} onChange={toggleAll} aria-label="تحديد الكل" /></th>
+              <th className="px-3 py-3"><input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={toggleSelectAll} aria-label="تحديد الكل" title="تحديد / إلغاء تحديد الكل" /></th>
               <th className="px-3 py-3 font-medium">#</th>
               <th className="px-4 py-3 font-medium">الاسم</th>
               <th className="px-4 py-3 font-medium">الجوال</th>

@@ -10,7 +10,7 @@ import {
 } from "@prisma/client";
 import type { PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify, managerIds } from "@/lib/notify";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
@@ -224,12 +224,19 @@ export async function bulkReassign(ids: string[], toUserId: string): Promise<Act
 }
 
 /** حذف جماعي — المدير يحذف أي عميل، الموظف يحذف عملاءه فقط. */
+/** حذف جماعي نهائي للعملاء — للمالك/المدير فقط (يُتحقق على الخادم). */
 export async function bulkDelete(ids: string[]): Promise<ActionResult> {
   try {
-    const user = await requireUser();
+    const user = await requireManagerAction(); // OWNER/ADMIN فقط — يرفض الموظف
     if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
-    const scope = isManager(user.role) ? {} : { assignedToId: user.id };
-    await prisma.lead.deleteMany({ where: { id: { in: ids }, ...scope } });
+    // حرّر وحدات أي حجوزات لهؤلاء العملاء قبل الحذف (الحجز يُحذف تلقائيًا cascade).
+    const bks = await prisma.booking.findMany({ where: { leadId: { in: ids } }, select: { unitId: true } });
+    const unitIds = bks.map((b) => b.unitId);
+    await prisma.$transaction([
+      ...(unitIds.length ? [prisma.unit.updateMany({ where: { id: { in: unitIds } }, data: { status: "AVAILABLE" } })] : []),
+      prisma.lead.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+    await logAudit(prisma, { userId: user.id, action: "lead.deleted", entity: "lead", summary: `حذف ${ids.length} عميل نهائيًا` });
     revalidateLeads();
     return { ok: true };
   } catch (e) {

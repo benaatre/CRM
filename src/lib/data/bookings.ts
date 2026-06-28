@@ -10,6 +10,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-guards";
+import { compareUnitNumbers } from "@/lib/format";
 
 const dec = (v: { toNumber(): number } | null) => (v ? v.toNumber() : null);
 
@@ -39,6 +40,7 @@ export type BookingCard = {
   financeRejected: boolean;
   financeRejectedReason: string | null;
   discountExceeded: boolean;
+  discountOverage: number;
   discountPercentAtBooking: number | null;
   maxDiscountPercentAtBooking: number | null;
   collected: number;
@@ -106,6 +108,7 @@ export async function getBookings(): Promise<BookingsData> {
     financeRejected: b.financeRejected,
     financeRejectedReason: b.financeRejectedReason,
     discountExceeded: b.discountExceeded,
+    discountOverage: dec(b.discountOverage) ?? 0,
     discountPercentAtBooking: dec(b.discountPercentAtBooking),
     maxDiscountPercentAtBooking: dec(b.maxDiscountPercentAtBooking),
     collected: b.collected.toNumber(),
@@ -171,6 +174,9 @@ export async function getProjectsWithAvailableUnits(): Promise<ProjectWithUnits[
     name: p.name,
     maxDiscountPercent: dec(p.maxDiscountPercent),
     maxDiscountAmount: dec(p.maxDiscountAmount),
-    units: p.units.map((u) => ({ id: u.id, number: u.number, price: dec(u.price) })),
+    units: p.units
+      .slice()
+      .sort((a, b) => compareUnitNumbers(a.number, b.number))
+      .map((u) => ({ id: u.id, number: u.number, price: dec(u.price) })),
   }));
 }

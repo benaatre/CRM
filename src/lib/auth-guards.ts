@@ -25,6 +25,19 @@ export async function requireManager() {
   return requireRole(Role.OWNER, Role.ADMIN);
 }
 
+/**
+ * صلاحية مدير لاستخدامها داخل server actions — ترمي خطأً نظيفًا (بالعربي) بدل
+ * التحويل، فيلتقطه try/catch في الأكشن ويرجّع { ok:false, error } للواجهة.
+ * تمنع EMPLOYEE من أي تعديل/إضافة/حذف على الخادم (لا يكفي إخفاء الأزرار).
+ */
+export async function requireManagerAction() {
+  const user = await requireUser();
+  if (!isManager(user.role)) {
+    throw new Error("هذا الإجراء متاح للمالك أو المدير فقط");
+  }
+  return user;
+}
+
 export function isManager(role: Role) {
   return role === Role.OWNER || role === Role.ADMIN;
 }
