@@ -69,7 +69,7 @@ export function LeadsView({
   const someSelected = sel.size > 0 && !allSelected;
 
   function toggleSel(id: string) {
-    setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
   function toggleSelectAll() {
     setSel(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
@@ -111,7 +111,6 @@ export function LeadsView({
       {/* تبويب «غير موزّعين»: طرق الإضافة + التوزيع. باقي التبويبات: شريط الفلاتر. */}
       {tab === "unassigned" && isManager ? (
         <UnassignedTools
-          employees={employees}
           availableUnassigned={counts.unassigned}
           onImport={() => setShowImport(true)}
           onNew={() => setShowNew(true)}
@@ -305,9 +304,8 @@ export function LeadsView({
 
 // أدوات تبويب «غير موزّعين»: طرق الإضافة + التوزيع.
 function UnassignedTools({
-  employees, availableUnassigned, onImport, onNew, onChanged,
+  availableUnassigned, onImport, onNew, onChanged,
 }: {
-  employees: Employee[];
   availableUnassigned: number;
   onImport: () => void;
   onNew: () => void;

@@ -3,7 +3,6 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X, Loader2 } from "lucide-react";
-import type { Role } from "@prisma/client";
 import { fetchEmployeeDetail, fetchProjectsList, updateEmployee, inviteEmployee, type EmployeeDetail } from "@/lib/actions/team";
 
 export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; onClose: () => void }) {
@@ -78,7 +77,7 @@ export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; on
               <div className="grid grid-cols-2 gap-2 rounded-xl border border-border p-3">
                 {projects.length === 0 ? <span className="text-xs text-muted-foreground">ما فيه مشاريع</span> : projects.map((p) => (
                   <label key={p.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={allowed.has(p.id)} onChange={(e) => setAllowed((s) => { const n = new Set(s); e.target.checked ? n.add(p.id) : n.delete(p.id); return n; })} />
+                    <input type="checkbox" checked={allowed.has(p.id)} onChange={(e) => setAllowed((s) => { const n = new Set(s); if (e.target.checked) n.add(p.id); else n.delete(p.id); return n; })} />
                     {p.name}
                   </label>
                 ))}

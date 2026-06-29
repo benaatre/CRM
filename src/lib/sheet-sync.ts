@@ -135,7 +135,7 @@ export async function runSheetSync(): Promise<SyncResult> {
 
     // ١) التوزيع التلقائي الذكي (الدور/الأقل حملًا حسب الإعدادات وداخل النافذة).
     let assignedToId: string | null = await pickInitialAssignee(prisma);
-    let autoDistributed = assignedToId != null;
+    const autoDistributed = assignedToId != null;
     // ٢) رجوع للإسناد البسيط للأقل حملًا (autoAssign القديم) إن لم يُفعّل التوزيع الذكي.
     if (!assignedToId && settings.autoAssign && emps.length > 0) {
       const best = [...load.entries()].sort((a, b) => a[1] - b[1])[0];

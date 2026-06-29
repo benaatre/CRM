@@ -79,7 +79,7 @@ export function FollowUpsForm({
     setSel(null); setNote(""); setDate(""); setVisitMode("all"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
   }
   function toggle(setS: React.Dispatch<React.SetStateAction<Set<string>>>, v: string) {
-    setS((s) => { const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n; });
+    setS((s) => { const n = new Set(s); if (n.has(v)) n.delete(v); else n.add(v); return n; });
   }
   function compose(base: string, rs: string[], extra: string) {
     const parts = [base];

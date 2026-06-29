@@ -221,7 +221,7 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
         <div className="grid grid-cols-2 gap-2 rounded-xl border border-border p-3">
           {projects.length === 0 ? <span className="text-xs text-muted-foreground">ما فيه مشاريع</span> : projects.map((p) => (
             <label key={p.id} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={projSel.has(p.id)} onChange={(e) => setProjSel((s) => { const n = new Set(s); e.target.checked ? n.add(p.id) : n.delete(p.id); return n; })} />
+              <input type="checkbox" checked={projSel.has(p.id)} onChange={(e) => setProjSel((s) => { const n = new Set(s); if (e.target.checked) n.add(p.id); else n.delete(p.id); return n; })} />
               {p.name}
             </label>
           ))}

@@ -187,6 +187,7 @@ function SheetSync({ configured, lastSyncAt }: { configured: boolean; lastSyncAt
         {pending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
         {configured ? "مزامنة الآن" : "أضف رابط الشيت أول"}
       </button>
+      {msg && <p className="rounded-lg bg-secondary px-3 py-2 text-sm text-foreground">{msg}</p>}
     </div>
   );
 }
