@@ -4,6 +4,7 @@ import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactS
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { markContacted } from "@/lib/auto-distribute";
 import { resultToStage, followUpResultLabels, firstContactStageLabels } from "@/lib/labels";
 
 export const runtime = "nodejs";
@@ -108,6 +109,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         data: { leadId: id, userId: user.id, type: ActivityType.NOTE, note: `تم تسجيل أول تواصل: ${firstContactStageLabels[firstStage]}` },
       });
     }
+    // «تواصل» يوقف عدّاد إعادة التوجيه: متابعة مكالمة/واتساب أو تحديد موعد قادم.
+    if (bumpsAttempt || nextDate) await markContacted(tx, id);
     await logAudit(tx, {
       userId: user.id, action: "followup.added", entity: "lead", entityId: id,
       summary: `متابعة: ${followUpResultLabels[result]}`,

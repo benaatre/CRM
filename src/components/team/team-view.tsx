@@ -10,6 +10,8 @@ import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
 import { ImportDialog } from "./import-dialog";
 import { EmployeeSettingsDialog } from "./employee-settings-dialog";
+import { AvailabilityBadge } from "@/components/availability/availability-ui";
+import { ManageEmployeeAvailability } from "@/components/availability/manage-availability";
 
 type Employee = { id: string; name: string };
 
@@ -92,6 +94,9 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
                 ) : (
                   <span className="rounded-full bg-secondary px-2 py-0.5 text-success">مفعّل</span>
                 )}
+                {m.role === "EMPLOYEE" && m.paused && (
+                  <AvailabilityBadge paused={m.paused} reason={m.pauseReason} pauseUntil={m.pauseUntil} />
+                )}
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
@@ -160,9 +165,12 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
                 </td>
                 <td className="px-4 py-3">
                   {m.role === "EMPLOYEE" ? (
-                    <button onClick={(e) => { e.stopPropagation(); setActive(m.id, !m.active); }} disabled={pending} className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}>
-                      {m.active ? "مفعّل" : "موقوف"}
-                    </button>
+                    <div className="flex flex-col items-start gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setActive(m.id, !m.active)} disabled={pending} className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}>
+                        {m.active ? "مفعّل" : "موقوف"}
+                      </button>
+                      <ManageEmployeeAvailability employee={{ id: m.id, name: m.name, paused: m.paused, pauseReason: m.pauseReason, pauseUntil: m.pauseUntil }} />
+                    </div>
                   ) : (
                     <span className="text-xs text-success">مفعّل</span>
                   )}

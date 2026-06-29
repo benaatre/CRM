@@ -9,12 +9,14 @@ import {
   BarChart3,
   ScrollText,
   MessagesSquare,
+  Share2,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { roleLabel } from "@/lib/labels";
 import { getSettings } from "@/lib/data/settings";
 import { getEmployees } from "@/lib/data/leads";
+import { getMyAvailability } from "@/lib/actions/availability";
 import { Topbar } from "@/components/layout/topbar";
 import { Brand } from "@/components/layout/brand";
 import { Heartbeat } from "@/components/layout/heartbeat";
@@ -28,9 +30,10 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   const manager = isManager(user.role);
-  const [settings, employees] = await Promise.all([
+  const [settings, employees, availability] = await Promise.all([
     getSettings(),
     manager ? getEmployees() : Promise.resolve([]),
+    getMyAvailability(),
   ]);
 
   const nav = [
@@ -42,6 +45,7 @@ export default async function AppLayout({
     { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, show: true },
     { href: "/analytics", label: "التحليلات", icon: BarChart3, show: true },
     { href: "/admin", label: "الفريق", icon: Users2, show: manager },
+    { href: "/distribution", label: "التوزيع التلقائي", icon: Share2, show: manager },
     { href: "/audit", label: "سجل التدقيق", icon: ScrollText, show: manager },
     { href: "/settings", label: "الإعدادات", icon: SettingsIcon, show: manager },
   ].filter((n) => n.show);
@@ -88,6 +92,7 @@ export default async function AppLayout({
           falLicense={settings.falLicense ?? null}
           isManager={manager}
           employees={employees}
+          availability={manager ? null : availability}
         />
         <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>

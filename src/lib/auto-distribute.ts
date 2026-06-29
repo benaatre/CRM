@@ -1,0 +1,268 @@
+import "server-only";
+
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { ActivityType } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { notify, ownerIds } from "@/lib/notify";
+
+type Db = PrismaClient | Prisma.TransactionClient;
+
+// المراحل المتقدّمة التي لا يُعاد توجيه عملائها (حجز/بيع).
+const ADVANCED_STAGES = ["RESERVED", "CLOSED_WON"] as const;
+
+// ===================== أدوات التوقيت (توقيت السعودية UTC+3 بلا تغيير صيفي) =====================
+
+const KSA_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/** ساعة اليوم بتوقيت السعودية (٠–٢٣) مهما كان توقيت الخادم. */
+export function ksaHour(now: Date): number {
+  return new Date(now.getTime() + KSA_OFFSET_MS).getUTCHours();
+}
+
+/** لحظة بداية «اليوم» بتوقيت السعودية كـ Date عالمي (لعدّ متابعات اليوم). */
+export function ksaTodayStart(now: Date): Date {
+  const shifted = new Date(now.getTime() + KSA_OFFSET_MS);
+  const midnightShifted = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+  return new Date(midnightShifted - KSA_OFFSET_MS);
+}
+
+/** هل نحن داخل نافذة عمل التوزيع [start, end)؟ */
+export function isWithinWindow(startHour: number, endHour: number, now: Date): boolean {
+  const h = ksaHour(now);
+  if (startHour === endHour) return true; // نافذة على مدار اليوم
+  if (startHour < endHour) return h >= startHour && h < endHour;
+  // نافذة تعبر منتصف الليل (مثل ٢١ → ٦)
+  return h >= startHour || h < endHour;
+}
+
+// ===================== الإعدادات والموظفون المشاركون =====================
+
+export type DistSettings = {
+  autoDistribute: boolean;
+  distStartHour: number;
+  distEndHour: number;
+  distTimeoutMin: number;
+  distPresenceMin: number;
+  distOrder: string[];
+  distPointer: number;
+  distInitialMode: string; // ROUND_ROBIN | LEAST_LOADED
+  distReassignMode: string; // MOST_ACTIVE | ROTATION
+};
+
+const DIST_SELECT = {
+  autoDistribute: true, distStartHour: true, distEndHour: true, distTimeoutMin: true,
+  distPresenceMin: true, distOrder: true, distPointer: true, distInitialMode: true, distReassignMode: true,
+} as const;
+
+/** يجلب إعدادات التوزيع (ينشئ السجل إن لزم). */
+export async function getDistSettings(db: Db = prisma): Promise<DistSettings> {
+  const s = await db.settings.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton" }, select: DIST_SELECT });
+  return s;
+}
+
+/**
+ * الموظفون المشاركون المتواجدون — من distOrder، مفعّلون، وآخر ظهورهم ضمن حد التواجد.
+ * يحافظ على ترتيب distOrder. إذا distPresenceMin = 0 يتجاهل شرط التواجد (يكفي active).
+ */
+export async function presentParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
+  if (settings.distOrder.length === 0) return [];
+  const since = settings.distPresenceMin > 0 ? new Date(now.getTime() - settings.distPresenceMin * 60_000) : null;
+  const users = await db.user.findMany({
+    where: { id: { in: settings.distOrder }, active: true },
+    select: { id: true, lastSeenAt: true, availabilityPaused: true, pauseUntil: true },
+  });
+  const ok = new Set(
+    users
+      .filter((u) => (since ? !!u.lastSeenAt && u.lastSeenAt >= since : true))
+      // استثناء المتوقّفين عن الاستقبال (إلا من انتهت مدة إيقافه — سيُرجَع تلقائيًا).
+      .filter((u) => !u.availabilityPaused || (u.pauseUntil != null && u.pauseUntil <= now))
+      .map((u) => u.id),
+  );
+  // الترتيب حسب distOrder، مع إبقاء المتواجدين فقط
+  return settings.distOrder.filter((id) => ok.has(id));
+}
+
+/** اختيار التالي في الدور الثابت ابتداءً من pointer+1، متخطّيًا غير المتواجدين. */
+function pickRotation(order: string[], present: Set<string>, pointer: number, excludeId?: string): { userId: string; pointer: number } | null {
+  if (order.length === 0) return null;
+  for (let i = 1; i <= order.length; i++) {
+    const idx = (pointer + i) % order.length;
+    const id = order[idx];
+    if (present.has(id) && id !== excludeId) return { userId: id, pointer: idx };
+  }
+  return null;
+}
+
+/** الأقل عملاءً (غير مؤرشفين) بين المشاركين المتواجدين. */
+async function pickLeastLoaded(db: Db, candidates: string[], excludeId?: string): Promise<string | null> {
+  const ids = candidates.filter((id) => id !== excludeId);
+  if (ids.length === 0) return null;
+  const counts = await db.lead.groupBy({
+    by: ["assignedToId"],
+    where: { assignedToId: { in: ids }, isArchived: false },
+    _count: { _all: true },
+  });
+  const loadById = new Map(counts.map((c) => [c.assignedToId as string, c._count._all]));
+  let best: string | null = null;
+  let min = Infinity;
+  for (const id of ids) {
+    const l = loadById.get(id) ?? 0;
+    if (l < min) { min = l; best = id; }
+  }
+  return best;
+}
+
+/** الأكثر متابعاتٍ مسجّلة اليوم بين المشاركين المتواجدين (تعادل → ترتيب الدور). */
+async function pickMostActiveToday(db: Db, order: string[], candidates: string[], now: Date, excludeId?: string): Promise<string | null> {
+  const ids = candidates.filter((id) => id !== excludeId);
+  if (ids.length === 0) return null;
+  const grouped = await db.followUp.groupBy({
+    by: ["createdBy"],
+    where: { createdBy: { in: ids }, createdAt: { gte: ksaTodayStart(now) } },
+    _count: { _all: true },
+  });
+  const countById = new Map(grouped.map((g) => [g.createdBy, g._count._all]));
+  // رتّب حسب: الأكثر متابعات أولًا، وعند التعادل الأسبق في ترتيب الدور.
+  return [...ids].sort((a, b) => {
+    const d = (countById.get(b) ?? 0) - (countById.get(a) ?? 0);
+    if (d !== 0) return d;
+    return order.indexOf(a) - order.indexOf(b);
+  })[0];
+}
+
+// ===================== الإسناد الأولي =====================
+
+/**
+ * يحدّد الموظف المُسند للعميل الجديد حسب إعدادات التوزيع — أو null لو التوزيع متوقّف/
+ * خارج النافذة/ما فيه مشاركون متواجدون. يحدّث المؤشّر عند الدور الثابت.
+ * لا يكتب على العميل — يرجّع المعرّف فقط ليدمجه المنادي في عملية الإنشاء.
+ */
+export async function pickInitialAssignee(db: Db, now: Date = new Date()): Promise<string | null> {
+  const settings = await getDistSettings(db);
+  if (!settings.autoDistribute) return null;
+  if (!isWithinWindow(settings.distStartHour, settings.distEndHour, now)) return null;
+  const present = await presentParticipants(db, settings, now);
+  if (present.length === 0) return null;
+
+  if (settings.distInitialMode === "LEAST_LOADED") {
+    return pickLeastLoaded(db, present);
+  }
+  // الدور الثابت
+  const picked = pickRotation(settings.distOrder, new Set(present), settings.distPointer);
+  if (!picked) return null;
+  await db.settings.update({ where: { id: "singleton" }, data: { distPointer: picked.pointer } });
+  return picked.userId;
+}
+
+// ===================== «التواصل» يوقف العدّاد =====================
+
+/**
+ * يضبط وقت أول «تواصل» للعميل (إن لم يكن مضبوطًا) ليوقف عدّاد إعادة التوجيه.
+ * يُستدعى عند: متابعة CALL/WHATSAPP، زر إرسال واتساب، أو تحديد موعد متابعة قادم.
+ */
+export async function markContacted(db: Db, leadId: string, when: Date = new Date()): Promise<void> {
+  await db.lead.updateMany({ where: { id: leadId, contactedAt: null }, data: { contactedAt: when } });
+}
+
+// ===================== الفحص الدوري وإعادة التوجيه =====================
+
+/**
+ * يُرجِع تلقائيًا الموظفين الذين انتهت مدة إيقافهم (pauseUntil مرّ) ويرسل إشعارًا لهم وللمالك.
+ */
+export async function autoResumeExpiredPauses(now: Date = new Date()): Promise<number> {
+  const expired = await prisma.user.findMany({
+    where: { availabilityPaused: true, pauseUntil: { not: null, lte: now } },
+    select: { id: true, name: true },
+  });
+  if (expired.length === 0) return 0;
+  const mgrs = await ownerIds(prisma);
+  for (const u of expired) {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: u.id },
+        data: { availabilityPaused: false, pauseReason: null, pauseUntil: null, pausedBy: null, pausedAt: null },
+      });
+      await notify(tx, [u.id], "availability.resumed", "رجعت لاستقبال العملاء", "انتهت مدة الإيقاف — ترجع الآن ضمن التوزيع");
+      await notify(tx, mgrs, "availability.resumed", "موظف رجع للاستقبال", `${u.name} رجع تلقائيًا بعد انتهاء مدة الإيقاف`);
+    });
+  }
+  return expired.length;
+}
+
+export type SweepResult = { ok: boolean; reassigned: number; checked: number; skipped?: string; error?: string };
+
+/**
+ * يفحص العملاء المتأخرين (انقضت المهلة بلا تواصل) ويعيد توجيههم تلقائيًا.
+ * يُستدعى من cron عبر /api/auto-distribute. لا يعمل خارج نافذة العمل.
+ */
+export async function runReassignSweep(now: Date = new Date()): Promise<SweepResult> {
+  try {
+    // (أ) رجوع تلقائي للموظفين الذين انتهت مدة إيقافهم — يعمل دائمًا (حتى لو التوزيع متوقّف/خارج النافذة).
+    await autoResumeExpiredPauses(now);
+
+    const settings = await getDistSettings(prisma);
+    if (!settings.autoDistribute) return { ok: true, reassigned: 0, checked: 0, skipped: "التوزيع التلقائي متوقّف" };
+    if (!isWithinWindow(settings.distStartHour, settings.distEndHour, now)) {
+      return { ok: true, reassigned: 0, checked: 0, skipped: "خارج نافذة العمل" };
+    }
+    const present = await presentParticipants(prisma, settings, now);
+    if (present.length < 2) {
+      return { ok: true, reassigned: 0, checked: 0, skipped: "ما فيه موظفون متواجدون كفاية لإعادة التوجيه" };
+    }
+
+    const cutoff = new Date(now.getTime() - settings.distTimeoutMin * 60_000);
+    const overdue = await prisma.lead.findMany({
+      where: {
+        assignedToId: { not: null },
+        assignedAt: { not: null, lte: cutoff },
+        contactedAt: null,
+        isArchived: false,
+        stage: { notIn: [...ADVANCED_STAGES] },
+      },
+      select: { id: true, assignedToId: true, name: true },
+      orderBy: { assignedAt: "asc" },
+    });
+    if (overdue.length === 0) return { ok: true, reassigned: 0, checked: 0 };
+
+    const owners = await ownerIds(prisma);
+    let reassigned = 0;
+    // نتتبّع المؤشّر محليًا حتى يدور بين المتأخرين في نفس الجولة (لوضع الدور الثابت).
+    let pointer = settings.distPointer;
+    const presentSet = new Set(present);
+
+    for (const lead of overdue) {
+      const from = lead.assignedToId as string;
+      let toUserId: string | null;
+      if (settings.distReassignMode === "ROTATION") {
+        const picked = pickRotation(settings.distOrder, presentSet, pointer, from);
+        if (picked) { toUserId = picked.userId; pointer = picked.pointer; }
+        else toUserId = null;
+      } else {
+        toUserId = await pickMostActiveToday(prisma, settings.distOrder, present, now, from);
+      }
+      if (!toUserId || toUserId === from) continue; // ما فيه بديل مناسب
+
+      await prisma.$transaction(async (tx) => {
+        await tx.lead.update({
+          where: { id: lead.id },
+          data: { assignedToId: toUserId, assignedAt: now, reassignCount: { increment: 1 } },
+        });
+        await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: from, toUserId, reason: "timeout" } });
+        await tx.activity.create({
+          data: { leadId: lead.id, userId: null, type: ActivityType.ASSIGNMENT, note: "إعادة توجيه تلقائي (تقصير في التواصل)" },
+        });
+        // إشعار الموظف الجديد + المالك (لمعرفة من قصّر).
+        await notify(tx, [toUserId], "lead.reassigned", "عميل جديد مُسند إليك", `${lead.name} — تواصل معه بسرعة`);
+        await notify(tx, owners, "lead.reassigned", "إعادة توجيه عميل", `${lead.name} أُعيد توجيهه بسبب تأخّر التواصل`);
+      });
+      reassigned++;
+    }
+
+    if (pointer !== settings.distPointer) {
+      await prisma.settings.update({ where: { id: "singleton" }, data: { distPointer: pointer } });
+    }
+    return { ok: true, reassigned, checked: overdue.length };
+  } catch (e) {
+    return { ok: false, reassigned: 0, checked: 0, error: (e as Error).message };
+  }
+}

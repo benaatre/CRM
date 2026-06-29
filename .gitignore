@@ -38,6 +38,7 @@ yarn-error.log*
 .claude/settings.local.json
 .claude/launch.json
 dev.log
+devserver.log
 
 # vercel
 .vercel

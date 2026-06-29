@@ -17,6 +17,9 @@ export type TeamMember = {
   activityRate: number;
   lastSeenAt: Date | null;
   online: boolean;
+  paused: boolean;
+  pauseReason: string | null;
+  pauseUntil: Date | null;
 };
 
 export type TeamData = {
@@ -28,7 +31,7 @@ export type TeamData = {
 export async function getTeam(): Promise<TeamData> {
   const [users, byTotal, byClosed, byNotContacted, byBookings, unassigned] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, name: true, phone: true, role: true, targetDeals: true, active: true, lastSeenAt: true },
+      select: { id: true, name: true, phone: true, role: true, targetDeals: true, active: true, lastSeenAt: true, availabilityPaused: true, pauseReason: true, pauseUntil: true },
       orderBy: [{ role: "asc" }, { active: "desc" }, { name: "asc" }],
     }),
     prisma.lead.groupBy({ by: ["assignedToId"], _count: { _all: true } }),
@@ -60,6 +63,9 @@ export async function getTeam(): Promise<TeamData> {
       activityRate: total > 0 ? Math.round(((total - notContacted) / total) * 100) : 0,
       lastSeenAt: u.lastSeenAt,
       online: !!u.lastSeenAt && now - u.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS,
+      paused: u.availabilityPaused,
+      pauseReason: u.pauseReason,
+      pauseUntil: u.pauseUntil,
     };
   });
 

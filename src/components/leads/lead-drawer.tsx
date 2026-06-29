@@ -54,6 +54,14 @@ export function LeadDrawer({
     setLead(await fetchLeadDetail(id));
     setLoading(false);
   }
+
+  // ضغط زر «واتساب» يُسجَّل كمتابعة WHATSAPP ويوقف عدّاد إعادة التوجيه (بدون عرقلة فتح واتساب).
+  function logWhatsApp() {
+    if (!leadId) return;
+    fetch(`/api/leads/${leadId}/whatsapp`, { method: "POST" })
+      .then(() => router.refresh())
+      .catch(() => {});
+  }
   useEffect(() => {
     if (leadId) { setTab("data"); setAnalysis(null); load(leadId); }
     else setLead(null);
@@ -143,7 +151,7 @@ export function LeadDrawer({
               </div>
               <div className="mt-3 flex gap-2">
                 <a href={`tel:${lead.phone}`} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" /> اتصال</a>
-                <a href={`https://wa.me/966${lead.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-success/15 py-2 text-sm font-medium text-success hover:bg-success/25"><MessageCircle className="size-4" /> واتساب</a>
+                <a onClick={logWhatsApp} href={`https://wa.me/966${lead.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-success/15 py-2 text-sm font-medium text-success hover:bg-success/25"><MessageCircle className="size-4" /> واتساب</a>
               </div>
             </header>
 
@@ -269,7 +277,7 @@ export function LeadDrawer({
                           </button>
                         </div>
                         <p className="whitespace-pre-wrap text-sm text-foreground">{analysis.whatsapp}</p>
-                        <a href={`https://wa.me/966${lead.phone.replace(/^0/, "")}?text=${encodeURIComponent(analysis.whatsapp)}`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/25"><MessageCircle className="size-3.5" /> إرسال واتساب</a>
+                        <a onClick={logWhatsApp} href={`https://wa.me/966${lead.phone.replace(/^0/, "")}?text=${encodeURIComponent(analysis.whatsapp)}`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/25"><MessageCircle className="size-3.5" /> إرسال واتساب</a>
                       </div>
 
                       {analysis.source && <p className="text-center text-xs text-muted-foreground/60">المصدر: {analysis.source}</p>}

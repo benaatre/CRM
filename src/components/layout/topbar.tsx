@@ -14,6 +14,8 @@ import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { Brand } from "@/components/layout/brand";
+import { SelfAvailabilityToggle } from "@/components/availability/self-availability";
+import type { MyAvailability } from "@/lib/actions/availability";
 
 type Employee = { id: string; name: string };
 
@@ -25,6 +27,7 @@ export function Topbar({
   falLicense,
   isManager,
   employees,
+  availability,
 }: {
   userName: string;
   roleLabel: string;
@@ -33,6 +36,7 @@ export function Topbar({
   falLicense: string | null;
   isManager: boolean;
   employees: Employee[];
+  availability: MyAvailability | null;
 }) {
   const router = useRouter();
   const [dark, setDark] = useState(true);
@@ -106,6 +110,8 @@ export function Topbar({
         >
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
+
+        {availability && <SelfAvailabilityToggle initial={availability} />}
 
         <button
           onClick={() => setShowNew(true)}

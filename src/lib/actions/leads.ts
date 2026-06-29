@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify, managerIds } from "@/lib/notify";
+import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -63,25 +64,35 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
   const budget = budgetRaw ? Number(budgetRaw) : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
-  // الإسناد: المدير يقدر يحدّد موظفًا؛ أو إسناد تلقائي للأقل حملًا؛ غير ذلك = نفسه.
+  // الإسناد: المدير يقدر يحدّد موظفًا؛ أو توزيع تلقائي ذكي (الدور/الأقل حملًا)؛ غير ذلك = نفسه.
+  // autoDistributed = أُسند عبر نظام التوزيع التلقائي → يبدأ عدّاد إعادة التوجيه (assignedAt).
   let assignedToId = user.id;
+  let autoDistributed = false;
   const chosen = String(formData.get("assignedToId") ?? "");
   if (isManager(user.role)) {
     if (chosen) {
       assignedToId = chosen;
     } else {
-      const settings = await prisma.settings.findUnique({
-        where: { id: "singleton" },
-        select: { autoAssign: true },
-      });
-      if (settings?.autoAssign) {
-        const emps = await prisma.user.findMany({
-          where: { role: "EMPLOYEE", active: true },
-          select: { id: true, _count: { select: { assignedLeads: true } } },
+      // ١) التوزيع التلقائي الذكي (إن مُفعّل وداخل النافذة ومع وجود مشاركين متواجدين)
+      const picked = await pickInitialAssignee(prisma);
+      if (picked) {
+        assignedToId = picked;
+        autoDistributed = true;
+      } else {
+        // ٢) رجوع للإسناد البسيط للأقل حملًا (autoAssign القديم) إن مُفعّل
+        const settings = await prisma.settings.findUnique({
+          where: { id: "singleton" },
+          select: { autoAssign: true },
         });
-        if (emps.length > 0) {
-          emps.sort((a, b) => a._count.assignedLeads - b._count.assignedLeads);
-          assignedToId = emps[0].id;
+        if (settings?.autoAssign) {
+          const emps = await prisma.user.findMany({
+            where: { role: "EMPLOYEE", active: true },
+            select: { id: true, _count: { select: { assignedLeads: true } } },
+          });
+          if (emps.length > 0) {
+            emps.sort((a, b) => a._count.assignedLeads - b._count.assignedLeads);
+            assignedToId = emps[0].id;
+          }
         }
       }
     }
@@ -103,8 +114,12 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
       stage: LeadStage.NEW,
       priority: Priority.MEDIUM,
       nextFollowup: tomorrow,
+      ...(autoDistributed ? { assignedAt: new Date() } : {}),
     },
   });
+  if (autoDistributed) {
+    await prisma.reassignment.create({ data: { leadId: lead.id, fromUserId: null, toUserId: assignedToId, reason: "initial" } });
+  }
   await logAudit(prisma, { userId: user.id, action: "lead.created", entity: "lead", entityId: lead.id, summary: `أضاف عميل ${name}` });
   const mgrs = await managerIds(prisma);
   await notify(prisma, [...mgrs, assignedToId], "lead.new", "عميل جديد وصل", name);
@@ -172,6 +187,8 @@ export async function addActivity(
           ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
         },
       });
+      // مكالمة/واتساب = «تواصل» يوقف عدّاد إعادة التوجيه التلقائي.
+      if (bumpsAttempt) await markContacted(tx, leadId);
     });
 
     revalidateLeads();
@@ -198,6 +215,8 @@ export async function updateLeadFields(
           : {}),
       },
     });
+    // تحديد موعد متابعة قادم = «تواصل» يوقف عدّاد إعادة التوجيه.
+    if (data.nextFollowup) await markContacted(prisma, leadId);
     revalidateLeads();
     return { ok: true };
   } catch (e) {

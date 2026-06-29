@@ -211,6 +211,18 @@ model User {
   active       Boolean  @default(true)
   /// آخر ظهور (heartbeat) — لحالة الاتصال «متصل الآن / آخر ظهور»
   lastSeenAt   DateTime?
+
+  // ===== إيقاف استقبال العملاء (توفّر الموظف) =====
+  /// متوقّف مؤقتًا عن استقبال العملاء الجدد (يُستثنى من التوزيع وإعادة التوجيه)
+  availabilityPaused Boolean  @default(false)
+  /// سبب الإيقاف: VACATION (إجازة) | REVIEW (مراجعة العملاء) | SICK (مرضي) | BUSY (مشغول)
+  pauseReason  String?
+  /// وقت الرجوع التلقائي — null = يدوي بلا مدة
+  pauseUntil   DateTime?
+  /// من أوقفه (معرّف المستخدم — نفسه أو المالك/المدير)
+  pausedBy     String?
+  /// وقت الإيقاف
+  pausedAt     DateTime?
   /// رمز دعوة تغيير الـ PIN (يُرسل بالإيميل) — bcrypt-free، عشوائي + انتهاء
   pinResetToken String?  @unique
   pinResetExp   DateTime?
@@ -360,16 +372,42 @@ model Lead {
   createdById  String?
   createdBy    User?    @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
+  // ===== التوزيع التلقائي =====
+  /// وقت آخر إسناد تلقائي — يبدأ منه عدّاد المهلة قبل إعادة التوجيه
+  assignedAt   DateTime?
+  /// وقت أول «تواصل» يوقف عدّاد إعادة التوجيه (مكالمة/واتساب/تحديد موعد)
+  contactedAt  DateTime?
+  /// كم مرة أُعيد توجيه هذا العميل تلقائيًا بسبب التقصير
+  reassignCount Int        @default(0)
+
   project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
   bookings   Booking[]
   activities Activity[]
   followUps  FollowUp[]
   referrals  Referral[]
+  reassignments Reassignment[]
 
   @@index([stage])
   @@index([assignedToId])
   @@index([nextFollowup])
   @@index([isArchived])
+  @@index([assignedAt])
+}
+
+/// سجل إعادات التوجيه التلقائية (من → إلى، السبب، الوقت) — للوحة المراقبة.
+model Reassignment {
+  id         String   @id @default(cuid())
+  leadId     String
+  fromUserId String?
+  toUserId   String?
+  /// السبب: timeout (انقضت المهلة بلا تواصل) | initial (إسناد أولي)
+  reason     String   @default("timeout")
+  createdAt  DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([createdAt])
 }
 
 /// متابعة عميل — نوع + نتيجة + موعد قادم (سجل ذكي مرتّب).
@@ -541,6 +579,27 @@ model Settings {
   phone       String?
   /// إسناد العملاء الجدد تلقائيًا لموظف (الأقل حملًا) عند إنشائهم من المدير
   autoAssign  Boolean  @default(false)
+
+  // ===== نظام التوزيع التلقائي الذكي =====
+  /// المفتاح الرئيسي لتشغيل/إيقاف التوزيع التلقائي وإعادة التوجيه
+  autoDistribute   Boolean  @default(false)
+  /// نافذة العمل: ساعة البداية (٢٤) — افتراضي ١ ظهرًا
+  distStartHour    Int      @default(13)
+  /// نافذة العمل: ساعة النهاية (٢٤) — افتراضي ٩ مساءً
+  distEndHour      Int      @default(21)
+  /// مدة المهلة بالدقائق قبل إعادة التوجيه — افتراضي ٦٠
+  distTimeoutMin   Int      @default(60)
+  /// حد «التواجد» بالدقائق (آخر ظهور lastSeenAt) — يُتخطّى من تجاوزه
+  distPresenceMin  Int      @default(30)
+  /// ترتيب الموظفين المشاركين في الدور (معرّفات User بالترتيب) — فقط هؤلاء يدخلون التوزيع
+  distOrder        String[]
+  /// مؤشّر الدور الثابت (round-robin) — موضع آخر موظف أُسند له
+  distPointer      Int      @default(0)
+  /// طريقة التوزيع الأولي: ROUND_ROBIN (دوري ثابت) | LEAST_LOADED (الأقل عملاءً)
+  distInitialMode  String   @default("ROUND_ROBIN")
+  /// طريقة إعادة التوجيه: MOST_ACTIVE (الأكثر نشاطًا اليوم) | ROTATION (التالي في الدور)
+  distReassignMode String   @default("MOST_ACTIVE")
+
   /// رابط جوجل شيت للمزامنة التلقائية (CSV عام أو رابط شيت)
   googleSheetUrl String?
   /// آخر مزامنة ناجحة للشيت

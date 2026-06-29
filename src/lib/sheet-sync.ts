@@ -5,6 +5,7 @@ import {
   channelLabels, stageLabels, priorityLabels, unitTypeLabels,
 } from "@/lib/labels";
 import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
+import { pickInitialAssignee } from "@/lib/auto-distribute";
 
 // ===== أدوات CSV ومطابقة (مكتفية ذاتيًا لتشتغل خارج سياق "use server") =====
 
@@ -132,14 +133,17 @@ export async function runSheetSync(): Promise<SyncResult> {
     if (existingSet.has(r.phone) || seen.has(r.phone)) continue;
     seen.add(r.phone);
 
-    let assignedToId: string | null = null;
-    if (settings.autoAssign && emps.length > 0) {
+    // ١) التوزيع التلقائي الذكي (الدور/الأقل حملًا حسب الإعدادات وداخل النافذة).
+    let assignedToId: string | null = await pickInitialAssignee(prisma);
+    let autoDistributed = assignedToId != null;
+    // ٢) رجوع للإسناد البسيط للأقل حملًا (autoAssign القديم) إن لم يُفعّل التوزيع الذكي.
+    if (!assignedToId && settings.autoAssign && emps.length > 0) {
       const best = [...load.entries()].sort((a, b) => a[1] - b[1])[0];
       assignedToId = best[0];
       load.set(best[0], best[1] + 1);
     }
 
-    await prisma.lead.create({
+    const lead = await prisma.lead.create({
       data: {
         name: r.name,
         phone: r.phone,
@@ -155,8 +159,12 @@ export async function runSheetSync(): Promise<SyncResult> {
         projectId: r.project ? projectByName.get(r.project) ?? null : null,
         assignedToId,
         nextFollowup: new Date(Date.now() + 86_400_000),
+        ...(autoDistributed ? { assignedAt: new Date() } : {}),
       },
     });
+    if (autoDistributed && assignedToId) {
+      await prisma.reassignment.create({ data: { leadId: lead.id, fromUserId: null, toUserId: assignedToId, reason: "initial" } });
+    }
     created++;
   }
 

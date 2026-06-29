@@ -13,10 +13,17 @@ type ViewMode = "compact" | "analytical" | "glass";
 
 // أنماط البطاقات بالضبط من ملف التصميم (sultan-crm-standalone.html):
 // V = 0 مكثّف | 1 تحليلي | 2 زجاجي
-const KPI_SPANS = [
+// ٦ بطاقات (مدير — يشمل «غير موزّعين»)
+const KPI_SPANS_MANAGER = [
   [6, 3, 3, 4, 4, 4], // مكثّف
   [2, 2, 2, 2, 2, 2], // تحليلي
   [4, 4, 4, 4, 4, 4], // زجاجي
+];
+// ٥ بطاقات (موظف — بدون «غير موزّعين») — تُرتّب الشبكة بانتظام (١٢ عمود)
+const KPI_SPANS_EMPLOYEE = [
+  [4, 4, 4, 6, 6], // مكثّف: صف ٣ + صف ٢
+  [2, 2, 2, 2, 2], // تحليلي
+  [4, 4, 4, 6, 6], // زجاجي
 ];
 
 const glassStyle: CSSProperties = {
@@ -34,20 +41,21 @@ export function DashboardView({ data }: { data: DashboardData }) {
 
   const V = view === "compact" ? 0 : view === "analytical" ? 1 : 2;
   const glass = V === 2;
-  const spans = KPI_SPANS[V];
+  const spans = (data.manager ? KPI_SPANS_MANAGER : KPI_SPANS_EMPLOYEE)[V];
   const k = data.kpis;
   const maxCount = Math.max(k.totalClients, k.bookings, k.visits, k.closedWon, k.unassigned, 1);
   const pct = (n: number) => Math.round((n / maxCount) * 100);
 
   // الترتيب نفس التصميم: تحويل · إجمالي · غير موزّعين · حجوزات · زيارات · مقفولة
+  // «غير موزّعين» بيانات إدارية — تظهر للمالك/المدير فقط (الموظف يشوف نطاقه هو).
   const cards = [
-    { label: "معدل التحويل", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false },
-    { label: "إجمالي العملاء", value: formatNumberShort(k.totalClients), unit: "عميل", fill: 100, up: true, chip: null, action: false },
-    { label: "غير موزّعين", value: toArabicDigits(k.unassigned), unit: "ليد", fill: pct(k.unassigned), up: false, chip: k.unassigned > 0 ? toArabicDigits(k.unassigned) : null, action: data.manager && k.unassigned > 0 },
-    { label: "عدد الحجوزات", value: formatNumberShort(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false },
-    { label: "عدد الزيارات", value: formatNumberShort(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false },
-    { label: "صفقات مقفولة", value: formatNumberShort(k.closedWon), unit: "صفقة", fill: pct(k.closedWon), up: true, chip: null, action: false },
-  ];
+    { label: "معدل التحويل", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false, show: true },
+    { label: "إجمالي العملاء", value: formatNumberShort(k.totalClients), unit: "عميل", fill: 100, up: true, chip: null, action: false, show: true },
+    { label: "غير موزّعين", value: toArabicDigits(k.unassigned), unit: "ليد", fill: pct(k.unassigned), up: false, chip: k.unassigned > 0 ? toArabicDigits(k.unassigned) : null, action: data.manager && k.unassigned > 0, show: data.manager },
+    { label: "عدد الحجوزات", value: formatNumberShort(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false, show: true },
+    { label: "عدد الزيارات", value: formatNumberShort(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false, show: true },
+    { label: "صفقات مقفولة", value: formatNumberShort(k.closedWon), unit: "صفقة", fill: pct(k.closedWon), up: true, chip: null, action: false, show: true },
+  ].filter((c) => c.show);
 
   return (
     <div className="space-y-7">
