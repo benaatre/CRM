@@ -180,9 +180,19 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
 
 export const purchaseMethodLabels: Record<PurchaseMethod, string> = {
   CASH: "كاش",
-  BANK_FINANCE: "تمويل بنكي",
-  CASH_AND_FINANCE: "كاش + تمويل",
+  BANK_FINANCE: "تمويل بنكي", // قديم — للعرض فقط
+  CASH_AND_FINANCE: "كاش + تمويل بنكي",
+  BANK_FINANCE_SUPPORTED: "تمويل بنكي مدعوم",
+  BANK_FINANCE_UNSUPPORTED: "تمويل بنكي غير مدعوم",
 };
+
+/** الخيارات المعروضة في القوائم — القيم الأربع المعتمدة (بدون القديم BANK_FINANCE). */
+export const purchaseMethodOptions: PurchaseMethod[] = [
+  "BANK_FINANCE_SUPPORTED",
+  "BANK_FINANCE_UNSUPPORTED",
+  "CASH",
+  "CASH_AND_FINANCE",
+];
 
 export const purchaseGoalLabels: Record<PurchaseGoal, string> = {
   RESIDENCE: "سكن",

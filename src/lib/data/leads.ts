@@ -64,6 +64,8 @@ export type LeadDetail = LeadRow & {
   preferredAreas: string[];
   preferredProjects: string[];
   projectId: string | null;
+  sourceId: string | null;
+  sourceName: string | null;
   bookingId: string | null;
   bookings: BookingSummary[];
   activities: LeadActivity[];
@@ -277,6 +279,7 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     where: { id, ...where },
     include: {
       ...rowInclude,
+      leadSource: { select: { name: true } },
       bookings: {
         orderBy: { createdAt: "desc" },
         include: {
@@ -302,6 +305,8 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     preferredAreas: lead.preferredAreas,
     preferredProjects: lead.preferredProjects,
     projectId: lead.projectId,
+    sourceId: lead.sourceId,
+    sourceName: lead.leadSource?.name ?? null,
     bookingId: lead.bookings[0]?.id ?? null,
     bookings: lead.bookings.map((b) => ({
       id: b.id,

@@ -7,6 +7,7 @@ import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/auth-guards";
 import { sendMail } from "@/lib/mailer";
+import { emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -179,6 +180,13 @@ function revalidateDistribution() {
   revalidatePath("/dashboard");
 }
 
+/** يجمّع عدّاد ما استقبله كل موظف + عيّنة (لإشعار مجمّع واحد). */
+function bumpBucket(buckets: Map<string, LeadAssignedBucket>, userId: string, leadId: string, name?: string) {
+  const b = buckets.get(userId);
+  if (b) b.count++;
+  else buckets.set(userId, { userId, count: 1, sampleLeadId: leadId, sampleName: name });
+}
+
 /**
  * توزيع العملاء غير الموزّعين على الموظفين — يحترم الحد الأقصى لكل موظف (maxClients).
  * perEmployee غير محدّد → بالتساوي (round-robin على الكل، مع تخطّي من وصل حدّه).
@@ -189,7 +197,7 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
     await requireManager();
     const emps = await loadEmployees();
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
-    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
 
     const n = perEmployee && perEmployee > 0 ? perEmployee : 0;
@@ -198,6 +206,7 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
 
     const order = emps.map((e) => e.id);
     const updates: ReturnType<typeof prisma.lead.update>[] = [];
+    const buckets = new Map<string, LeadAssignedBucket>();
     let idx = 0;
     for (const lead of unassigned) {
       let pick: string | null = null;
@@ -209,9 +218,11 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
       if (pick === null) break; // كل الموظفين وصلوا حدّهم الأقصى
       cap.set(pick, (cap.get(pick) as number) - 1);
       updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: pick } }));
+      bumpBucket(buckets, pick, lead.id, lead.name);
     }
     if (updates.length === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
     await prisma.$transaction(updates);
+    await emitLeadAssignedBatch([...buckets.values()]);
 
     revalidateDistribution();
     const leftover = unassigned.length - updates.length;
@@ -253,18 +264,21 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
       }
     }
 
-    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
     if (totalWanted > unassigned.length) return { ok: false, error: `المجموع ${totalWanted} أكبر من المتاح ${unassigned.length}` };
 
-    const targets: { id: string; userId: string }[] = [];
+    const targets: { id: string; name: string; userId: string }[] = [];
     let i = 0;
     for (const a of items) {
       for (let k = 0; k < a.count && i < unassigned.length; k++, i++) {
-        targets.push({ id: unassigned[i].id, userId: a.userId });
+        targets.push({ id: unassigned[i].id, name: unassigned[i].name, userId: a.userId });
       }
     }
     await prisma.$transaction(targets.map((t) => prisma.lead.update({ where: { id: t.id }, data: { assignedToId: t.userId } })));
+    const buckets = new Map<string, LeadAssignedBucket>();
+    for (const t of targets) bumpBucket(buckets, t.userId, t.id, t.name);
+    await emitLeadAssignedBatch([...buckets.values()]);
 
     revalidateDistribution();
     return { ok: true, message: `وُزّع ${targets.length} عميل حسب الأعداد المحددة` };
@@ -279,12 +293,13 @@ export async function distributeLeastLoaded(): Promise<ActionResult> {
     await requireManager();
     const emps = await loadEmployees();
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
-    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
 
     const load = new Map(emps.map((e) => [e.id, e.count]));
     const cap = new Map(emps.map((e) => [e.id, e.capacity]));
     const updates: ReturnType<typeof prisma.lead.update>[] = [];
+    const buckets = new Map<string, LeadAssignedBucket>();
     for (const lead of unassigned) {
       let best: string | null = null;
       let min = Infinity;
@@ -297,9 +312,11 @@ export async function distributeLeastLoaded(): Promise<ActionResult> {
       load.set(best, (load.get(best) ?? 0) + 1);
       cap.set(best, (cap.get(best) as number) - 1);
       updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: best } }));
+      bumpBucket(buckets, best, lead.id, lead.name);
     }
     if (updates.length === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
     await prisma.$transaction(updates);
+    await emitLeadAssignedBatch([...buckets.values()]);
 
     revalidateDistribution();
     const leftover = unassigned.length - updates.length;

@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PurchaseGoal, PurchaseMethod } from "@prisma/client";
 import {
-  purchaseGoalLabels, purchaseMethodLabels, stageLabels, stageColor,
+  purchaseGoalLabels, purchaseMethodLabels, purchaseMethodOptions, stageLabels, stageColor,
   paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels,
 } from "@/lib/labels";
 import { updateLeadIntake } from "@/lib/actions/leads";
+import { fetchSources } from "@/lib/actions/sources";
+import type { SourceListItem } from "@/lib/data/sources";
 import { cancelBooking } from "@/lib/actions/bookings";
 import { formatDate, formatCurrencyFull } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
@@ -162,6 +164,10 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
   const [areas, setAreas] = useState<string[]>(detail.preferredAreas ?? []);
   const [areaInput, setAreaInput] = useState("");
   const [projSel, setProjSel] = useState<Set<string>>(new Set(detail.preferredProjects ?? []));
+  const [sources, setSources] = useState<SourceListItem[]>([]);
+  const [sourceSel, setSourceSel] = useState(detail.sourceId ?? "");
+
+  useEffect(() => { fetchSources().then(setSources).catch(() => {}); }, []);
 
   function addArea() {
     const v = areaInput.trim();
@@ -178,6 +184,7 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
         priceMax: priceMax ? Number(priceMax.replace(/\D/g, "")) : null,
         preferredAreas: areas,
         preferredProjects: [...projSel],
+        sourceId: sourceSel || null,
       });
       setMsg(res.ok ? "تم الحفظ" : res.error ?? "صار خطأ");
       onSaved();
@@ -196,11 +203,17 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
         <Field label="طريقة الشراء">
           <select value={method} onChange={(e) => setMethod(e.target.value)} className="select-base">
             <option value="">—</option>
-            {(Object.keys(purchaseMethodLabels) as PurchaseMethod[]).map((m) => <option key={m} value={m}>{purchaseMethodLabels[m]}</option>)}
+            {purchaseMethodOptions.map((m) => <option key={m} value={m}>{purchaseMethodLabels[m]}</option>)}
           </select>
         </Field>
         <Field label="السعر من"><input value={priceMin} onChange={(e) => setPriceMin(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
         <Field label="السعر إلى"><input value={priceMax} onChange={(e) => setPriceMax(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
+        <Field label="المصدر">
+          <select value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} className="select-base">
+            <option value="">—</option>
+            {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </Field>
       </div>
 
       <div className="space-y-2">

@@ -12,7 +12,7 @@ import type { PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/cl
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
-import { notify, managerIds } from "@/lib/notify";
+import { emitNotification, emitLeadAssignedBatch } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
@@ -55,6 +55,11 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "رقم جوال غير صحيح" };
 
   const channel = (formData.get("channel") as Channel) || Channel.OTHER;
+  // المصدر إجباري عند الإضافة اليدوية.
+  const sourceId = String(formData.get("sourceId") ?? "").trim();
+  if (!sourceId) return { ok: false, error: "اختر مصدر العميل" };
+  const sourceExists = await prisma.leadSource.findUnique({ where: { id: sourceId }, select: { id: true } });
+  if (!sourceExists) return { ok: false, error: "المصدر غير صالح" };
   const unitTypeRaw = formData.get("unitType") as string;
   const unitType =
     unitTypeRaw && unitTypeRaw in UnitType
@@ -111,6 +116,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
       notes,
       assignedToId,
       createdById: user.id,
+      sourceId,
       stage: LeadStage.NEW,
       priority: Priority.MEDIUM,
       nextFollowup: tomorrow,
@@ -121,8 +127,16 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     await prisma.reassignment.create({ data: { leadId: lead.id, fromUserId: null, toUserId: assignedToId, reason: "initial" } });
   }
   await logAudit(prisma, { userId: user.id, action: "lead.created", entity: "lead", entityId: lead.id, summary: `أضاف عميل ${name}` });
-  const mgrs = await managerIds(prisma);
-  await notify(prisma, [...mgrs, assignedToId], "lead.new", "عميل جديد وصل", name);
+  // حدث: توزّع عليك عميل — يُطلق فقط عند الإسناد لموظف غير المُنشئ (إسناد مدير/تلقائي).
+  if (assignedToId && assignedToId !== user.id) {
+    await emitNotification({
+      eventKey: "lead_assigned",
+      assignedUserId: assignedToId,
+      title: "توزّع عليك عميل",
+      body: `العميل: ${name}`,
+      link: `/leads/${lead.id}`,
+    });
+  }
 
   revalidateLeads();
   return { ok: true };
@@ -235,6 +249,8 @@ export async function bulkReassign(ids: string[], toUserId: string): Promise<Act
 
     await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId } });
     await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", summary: `نقل ${ids.length} عميل إلى موظف` });
+    // إشعار مجمّع للموظف المعني.
+    await emitLeadAssignedBatch([{ userId: toUserId, count: ids.length, sampleLeadId: ids[0] }]);
     revalidateLeads();
     return { ok: true };
   } catch (e) {
@@ -310,6 +326,7 @@ export async function updateLead(
     purchaseMethod?: PurchaseMethod | null;
     purchaseGoal?: PurchaseGoal | null;
     preferredDistrict?: string | null;
+    sourceId?: string | null;
   },
 ): Promise<ActionResult> {
   try {
@@ -328,6 +345,7 @@ export async function updateLead(
         ...(data.purchaseMethod !== undefined ? { purchaseMethod: data.purchaseMethod } : {}),
         ...(data.purchaseGoal !== undefined ? { purchaseGoal: data.purchaseGoal } : {}),
         ...(data.preferredDistrict !== undefined ? { preferredDistrict: data.preferredDistrict || null } : {}),
+        ...(data.sourceId !== undefined ? { sourceId: data.sourceId || null } : {}),
       },
     });
     revalidateLeads();
@@ -347,6 +365,7 @@ export async function updateLeadIntake(
     priceMax?: number | null;
     preferredAreas?: string[];
     preferredProjects?: string[];
+    sourceId?: string | null;
   },
 ): Promise<ActionResult> {
   try {
@@ -360,6 +379,7 @@ export async function updateLeadIntake(
         ...(data.priceMax !== undefined ? { priceMax: data.priceMax } : {}),
         ...(data.preferredAreas ? { preferredAreas: data.preferredAreas } : {}),
         ...(data.preferredProjects ? { preferredProjects: data.preferredProjects } : {}),
+        ...(data.sourceId !== undefined ? { sourceId: data.sourceId || null } : {}),
       },
     });
     revalidateLeads();
@@ -429,6 +449,8 @@ export async function transferLeads(
         summary: `${mode === "fresh" ? "نقل كعميل جديد" : "نقل"} ${ids.length} عميل إلى ${target.name}`,
       });
     });
+    // إشعار مجمّع للموظف المعني.
+    await emitLeadAssignedBatch([{ userId: toUserId, count: ids.length, sampleLeadId: ids[0] }]);
     revalidateLeads();
     return { ok: true };
   } catch (e) {
@@ -480,10 +502,10 @@ export async function reassignLead(
     if (!isManager(user.role))
       return { ok: false, error: "إعادة الإسناد للمدير فقط" };
 
-    const target = await prisma.user.findUnique({
-      where: { id: toUserId },
-      select: { id: true, name: true },
-    });
+    const [target, lead] = await Promise.all([
+      prisma.user.findUnique({ where: { id: toUserId }, select: { id: true, name: true } }),
+      prisma.lead.findUnique({ where: { id: leadId }, select: { name: true } }),
+    ]);
     if (!target) return { ok: false, error: "الموظف غير موجود" };
 
     await prisma.$transaction([
@@ -501,6 +523,14 @@ export async function reassignLead(
       }),
     ]);
     await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", entityId: leadId, summary: `أعاد إسناد عميل إلى ${target.name}` });
+    // حدث: توزّع عليك عميل (الجمهور حسب الإعداد — افتراضيًا الموظف المعني).
+    await emitNotification({
+      eventKey: "lead_assigned",
+      assignedUserId: toUserId,
+      title: "توزّع عليك عميل",
+      body: lead ? `العميل: ${lead.name}` : undefined,
+      link: `/leads/${leadId}`,
+    });
 
     revalidateLeads();
     return { ok: true };

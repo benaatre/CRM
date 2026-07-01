@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify, managerIds } from "@/lib/notify";
+import { emitNotification } from "@/lib/notifications/emit";
 import { ksaTodayStart } from "@/lib/auto-distribute";
 import { PAUSE_REASONS, pauseReasonLabel, type PauseReasonCode, type PauseDurationCode } from "@/lib/availability";
 
@@ -68,11 +69,15 @@ export async function pauseAvailability(input: {
 
     const label = pauseReasonLabel(input.reason);
     if (isSelf) {
-      // الموظف أوقف نفسه → إشعار للمدراء/المالك.
-      const mgrs = await managerIds(prisma);
-      await notify(prisma, mgrs, "availability.paused", "موظف أوقف الاستقبال", `${target.name} أوقف استقبال العملاء — السبب: ${label}`);
+      // حدث: موظف وقف نفسه — الجمهور حسب الإعداد (افتراضيًا الإدارة).
+      await emitNotification({
+        eventKey: "employee_paused",
+        title: "موظف أوقف الاستقبال",
+        body: `${target.name} أوقف استقبال العملاء — السبب: ${label}`,
+        link: "/distribution",
+      });
     } else {
-      // المالك أوقف الموظف → إشعار للموظف.
+      // المالك أوقف الموظف → إشعار مباشر للموظف.
       await notify(prisma, [targetId], "availability.paused", "تم إيقاف استقبالك للعملاء", `السبب: ${label}`);
     }
     await logAudit(prisma, {

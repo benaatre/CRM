@@ -92,8 +92,10 @@ enum PaymentMethod {
 /// طريقة الشراء المفضّلة للعميل.
 enum PurchaseMethod {
   CASH // كاش
-  BANK_FINANCE // تمويل بنكي
+  BANK_FINANCE // تمويل بنكي (قديم — للتوافق مع بيانات سابقة)
   CASH_AND_FINANCE // كاش + تمويل بنكي
+  BANK_FINANCE_SUPPORTED // تمويل بنكي مدعوم
+  BANK_FINANCE_UNSUPPORTED // تمويل بنكي غير مدعوم
 }
 
 /// هدف الشراء.
@@ -380,6 +382,10 @@ model Lead {
   /// كم مرة أُعيد توجيه هذا العميل تلقائيًا بسبب التقصير
   reassignCount Int        @default(0)
 
+  // المصدر المهيكل (من جدول LeadSource) — يتعايش مع source النصّي القديم.
+  sourceId   String?
+  leadSource LeadSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
   project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
   bookings   Booking[]
   activities Activity[]
@@ -392,6 +398,7 @@ model Lead {
   @@index([nextFollowup])
   @@index([isArchived])
   @@index([assignedAt])
+  @@index([sourceId])
 }
 
 /// سجل إعادات التوجيه التلقائية (من → إلى، السبب، الوقت) — للوحة المراقبة.
@@ -541,9 +548,11 @@ model Activity {
 model Notification {
   id        String   @id @default(cuid())
   userId    String
-  type      String // lead.new | booking.created | booking.cancelled | followup.due | ...
+  type      String // مفتاح الحدث (eventKey) أو نوع قديم: lead.new | booking.created | ...
   title     String
   body      String?
+  /// رابط يفتح العنصر المرتبط (عميل/وحدة) عند الضغط على الإشعار
+  link      String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -606,6 +615,10 @@ model Settings {
   lastSyncAt  DateTime?
   /// إعدادات الإشعارات (JSON): {sound, volume, types:{}, followupBeforeHours, staleHours}
   notifyConfig Json?
+  /// مستوى الصوت الرئيسي للإشعارات (٠–١٠٠)
+  masterVolume Int      @default(80)
+  /// كتم كل أصوات الإشعارات
+  globalMute   Boolean  @default(false)
   updatedAt   DateTime @updatedAt
 }
 
@@ -621,4 +634,61 @@ model Referral {
   fromLead Lead @relation(fields: [fromLeadId], references: [id], onDelete: Cascade)
 
   @@index([fromLeadId])
+}
+
+/// مصدر العميل (ميتا/سناب/تيك توك…) — مهيكل، يُربط بالعملاء وروابط جوجل شيت.
+model LeadSource {
+  id         String      @id @default(cuid())
+  name       String      @unique
+  isDefault  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+
+  sheetLinks SheetLink[]
+  leads      Lead[]
+}
+
+/// رابط جوجل شيت مربوط بمصدر — مزامنة تدريجية (lastRowSynced) عبر Service Account.
+model SheetLink {
+  id             String     @id @default(cuid())
+  sheetUrl       String
+  sheetId        String
+  sourceId       String
+  source         LeadSource @relation(fields: [sourceId], references: [id])
+  /// آخر صفّ بيانات تمت معالجته (بدون احتساب صف العناوين)
+  lastRowSynced  Int        @default(0)
+  lastSyncAt     DateTime?
+  /// حالة آخر مزامنة: success | error
+  lastSyncStatus String?
+  lastSyncError  String?
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+
+  @@index([sourceId])
+  @@index([isActive])
+}
+
+/// إعداد إشعار لكل حدث (صوت/توست/نغمة/جمهور) — صف واحد لكل eventKey.
+model NotificationSetting {
+  id           String   @id @default(cuid())
+  /// مفتاح الحدث: new_lead_from_sheet | lead_assigned | lead_reassigned | employee_idle | followup_due | employee_paused | unit_booked_sold
+  eventKey     String   @unique
+  soundEnabled Boolean  @default(true)
+  toastEnabled Boolean  @default(true)
+  /// مستوى صوت هذا الحدث (٠–١٠٠) — يُضرب في مستوى الصوت الرئيسي
+  volume       Int      @default(100)
+  /// معرّف النغمة المختارة (SoundAsset) — null = النغمة الافتراضية
+  soundId      String?
+  /// الجمهور: OWNER | MANAGERS | ASSIGNED | MANAGERS_AND_ASSIGNED | ALL
+  audience     String   @default("MANAGERS")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// نغمة صوتية — جاهزة (مدمجة) أو مرفوعة من المالك.
+model SoundAsset {
+  id        String   @id @default(cuid())
+  name      String
+  fileUrl   String
+  isBuiltIn Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

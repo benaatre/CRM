@@ -15,8 +15,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "غير مصرّح" }, { status: 401 });
   }
   const res = await runReassignSweep();
-  // إعادة توجيه حصلت → حدّث الجداول واللوحات فورًا.
-  if (res.ok && res.reassigned > 0) {
+  // توزيع أولي أو إعادة توجيه حصل → حدّث الجداول واللوحات فورًا.
+  if (res.ok && (res.reassigned > 0 || (res.distributed ?? 0) > 0)) {
     revalidatePath("/leads");
     revalidatePath("/pipeline");
     revalidatePath("/dashboard");

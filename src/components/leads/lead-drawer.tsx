@@ -8,13 +8,15 @@ import {
 } from "lucide-react";
 import {
   stageOrder, stageLabels, stageColor, channelLabels, priorityLabels,
-  unitTypeLabels, purchaseMethodLabels, purchaseGoalLabels, districtOptions,
+  unitTypeLabels, purchaseMethodLabels, purchaseMethodOptions, purchaseGoalLabels, districtOptions,
 } from "@/lib/labels";
 import type { LeadDetail } from "@/lib/data/leads";
 import {
   fetchLeadDetail, updateLeadStage, updateLeadFields,
   reassignLead, updateLead,
 } from "@/lib/actions/leads";
+import { fetchSources } from "@/lib/actions/sources";
+import type { SourceListItem } from "@/lib/data/sources";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { cancelBooking } from "@/lib/actions/bookings";
 import { FollowUpsForm } from "./followups-form";
@@ -48,6 +50,8 @@ export function LeadDrawer({
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [sources, setSources] = useState<SourceListItem[]>([]);
+  const [sourceSel, setSourceSel] = useState("");
 
   async function load(id: string) {
     setLoading(true);
@@ -66,6 +70,11 @@ export function LeadDrawer({
     if (leadId) { setTab("data"); setAnalysis(null); load(leadId); }
     else setLead(null);
   }, [leadId]);
+
+  // قائمة المصادر (للـ dropdown) — تُجلب مرة واحدة.
+  useEffect(() => { fetchSources().then(setSources).catch(() => {}); }, []);
+  // مزامنة قيمة المصدر المختارة مع العميل المحمّل.
+  useEffect(() => { setSourceSel(lead?.sourceId ?? ""); }, [lead?.id, lead?.sourceId]);
 
   function refresh() {
     if (leadId) load(leadId);
@@ -87,6 +96,7 @@ export function LeadDrawer({
         purchaseMethod: (fd.get("purchaseMethod") as PurchaseMethod) || null,
         purchaseGoal: (fd.get("purchaseGoal") as PurchaseGoal) || null,
         preferredDistrict: String(fd.get("preferredDistrict") ?? ""),
+        sourceId: sourceSel || null,
       });
       refresh();
     });
@@ -189,7 +199,7 @@ export function LeadDrawer({
                     <DField label="طريقة الشراء">
                       <select name="purchaseMethod" defaultValue={lead.purchaseMethod ?? ""} className="select-base">
                         <option value="">—</option>
-                        {(Object.keys(purchaseMethodLabels) as PurchaseMethod[]).map((m) => <option key={m} value={m}>{purchaseMethodLabels[m]}</option>)}
+                        {purchaseMethodOptions.map((m) => <option key={m} value={m}>{purchaseMethodLabels[m]}</option>)}
                       </select>
                     </DField>
                     <DField label="هدف الشراء">
@@ -202,6 +212,12 @@ export function LeadDrawer({
                       <select name="preferredDistrict" defaultValue={lead.preferredDistrict ?? ""} className="select-base">
                         <option value="">—</option>
                         {districtOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </DField>
+                    <DField label="المصدر">
+                      <select value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} className="select-base">
+                        <option value="">—</option>
+                        {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                     </DField>
                   </div>

@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify, activeUserIds, ownerIds } from "@/lib/notify";
+import { emitNotification } from "@/lib/notifications/emit";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -190,7 +191,13 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       });
     });
 
-    await notify(prisma, await activeUserIds(prisma), "booking.created", "وحدة اتحجزت", `وحدة ${unit.number} في ${unit.project?.name ?? "—"}`);
+    // حدث: تم حجز / بيع وحدة (الجمهور حسب الإعداد — افتراضيًا الكل).
+    await emitNotification({
+      eventKey: "unit_booked_sold",
+      title: immediateSale ? "تم بيع وحدة" : "وحدة اتحجزت",
+      body: `وحدة ${unit.number} في ${unit.project?.name ?? "—"}${lead?.name ? ` — ${lead.name}` : ""}`,
+      link: `/leads/${leadId}`,
+    });
 
     // تجاوز الخصم المقرر: إشعار للمالك (OWNER) — يظهر في جرس الهيدر.
     if (discountOverage > 0) {
@@ -277,7 +284,12 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
       });
     });
 
-    await notify(prisma, await activeUserIds(prisma), "booking.created", "تم تسجيل شراء", `${units.length} وحدة${lead?.name ? ` للعميل ${lead.name}` : ""}`);
+    await emitNotification({
+      eventKey: "unit_booked_sold",
+      title: "تم تسجيل شراء",
+      body: `${units.length} وحدة${lead?.name ? ` للعميل ${lead.name}` : ""}`,
+      link: `/leads/${leadId}`,
+    });
     revalidateBookings();
     return { ok: true };
   } catch (e) {

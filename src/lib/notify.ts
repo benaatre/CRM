@@ -11,11 +11,12 @@ export async function notify(
   type: string,
   title: string,
   body?: string,
+  link?: string,
 ): Promise<void> {
   const ids = [...new Set(userIds.filter((x): x is string => !!x))];
   if (ids.length === 0) return;
   await db.notification.createMany({
-    data: ids.map((userId) => ({ userId, type, title, body: body ?? null })),
+    data: ids.map((userId) => ({ userId, type, title, body: body ?? null, link: link ?? null })),
   });
 }
 

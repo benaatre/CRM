@@ -21,6 +21,7 @@ import { Topbar } from "@/components/layout/topbar";
 import { Brand } from "@/components/layout/brand";
 import { Heartbeat } from "@/components/layout/heartbeat";
 import { FloatingAssistant } from "@/components/layout/floating-assistant";
+import { NotificationCenter } from "@/components/layout/notification-center";
 
 // تخطيط المنطقة المحميّة — يتطلب دخولًا، ويعرض تنقّلًا حسب الدور.
 export default async function AppLayout({
@@ -53,6 +54,7 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-dvh">
       <Heartbeat />
+      <NotificationCenter />
       {/* شريط جانبي (RTL — يظهر يمين) */}
       <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 md:flex">
         <div className="mb-8">

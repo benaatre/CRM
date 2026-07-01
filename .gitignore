@@ -34,6 +34,14 @@ yarn-error.log*
 .env*
 !.env.example
 
+# secrets — مفاتيح حسابات الخدمة (Google) وأي بيانات اعتماد — لا تُرفع أبداً
+*.iam.gserviceaccount.com.json
+lithe-resource-*.json
+gcp-*.json
+service-account*.json
+*-credentials.json
+key.json
+
 # claude code local settings + preview/dev artifacts
 .claude/settings.local.json
 .claude/launch.json

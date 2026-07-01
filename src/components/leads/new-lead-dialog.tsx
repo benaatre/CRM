@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { channelLabels, channelOrder, unitTypeLabels } from "@/lib/labels";
 import type { UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
+import { fetchSources } from "@/lib/actions/sources";
+import type { SourceListItem } from "@/lib/data/sources";
 
 type Employee = { id: string; name: string };
 
@@ -23,6 +25,10 @@ export function NewLeadDialog({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [channel, setChannel] = useState<string>("");
+  const [sources, setSources] = useState<SourceListItem[]>([]);
+  const [sourceSel, setSourceSel] = useState("");
+
+  useEffect(() => { if (open) fetchSources().then(setSources).catch(() => {}); }, [open]);
 
   if (!open) return null;
 
@@ -30,6 +36,7 @@ export function NewLeadDialog({
     e.preventDefault();
     setError(null);
     if (!channel) { setError("اختر القناة (المنصة)"); return; }
+    if (!sourceSel) { setError("اختر مصدر العميل"); return; }
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
       const res = await createLead(formData);
@@ -86,6 +93,12 @@ export function NewLeadDialog({
             </Field>
             <Field label="الميزانية">
               <input name="budget" inputMode="numeric" dir="ltr" className="select-base" placeholder="مثال: 750000" />
+            </Field>
+            <Field label="المصدر *">
+              <select name="sourceId" value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} className="select-base">
+                <option value="">— اختر المصدر —</option>
+                {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
             </Field>
             {isManager && (
               <Field label="الموظف المسؤول">

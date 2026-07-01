@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { ActivityType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notify, ownerIds } from "@/lib/notify";
+import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -189,7 +190,88 @@ export async function autoResumeExpiredPauses(now: Date = new Date()): Promise<n
   return expired.length;
 }
 
-export type SweepResult = { ok: boolean; reassigned: number; checked: number; skipped?: string; error?: string };
+/**
+ * الموظفون «المتاحون» للتوزيع الأولي — المشاركون في الدور، نشطون، وغير موقوفين أنفسهم.
+ * (يختلف عن presentParticipants: لا يشترط التواجد اللحظي/آخر ظهور — يكفي أنه متاح.)
+ */
+export async function availableParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
+  if (settings.distOrder.length === 0) return [];
+  const users = await db.user.findMany({
+    where: { id: { in: settings.distOrder }, active: true },
+    select: { id: true, availabilityPaused: true, pauseUntil: true },
+  });
+  const ok = new Set(
+    users
+      .filter((u) => !u.availabilityPaused || (u.pauseUntil != null && u.pauseUntil <= now))
+      .map((u) => u.id),
+  );
+  return settings.distOrder.filter((id) => ok.has(id));
+}
+
+/**
+ * التوزيع الأولي للعملاء غير الموزّعين (assignedToId=null + stage=NEW + غير مؤرشف) —
+ * يوزّعهم على المتاحين بنفس منطق الإعداد (دوري ثابت / الأقل حملًا) ويضبط assignedAt
+ * ليدخلوا دورة إعادة التوجيه. يُحدّث المؤشّر (في القاعدة والذاكرة). يرجّع عدد الموزّعين.
+ */
+async function distributeUnassignedPass(settings: DistSettings, now: Date): Promise<number> {
+  const available = await availableParticipants(prisma, settings, now);
+  if (available.length === 0) return 0;
+  const unassigned = await prisma.lead.findMany({
+    where: { assignedToId: null, stage: "NEW", isArchived: false },
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (unassigned.length === 0) return 0;
+
+  const availSet = new Set(available);
+  let pointer = settings.distPointer;
+  // أحمال حالية للأقل-حملًا.
+  const load = new Map<string, number>(available.map((id) => [id, 0]));
+  if (settings.distInitialMode === "LEAST_LOADED") {
+    const counts = await prisma.lead.groupBy({
+      by: ["assignedToId"],
+      where: { assignedToId: { in: available }, isArchived: false },
+      _count: { _all: true },
+    });
+    for (const c of counts) if (c.assignedToId) load.set(c.assignedToId, c._count._all);
+  }
+
+  let distributed = 0;
+  // نجمّع لكل موظف عدد ما استقبله + عيّنة، عشان إشعار واحد مجمّع بدل عدة أصوات.
+  const buckets = new Map<string, LeadAssignedBucket>();
+  for (const lead of unassigned) {
+    let pick: string | null = null;
+    if (settings.distInitialMode === "LEAST_LOADED") {
+      let min = Infinity;
+      for (const id of available) { const l = load.get(id) ?? 0; if (l < min) { min = l; pick = id; } }
+      if (pick) load.set(pick, (load.get(pick) ?? 0) + 1);
+    } else {
+      const picked = pickRotation(settings.distOrder, availSet, pointer);
+      if (picked) { pick = picked.userId; pointer = picked.pointer; }
+    }
+    if (!pick) break;
+    const toUserId = pick;
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({ where: { id: lead.id }, data: { assignedToId: toUserId, assignedAt: now } });
+      await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: null, toUserId, reason: "initial" } });
+    });
+    const b = buckets.get(toUserId);
+    if (b) b.count++;
+    else buckets.set(toUserId, { userId: toUserId, count: 1, sampleLeadId: lead.id, sampleName: lead.name });
+    distributed++;
+  }
+
+  // إشعار مجمّع لكل موظف (واحد مهما كان عدد العملاء).
+  await emitLeadAssignedBatch([...buckets.values()]);
+
+  if (settings.distInitialMode !== "LEAST_LOADED" && pointer !== settings.distPointer) {
+    await prisma.settings.update({ where: { id: "singleton" }, data: { distPointer: pointer } });
+    settings.distPointer = pointer; // حدّث في الذاكرة لمرحلة إعادة التوجيه
+  }
+  return distributed;
+}
+
+export type SweepResult = { ok: boolean; reassigned: number; checked: number; distributed?: number; skipped?: string; error?: string };
 
 /**
  * يفحص العملاء المتأخرين (انقضت المهلة بلا تواصل) ويعيد توجيههم تلقائيًا.
@@ -205,9 +287,15 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
     if (!isWithinWindow(settings.distStartHour, settings.distEndHour, now)) {
       return { ok: true, reassigned: 0, checked: 0, skipped: "خارج نافذة العمل" };
     }
+
+    // (ب) توزيع أولي للعملاء غير الموزّعين — يعتمد على المتاحين (نشط + غير موقوف)، يحترم النافذة.
+    const distributed = await distributeUnassignedPass(settings, now);
+
+    // (ج) إعادة توجيه المتأخرين — يكفي متواجد واحد كمستقبِل (ننقل من الغايب المقصّر إليه).
+    // الحلقة تتخطّى أي عميل مستقبِله الوحيد هو صاحبه الحالي (toUserId === from).
     const present = await presentParticipants(prisma, settings, now);
-    if (present.length < 2) {
-      return { ok: true, reassigned: 0, checked: 0, skipped: "ما فيه موظفون متواجدون كفاية لإعادة التوجيه" };
+    if (present.length === 0) {
+      return { ok: true, reassigned: 0, checked: 0, distributed, skipped: "ما فيه موظفون متواجدون لإعادة التوجيه" };
     }
 
     const cutoff = new Date(now.getTime() - settings.distTimeoutMin * 60_000);
@@ -222,9 +310,8 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
       select: { id: true, assignedToId: true, name: true },
       orderBy: { assignedAt: "asc" },
     });
-    if (overdue.length === 0) return { ok: true, reassigned: 0, checked: 0 };
+    if (overdue.length === 0) return { ok: true, reassigned: 0, checked: 0, distributed };
 
-    const owners = await ownerIds(prisma);
     let reassigned = 0;
     // نتتبّع المؤشّر محليًا حتى يدور بين المتأخرين في نفس الجولة (لوضع الدور الثابت).
     let pointer = settings.distPointer;
@@ -251,9 +338,14 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
         await tx.activity.create({
           data: { leadId: lead.id, userId: null, type: ActivityType.ASSIGNMENT, note: "إعادة توجيه تلقائي (تقصير في التواصل)" },
         });
-        // إشعار الموظف الجديد + المالك (لمعرفة من قصّر).
-        await notify(tx, [toUserId], "lead.reassigned", "عميل جديد مُسند إليك", `${lead.name} — تواصل معه بسرعة`);
-        await notify(tx, owners, "lead.reassigned", "إعادة توجيه عميل", `${lead.name} أُعيد توجيهه بسبب تأخّر التواصل`);
+        // حدث: إعادة توزيع عميل — الجمهور حسب الإعداد (افتراضيًا الإدارة + الموظف الجديد).
+        await emitNotification({
+          eventKey: "lead_reassigned",
+          assignedUserId: toUserId,
+          title: "إعادة توزيع عميل",
+          body: `${lead.name} — أُعيد توجيهه بسبب تأخّر التواصل`,
+          link: `/leads/${lead.id}`,
+        }, tx);
       });
       reassigned++;
     }
@@ -261,7 +353,7 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
     if (pointer !== settings.distPointer) {
       await prisma.settings.update({ where: { id: "singleton" }, data: { distPointer: pointer } });
     }
-    return { ok: true, reassigned, checked: overdue.length };
+    return { ok: true, reassigned, checked: overdue.length, distributed };
   } catch (e) {
     return { ok: false, reassigned: 0, checked: 0, error: (e as Error).message };
   }

@@ -6,6 +6,7 @@ import {
 } from "@/lib/labels";
 import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
 import { pickInitialAssignee } from "@/lib/auto-distribute";
+import { emitNotification } from "@/lib/notifications/emit";
 
 // ===== أدوات CSV ومطابقة (مكتفية ذاتيًا لتشتغل خارج سياق "use server") =====
 
@@ -169,5 +170,15 @@ export async function runSheetSync(): Promise<SyncResult> {
   }
 
   await prisma.settings.update({ where: { id: "singleton" }, data: { lastSyncAt: new Date() } });
+
+  // حدث: عملاء جدد من جوجل شيت (ملخّص واحد لتفادي إغراق الإشعارات).
+  if (created > 0) {
+    await emitNotification({
+      eventKey: "new_lead_from_sheet",
+      title: "عملاء جدد من الشيت",
+      body: `وصل ${created} عميل جديد من المزامنة`,
+      link: "/leads?tab=unassigned",
+    });
+  }
   return { ok: true, created };
 }
