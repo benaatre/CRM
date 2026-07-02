@@ -41,6 +41,27 @@ const numOf = (fd: FormData, key: string): number | null => {
   return v ? Number(v) : null;
 };
 
+/**
+ * يتحقق أن الحجز ضمن صلاحية المستخدم (بائعه أو مدير) — الصلاحية على الخادم لا إخفاء الواجهة.
+ * يرجّع المستخدم والحجز (بالحقول التي تحتاجها إجراءات الحجز) أو يرمي خطأً يلتقطه try/catch.
+ */
+async function assertBookingAccess(bookingId: string) {
+  const user = await requireUser();
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: {
+      sellerId: true, stage: true, unitId: true, leadId: true,
+      unit: { select: { number: true, project: { select: { name: true } } } },
+      lead: { select: { name: true } },
+    },
+  });
+  if (!booking) throw new Error("الحجز غير موجود");
+  if (!isManager(user.role) && booking.sellerId !== user.id) {
+    throw new Error("ما عندك صلاحية على هذا الحجز");
+  }
+  return { user, booking };
+}
+
 /** إنشاء حجز جديد لعميل — يحجز الوحدة وينقل العميل لمرحلة «محجوز». */
 export async function createBooking(formData: FormData): Promise<ActionResult> {
   try {
@@ -132,8 +153,13 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { name: true, phone: true, nationality: true, nationalId: true },
+      select: { name: true, phone: true, nationality: true, nationalId: true, assignedToId: true },
     });
+    if (!lead) return { ok: false, error: "العميل غير موجود" };
+    // الموظف يحجز/يبيع لعملائه فقط (الصلاحية على الخادم — لا نعتمد على إخفاء الواجهة).
+    if (!isManager(user.role) && lead.assignedToId !== user.id) {
+      return { ok: false, error: "ما عندك صلاحية على هذا العميل" };
+    }
 
     const nationalityRaw = String(formData.get("nationality") ?? "");
     const nationality = nationalityRaw ? (nationalityRaw as Nationality) : lead?.nationality ?? null;
@@ -245,8 +271,13 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { name: true, phone: true, nationality: true, nationalId: true },
+      select: { name: true, phone: true, nationality: true, nationalId: true, assignedToId: true },
     });
+    if (!lead) return { ok: false, error: "العميل غير موجود" };
+    // الموظف يبيع لعملائه فقط (نفس تحقق الحجز — الصلاحية على الخادم).
+    if (!isManager(user.role) && lead.assignedToId !== user.id) {
+      return { ok: false, error: "ما عندك صلاحية على هذا العميل" };
+    }
     const nationality = nationalityRaw ? (nationalityRaw as Nationality) : lead?.nationality ?? null;
     const nationalId = formNationalId || lead?.nationalId || null;
 
@@ -300,19 +331,7 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
 /** إلغاء الحجز — يحرّر الوحدة، يرجّع العميل لـ«تفاوض»، يحذف الحجز، ويسجّل في التدقيق. */
 export async function cancelBooking(bookingId: string, reason?: string): Promise<ActionResult> {
   try {
-    const user = await requireUser();
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      select: {
-        sellerId: true, unitId: true, leadId: true,
-        unit: { select: { number: true, project: { select: { name: true } } } },
-        lead: { select: { name: true } },
-      },
-    });
-    if (!booking) return { ok: false, error: "الحجز غير موجود" };
-    if (!isManager(user.role) && booking.sellerId !== user.id) {
-      return { ok: false, error: "ما عندك صلاحية على هذا الحجز" };
-    }
+    const { user, booking } = await assertBookingAccess(bookingId);
 
     await prisma.$transaction(async (tx) => {
       await tx.unit.update({ where: { id: booking.unitId }, data: { status: "AVAILABLE" } });
@@ -344,12 +363,7 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
 /** نقل مرحلة البيع — يسجّل الحدث (من غيّره + الوقت). متاح لكل المستخدمين (خط مبيعات مشترك). */
 export async function updateBookingStage(bookingId: string, stage: BookingStage): Promise<ActionResult> {
   try {
-    const user = await requireUser();
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      select: { stage: true, unitId: true, leadId: true, unit: { select: { number: true } } },
-    });
-    if (!booking) return { ok: false, error: "الحجز غير موجود" };
+    const { user, booking } = await assertBookingAccess(bookingId);
     if (booking.stage === stage) return { ok: true };
 
     await prisma.$transaction(async (tx) => {
@@ -392,9 +406,7 @@ export async function setFinanceRejected(
   reason?: string,
 ): Promise<ActionResult> {
   try {
-    const user = await requireUser();
-    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { stage: true } });
-    if (!booking) return { ok: false, error: "الحجز غير موجود" };
+    const { user, booking } = await assertBookingAccess(bookingId);
 
     await prisma.$transaction(async (tx) => {
       await tx.booking.update({

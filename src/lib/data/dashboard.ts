@@ -96,7 +96,16 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   const since = sinceFor(period);
   const inPeriod = since ? { gte: since } : undefined;
   // «لم يتم التواصل»: جديد + مُسند لموظف فعلي (المُسند لمالك = غير موزّع).
-  const waitingWhere = { ...where, stage: "NEW" as const, assignedToId: { not: null, ...(ownerIds.length ? { notIn: ownerIds } : {}) } };
+  // نستخدم AND بدل مفتاح assignedToId مباشر حتى لا يُلغى نطاق الموظف القادم من `where`
+  // (لو كتبناه مباشرة يتجاوز {assignedToId: user.id} فيتسرّب للموظف عملاء زملائه).
+  const waitingWhere = {
+    ...where,
+    stage: "NEW" as const,
+    AND: [
+      { assignedToId: { not: null } },
+      ...(ownerIds.length ? [{ assignedToId: { notIn: ownerIds } }] : []),
+    ],
+  };
 
   const bookingScope = manager ? {} : { sellerId: user.id };
   // الزيارات تُحسب من جدول FollowUp (نوع زيارة) — للموظف: ما أنشأه هو.
