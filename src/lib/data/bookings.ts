@@ -81,6 +81,7 @@ export async function getBookings(): Promise<BookingsData> {
   const rows = await prisma.booking.findMany({
     where: {}, // الجميع يشوف كل الحجوزات — الحجب يتم في تكوين البطاقات أدناه
     orderBy: { createdAt: "desc" },
+    take: 500, // سقف مؤقت لحين الترقيم (#14)
     include: {
       lead: { select: { name: true } },
       unit: { select: { number: true, project: { select: { name: true } } } },

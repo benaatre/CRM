@@ -6,7 +6,7 @@ import { Bell } from "lucide-react";
 import { getNotifications, fetchPlaybackConfig, type NotificationDTO, type PlaybackConfig } from "@/lib/actions/notifications";
 import { eventColor } from "@/lib/notifications/event-styles";
 
-const POLL_MS = 5000;
+const POLL_MS = 15000;
 
 /**
  * مزوّد مركزي (مركّب مرة واحدة في الـ layout) — يتولّى صوت وتوست الإشعارات الجديدة

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
-import { Channel, LeadStage, Priority } from "@prisma/client";
+import { Channel, LeadStage, Priority, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/auth-guards";
 import type { ImportRow } from "@/lib/import-meta";
@@ -290,8 +290,9 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
     const projectByName = new Map(projects.map((p) => [p.name.trim(), p.id]));
     const ownerIds = await getOwnerIds(); // الإسناد للمالك = غير موزّع
 
-    let created = 0;
+    // نبني كل السجلات ثم createMany (استعلام واحد بدل create لكل صف — #13).
     let rr = 0;
+    const toCreate: Prisma.LeadCreateManyInput[] = [];
     for (const r of fresh) {
       let assignedToId: string | null = me.id;
       if (assignMode === "roundrobin" && employees.length > 0) { assignedToId = employees[rr % employees.length].id; rr++; }
@@ -302,29 +303,27 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
       const resolvedChannel: Channel =
         (r.channel && channelBy[r.channel]) ||
         (defaultChannel && defaultChannel in Channel ? (defaultChannel as Channel) : Channel.OTHER);
-      await prisma.lead.create({
-        data: {
-          name: r.name,
-          phone: r.phone,
-          channel: resolvedChannel,
-          // مصدر العميل كنص حرّ — نفس القناة المختارة للدفعة (عربي).
-          source: channelLabels[resolvedChannel],
-          stage: (r.stage && stageBy[r.stage]) || LeadStage.NEW,
-          priority: (r.priority && priorityBy[r.priority]) || Priority.MEDIUM,
-          unitType: r.unitType ? unitTypeBy[r.unitType] ?? null : null,
-          budget: r.budget ? Number(r.budget) : null,
-          purchaseMethod: normalizePurchaseMethod(r.purchaseMethod),
-          purchaseGoal: normalizePurchaseGoal(r.purchaseGoal),
-          preferredDistrict: r.district || null,
-          notes: r.notes || null,
-          projectId: r.project ? projectByName.get(r.project) ?? null : null,
-          assignedToId,
-          createdById: me.id,
-          nextFollowup: new Date(Date.now() + 86_400_000),
-        },
+      toCreate.push({
+        name: r.name,
+        phone: r.phone,
+        channel: resolvedChannel,
+        // مصدر العميل كنص حرّ — نفس القناة المختارة للدفعة (عربي).
+        source: channelLabels[resolvedChannel],
+        stage: (r.stage && stageBy[r.stage]) || LeadStage.NEW,
+        priority: (r.priority && priorityBy[r.priority]) || Priority.MEDIUM,
+        unitType: r.unitType ? unitTypeBy[r.unitType] ?? null : null,
+        budget: r.budget ? Number(r.budget) : null,
+        purchaseMethod: normalizePurchaseMethod(r.purchaseMethod),
+        purchaseGoal: normalizePurchaseGoal(r.purchaseGoal),
+        preferredDistrict: r.district || null,
+        notes: r.notes || null,
+        projectId: r.project ? projectByName.get(r.project) ?? null : null,
+        assignedToId,
+        createdById: me.id,
+        nextFollowup: new Date(Date.now() + 86_400_000),
       });
-      created++;
     }
+    const created = toCreate.length ? (await prisma.lead.createMany({ data: toCreate })).count : 0;
 
     // تحديث الموجودين: تعبئة الفاضي فقط من بيانات الملف.
     let updated = 0;

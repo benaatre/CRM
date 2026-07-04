@@ -245,6 +245,7 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
     where: { ...where, ...(and.length ? { AND: and } : {}) },
     orderBy: [{ createdAt: "desc" }],
     include: rowInclude,
+    take: 500, // سقف مؤقت لحين الترقيم server-side (#14)
   });
   return leads.map(toRow);
 }
@@ -268,6 +269,7 @@ export async function getPipeline(): Promise<LeadRow[]> {
     where,
     orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
     include: rowInclude,
+    take: 500, // سقف مؤقت لحين ترقيم الكانبان لكل عمود (#14)
   });
   return leads.map(toRow);
 }
