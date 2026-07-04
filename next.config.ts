@@ -6,10 +6,9 @@ const nextConfig: NextConfig = {
   // جذر تتبّع الملفات = مجلد المشروع (يمنع التباس تعدّد lockfiles ويضمن
   // أن server.js يطلع في .next/standalone/server.js).
   outputFileTracingRoot: process.cwd(),
-  // معرّف بناء متغيّر لكل نشر — يمنع خطأ Server Actions القديمة بعد التحديث.
-  generateBuildId: async () => {
-    return Date.now().toString();
-  },
+  // معرّف بناء ثابت مربوط بالـcommit — يمنع ChunkLoadError بعد النشر (نفس الكود = نفس المعرّف).
+  // Hostinger يوفّر SOURCE_COMMIT عند النشر من GitHub؛ وإلا "stable" (أفضل من timestamp متغيّر).
+  generateBuildId: async () => process.env.SOURCE_COMMIT || process.env.GIT_SHA || "stable",
 };
 
 export default nextConfig;
