@@ -29,12 +29,12 @@ export type BookingCard = {
   nationalId: string | null;
   projectName: string | null;
   unitNumber: string;
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod | null;
   bankName: SaudiBank | null;
   deposit: number | null;
   price: number;
-  discount: number;
-  finalPrice: number;
+  discount: number | null;
+  finalPrice: number | null;
   stage: BookingStage;
   deliveryStatus: DeliveryStatus;
   financeRejected: boolean;
@@ -43,7 +43,7 @@ export type BookingCard = {
   discountOverage: number;
   discountPercentAtBooking: number | null;
   maxDiscountPercentAtBooking: number | null;
-  collected: number;
+  collected: number | null;
   sellerName: string | null;
   // حقول الدفع المرنة
   expectedCheckDate: Date | null;
@@ -64,17 +64,22 @@ export type BookingCard = {
 
 export type BookingsData = {
   manager: boolean;
+  isOwner: boolean;
   currentUserId: string;
   kpis: { total: number; inProgress: number; sold: number; deposits: number; salesValue: number };
   cards: BookingCard[];
 };
 
-/** كل الحجوزات مرئية للجميع (الفلترة «حجوزاتي/الكل» على العميل). */
+/**
+ * خط مبيعات مشترك (قراءة للكل): الجميع يشوف كل الحجوزات — حتى المباعة.
+ * البيانات الحساسة (جوال/هوية/مبالغ/طريقة الدفع) محجوبة عن غير صاحب الحجز والمدير.
+ */
 export async function getBookings(): Promise<BookingsData> {
   const user = await requireUser();
   const manager = user.role === "OWNER" || user.role === "ADMIN";
 
   const rows = await prisma.booking.findMany({
+    where: {}, // الجميع يشوف كل الحجوزات — الحجب يتم في تكوين البطاقات أدناه
     orderBy: { createdAt: "desc" },
     include: {
       lead: { select: { name: true } },
@@ -88,62 +93,67 @@ export async function getBookings(): Promise<BookingsData> {
     },
   });
 
-  const cards: BookingCard[] = rows.map((b) => ({
-    id: b.id,
-    sellerId: b.sellerId,
-    leadName: b.lead.name,
-    phone: b.phone,
-    nationality: b.nationality,
-    nationalId: b.nationalId,
-    projectName: b.unit.project?.name ?? null,
-    unitNumber: b.unit.number,
-    paymentMethod: b.paymentMethod,
-    bankName: b.bankName,
-    deposit: dec(b.deposit),
-    price: b.price.toNumber(),
-    discount: b.discount.toNumber(),
-    finalPrice: b.finalPrice.toNumber(),
-    stage: b.stage,
-    deliveryStatus: b.deliveryStatus,
-    financeRejected: b.financeRejected,
-    financeRejectedReason: b.financeRejectedReason,
-    discountExceeded: b.discountExceeded,
-    discountOverage: dec(b.discountOverage) ?? 0,
-    discountPercentAtBooking: dec(b.discountPercentAtBooking),
-    maxDiscountPercentAtBooking: dec(b.maxDiscountPercentAtBooking),
-    collected: b.collected.toNumber(),
-    sellerName: b.seller?.name ?? null,
-    expectedCheckDate: b.expectedCheckDate,
-    expectedTransferDate: b.expectedTransferDate,
-    cashPaymentType: b.cashPaymentType,
-    installmentsCount: b.installmentsCount,
-    installmentAmount: dec(b.installmentAmount),
-    installments: (b.installments as { amount: number; date: string }[] | null) ?? null,
-    cashAmount: dec(b.cashAmount),
-    subjectToTax: b.subjectToTax,
-    taxAmount: dec(b.taxAmount),
-    includesVAT: b.includesVAT,
-    vatAmount: dec(b.vatAmount),
-    secondaryPhone: b.secondaryPhone,
-    stageIndex: b.stageIndex,
-    events: b.events.map((e) => ({
-      toStage: e.toStage,
-      userName: e.user?.name ?? null,
-      createdAt: e.createdAt,
-    })),
-  }));
+  const cards: BookingCard[] = rows.map((b) => {
+    // «حجزي» = المدير أو صاحب الحجز — يشوف كل التفاصيل؛ غيره تُحجب عنه الحقول الحساسة.
+    const mine = manager || b.sellerId === user.id;
+    return {
+      id: b.id,
+      sellerId: b.sellerId,
+      leadName: b.lead.name,
+      phone: mine ? b.phone : null,
+      nationality: b.nationality,
+      nationalId: mine ? b.nationalId : null,
+      projectName: b.unit.project?.name ?? null,
+      unitNumber: b.unit.number,
+      paymentMethod: mine ? b.paymentMethod : null,
+      bankName: mine ? b.bankName : null,
+      deposit: mine ? dec(b.deposit) : null,
+      price: b.price.toNumber(),
+      discount: mine ? b.discount.toNumber() : null,
+      finalPrice: mine ? b.finalPrice.toNumber() : null,
+      stage: b.stage,
+      deliveryStatus: b.deliveryStatus,
+      financeRejected: b.financeRejected,
+      financeRejectedReason: b.financeRejectedReason,
+      discountExceeded: b.discountExceeded,
+      discountOverage: dec(b.discountOverage) ?? 0,
+      discountPercentAtBooking: dec(b.discountPercentAtBooking),
+      maxDiscountPercentAtBooking: dec(b.maxDiscountPercentAtBooking),
+      collected: mine ? b.collected.toNumber() : null,
+      sellerName: b.seller?.name ?? null,
+      expectedCheckDate: b.expectedCheckDate,
+      expectedTransferDate: b.expectedTransferDate,
+      cashPaymentType: mine ? b.cashPaymentType : null,
+      installmentsCount: b.installmentsCount,
+      installmentAmount: mine ? dec(b.installmentAmount) : null,
+      installments: mine ? ((b.installments as { amount: number; date: string }[] | null) ?? null) : null,
+      cashAmount: mine ? dec(b.cashAmount) : null,
+      subjectToTax: b.subjectToTax,
+      taxAmount: mine ? dec(b.taxAmount) : null,
+      includesVAT: b.includesVAT,
+      vatAmount: mine ? dec(b.vatAmount) : null,
+      secondaryPhone: mine ? b.secondaryPhone : null,
+      stageIndex: b.stageIndex,
+      events: b.events.map((e) => ({
+        toStage: e.toStage,
+        userName: e.user?.name ?? null,
+        createdAt: e.createdAt,
+      })),
+    };
+  });
 
   // «تم البيع والاستلام» = SOLD أو DELIVERED (مدموجان).
   const sold = cards.filter((c) => c.stage === "SOLD" || c.stage === "DELIVERED");
   return {
     manager,
+    isOwner: user.role === "OWNER",
     currentUserId: user.id,
     kpis: {
       total: cards.length,
       inProgress: cards.filter((c) => c.stage !== "SOLD" && c.stage !== "DELIVERED").length,
       sold: sold.length,
       deposits: cards.reduce((s, c) => s + (c.deposit ?? 0), 0),
-      salesValue: sold.reduce((s, c) => s + c.finalPrice, 0),
+      salesValue: sold.reduce((s, c) => s + (c.finalPrice ?? 0), 0),
     },
     cards,
   };

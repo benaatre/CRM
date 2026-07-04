@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/auth-guards";
+import { logAudit } from "@/lib/audit";
 import { sendMail } from "@/lib/mailer";
 import { emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 
@@ -21,7 +22,7 @@ export async function addEmployee(formData: FormData): Promise<ActionResult> {
     const target = Number(String(formData.get("target") ?? "0").replace(/\D/g, "")) || 0;
 
     if (!name) return { ok: false, error: "اكتب اسم الموظف" };
-    if (!/^\d{4,6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٤–٦ أرقام" };
+    if (!/^\d{6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٦ أرقام" };
     if (phone) {
       const exists = await prisma.user.findUnique({ where: { phone } });
       if (exists) return { ok: false, error: "الجوال مسجّل لموظف ثاني" };
@@ -71,12 +72,19 @@ export async function fetchProjectsList(): Promise<{ id: string; name: string }[
 /** تحديث إعدادات موظف كاملة. */
 export async function updateEmployee(userId: string, formData: FormData): Promise<ActionResult> {
   try {
-    await requireManager();
+    const actor = await requireManager();
     const name = String(formData.get("name") ?? "").trim();
     if (!name) return { ok: false, error: "اكتب الاسم" };
     const phone = String(formData.get("phone") ?? "").trim() || null;
     const email = String(formData.get("email") ?? "").trim().toLowerCase() || null;
-    const role = (String(formData.get("role") ?? "EMPLOYEE") as Role);
+    // الأدوار المسموح إسنادها من الفورم: موظف/أدمن فقط — OWNER لا يُمنح من الواجهة.
+    const roleRaw = String(formData.get("role") ?? "EMPLOYEE");
+    if (!["EMPLOYEE", "ADMIN"].includes(roleRaw)) return { ok: false, error: "دور غير مسموح" };
+    // حساب المالك لا يعدّله إلا مالك (الاسم/الإيميل/الـPIN/الدور/التعطيل).
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (!target) return { ok: false, error: "الموظف غير موجود" };
+    if (target.role === "OWNER" && actor.role !== "OWNER") return { ok: false, error: "حساب المالك ما يعدّله إلا المالك" };
+    const role: Role = target.role === "OWNER" ? target.role : (roleRaw as Role); // لا تنزيل لمالك
     const targetDeals = Number(String(formData.get("target") ?? "0").replace(/\D/g, "")) || 0;
     const maxClientsRaw = String(formData.get("maxClients") ?? "").replace(/\D/g, "");
     const maxClients = maxClientsRaw ? Number(maxClientsRaw) : null;
@@ -94,7 +102,7 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
       const exists = await prisma.user.findFirst({ where: { email, NOT: { id: userId } } });
       if (exists) return { ok: false, error: "الإيميل مسجّل لمستخدم ثاني" };
     }
-    if (pin && !/^\d{4,6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٤–٦ أرقام" };
+    if (pin && !/^\d{6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٦ أرقام" };
 
     await prisma.user.update({
       where: { id: userId },
@@ -104,6 +112,13 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
         allowedProjects: { set: allowedProjectIds.map((id) => ({ id })) },
       },
     });
+    // تدقيق تغيير الدور/الـPIN (تغيير أمني حسّاس).
+    if (role !== target.role || pin) {
+      await logAudit(prisma, {
+        userId: actor.id, action: "user.securityChange", entity: "user", entityId: userId,
+        summary: [role !== target.role ? `تغيير دور إلى ${role}` : null, pin ? "تغيير PIN" : null].filter(Boolean).join(" + "),
+      });
+    }
     revalidatePath("/admin");
     return { ok: true };
   } catch (e) {
@@ -114,9 +129,10 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
 /** إرسال دعوة بالإيميل لتعيين/تغيير رمز الـ PIN — يولّد رمزًا صالحًا ٢٤ ساعة. */
 export async function inviteEmployee(userId: string): Promise<ActionResult> {
   try {
-    await requireManager();
-    const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+    const actor = await requireManager();
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true, role: true } });
     if (!u) return { ok: false, error: "الموظف غير موجود" };
+    if (u.role === "OWNER" && actor.role !== "OWNER") return { ok: false, error: "حساب المالك ما يعدّله إلا المالك" };
     if (!u.email) return { ok: false, error: "أضف إيميل الموظف واحفظ أولاً" };
 
     const token = crypto.randomBytes(24).toString("hex");
@@ -146,7 +162,10 @@ export async function inviteEmployee(userId: string): Promise<ActionResult> {
 /** تفعيل/إيقاف موظف. */
 export async function toggleEmployeeActive(userId: string, active: boolean): Promise<ActionResult> {
   try {
-    await requireManager();
+    const actor = await requireManager();
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (!target) return { ok: false, error: "الموظف غير موجود" };
+    if (target.role === "OWNER" && actor.role !== "OWNER") return { ok: false, error: "حساب المالك ما يعدّله إلا المالك" };
     await prisma.user.update({ where: { id: userId }, data: { active } });
     revalidatePath("/admin");
     return { ok: true };

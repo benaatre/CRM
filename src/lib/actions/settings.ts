@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireManager, requireUser } from "@/lib/auth-guards";
+import { logAudit } from "@/lib/audit";
 import { runSheetSync, type SyncResult } from "@/lib/sheet-sync";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -85,12 +86,19 @@ export async function updateNotifyConfig(formData: FormData): Promise<ActionResu
 export async function updateMyPin(formData: FormData): Promise<ActionResult> {
   try {
     const user = await requireUser();
+    const currentPin = String(formData.get("currentPin") ?? "").trim();
     const pin = String(formData.get("pin") ?? "").trim();
-    if (!/^\d{4,6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٤–٦ أرقام" };
+    if (!/^\d{6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٦ أرقام" };
+    // تأكيد الرمز الحالي — جلسة مفتوحة على جهاز مشترك ما تكفي للاستيلاء.
+    const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { pinHash: true } });
+    if (dbUser?.pinHash && !bcrypt.compareSync(currentPin, dbUser.pinHash)) {
+      return { ok: false, error: "الرمز الحالي غلط" };
+    }
     await prisma.user.update({
       where: { id: user.id },
       data: { pinHash: bcrypt.hashSync(pin, 10) },
     });
+    await logAudit(prisma, { userId: user.id, action: "user.pinChanged", entity: "user", entityId: user.id, summary: "غيّر رمز الدخول" });
     return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as Error).message };

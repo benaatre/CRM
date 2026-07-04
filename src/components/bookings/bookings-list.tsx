@@ -80,20 +80,23 @@ export function BookingsList({ data }: { data: BookingsData }) {
         <p className="py-12 text-center text-muted-foreground">ما فيه حجوزات{filter === "mine" ? " لك" : ""} بعد.</p>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
-          {cards.map((b) => <BookingCardView key={b.id} b={b} manager={data.manager} />)}
+          {cards.map((b) => <BookingCardView key={b.id} b={b} manager={data.manager} isOwner={data.isOwner} currentUserId={data.currentUserId} />)}
         </div>
       )}
     </div>
   );
 }
 
-function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
+function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCard; manager: boolean; isOwner: boolean; currentUserId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
   const [showLog, setShowLog] = useState(false);
+  // من يملك التحكم: بائع الحجز أو المدير/المالك (يطابق assertBookingAccess على الخادم).
+  const canManage = manager || b.sellerId === currentUserId;
+  const isSold = b.stage === "SOLD" || b.stage === "DELIVERED";
   // SOLD وDELIVERED مدموجان في «تم البيع والاستلام» (= DELIVERED). نخفي SOLD من الواجهة.
   const STAGES = bookingStageOrder.filter((s) => s !== "SOLD");
   const effStage: BookingStage = b.stage === "SOLD" ? "DELIVERED" : b.stage;
@@ -173,15 +176,15 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
 
       {/* تفاصيل مالية */}
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <Row label="الدفع" value={`${paymentMethodLabels[b.paymentMethod]}${b.bankName ? ` · ${bankLabels[b.bankName]}` : ""}`} />
+        <Row label="الدفع" value={b.paymentMethod ? `${paymentMethodLabels[b.paymentMethod]}${b.bankName ? ` · ${bankLabels[b.bankName]}` : ""}` : "—"} />
         <Row label="العربون" value={formatCurrencyFull(b.deposit)} />
         <Row label="السعر" value={formatCurrencyFull(b.price)} />
-        <Row label="الخصم" value={b.discount > 0 ? `- ${formatCurrencyFull(b.discount)}` : "—"} />
+        <Row label="الخصم" value={(b.discount ?? 0) > 0 ? `- ${formatCurrencyFull(b.discount)}` : "—"} />
         <Row label="بعد الخصم" value={formatCurrencyFull(b.finalPrice)} strong />
         {b.subjectToTax && b.taxAmount != null && <Row label="الضريبة ٥٪" value={formatCurrencyFull(b.taxAmount)} />}
-        {b.subjectToTax && b.taxAmount != null && <Row label="الإجمالي" value={formatCurrencyFull(b.finalPrice + b.taxAmount)} strong />}
+        {b.subjectToTax && b.taxAmount != null && b.finalPrice != null && <Row label="الإجمالي" value={formatCurrencyFull(b.finalPrice + b.taxAmount)} strong />}
         {b.includesVAT && b.vatAmount != null && <Row label="ض. القيمة المضافة ١٥٪" value={formatCurrencyFull(b.vatAmount)} />}
-        {b.includesVAT && b.vatAmount != null && <Row label="الإجمالي مع VAT" value={formatCurrencyFull(b.finalPrice + b.vatAmount)} strong />}
+        {b.includesVAT && b.vatAmount != null && b.finalPrice != null && <Row label="الإجمالي مع VAT" value={formatCurrencyFull(b.finalPrice + b.vatAmount)} strong />}
         {b.secondaryPhone && <Row label="رقم إضافي" value={b.secondaryPhone} />}
         <Row label="محصّل" value={formatCurrencyFull(b.collected)} />
         {b.expectedTransferDate && <Row label="موعد التحويل" value={formatDate(b.expectedTransferDate)} />}
@@ -206,17 +209,30 @@ function BookingCardView({ b, manager }: { b: BookingCard; manager: boolean }) {
 
       {/* تحكم */}
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <select value={effStage} disabled={pending} onChange={(e) => setStage(e.target.value as BookingStage)} className="select-base w-auto">
-          {STAGES.map((s) => <option key={s} value={s}>{bookingStageLabels[s]}</option>)}
-        </select>
-        {b.financeRejected ? (
-          <button onClick={clearRejected} disabled={pending} className="rounded-lg border border-success/40 px-3 py-2 text-xs text-success hover:bg-success/10">ألغِ رفض التمويل</button>
-        ) : (
-          <button onClick={() => setShowReason((v) => !v)} disabled={pending} className="rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10">فشل التمويل</button>
-        )}
+        {/* السجل — متاح للكل (قراءة فقط) */}
         <button onClick={() => setShowLog((v) => !v)} className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground"><History className="size-3.5" /> السجل</button>
-        <button onClick={cancel} disabled={pending} className="flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"><Ban className="size-3.5" /> إلغاء الحجز</button>
-        {error && <span className="text-xs text-destructive">{error}</span>}
+        {canManage && (
+          <>
+            {/* بعد البيع: تُخفى مراحل البيع وفشل التمويل */}
+            {!isSold && (
+              <>
+                <select value={effStage} disabled={pending} onChange={(e) => setStage(e.target.value as BookingStage)} className="select-base w-auto">
+                  {STAGES.map((s) => <option key={s} value={s}>{bookingStageLabels[s]}</option>)}
+                </select>
+                {b.financeRejected ? (
+                  <button onClick={clearRejected} disabled={pending} className="rounded-lg border border-success/40 px-3 py-2 text-xs text-success hover:bg-success/10">ألغِ رفض التمويل</button>
+                ) : (
+                  <button onClick={() => setShowReason((v) => !v)} disabled={pending} className="rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10">فشل التمويل</button>
+                )}
+              </>
+            )}
+            {/* إلغاء الحجز: قبل البيع للبائع/المدير، وبعد البيع للمالك فقط */}
+            {(!isSold || isOwner) && (
+              <button onClick={cancel} disabled={pending} className="flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"><Ban className="size-3.5" /> إلغاء الحجز</button>
+            )}
+            {error && <span className="text-xs text-destructive">{error}</span>}
+          </>
+        )}
       </div>
 
       {showReason && !b.financeRejected && (

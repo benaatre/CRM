@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 /** تعيين رمز PIN جديد عبر رمز الدعوة (token) — عامّ، لا يتطلب جلسة. */
 export async function setPinByToken(token: string, pin: string): Promise<{ ok: boolean; error?: string }> {
   if (!token) return { ok: false, error: "رابط غير صالح" };
-  if (!/^\d{4,6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٤–٦ أرقام" };
+  if (!/^\d{6}$/.test(pin)) return { ok: false, error: "الرمز لازم ٦ أرقام" };
   const u = await prisma.user.findFirst({
     where: { pinResetToken: token, pinResetExp: { gt: new Date() } },
     select: { id: true },

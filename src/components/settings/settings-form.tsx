@@ -153,8 +153,11 @@ function PinForm() {
   return (
     <form onSubmit={submit} className="glass max-w-xl space-y-4 rounded-2xl p-6">
       <h2 className="font-semibold text-foreground">رمز الدخول (PIN)</h2>
-      <Field label="رمز جديد (٤–٦ أرقام)">
-        <input name="pin" inputMode="numeric" dir="ltr" maxLength={6} className="select-base" placeholder="••••" />
+      <Field label="الرمز الحالي">
+        <input name="currentPin" inputMode="numeric" dir="ltr" maxLength={6} className="select-base" placeholder="••••••" />
+      </Field>
+      <Field label="رمز جديد (٦ أرقام)">
+        <input name="pin" inputMode="numeric" dir="ltr" maxLength={6} className="select-base" placeholder="••••••" />
       </Field>
       {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
       {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}

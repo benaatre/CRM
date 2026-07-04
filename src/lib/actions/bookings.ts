@@ -18,6 +18,7 @@ import { logAudit } from "@/lib/audit";
 import { notify, activeUserIds, ownerIds } from "@/lib/notify";
 import { emitNotification } from "@/lib/notifications/emit";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
+import { bookingStageOrder } from "@/lib/labels";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -365,15 +366,20 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
 }
 
 // محصورة بالبائع صاحب الحجز أو المدير/المالك (عبر assertBookingAccess).
-// ملاحظة: تقييد الرجوع من مرحلة البيع (SOLD) سيُضاف لاحقاً (#9).
-/** نقل مرحلة البيع — يسجّل الحدث (من غيّره + الوقت). */
+// الرجوع من مرحلة البيع (SOLD/DELIVERED) لمرحلة أدنى للمالك فقط.
+/** نقل مرحلة البيع — يسجّل الحدث (من غيّره + الوقت) ويزامن stageIndex مع المرحلة. */
 export async function updateBookingStage(bookingId: string, stage: BookingStage): Promise<ActionResult> {
   try {
     const { user, booking } = await assertBookingAccess(bookingId);
     if (booking.stage === stage) return { ok: true };
+    // بيع مكتمل ما يرجع لمرحلة أدنى إلا المالك — التراجع الصحيح عبر «إلغاء الحجز».
+    const SOLD_STAGES: BookingStage[] = [BookingStage.SOLD, BookingStage.DELIVERED];
+    if (SOLD_STAGES.includes(booking.stage) && !SOLD_STAGES.includes(stage) && user.role !== "OWNER") {
+      return { ok: false, error: "الحجز مباع — الرجوع لمرحلة سابقة للمالك فقط" };
+    }
 
     await prisma.$transaction(async (tx) => {
-      await tx.booking.update({ where: { id: bookingId }, data: { stage } });
+      await tx.booking.update({ where: { id: bookingId }, data: { stage, stageIndex: bookingStageOrder.indexOf(stage) } });
       await tx.bookingEvent.create({
         data: { bookingId, userId: user.id, fromStage: booking.stage, toStage: stage },
       });

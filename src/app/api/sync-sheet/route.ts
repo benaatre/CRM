@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { runSheetSync } from "@/lib/sheet-sync";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 
-// نقطة لمزامنة جوجل شيت من cron (Hostinger). تُحمى بسرّ في متغيّر البيئة SYNC_SECRET.
-// مثال cron: curl "https://your-domain.com/api/sync-sheet?secret=XXXX"
+// نقطة لمزامنة جوجل شيت من cron (Hostinger). تُحمى بسرّ SYNC_SECRET (هيدر Bearer أو ?secret= مؤقتًا).
+// مثال cron: curl -H "Authorization: Bearer XXXX" https://your-domain.com/api/sync-sheet
 export async function GET(req: Request) {
-  const secret = new URL(req.url).searchParams.get("secret");
-  if (!process.env.SYNC_SECRET || secret !== process.env.SYNC_SECRET) {
+  if (!isCronAuthorized(req, process.env.SYNC_SECRET)) {
     return NextResponse.json({ ok: false, error: "غير مصرّح" }, { status: 401 });
   }
   const res = await runSheetSync();

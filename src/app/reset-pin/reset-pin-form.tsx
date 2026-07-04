@@ -16,7 +16,7 @@ export function ResetPinForm({ token }: { token: string }) {
     e.preventDefault();
     setError(null);
     if (pin !== confirm) { setError("الرمزان غير متطابقين"); return; }
-    if (!/^\d{4,6}$/.test(pin)) { setError("الرمز لازم ٤–٦ أرقام"); return; }
+    if (!/^\d{6}$/.test(pin)) { setError("الرمز لازم ٦ أرقام"); return; }
     startTransition(async () => {
       const res = await setPinByToken(token, pin);
       if (res.ok) { setDone(true); setTimeout(() => router.push("/login"), 2000); }
