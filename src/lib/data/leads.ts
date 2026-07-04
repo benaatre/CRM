@@ -68,6 +68,7 @@ export type LeadDetail = LeadRow & {
   projectId: string | null;
   sourceId: string | null;
   sourceName: string | null;
+  source: string | null; // نص المصدر الحرّ (للمستوردين بلا sourceId مهيكل)
   bookingId: string | null;
   bookings: BookingSummary[];
   activities: LeadActivity[];
@@ -311,6 +312,7 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     projectId: lead.projectId,
     sourceId: lead.sourceId,
     sourceName: lead.leadSource?.name ?? null,
+    source: lead.source,
     bookingId: lead.bookings[0]?.id ?? null,
     bookings: lead.bookings.map((b) => ({
       id: b.id,

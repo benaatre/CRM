@@ -338,7 +338,6 @@ export async function updateLead(
   data: {
     name?: string;
     phone?: string;
-    channel?: Channel;
     budget?: string | null;
     unitType?: UnitType | null;
     priority?: Priority;
@@ -357,7 +356,6 @@ export async function updateLead(
       data: {
         ...(data.name ? { name: data.name.trim() } : {}),
         ...(data.phone ? { phone: data.phone.replace(/[^\d]/g, "") } : {}),
-        ...(data.channel ? { channel: data.channel } : {}),
         ...(data.priority ? { priority: data.priority } : {}),
         ...(data.unitType !== undefined ? { unitType: data.unitType } : {}),
         ...(budget !== undefined ? { budget } : {}),
@@ -367,6 +365,21 @@ export async function updateLead(
         ...(data.sourceId !== undefined ? { sourceId: data.sourceId || null } : {}),
       },
     });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** تعديل قناة العميل — للمالك/المدير فقط (الفرض على الخادم؛ الموظف يُرفض). */
+export async function updateLeadChannel(leadId: string, channel: Channel): Promise<ActionResult> {
+  try {
+    if (!isManager((await requireUser()).role)) {
+      return { ok: false, error: "تعديل القناة للمالك أو المدير فقط" };
+    }
+    if (!(channel in Channel)) return { ok: false, error: "قناة غير صالحة" };
+    await prisma.lead.update({ where: { id: leadId }, data: { channel } });
     revalidateLeads();
     return { ok: true };
   } catch (e) {

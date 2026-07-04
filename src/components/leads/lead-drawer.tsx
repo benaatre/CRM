@@ -13,7 +13,7 @@ import {
 import type { LeadDetail } from "@/lib/data/leads";
 import {
   fetchLeadDetail, updateLeadStage, updateLeadFields,
-  reassignLead, updateLead,
+  reassignLead, updateLead, updateLeadChannel,
 } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
@@ -89,7 +89,6 @@ export function LeadDrawer({
       await updateLead(lead.id, {
         name: String(fd.get("name") ?? ""),
         phone: String(fd.get("phone") ?? ""),
-        channel: fd.get("channel") as Channel,
         budget: String(fd.get("budget") ?? ""),
         unitType: (fd.get("unitType") as UnitType) || null,
         priority: fd.get("priority") as Priority,
@@ -180,7 +179,17 @@ export function LeadDrawer({
                   <DField label="الجوال"><input name="phone" defaultValue={lead.phone} dir="ltr" className="select-base" /></DField>
                   <div className="grid grid-cols-2 gap-3">
                     <DField label="القناة">
-                      <select name="channel" defaultValue={lead.channel} className="select-base">
+                      {/* تعديل القناة للمالك/المدير فقط — الخادم يرفض الموظف. تُحفظ لحظيًا بمعزل عن الحفظ الدفعي. */}
+                      <select
+                        defaultValue={lead.channel}
+                        disabled={pending}
+                        onChange={(e) => startTransition(async () => {
+                          const res = await updateLeadChannel(lead.id, e.target.value as Channel);
+                          if (!res.ok) alert(res.error ?? "صار خطأ");
+                          refresh();
+                        })}
+                        className="select-base"
+                      >
                         {(Object.keys(channelLabels) as Channel[]).map((c) => <option key={c} value={c}>{channelLabels[c]}</option>)}
                       </select>
                     </DField>
