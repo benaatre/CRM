@@ -6,9 +6,11 @@ const nextConfig: NextConfig = {
   // جذر تتبّع الملفات = مجلد المشروع (يمنع التباس تعدّد lockfiles ويضمن
   // أن server.js يطلع في .next/standalone/server.js).
   outputFileTracingRoot: process.cwd(),
-  // معرّف بناء ثابت مربوط بالـcommit — يمنع ChunkLoadError بعد النشر (نفس الكود = نفس المعرّف).
-  // Hostinger يوفّر SOURCE_COMMIT عند النشر من GitHub؛ وإلا "stable" (أفضل من timestamp متغيّر).
-  generateBuildId: async () => process.env.SOURCE_COMMIT || process.env.GIT_SHA || "stable",
+  // لا نضبط generateBuildId يدويًا: Next يولّد معرّفًا فريدًا لكل بناء تلقائيًا.
+  // معرّف فريد لكل نشرة = مسار _next/static/<buildId>/ فريد ⇒ كاش immutable صحيح
+  // ⇒ لا يخدم المتصفّح مانيفستًا قديمًا يشير إلى chunks محذوفة (سبب ChunkLoadError).
+  // تجنّبنا قيمة ثابتة ("stable") لأنها تكسر خاصية الـimmutable، وتجنّبنا الاعتماد على
+  // SOURCE_COMMIT/git وقت البناء لأنهما غير مضمونَين في بيئة Hostinger.
 };
 
 export default nextConfig;
