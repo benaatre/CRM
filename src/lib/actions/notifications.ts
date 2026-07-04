@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
 import { requireUser, requireManager, requireManagerAction } from "@/lib/auth-guards";
 import { getNotificationConfig, type NotificationConfig } from "@/lib/data/notifications-config";
 
@@ -91,7 +92,7 @@ export async function updateNotificationEvent(
     revalidatePath("/settings");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -106,7 +107,7 @@ export async function updateMasterAudio(patch: { masterVolume?: number; globalMu
     revalidatePath("/settings");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -123,6 +124,6 @@ export async function deleteSound(id: string): Promise<ActionResult> {
     revalidatePath("/settings");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

@@ -8,8 +8,11 @@ import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-// المراحل المتقدّمة التي لا يُعاد توجيه عملائها (حجز/بيع).
-const ADVANCED_STAGES = ["RESERVED", "CLOSED_WON"] as const;
+// المراحل المتقدّمة التي لا يُعاد توجيه عملائها (حجز/بيع + مقفول-خسارة #19).
+const ADVANCED_STAGES = ["RESERVED", "CLOSED_WON", "CLOSED_LOST"] as const;
+
+// سقف إعادة التوجيه التلقائي — بعده يبقى العميل مع آخر موظف ويُصعَّد للمالك (#22).
+const MAX_REASSIGNS = 3;
 
 // ===================== أدوات التوقيت (توقيت السعودية UTC+3 بلا تغيير صيفي) =====================
 
@@ -70,13 +73,18 @@ export async function presentParticipants(db: Db, settings: DistSettings, now: D
   const since = settings.distPresenceMin > 0 ? new Date(now.getTime() - settings.distPresenceMin * 60_000) : null;
   const users = await db.user.findMany({
     where: { id: { in: settings.distOrder }, active: true },
-    select: { id: true, lastSeenAt: true, availabilityPaused: true, pauseUntil: true },
+    select: {
+      id: true, lastSeenAt: true, availabilityPaused: true, pauseUntil: true, maxClients: true,
+      _count: { select: { assignedLeads: { where: { isArchived: false } } } },
+    },
   });
   const ok = new Set(
     users
       .filter((u) => (since ? !!u.lastSeenAt && u.lastSeenAt >= since : true))
       // استثناء المتوقّفين عن الاستقبال (إلا من انتهت مدة إيقافه — سيُرجَع تلقائيًا).
       .filter((u) => !u.availabilityPaused || (u.pauseUntil != null && u.pauseUntil <= now))
+      // استثناء من بلغ حدّه الأقصى (maxClients) — #21.
+      .filter((u) => u.maxClients == null || u._count.assignedLeads < u.maxClients)
       .map((u) => u.id),
   );
   // الترتيب حسب distOrder، مع إبقاء المتواجدين فقط
@@ -198,11 +206,16 @@ export async function availableParticipants(db: Db, settings: DistSettings, now:
   if (settings.distOrder.length === 0) return [];
   const users = await db.user.findMany({
     where: { id: { in: settings.distOrder }, active: true },
-    select: { id: true, availabilityPaused: true, pauseUntil: true },
+    select: {
+      id: true, availabilityPaused: true, pauseUntil: true, maxClients: true,
+      _count: { select: { assignedLeads: { where: { isArchived: false } } } },
+    },
   });
   const ok = new Set(
     users
       .filter((u) => !u.availabilityPaused || (u.pauseUntil != null && u.pauseUntil <= now))
+      // استثناء من بلغ حدّه الأقصى (maxClients) — #21.
+      .filter((u) => u.maxClients == null || u._count.assignedLeads < u.maxClients)
       .map((u) => u.id),
   );
   return settings.distOrder.filter((id) => ok.has(id));
@@ -271,6 +284,41 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date): Prom
   return distributed;
 }
 
+/**
+ * #22: يصعّد للمالك العملاء الذين بلغوا سقف إعادة التوجيه (reassignCount ≥ MAX) بلا تواصل —
+ * ما زالوا مفتوحين ومع آخر موظف. إشعار واحد لكل عميل (dedup عبر سجل الإشعارات).
+ */
+async function escalateCappedLeads(): Promise<void> {
+  const capped = await prisma.lead.findMany({
+    where: {
+      assignedToId: { not: null },
+      contactedAt: null,
+      isArchived: false,
+      stage: { notIn: [...ADVANCED_STAGES] },
+      reassignCount: { gte: MAX_REASSIGNS },
+    },
+    select: { id: true, name: true },
+  });
+  if (capped.length === 0) return;
+
+  const links = capped.map((l) => `/leads/${l.id}`);
+  const already = await prisma.notification.findMany({
+    where: { type: "dist.capped", link: { in: links } },
+    select: { link: true },
+  });
+  const notifiedSet = new Set(already.map((n) => n.link));
+  const fresh = capped.filter((l) => !notifiedSet.has(`/leads/${l.id}`));
+  if (fresh.length === 0) return;
+
+  const owners = await ownerIds(prisma);
+  for (const l of fresh) {
+    await notify(
+      prisma, owners, "dist.capped", "عميل تجاوز حد إعادة التوجيه",
+      `${l.name} تنقّل ${MAX_REASSIGNS} مرات بلا تواصل — يحتاج تدخّلك`, `/leads/${l.id}`,
+    );
+  }
+}
+
 export type SweepResult = { ok: boolean; reassigned: number; checked: number; distributed?: number; skipped?: string; error?: string };
 
 /**
@@ -306,10 +354,15 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
         contactedAt: null,
         isArchived: false,
         stage: { notIn: [...ADVANCED_STAGES] },
+        reassignCount: { lt: MAX_REASSIGNS }, // #22: تجاوزوا السقف يبقون مع آخر موظف
       },
       select: { id: true, assignedToId: true, name: true },
       orderBy: { assignedAt: "asc" },
     });
+
+    // #22: عملاء بلغوا سقف إعادة التوجيه بلا تواصل → تصعيد للمالك (إشعار واحد لكل عميل).
+    await escalateCappedLeads();
+
     if (overdue.length === 0) return { ok: true, reassigned: 0, checked: 0, distributed };
 
     let reassigned = 0;

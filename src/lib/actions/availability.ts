@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify, managerIds } from "@/lib/notify";
@@ -88,7 +89,7 @@ export async function pauseAvailability(input: {
     revalidateAvailability();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -122,6 +123,6 @@ export async function resumeAvailability(input?: { userId?: string }): Promise<A
     revalidateAvailability();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

@@ -163,7 +163,7 @@ export function BookingForm({
 
           {/* ضريبة القيمة المضافة (VAT 15%) */}
           <div className="rounded-xl border border-border p-3">
-            <div className="mb-2 text-sm text-foreground">هل يشمل ضريبة القيمة المضافة (١٥٪)؟</div>
+            <div className="mb-2 text-sm text-foreground">يُضاف VAT (١٥٪) على السعر؟</div>
             <div className="grid grid-cols-2 gap-2">
               {([[true, "نعم"], [false, "لا"]] as const).map(([v, label]) => (
                 <label key={String(v)} className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-sm ${vatIncluded === v ? "border-gold/50 bg-gold/10 text-gold" : "border-border text-muted-foreground"}`}>

@@ -1,12 +1,13 @@
 import "server-only";
 
 import type {
-  Channel, LeadStage, PurchaseMethod, PurchaseGoal,
+  Channel, LeadStage, PurchaseGoal,
   BookingStage, PaymentMethod, SaudiBank, Nationality, Floor, ProjectStatus,
 } from "@prisma/client";
-import { FollowUpType } from "@prisma/client";
+import { FollowUpType, PurchaseMethod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { compareUnitNumbers } from "@/lib/format";
+import { bookingCollection, SOLD_STAGES } from "@/lib/booking-finance";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 
@@ -94,19 +95,22 @@ export async function getAnalytics(): Promise<AnalyticsData> {
 
   // ===== المالية =====
   const perProjectMap = new Map<string, FinanceRow>();
-  let basePrice = 0, discounts = 0, afterDiscount = 0, collected = 0, reservedValue = 0;
+  let basePrice = 0, discounts = 0, afterDiscount = 0, collected = 0, notCollected = 0, reservedValue = 0;
   let financeFailedCount = 0, financeFailedValue = 0;
 
   for (const b of bookings) {
     const price = num(b.price);
     const disc = num(b.discount);
     const final = num(b.finalPrice);
-    const coll = num(b.collected);
+    // المحصّل/المتبقّي موحّدان: بيع مكتمل = محصّل كامل ومتبقّي صفر (booking-finance).
+    const { collected: coll, remaining: notColl } = bookingCollection(b.stage, final, num(b.collectedAmount));
     basePrice += price;
     discounts += disc;
     afterDiscount += final;
     collected += coll;
-    if (b.stage !== "SOLD") reservedValue += final;
+    notCollected += notColl;
+    // #24: DELIVERED بيع مكتمل مثل SOLD — ما يُحسب ضمن «المحجوز».
+    if (!SOLD_STAGES.includes(b.stage)) reservedValue += final;
     if (b.financeRejected) {
       financeFailedCount++;
       financeFailedValue += final;
@@ -121,12 +125,11 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       row.discounts += disc;
       row.afterDiscount += final;
       row.collected += coll;
-      row.notCollected += final - coll;
-      if (b.stage !== "SOLD") row.reservedValue += final;
+      row.notCollected += notColl;
+      if (!SOLD_STAGES.includes(b.stage)) row.reservedValue += final;
       perProjectMap.set(proj.id, row);
     }
   }
-  const notCollected = afterDiscount - collected;
 
   // ===== المؤشرات الاحترافية =====
   const total = leads.length;
@@ -339,7 +342,7 @@ export async function getProjectFinance(projectId: string): Promise<ProjectFinan
     prisma.booking.findMany({
       where: { unit: { projectId } },
       select: {
-        price: true, finalPrice: true, discount: true, collected: true, remainingAmount: true,
+        price: true, finalPrice: true, discount: true, collectedAmount: true,
         paymentMethod: true, bankName: true, cashPaymentType: true, stage: true,
         nationality: true, nationalId: true, phone: true,
         unit: { select: { number: true, floor: true, floorLevel: true } },
@@ -371,11 +374,12 @@ export async function getProjectFinance(projectId: string): Promise<ProjectFinan
     const originalPrice = dnum(b.price);
     const soldPrice = dnum(b.finalPrice);
     const discount = dnum(b.discount);
-    const remaining = dnum(b.remainingAmount);
+    // موحّد: بيع مكتمل = محصّل كامل ومتبقّي صفر.
+    const { collected, remaining } = bookingCollection(b.stage, soldPrice, dnum(b.collectedAmount));
     bookedOriginal += originalPrice;
     totalDiscount += discount;
     totalSales += soldPrice;
-    totalCollected += dnum(b.collected);
+    totalCollected += collected;
     totalRemaining += remaining;
     if (b.paymentMethod === "BANK_FINANCE" || b.paymentMethod === "CASH_AND_FINANCE") remainingBankFinance += remaining;
     else if (b.cashPaymentType === "INSTALLMENTS") remainingInstallments += remaining;
@@ -485,7 +489,8 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
 
   // التوزيعات
   const byGoal = distFrom(myLeads.map((l) => ({ key: l.purchaseGoal ?? "NONE" })), ["RESIDENCE", "INVESTMENT", "BOTH", "NONE"]);
-  const byMethod = distFrom(myLeads.map((l) => ({ key: l.purchaseMethod ?? "NONE" })), ["CASH", "BANK_FINANCE", "CASH_AND_FINANCE", "NONE"]);
+  // #10: اشتقاق المفاتيح من الـenum نفسه — يشمل مدعوم/غير مدعوم تلقائياً ولا يسقط أي قيمة.
+  const byMethod = distFrom(myLeads.map((l) => ({ key: l.purchaseMethod ?? "NONE" })), [...Object.keys(PurchaseMethod), "NONE"]);
 
   // النشاط
   const myFu = fuByType.filter((f) => f.createdBy === userId);
@@ -552,7 +557,7 @@ export async function getAllProjectsFinance(): Promise<AllProjectsFinanceRow[]> 
     prisma.project.findMany({ select: { id: true, name: true }, orderBy: { createdAt: "asc" } }),
     prisma.unit.findMany({ select: { projectId: true, price: true, status: true } }),
     prisma.booking.findMany({
-      select: { price: true, finalPrice: true, discount: true, collected: true, remainingAmount: true, unit: { select: { projectId: true } } },
+      select: { price: true, finalPrice: true, discount: true, collectedAmount: true, stage: true, unit: { select: { projectId: true } } },
     }),
   ]);
   return projects.map((p) => {
@@ -572,8 +577,8 @@ export async function getAllProjectsFinance(): Promise<AllProjectsFinanceRow[]> 
       totalSales: pb.reduce((s, b) => s + dnum(b.finalPrice), 0),
       totalDiscount,
       discountPct: pct1(totalDiscount, bookedOriginal),
-      collected: pb.reduce((s, b) => s + dnum(b.collected), 0),
-      remaining: pb.reduce((s, b) => s + dnum(b.remainingAmount), 0),
+      collected: pb.reduce((s, b) => s + bookingCollection(b.stage, dnum(b.finalPrice), dnum(b.collectedAmount)).collected, 0),
+      remaining: pb.reduce((s, b) => s + bookingCollection(b.stage, dnum(b.finalPrice), dnum(b.collectedAmount)).remaining, 0),
     };
   });
 }

@@ -36,7 +36,8 @@ export async function runFollowupDueCheck(now: Date = new Date()): Promise<numbe
     const link = `/leads/${l.id}`;
     // تفادي التكرار: لا تُعد التنبيه لنفس العميل خلال آخر نافذة.
     const recent = await prisma.notification.findFirst({
-      where: { type: "followup_due", link, createdAt: { gte: new Date(now.getTime() - windowMs - 3_600_000) } },
+      // #44: dedup بالمستخدم + الرابط — الموظف الجديد بعد إعادة التوجيه يصله تنبيهه.
+      where: { type: "followup_due", link, userId: l.assignedToId ?? undefined, createdAt: { gte: new Date(now.getTime() - windowMs - 3_600_000) } },
       select: { id: true },
     });
     if (recent) continue;

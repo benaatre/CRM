@@ -11,6 +11,7 @@ import type {
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-guards";
 import { compareUnitNumbers } from "@/lib/format";
+import { bookingCollection } from "@/lib/booking-finance";
 
 const dec = (v: { toNumber(): number } | null) => (v ? v.toNumber() : null);
 
@@ -120,7 +121,8 @@ export async function getBookings(): Promise<BookingsData> {
       discountOverage: dec(b.discountOverage) ?? 0,
       discountPercentAtBooking: dec(b.discountPercentAtBooking),
       maxDiscountPercentAtBooking: dec(b.maxDiscountPercentAtBooking),
-      collected: mine ? b.collected.toNumber() : null,
+      // المحصّل موحّد: بيع مكتمل = كامل السعر، غيره = المسجّل فعلياً (booking-finance).
+      collected: mine ? bookingCollection(b.stage, b.finalPrice.toNumber(), b.collectedAmount.toNumber()).collected : null,
       sellerName: b.seller?.name ?? null,
       expectedCheckDate: b.expectedCheckDate,
       expectedTransferDate: b.expectedTransferDate,

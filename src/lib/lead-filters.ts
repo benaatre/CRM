@@ -1,4 +1,4 @@
-import type { LeadStage } from "@prisma/client";
+import { LeadStage } from "@prisma/client";
 
 /** قيم الفلاتر كما في الرابط (مشتركة بين جدول العملاء والكانبان). */
 export type LeadFilterValues = { q: string; stages: string[]; emps: string[] };
@@ -24,7 +24,8 @@ export function buildLeadsQuery(tab: "working" | "archived" | "unassigned" | "al
 /** تحويل searchParams إلى فلاتر موحّدة — يستخدمه الجدول والكانبان و GET /api/leads. */
 export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: string }): ParsedLeadFilters {
   const q = sp.q ?? "";
-  const stages = (sp.stages ? sp.stages.split(",").filter(Boolean) : []) as LeadStage[];
+  // #32: نصفّي القيم على أعضاء LeadStage — أي قيمة خاطئة في الرابط تُتجاهل بدل ٥٠٠.
+  const stages = (sp.stages ? sp.stages.split(",").filter(Boolean) : []).filter((s): s is LeadStage => s in LeadStage);
   const empTokens = sp.emps ? sp.emps.split(",").filter(Boolean) : [];
   const includeUnassigned = empTokens.includes("none");
   const assigneeIds = empTokens.filter((t) => t !== "none");

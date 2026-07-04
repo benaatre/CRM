@@ -4,6 +4,7 @@ import type { LeadStage } from "@prisma/client";
 import { FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopeForUser, getOwnerIds } from "@/lib/data/leads";
+import { ksaTodayStart } from "@/lib/auto-distribute";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 // المتوقّع من اللمسات (متابعات) لكل عميل عند حساب نسبة النشاط.
@@ -153,9 +154,10 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     finalPrice: b.finalPrice.toNumber(),
   }));
 
-  // متابعات اليوم
+  // متابعات اليوم = المتأخرة + بقية اليوم (حتى نهاية يوم السعودية) — #44.
+  const ksaDayEnd = new Date(ksaTodayStart(new Date()).getTime() + 86_400_000);
   const followupsRaw = await prisma.lead.findMany({
-    where: { ...where, stage: { notIn: CLOSED }, nextFollowup: { lte: new Date() } },
+    where: { ...where, stage: { notIn: CLOSED }, nextFollowup: { lt: ksaDayEnd } },
     orderBy: [{ priority: "asc" }, { nextFollowup: "asc" }],
     take: 8,
     include: { assignedTo: { select: { name: true, role: true } } },

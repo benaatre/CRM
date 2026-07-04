@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
 import { requireManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { sendMail } from "@/lib/mailer";
@@ -42,7 +43,7 @@ export async function addEmployee(formData: FormData): Promise<ActionResult> {
     revalidatePath("/admin");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -122,7 +123,7 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
     revalidatePath("/admin");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -155,7 +156,7 @@ export async function inviteEmployee(userId: string): Promise<ActionResult> {
     if (!res.ok) return { ok: false, error: `تعذّر الإرسال: ${res.error}` };
     return { ok: true, message: `تم إرسال الدعوة إلى ${u.email}` };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -170,7 +171,7 @@ export async function toggleEmployeeActive(userId: string, active: boolean): Pro
     revalidatePath("/admin");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -178,8 +179,16 @@ type LoadedEmployee = { id: string; name: string; maxClients: number | null; cou
 
 /** الموظفون المفعّلون مع حملهم الحالي (عملاء غير مؤرشفين) وسعتهم المتبقية (Infinity = بلا حد). */
 async function loadEmployees(): Promise<LoadedEmployee[]> {
+  const now = new Date();
   const emps = await prisma.user.findMany({
-    where: { role: "EMPLOYEE", active: true },
+    where: {
+      role: "EMPLOYEE", active: true,
+      // استثناء الموقوفين عن الاستقبال (إلا من انتهت مدة إيقافه) — #42.
+      OR: [
+        { availabilityPaused: false },
+        { availabilityPaused: true, pauseUntil: { not: null, lte: now } },
+      ],
+    },
     select: { id: true, name: true, maxClients: true, _count: { select: { assignedLeads: { where: { isArchived: false } } } } },
     orderBy: { name: "asc" },
   });
@@ -248,7 +257,7 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
     const base = `وُزّع ${updates.length} عميل على ${emps.length} موظف`;
     return { ok: true, message: leftover > 0 ? `${base} — بقي ${leftover} بدون توزيع (الموظفون وصلوا حدّهم الأقصى)` : base };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -302,7 +311,7 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
     revalidateDistribution();
     return { ok: true, message: `وُزّع ${targets.length} عميل حسب الأعداد المحددة` };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -342,6 +351,6 @@ export async function distributeLeastLoaded(): Promise<ActionResult> {
     const base = `وُزّع ${updates.length} عميل على الأخفّ حملًا`;
     return { ok: true, message: leftover > 0 ? `${base} — بقي ${leftover} بدون توزيع (الموظفون وصلوا حدّهم الأقصى)` : base };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

@@ -7,6 +7,14 @@ import { ensureNotificationDefaults } from "@/lib/data/notifications-config";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+/**
+ * آثار جانبية بعد الـcommit (إشعار/تدقيق): فشلها يُسجَّل ولا يُفشِل العملية الأساسية.
+ * يمنع «خطأ ظاهر بعد نجاح الحفظ → إعادة محاولة → سجل مكرّر» (#29).
+ */
+export async function notifyBestEffort(context: string, fn: () => Promise<unknown>): Promise<void> {
+  try { await fn(); } catch (e) { console.error(`[post-commit] ${context}`, e); }
+}
+
 type EmitArgs = {
   eventKey: string;          // مفتاح الحدث (واحد من السبعة)
   assignedUserId?: string | null; // الموظف المعني (لأحداث ASSIGNED)

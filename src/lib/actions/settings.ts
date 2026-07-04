@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
 import { requireManager, requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { runSheetSync, type SyncResult } from "@/lib/sheet-sync";
@@ -43,7 +44,7 @@ export async function updateSettings(formData: FormData): Promise<ActionResult> 
     revalidatePath("/settings");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -61,7 +62,7 @@ export async function syncGoogleSheet(): Promise<SyncResult> {
     }
     return res;
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -78,7 +79,7 @@ export async function updateNotifyConfig(formData: FormData): Promise<ActionResu
     revalidatePath("/settings");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -101,6 +102,6 @@ export async function updateMyPin(formData: FormData): Promise<ActionResult> {
     await logAudit(prisma, { userId: user.id, action: "user.pinChanged", entity: "user", entityId: user.id, summary: "غيّر رمز الدخول" });
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

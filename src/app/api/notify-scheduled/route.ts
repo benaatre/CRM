@@ -13,10 +13,18 @@ export async function GET(req: Request) {
   if (!isCronAuthorized(req, process.env.CRON_SECRET)) {
     return NextResponse.json({ ok: false, error: "غير مصرّح" }, { status: 401 });
   }
-  const [followupDue, idle] = await Promise.all([
-    runFollowupDueCheck().catch(() => 0),
-    runIdleEmployeeCheck().catch(() => 0),
-  ]);
-  if (followupDue > 0 || idle > 0) revalidatePath("/", "layout");
-  return NextResponse.json({ ok: true, followupDue, idle });
+  // #38: نعزل الفشل ونبلّغ عنه (بدل ابتلاعه وإرجاع ok:true) ليلتقطه مراقب الكرون.
+  const results = await Promise.allSettled([runFollowupDueCheck(), runIdleEmployeeCheck()]);
+  const names = ["followupDue", "idle"] as const;
+  const counts = { followupDue: 0, idle: 0 };
+  const failed: string[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") counts[names[i]] = r.value;
+    else { failed.push(names[i]); console.error(`[notify-scheduled] ${names[i]}`, r.reason); }
+  });
+  if (counts.followupDue > 0 || counts.idle > 0) revalidatePath("/", "layout");
+  return NextResponse.json(
+    { ok: failed.length === 0, ...counts, ...(failed.length ? { failed } : {}) },
+    { status: failed.length ? 500 : 200 },
+  );
 }

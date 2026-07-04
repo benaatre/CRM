@@ -13,10 +13,12 @@ import {
   ActivityType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
+import { parseEnum } from "@/lib/parse-enum";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify, activeUserIds, ownerIds } from "@/lib/notify";
-import { emitNotification } from "@/lib/notifications/emit";
+import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 import { bookingStageOrder } from "@/lib/labels";
 
@@ -39,7 +41,19 @@ function revalidateBookings() {
 
 const numOf = (fd: FormData, key: string): number | null => {
   const v = String(fd.get(key) ?? "").replace(/[^\d.]/g, "");
-  return v ? Number(v) : null;
+  if (!v) return null;
+  const n = Number(v);
+  // #17: مدخل مثل "1.2.3" يعطي NaN — نمنعه من الوصول للحسابات/القاعدة.
+  if (!Number.isFinite(n)) throw new Error("قيمة رقمية غير صحيحة");
+  return n;
+};
+
+/** تاريخ آمن من مدخل حر: null لو فارغ؛ يرمي رسالة عربية لو غير صالح (#17). */
+const dateOf = (raw: string): Date | null => {
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) throw new Error("تاريخ غير صحيح");
+  return d;
 };
 
 /**
@@ -77,20 +91,18 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const deposit = numOf(formData, "deposit");
     const finalPrice = price - discount;
 
-    const paymentMethod = (String(formData.get("paymentMethod") ?? "CASH") as PaymentMethod);
+    const paymentMethod = parseEnum(PaymentMethod, formData.get("paymentMethod"), PaymentMethod.CASH)!;
 
     // حقول الدفع المرنة
     const bankRaw = String(formData.get("bankName") ?? "");
-    const bankName = bankRaw ? (bankRaw as SaudiBank) : null;
+    const bankName = parseEnum(SaudiBank, bankRaw);
     const cashAmount = numOf(formData, "cashAmount");
-    const checkDateRaw = String(formData.get("expectedCheckDate") ?? "");
-    const expectedCheckDate = checkDateRaw ? new Date(checkDateRaw) : null;
+    const expectedCheckDate = dateOf(String(formData.get("expectedCheckDate") ?? ""));
     const cashTypeRaw = String(formData.get("cashPaymentType") ?? "");
-    const cashPaymentType = cashTypeRaw ? (cashTypeRaw as CashPaymentType) : null;
+    const cashPaymentType = parseEnum(CashPaymentType, cashTypeRaw);
     const installmentsCount = formData.get("installmentsCount") ? Number(numOf(formData, "installmentsCount")) : null;
     const installmentAmount = numOf(formData, "installmentAmount");
-    const transferDateRaw = String(formData.get("expectedTransferDate") ?? "");
-    const expectedTransferDate = transferDateRaw ? new Date(transferDateRaw) : null;
+    const expectedTransferDate = dateOf(String(formData.get("expectedTransferDate") ?? ""));
 
     // ضريبة التصرفات العقارية (5% — قديم)
     const subjectToTax = String(formData.get("subjectToTax") ?? "") === "yes";
@@ -163,7 +175,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     }
 
     const nationalityRaw = String(formData.get("nationality") ?? "");
-    const nationality = nationalityRaw ? (nationalityRaw as Nationality) : lead?.nationality ?? null;
+    const nationality = parseEnum(Nationality, nationalityRaw) ?? lead?.nationality ?? null;
 
     await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.create({
@@ -218,29 +230,31 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       });
     });
 
-    // حدث: تم حجز / بيع وحدة (الجمهور حسب الإعداد — افتراضيًا الكل).
-    await emitNotification({
-      eventKey: "unit_booked_sold",
-      title: immediateSale ? "تم بيع وحدة" : "وحدة اتحجزت",
-      body: `وحدة ${unit.number} في ${unit.project?.name ?? "—"}${lead?.name ? ` — ${lead.name}` : ""}`,
-      link: `/leads/${leadId}`,
+    // آثار جانبية بعد الـcommit — فشلها ما يُفشِل الحجز (#29).
+    await notifyBestEffort("booking.created.notify", async () => {
+      // حدث: تم حجز / بيع وحدة (الجمهور حسب الإعداد — افتراضيًا الكل).
+      await emitNotification({
+        eventKey: "unit_booked_sold",
+        title: immediateSale ? "تم بيع وحدة" : "وحدة اتحجزت",
+        body: `وحدة ${unit.number} في ${unit.project?.name ?? "—"}${lead?.name ? ` — ${lead.name}` : ""}`,
+        link: `/leads/${leadId}`,
+      });
+      // تجاوز الخصم المقرر: إشعار للمالك (OWNER) — يظهر في جرس الهيدر.
+      if (discountOverage > 0) {
+        await notify(
+          prisma,
+          await ownerIds(prisma),
+          "discount.exceeded",
+          "إشعار خصم",
+          `تجاوز خصم: ${user.name ?? "موظف"} باع وحدة ${unit.number} في ${unit.project?.name ?? "—"} بتجاوز ${discountOverage.toLocaleString("en-US")} ر.س عن الخصم المقرر`,
+        );
+      }
     });
-
-    // تجاوز الخصم المقرر: إشعار للمالك (OWNER) — يظهر في جرس الهيدر.
-    if (discountOverage > 0) {
-      await notify(
-        prisma,
-        await ownerIds(prisma),
-        "discount.exceeded",
-        "إشعار خصم",
-        `تجاوز خصم: ${user.name ?? "موظف"} باع وحدة ${unit.number} في ${unit.project?.name ?? "—"} بتجاوز ${discountOverage.toLocaleString("en-US")} ر.س عن الخصم المقرر`,
-      );
-    }
 
     revalidateBookings();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -279,7 +293,7 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
     if (!isManager(user.role) && lead.assignedToId !== user.id) {
       return { ok: false, error: "ما عندك صلاحية على هذا العميل" };
     }
-    const nationality = nationalityRaw ? (nationalityRaw as Nationality) : lead?.nationality ?? null;
+    const nationality = parseEnum(Nationality, nationalityRaw) ?? lead?.nationality ?? null;
     const nationalId = formNationalId || lead?.nationalId || null;
 
     await prisma.$transaction(async (tx) => {
@@ -325,7 +339,7 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
     revalidateBookings();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -361,7 +375,7 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
     revalidateBookings();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -407,7 +421,7 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
     revalidateBookings();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -440,6 +454,6 @@ export async function setFinanceRejected(
     revalidateBookings();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

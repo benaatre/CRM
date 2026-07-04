@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
 import { Channel, LeadStage, Priority, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
 import { requireManager } from "@/lib/auth-guards";
 import type { ImportRow } from "@/lib/import-meta";
 import {
@@ -205,7 +206,7 @@ export async function readSheet(
     const suggested = suggestMapping(headers, rows);
     return { ok: true, headers, rows, suggested };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -266,7 +267,7 @@ export async function previewMapped(
     });
     return { ok: true, rows: out };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -354,6 +355,6 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
     revalidatePath("/leads");
     return { ok: true, created, updated, skipped: rows.length - created - updated };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

@@ -14,9 +14,11 @@ import type {
   PaymentMethod,
   SaudiBank,
   CashPaymentType,
+  BookingStage,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
+import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
@@ -124,7 +126,7 @@ type LeadWithRels = {
   firstContactStage: FirstContactStage | null;
   firstContactDate: Date | null;
   isArchived: boolean;
-  bookings?: { collectedAmount: { toNumber(): number }; remainingAmount: { toNumber(): number } }[];
+  bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number } }[];
 };
 
 function toRow(l: LeadWithRels): LeadRow {
@@ -152,7 +154,7 @@ function toRow(l: LeadWithRels): LeadRow {
     firstContactDate: l.firstContactDate,
     isArchived: l.isArchived,
     booking: l.bookings && l.bookings[0]
-      ? { collected: l.bookings[0].collectedAmount.toNumber(), remaining: l.bookings[0].remainingAmount.toNumber() }
+      ? bookingCollection(l.bookings[0].stage, l.bookings[0].finalPrice.toNumber(), l.bookings[0].collectedAmount.toNumber())
       : null,
   };
 }
@@ -161,7 +163,7 @@ const rowInclude = {
   assignedTo: { select: { id: true, name: true, role: true } },
   project: { select: { name: true } },
   _count: { select: { activities: true, followUps: true } },
-  bookings: { select: { collectedAmount: true, remainingAmount: true }, orderBy: { createdAt: "desc" }, take: 1 },
+  bookings: { select: { stage: true, finalPrice: true, collectedAmount: true }, orderBy: { createdAt: "desc" }, take: 1 },
 } as const;
 
 export type LeadTab = "working" | "archived" | "unassigned" | "all";

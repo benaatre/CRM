@@ -3,6 +3,7 @@ import "server-only";
 import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { stageLabels, channelLabels } from "@/lib/labels";
+import { SOLD_STAGES } from "@/lib/booking-finance";
 
 /** يبني ملخّصًا مضغوطًا (مُحجّمًا بالدور) لتغذية المساعد الذكي — بدون بيانات حساسة زائدة. */
 export async function buildAiContext(user: { id: string; role: Role }): Promise<string> {
@@ -19,7 +20,7 @@ export async function buildAiContext(user: { id: string; role: Role }): Promise<
     prisma.lead.count({ where: { ...where, stage: "CLOSED_WON" } }),
     prisma.booking.aggregate({
       where: manager ? {} : { sellerId: user.id },
-      _sum: { finalPrice: true, deposit: true, collected: true },
+      _sum: { finalPrice: true, deposit: true, collectedAmount: true },
       _count: { _all: true },
     }),
   ]);
@@ -28,6 +29,14 @@ export async function buildAiContext(user: { id: string; role: Role }): Promise<
   for (const g of byStage) stages[stageLabels[g.stage]] = g._count._all;
   const channels: Record<string, number> = {};
   for (const g of byChannel) channels[channelLabels[g.channel]] = g._count._all;
+
+  // المحصّل موحّد: بيع مكتمل = كامل السعر بعد الخصم، غيره = العربون المسجّل (يطابق bookingCollection).
+  const bookingScope = manager ? {} : { sellerId: user.id };
+  const [soldColl, otherColl] = await Promise.all([
+    prisma.booking.aggregate({ where: { ...bookingScope, stage: { in: SOLD_STAGES } }, _sum: { finalPrice: true } }),
+    prisma.booking.aggregate({ where: { ...bookingScope, stage: { notIn: SOLD_STAGES } }, _sum: { collectedAmount: true } }),
+  ]);
+  const collectedTotal = Number(soldColl._sum.finalPrice ?? 0) + Number(otherColl._sum.collectedAmount ?? 0);
 
   const context = {
     دور_المستخدم: manager ? "مدير" : "موظف",
@@ -42,7 +51,7 @@ export async function buildAiContext(user: { id: string; role: Role }): Promise<
       العدد: bookingAgg._count._all,
       قيمة_بعد_الخصم: bookingAgg._sum.finalPrice ? Number(bookingAgg._sum.finalPrice) : 0,
       إجمالي_العرابين: bookingAgg._sum.deposit ? Number(bookingAgg._sum.deposit) : 0,
-      المحصّل: bookingAgg._sum.collected ? Number(bookingAgg._sum.collected) : 0,
+      المحصّل: collectedTotal,
     },
   };
 

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
 import { ProjectStatus, UnitType, UnitStatus, Floor } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
+import { parseEnum } from "@/lib/parse-enum";
 import { requireManagerAction } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { unitTypeLabels, unitStatusLabels } from "@/lib/labels";
@@ -42,7 +44,7 @@ export async function createProject(formData: FormData): Promise<Result> {
         name,
         district: str(formData, "district"),
         description: str(formData, "description"),
-        status: (String(formData.get("status") ?? "AVAILABLE") as ProjectStatus),
+        status: parseEnum(ProjectStatus, formData.get("status"), ProjectStatus.AVAILABLE)!,
         priceMin: num(formData, "priceMin"),
         priceMax: num(formData, "priceMax"),
         maxDiscountPercent: num(formData, "maxDiscountPercent"),
@@ -55,7 +57,7 @@ export async function createProject(formData: FormData): Promise<Result> {
     revalidatePath("/projects");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -71,7 +73,7 @@ export async function updateProject(projectId: string, formData: FormData): Prom
         name,
         district: str(formData, "district"),
         description: str(formData, "description"),
-        status: (String(formData.get("status") ?? "AVAILABLE") as ProjectStatus),
+        status: parseEnum(ProjectStatus, formData.get("status"), ProjectStatus.AVAILABLE)!,
         priceMin: num(formData, "priceMin"),
         priceMax: num(formData, "priceMax"),
         maxDiscountPercent: num(formData, "maxDiscountPercent"),
@@ -84,7 +86,7 @@ export async function updateProject(projectId: string, formData: FormData): Prom
     revalidatePath(`/projects/${projectId}`);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -115,7 +117,7 @@ export async function createUnit(projectId: string, formData: FormData): Promise
     revalidatePath("/projects");
     return { ok: true };
   } catch (e) {
-    const msg = (e as { code?: string }).code === "P2002" ? "رقم الوحدة مكرّر في هذا المشروع" : (e as Error).message;
+    const msg = (e as { code?: string }).code === "P2002" ? "رقم الوحدة مكرّر في هذا المشروع" : toUserError(e);
     return { ok: false, error: msg };
   }
 }
@@ -145,7 +147,7 @@ export async function updateUnit(unitId: string, formData: FormData): Promise<Re
     revalidatePath(`/projects/${unit.projectId}`);
     return { ok: true };
   } catch (e) {
-    const msg = (e as { code?: string }).code === "P2002" ? "رقم الوحدة مكرّر" : (e as Error).message;
+    const msg = (e as { code?: string }).code === "P2002" ? "رقم الوحدة مكرّر" : toUserError(e);
     return { ok: false, error: msg };
   }
 }
@@ -161,7 +163,7 @@ export async function deleteUnit(unitId: string): Promise<Result> {
     revalidatePath("/projects");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -269,7 +271,7 @@ export async function parseUnitsSheet(
       .sort((a, b) => compareUnitNumbers(a.number, b.number)); // ترتيب طبيعي للمعاينة
     return { ok: true, rows };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -305,6 +307,6 @@ export async function commitUnits(
     revalidatePath("/projects");
     return { ok: true, created, updated, skipped };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

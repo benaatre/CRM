@@ -36,8 +36,11 @@ export function normalizePurchaseMethod(raw: string | null | undefined): Purchas
   const hasFinance = /تمويل|بنك/.test(s);
   if (hasCash && hasFinance) return "CASH_AND_FINANCE";
   if (s.includes("الاثنين") || s === "both") return "CASH_AND_FINANCE";
+  // #23: نميّز «مدعوم/غير مدعوم» (غير مدعوم أولاً لأن نصّه يحوي «مدعوم»).
+  if (hasFinance && /غير مدعوم/.test(s)) return "BANK_FINANCE_UNSUPPORTED";
+  if (hasFinance && /مدعوم/.test(s)) return "BANK_FINANCE_SUPPORTED";
   if (hasCash) return "CASH";
-  if (hasFinance) return "BANK_FINANCE";
+  if (hasFinance) return "BANK_FINANCE"; // تمويل مجرّد بلا تحديد → القديم (توافق)
   return null;
 }
 

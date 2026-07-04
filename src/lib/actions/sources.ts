@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
 import { requireManagerAction, requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { getSourcesList, type SourceListItem } from "@/lib/data/sources";
@@ -32,7 +33,7 @@ export async function addSource(name: string): Promise<ActionResult> {
     revalidateSources();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -53,7 +54,7 @@ export async function deleteSource(id: string): Promise<ActionResult> {
     revalidateSources();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -77,7 +78,7 @@ export async function addSheetLink(sheetUrl: string, sourceId: string): Promise<
     revalidateSources();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -89,7 +90,7 @@ export async function toggleSheetLink(id: string, isActive: boolean): Promise<Ac
     revalidateSources();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -102,6 +103,6 @@ export async function deleteSheetLink(id: string): Promise<ActionResult> {
     revalidateSources();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }

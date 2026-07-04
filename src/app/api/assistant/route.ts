@@ -20,12 +20,12 @@ export async function POST(req: Request) {
   let history: { role: "user" | "assistant"; content: string }[] = [];
   try {
     const body = await req.json();
-    question = String(body?.question ?? "").trim();
+    question = String(body?.question ?? "").trim().slice(0, 2000); // #30: حد طول السؤال
     if (Array.isArray(body?.history)) {
       history = body.history
         .filter((m: { role?: string; content?: string }) => (m.role === "user" || m.role === "assistant") && m.content)
         .slice(-8)
-        .map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: String(m.content) }));
+        .map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: String(m.content).slice(0, 4000) }));
     }
   } catch {
     return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 });
@@ -48,6 +48,7 @@ export async function POST(req: Request) {
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: AbortSignal.timeout(30_000), // #30: يمنع تعليق الطلب
       headers: {
         "content-type": "application/json",
         "x-api-key": apiKey,

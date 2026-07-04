@@ -77,6 +77,7 @@ export async function POST(req: Request) {
     };
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: AbortSignal.timeout(30_000), // #30: يمنع تعليق الطلب
       headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",

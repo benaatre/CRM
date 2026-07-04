@@ -71,7 +71,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!result || !(result in FollowUpResult)) return NextResponse.json({ error: "نتيجة المتابعة غير صحيحة" }, { status: 400 });
 
   const section = body.section && body.section in FollowUpSection ? (body.section as FollowUpSection) : null;
-  const nextDate = body.nextDate ? new Date(body.nextDate) : null;
+  // #32: تاريخ غير صالح يُرفض برسالة عربية بدل خطأ Prisma خام.
+  let nextDate: Date | null = null;
+  if (body.nextDate) {
+    nextDate = new Date(body.nextDate);
+    if (Number.isNaN(nextDate.getTime())) return NextResponse.json({ error: "تاريخ المتابعة غير صحيح" }, { status: 400 });
+  }
   // المرحلة المرسلة صراحةً تُقدَّم؛ وإلا تُشتق من النتيجة.
   const newStage = body.stage && body.stage in LeadStage ? (body.stage as LeadStage) : resultToStage[result];
   const bumpsAttempt = type === "CALL" || type === "WHATSAPP";
@@ -109,8 +114,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         data: { leadId: id, userId: user.id, type: ActivityType.NOTE, note: `تم تسجيل أول تواصل: ${firstContactStageLabels[firstStage]}` },
       });
     }
-    // «تواصل» يوقف عدّاد إعادة التوجيه: متابعة مكالمة/واتساب أو تحديد موعد قادم.
-    if (bumpsAttempt || nextDate) await markContacted(tx, id);
+    // #20: أي متابعة مسجّلة = تعامل فعلي مع العميل → توقف عدّاد إعادة التوجيه.
+    // (عدّاد المحاولات attempts يبقى للمكالمات/واتساب فقط عبر bumpsAttempt أعلاه.)
+    await markContacted(tx, id);
     await logAudit(tx, {
       userId: user.id, action: "followup.added", entity: "lead", entityId: id,
       summary: `متابعة: ${followUpResultLabels[result]}`,

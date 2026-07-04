@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { toUserError } from "@/lib/action-error";
 import { requireManager } from "@/lib/auth-guards";
 import { runReassignSweep } from "@/lib/auto-distribute";
 
@@ -102,14 +103,14 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
         distInitialMode: initialMode,
         distReassignMode: reassignMode,
         distOrder: order,
-        // أعد ضبط المؤشّر ضمن حدود القائمة الجديدة.
-        distPointer: order.length > 0 ? 0 : 0,
+        // المؤشّر يشير لآخر من استلم — نضبطه على آخر القائمة حتى يبدأ الدور من الأول (#41).
+        distPointer: order.length > 0 ? order.length - 1 : 0,
       },
     });
     revalidatePath("/distribution");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
 
@@ -123,6 +124,6 @@ export async function runSweepNow(): Promise<ActionResult> {
     revalidatePath("/leads");
     return { ok: true, message: res.skipped ?? `تم الفحص — أُعيد توجيه ${res.reassigned} من ${res.checked} متأخّر` };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toUserError(e) };
   }
 }
