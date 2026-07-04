@@ -264,7 +264,16 @@ export async function bulkDelete(ids: string[]): Promise<ActionResult> {
   try {
     const user = await requireManagerAction(); // OWNER/ADMIN فقط — يرفض الموظف
     if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
-    // حرّر وحدات أي حجوزات لهؤلاء العملاء قبل الحذف (الحجز يُحذف تلقائيًا cascade).
+    // امنع حذف عميل عنده بيع مكتمل — البيع سجل مالي ما ينمحي بحذف جماعي.
+    const soldBks = await prisma.booking.findMany({
+      where: { leadId: { in: ids }, stage: { in: ["SOLD", "DELIVERED"] } },
+      select: { lead: { select: { name: true } } },
+    });
+    if (soldBks.length) {
+      const names = [...new Set(soldBks.map((b) => b.lead.name))].join("، ");
+      return { ok: false, error: `ما نقدر نحذف: عندهم مبيعات مسجّلة (${names}) — ألغِ البيع أول أو استثنِهم` };
+    }
+    // حرّر وحدات الحجوزات غير المباعة فقط قبل الحذف (الحجز يُحذف تلقائيًا cascade).
     const bks = await prisma.booking.findMany({ where: { leadId: { in: ids } }, select: { unitId: true } });
     const unitIds = bks.map((b) => b.unitId);
     await prisma.$transaction([

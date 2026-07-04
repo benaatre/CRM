@@ -332,6 +332,10 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
 export async function cancelBooking(bookingId: string, reason?: string): Promise<ActionResult> {
   try {
     const { user, booking } = await assertBookingAccess(bookingId);
+    // بيع مكتمل ما يُلغى إلا من المالك — إلغاؤه يمحي السجل المالي نهائيًا (cascade على BookingEvent).
+    if ((["SOLD", "DELIVERED"] as BookingStage[]).includes(booking.stage) && user.role !== "OWNER") {
+      return { ok: false, error: "هذا بيع مكتمل — إلغاؤه للمالك فقط" };
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.unit.update({ where: { id: booking.unitId }, data: { status: "AVAILABLE" } });
@@ -360,7 +364,9 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
   }
 }
 
-/** نقل مرحلة البيع — يسجّل الحدث (من غيّره + الوقت). متاح لكل المستخدمين (خط مبيعات مشترك). */
+// محصورة بالبائع صاحب الحجز أو المدير/المالك (عبر assertBookingAccess).
+// ملاحظة: تقييد الرجوع من مرحلة البيع (SOLD) سيُضاف لاحقاً (#9).
+/** نقل مرحلة البيع — يسجّل الحدث (من غيّره + الوقت). */
 export async function updateBookingStage(bookingId: string, stage: BookingStage): Promise<ActionResult> {
   try {
     const { user, booking } = await assertBookingAccess(bookingId);
