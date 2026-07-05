@@ -8,6 +8,7 @@ import { toArabicDigits, formatCurrency } from "@/lib/format";
 import type { LeadFilterValues } from "@/lib/lead-filters";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { LeadDrawer } from "./lead-drawer";
+import { NotInterestedDialog } from "./not-interested-dialog";
 import { useLeads } from "./use-leads";
 
 type Employee = { id: string; name: string };
@@ -34,11 +35,14 @@ export function KanbanBoard({
   const [overStage, setOverStage] = useState<LeadStage | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileStage, setMobileStage] = useState<LeadStage>("NEW");
+  const [niLead, setNiLead] = useState<{ id: string; name: string } | null>(null);
 
   // تغيير مرحلة عميل (مشترك بين السحب على سطح المكتب وأزرار النقل على الجوال).
   async function changeStage(id: string, stage: LeadStage) {
     const lead = items.find((l) => l.id === id);
     if (!lead || lead.stage === stage) return;
+    // «غير مهتم» لازم يمرّ بسبب منظّم → نفتح المودال بدل التحويل المباشر (البطاقة تبقى مكانها).
+    if (stage === "CLOSED_LOST") { setNiLead({ id, name: lead.name }); return; }
     setLeads((cur) => cur.map((l) => (l.id === id ? { ...l, stage } : l))); // متفائل
     const res = await fetch(`/api/leads/${id}`, {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ stage }),
@@ -176,6 +180,15 @@ export function KanbanBoard({
         isManager={isManager}
         employees={employees}
       />
+
+      {niLead && (
+        <NotInterestedDialog
+          leadId={niLead.id}
+          leadName={niLead.name}
+          onClose={() => setNiLead(null)}
+          onDone={() => { setNiLead(null); reload(); }}
+        />
+      )}
     </div>
   );
 }

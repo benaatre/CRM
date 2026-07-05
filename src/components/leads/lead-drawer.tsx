@@ -21,6 +21,7 @@ import { BookingForm } from "@/components/bookings/booking-form";
 import { cancelBooking } from "@/lib/actions/bookings";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
+import { NotInterestedDialog } from "./not-interested-dialog";
 import { useFollowUps } from "./use-followups";
 
 type Employee = { id: string; name: string };
@@ -47,6 +48,7 @@ export function LeadDrawer({
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("data");
   const [showBooking, setShowBooking] = useState(false);
+  const [showNi, setShowNi] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -240,6 +242,8 @@ export function LeadDrawer({
                           const v = e.target.value as LeadStage;
                           // اختيار «محجوز/عربون» يفتح نموذج الحجز بدل تغيير المرحلة مباشرة
                           if (v === "RESERVED") { setShowBooking(true); return; }
+                          // «غير مهتم/خاسر» لازم يمرّ بسبب منظّم → مودال (القائمة ترجع لقيمتها).
+                          if (v === "CLOSED_LOST") { setShowNi(true); return; }
                           startTransition(async () => { await updateLeadStage(lead.id, v); refresh(); });
                         }}
                         className="select-base"
@@ -322,6 +326,15 @@ export function LeadDrawer({
           leadId={lead.id}
           leadName={lead.name}
           onDone={refresh}
+        />
+      )}
+
+      {lead && showNi && (
+        <NotInterestedDialog
+          leadId={lead.id}
+          leadName={lead.name}
+          onClose={() => setShowNi(false)}
+          onDone={() => { setShowNi(false); refresh(); }}
         />
       )}
     </>

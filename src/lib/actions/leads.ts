@@ -159,6 +159,10 @@ export async function updateLeadStage(
   try {
     const { user, lead } = await assertLeadAccess(leadId);
     if (lead.stage === stage) return { ok: true };
+    // «غير مهتم» لا يُقبل كتحويل مرحلة مباشر — لازم يمرّ بسبب منظّم عبر POST /followups.
+    if (stage === LeadStage.CLOSED_LOST) {
+      return { ok: false, error: "تحويل «غير مهتم» لازم يكون مع سبب — سجّله من نتيجة المتابعة." };
+    }
 
     await prisma.$transaction([
       prisma.lead.update({

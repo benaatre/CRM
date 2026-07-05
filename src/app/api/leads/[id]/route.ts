@@ -49,6 +49,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "مرحلة غير صحيحة" }, { status: 400 });
   }
   if (lead.stage === stage) return NextResponse.json({ ok: true });
+  // «غير مهتم» لا يُقبل كتحويل مرحلة مباشر — المسار الشرعي الوحيد عبر POST /followups بسبب منظّم.
+  if (stage === "CLOSED_LOST") {
+    return NextResponse.json({ error: "تحويل «غير مهتم» لازم يكون مع سبب — استخدم نتيجة المتابعة." }, { status: 400 });
+  }
 
   // أول تواصل تلقائيًا: لو ما تحدّدت المرحلة الأولى وسُحب لإحدى المراحل الثلاث.
   const fc = !lead.firstContactStage ? STAGE_TO_FIRST[stage] : undefined;

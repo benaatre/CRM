@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
 import { stageLabels } from "@/lib/labels";
+import { NotInterestedReasons, buildNotInterestedBody } from "./not-interested-dialog";
 
 type Project = { id: string; name: string };
 type SaveBody = {
@@ -13,22 +14,6 @@ type SaveBody = {
   note?: string;
   nextDate?: string;
 };
-
-const NI_REASONS = ["الموقع", "السعر", "المساحة", "غير مهتم نهائيًا"];
-
-// سبب «غير مهتم» → نتيجة FollowUpResult منظّمة (لتحليلات الأسباب لاحقًا).
-// أسباب محدّدة فقط؛ «غير مهتم نهائيًا»/بدون سبب = NOT_INTERESTED_FINAL.
-const NI_REASON_RESULT: Record<string, FollowUpResult> = {
-  الموقع: "NOT_INTERESTED_LOCATION",
-  السعر: "NOT_INTERESTED_PRICE",
-  المساحة: "NOT_INTERESTED_SPACE",
-};
-// السبب الرئيسي المنظّم = أول سبب محدّد مختار حسب ترتيب العرض (الموقع ← السعر ← المساحة)؛
-// وإلا نهائي. بقية الأسباب المختارة تبقى نصًّا في note (لا نعقّد النموذج).
-function primaryNiResult(rs: Set<string>): FollowUpResult {
-  for (const r of NI_REASONS) if (NI_REASON_RESULT[r] && rs.has(r)) return NI_REASON_RESULT[r];
-  return "NOT_INTERESTED_FINAL";
-}
 
 // أزرار نتيجة المتابعة المتاحة حسب مرحلة العميل الحالية — كل مرحلة تعرض خطواتها
 // المباشرة التالية فقط (حسب قمع المبيعات)، لا كل الخيارات مع بعض.
@@ -131,11 +116,8 @@ export function FollowUpsForm({
       case "negotiation":
         return post({ type: "CALL", result: "NEGOTIATING", section: "INTERESTED", stage: "NEGOTIATION", note: compose("تفاوض", [], note) });
       case "notInterested":
-        // نحاول لاحقًا = انسحاب ناعم (يبقى FOLLOW_UP_LATER، لا نصنّفه سببًا نهائيًا).
-        // نهائي = غير مهتم فعلي → نتيجة منظّمة بالسبب الرئيسي (CLOSED_LOST).
-        return post(niRetry === "yes"
-          ? { type: "CALL", result: "FOLLOW_UP_SCHEDULED", section: "NOT_INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("غير مهتم — نحاول لاحقًا", [...reasons], note), nextDate: date }
-          : { type: "CALL", result: primaryNiResult(reasons), section: "NOT_INTERESTED", stage: "CLOSED_LOST", note: compose("غير مهتم", [...reasons], note) });
+        // منطق «غير مهتم» موحّد عبر المكوّن المشترك (نفس النتيجة المنظّمة ونفس الملاحظة).
+        return post(buildNotInterestedBody(reasons, niRetry, date, note));
     }
   }
 
@@ -254,27 +236,16 @@ export function FollowUpsForm({
             </div>
           )}
 
-          {/* غير مهتم: أسباب + نحاول لاحقًا */}
+          {/* غير مهتم: أسباب + نحاول لاحقًا — عبر المكوّن المشترك */}
           {sel === "notInterested" && (
-            <div className="space-y-2">
-              <span className="text-xs text-muted-foreground">السبب (اختياري — أكثر من واحد):</span>
-              <div className="grid grid-cols-2 gap-2">
-                {NI_REASONS.map((r) => (
-                  <button key={r} type="button" onClick={() => toggle(setReasons, r)} className={`rounded-lg border px-2.5 py-1.5 text-xs ${reasons.has(r) ? "border-destructive bg-destructive/10 text-destructive" : "border-border text-muted-foreground"}`}>{r}</button>
-                ))}
-              </div>
-              <span className="text-xs text-muted-foreground">نحاول معه بعد فترة؟</span>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setNiRetry("yes")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${niRetry === "yes" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>نعم</button>
-                <button type="button" onClick={() => setNiRetry("no")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${niRetry === "no" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>لا</button>
-              </div>
-              {niRetry === "yes" && (
-                <label className="block space-y-1">
-                  <span className="text-xs text-muted-foreground">تاريخ المحاولة القادمة</span>
-                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-                </label>
-              )}
-            </div>
+            <NotInterestedReasons
+              reasons={reasons}
+              onToggle={(r) => toggle(setReasons, r)}
+              retry={niRetry}
+              onRetry={setNiRetry}
+              date={date}
+              onDate={setDate}
+            />
           )}
 
           {/* ملاحظة (اختياري) لكل الأنواع */}
