@@ -14,8 +14,8 @@ export default async function LeadsPage({
   const manager = isManager(user.role);
 
   const sp = await searchParams;
-  const tab: "working" | "archived" | "unassigned" =
-    sp.tab === "archived" ? "archived" : sp.tab === "unassigned" ? "unassigned" : "working";
+  const tab: "working" | "archived" | "hidden" | "unassigned" =
+    sp.tab === "archived" ? "archived" : sp.tab === "hidden" ? "hidden" : sp.tab === "unassigned" ? "unassigned" : "working";
   const { values, assigneeIds } = parseLeadFilters(sp);
 
   const [counts, employees, notContacted] = await Promise.all([

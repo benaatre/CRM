@@ -167,7 +167,7 @@ const rowInclude = {
   bookings: { select: { stage: true, finalPrice: true, collectedAmount: true }, orderBy: { createdAt: "desc" }, take: 1 },
 } as const;
 
-export type LeadTab = "working" | "archived" | "unassigned" | "all";
+export type LeadTab = "working" | "archived" | "hidden" | "unassigned" | "all";
 
 export type LeadFilters = {
   tab?: LeadTab;
@@ -200,8 +200,10 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
         stage: "NEW",
         isArchived: false,
       };
-    case "archived": // تم الحجز/الشراء: محجوز أو مقفول-بيع، أو مؤرشف
-      return { OR: [{ stage: { in: BOOKED_STAGES } }, { isArchived: true }] };
+    case "archived": // تم الحجز/الشراء: المرحلة فقط (محجوز أو مقفول-بيع) — لا يعتمد isArchived.
+      return { stage: { in: BOOKED_STAGES } };
+    case "hidden": // مؤرشف: مخفيّ يدويًا وغير محجوز/مقفول-بيع (يُصلَح فرديًا بـ«إلغاء الأرشفة»).
+      return { isArchived: true, stage: { notIn: BOOKED_STAGES } };
     case "working": // جاري العمل: موزّع على موظف (ليس مالكًا) + غير مؤرشف + ليس محجوزًا/مقفولًا
       return {
         assignedToId: { not: null, ...(ownerIds.length ? { notIn: ownerIds } : {}) },
@@ -253,16 +255,17 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   return leads.map(toRow);
 }
 
-/** أعداد التبويبات (جاري العمل / تم الحجز / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
-export async function getLeadCounts(): Promise<{ working: number; archived: number; unassigned: number }> {
+/** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
+export async function getLeadCounts(): Promise<{ working: number; archived: number; hidden: number; unassigned: number }> {
   const { where } = await scopeForUser();
   const ownerIds = await getOwnerIds();
-  const [working, archived, unassigned] = await Promise.all([
+  const [working, archived, hidden, unassigned] = await Promise.all([
     prisma.lead.count({ where: { ...where, ...tabWhere("working", ownerIds) } }),
     prisma.lead.count({ where: { ...where, ...tabWhere("archived", ownerIds) } }),
+    prisma.lead.count({ where: { ...where, ...tabWhere("hidden", ownerIds) } }),
     prisma.lead.count({ where: { ...where, ...tabWhere("unassigned", ownerIds) } }),
   ]);
-  return { working, archived, unassigned };
+  return { working, archived, hidden, unassigned };
 }
 
 /** العملاء مجمّعين حسب المرحلة — للكانبان. */

@@ -10,8 +10,9 @@ import {
 import { formatDate, toArabicDigits } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import {
-  transferLeads, recoverLeads, bulkArchive, bulkDelete,
+  transferLeads, recoverLeads, bulkArchive, bulkDelete, unarchiveLeads,
 } from "@/lib/actions/leads";
+import type { UnarchiveMode } from "@/lib/actions/leads";
 import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmployeeLoads } from "@/lib/actions/team";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
@@ -20,7 +21,7 @@ import { ImportDialog } from "@/components/team/import-dialog";
 import { useLeads } from "./use-leads";
 
 type Employee = { id: string; name: string };
-type Tab = "working" | "archived" | "unassigned";
+type Tab = "working" | "archived" | "hidden" | "unassigned";
 type Filters = { q: string; stages: string[]; emps: string[] };
 const PAGE_SIZE = 12;
 
@@ -28,7 +29,7 @@ export function LeadsView({
   query, counts, notContacted, tab, isManager, employees, filters,
 }: {
   query: string;
-  counts: { working: number; archived: number; unassigned: number };
+  counts: { working: number; archived: number; hidden: number; unassigned: number };
   notContacted: number;
   tab: Tab;
   isManager: boolean;
@@ -45,6 +46,7 @@ export function LeadsView({
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<{ ids: string[] } | null>(null);
+  const [unarchive, setUnarchive] = useState<{ ids: string[] } | null>(null);
 
   // إعادة الترقيم/التحديد عند تغيّر النتائج.
   useEffect(() => { setPage(1); setSel(new Set()); }, [rows]);
@@ -53,6 +55,7 @@ export function LeadsView({
   function goTab(v: Tab) {
     const p = new URLSearchParams();
     if (v === "archived") p.set("tab", "archived");
+    else if (v === "hidden") p.set("tab", "hidden");
     else if (v === "unassigned") p.set("tab", "unassigned");
     if (filters.q) p.set("q", filters.q);
     if (filters.stages.length) p.set("stages", filters.stages.join(","));
@@ -101,6 +104,7 @@ export function LeadsView({
           ...(isManager ? [["unassigned", "عملاء غير موزّعين", counts.unassigned] as const] : []),
           ["working", "جاري العمل", counts.working] as const,
           ["archived", "تم الحجز / الشراء", counts.archived] as const,
+          ["hidden", "مؤرشف", counts.hidden] as const,
         ])).map(([v, label, count]) => (
           <button key={v} onClick={() => goTab(v)} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>
             {label} <span className="text-xs">({toArabicDigits(count)})</span>
@@ -123,7 +127,7 @@ export function LeadsView({
             isManager={isManager}
             employees={employees}
             filters={filters}
-            preserve={{ tab: tab === "archived" ? "archived" : "" }}
+            preserve={{ tab: tab === "archived" || tab === "hidden" ? tab : "" }}
             hideUnassignedEmp={tab === "working"}
             notContacted={tab === "working" ? notContacted : undefined}
           />
@@ -144,7 +148,11 @@ export function LeadsView({
               {isManager && (
                 <button onClick={() => setTransfer({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">تحويل</button>
               )}
-              <button onClick={() => run(async () => { const r = await bulkArchive([...sel]); clearSel(); return r; })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">أرشفة</button>
+              {tab === "hidden" ? (
+                <button onClick={() => setUnarchive({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50">إرجاع من الأرشيف</button>
+              ) : (
+                <button onClick={() => run(async () => { const r = await bulkArchive([...sel]); clearSel(); return r; })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">أرشفة</button>
+              )}
               {isManager && (
                 <button
                   onClick={() => { if (confirm(`متأكد تبي تحذف ${toArabicDigits(sel.size)} عميل نهائيًا؟ ما يمكن التراجع.`)) run(async () => { const r = await bulkDelete([...sel]); clearSel(); return r; }); }}
@@ -291,6 +299,18 @@ export function LeadsView({
               clearSel();
               return res;
             });
+          }}
+        />
+      )}
+
+      {unarchive && (
+        <UnarchiveDialog
+          count={unarchive.ids.length}
+          onClose={() => setUnarchive(null)}
+          onConfirm={(mode) => {
+            const ids = unarchive.ids;
+            setUnarchive(null);
+            run(async () => { const r = await unarchiveLeads(ids, mode); clearSel(); return r; });
           }}
         />
       )}
@@ -469,6 +489,51 @@ function TransferDialog({
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
             <button onClick={() => canConfirm && onConfirm(mode, needsEmployee ? to : null)} disabled={!canConfirm} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">تنفيذ</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// حوار الإرجاع من الأرشيف — ٣ أنماط. المتابعات محفوظة في كلها.
+function UnarchiveDialog({
+  count, onClose, onConfirm,
+}: {
+  count: number;
+  onClose: () => void;
+  onConfirm: (mode: UnarchiveMode) => void;
+}) {
+  const [mode, setMode] = useState<UnarchiveMode>("asis");
+
+  const options: { value: UnarchiveMode; label: string; desc: string }[] = [
+    { value: "asis", label: "رجّعه زي ما كان", desc: "يشيل الأرشفة بس — المرحلة والمتابعات تبقى كما هي. يرجع لتبويبه الطبيعي (جاري العمل لو مُسند، غير موزّع لو بلا موظف)." },
+    { value: "freshUnassigned", label: "رجّعه جديد غير موزّع", desc: "يشيل الأرشفة + يرجّع المرحلة «جديد» + يشيله من الموظف. يروح حوض «غير موزّعين». المتابعات محفوظة." },
+    { value: "freshKeepEmployee", label: "رجّعه جديد مع نفس الموظف", desc: "يشيل الأرشفة + يرجّع المرحلة «جديد» + يبقى مع نفس الموظف الحالي. المتابعات محفوظة." },
+  ];
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-5 shadow-2xl">
+          <h2 className="font-bold text-foreground">إرجاع {toArabicDigits(count)} عميل من الأرشيف</h2>
+
+          <div className="space-y-2">
+            {options.map((o) => (
+              <label key={o.value} className={`block cursor-pointer rounded-xl border p-3 transition-colors ${mode === o.value ? "border-gold bg-gold/10" : "border-border hover:bg-secondary/40"}`}>
+                <div className="flex items-center gap-2">
+                  <input type="radio" name="unarchive-mode" checked={mode === o.value} onChange={() => setMode(o.value)} />
+                  <span className="text-sm font-medium text-foreground">{o.label}</span>
+                </div>
+                <p className="mt-1 pr-6 text-xs text-muted-foreground">{o.desc}</p>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
+            <button onClick={() => onConfirm(mode)} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">تنفيذ</button>
           </div>
         </div>
       </div>

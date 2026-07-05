@@ -12,7 +12,7 @@ export type ParsedLeadFilters = {
 };
 
 /** بناء سلسلة استعلام GET /api/leads من التبويب + الفلاتر. (working = الافتراضي بلا بارامتر). */
-export function buildLeadsQuery(tab: "working" | "archived" | "unassigned" | "all", v: LeadFilterValues): string {
+export function buildLeadsQuery(tab: "working" | "archived" | "hidden" | "unassigned" | "all", v: LeadFilterValues): string {
   const p = new URLSearchParams();
   if (tab !== "working") p.set("tab", tab);
   if (v.q) p.set("q", v.q);

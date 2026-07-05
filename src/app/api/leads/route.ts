@@ -18,9 +18,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const tabParam = url.searchParams.get("tab");
   const tab = tabParam === "archived" ? "archived"
-    : tabParam === "unassigned" ? "unassigned"
-      : tabParam === "all" ? "all"
-        : "working";
+    : tabParam === "hidden" ? "hidden"
+      : tabParam === "unassigned" ? "unassigned"
+        : tabParam === "all" ? "all"
+          : "working";
 
   const { q, stages, assigneeIds, includeUnassigned } = parseLeadFilters({
     q: url.searchParams.get("q") ?? undefined,

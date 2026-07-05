@@ -313,13 +313,43 @@ export async function bulkArchive(ids: string[]): Promise<ActionResult> {
   }
 }
 
+/** أنماط إرجاع العميل من الأرشيف (٦-٤). */
+export type UnarchiveMode = "asis" | "freshUnassigned" | "freshKeepEmployee";
+
+/**
+ * إرجاع عملاء من تبويب «مؤرشف». المتابعات (FollowUp) لا تُمسح أبدًا في أي نمط.
+ * النطاق مثل bulkArchive: الموظف على عملائه فقط، المدير/المالك على الكل (فرض على الخادم).
+ * - asis: يشيل الأرشفة فقط (المرحلة والإسناد كما هما) → يرجع لتبويبه الطبيعي.
+ * - freshUnassigned: يشيل الأرشفة + المرحلة «جديد» + بلا موظف → حوض «غير موزّعين».
+ * - freshKeepEmployee: يشيل الأرشفة + المرحلة «جديد» + يبقى مع نفس الموظف.
+ */
+export async function unarchiveLeads(ids: string[], mode: UnarchiveMode): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
+    const scope = isManager(user.role) ? {} : { assignedToId: user.id };
+    const data =
+      mode === "freshUnassigned"
+        ? { isArchived: false, stage: LeadStage.NEW, assignedToId: null }
+        : mode === "freshKeepEmployee"
+          ? { isArchived: false, stage: LeadStage.NEW }
+          : { isArchived: false }; // asis (الافتراضي الآمن)
+    const res = await prisma.lead.updateMany({ where: { id: { in: ids }, ...scope }, data });
+    await logAudit(prisma, { userId: user.id, action: "lead.unarchived", entity: "lead", summary: `أرجع ${res.count} عميل من الأرشيف (${mode})` });
+    revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
 /** إرجاع العميل لمرحلة «جديد» — مع تسجيل في السجل. */
 export async function resetLeadToNew(leadId: string): Promise<ActionResult> {
   try {
     const { user, lead } = await assertLeadAccess(leadId);
     if (lead.stage === LeadStage.NEW) return { ok: true };
     await prisma.$transaction([
-      prisma.lead.update({ where: { id: leadId }, data: { stage: LeadStage.NEW, lastContact: new Date() } }),
+      prisma.lead.update({ where: { id: leadId }, data: { stage: LeadStage.NEW, lastContact: new Date(), isArchived: false } }),
       prisma.activity.create({
         data: { leadId, userId: user.id, type: ActivityType.STAGE_CHANGE, note: "أُرجع لمرحلة جديد" },
       }),
@@ -506,7 +536,7 @@ export async function recoverLeads(ids: string[]): Promise<ActionResult> {
         data: {
           assignedToId: null, stage: LeadStage.NEW, attempts: 0,
           firstContactStage: null, firstContactDate: null, firstContactAt: null,
-          lastContact: null, nextFollowup: null,
+          lastContact: null, nextFollowup: null, isArchived: false,
         },
       });
       await tx.activity.createMany({
