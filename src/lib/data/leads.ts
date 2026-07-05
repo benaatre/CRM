@@ -20,6 +20,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
+import type { LeadSort } from "@/lib/lead-filters";
+import type { Prisma } from "@prisma/client";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
 export type LeadRow = {
@@ -175,6 +177,15 @@ export type LeadFilters = {
   assigneeIds?: string[];
   includeUnassigned?: boolean;
   q?: string;
+  sort?: LeadSort;
+};
+
+// خريطة الترتيب → orderBy. «الأحدث نشاطًا» = lastContact (nulls آخرًا) مع createdAt كسر تعادل.
+const LEAD_ORDER_BY: Record<LeadSort, Prisma.LeadOrderByWithRelationInput[]> = {
+  activity: [{ lastContact: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+  newest: [{ createdAt: "desc" }],
+  oldest: [{ createdAt: "asc" }],
+  name: [{ name: "asc" }],
 };
 
 // مراحل تُستثنى من «جاري العمل» (محجوز/مقفول-بيع/خاسر).
@@ -222,7 +233,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, q } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
@@ -248,7 +259,7 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
 
   const leads = await prisma.lead.findMany({
     where: { ...where, ...(and.length ? { AND: and } : {}) },
-    orderBy: [{ createdAt: "desc" }],
+    orderBy: LEAD_ORDER_BY[sort],
     include: rowInclude,
     take: 500, // سقف مؤقت لحين الترقيم server-side (#14)
   });

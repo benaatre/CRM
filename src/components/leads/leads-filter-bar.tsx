@@ -5,9 +5,18 @@ import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
-import type { LeadFilterValues } from "@/lib/lead-filters";
+import { DEFAULT_LEAD_SORT } from "@/lib/lead-filters";
+import type { LeadFilterValues, LeadSort } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
+
+// خيارات الترتيب (لهجة سعودية) — بترتيب العرض في القائمة.
+const SORT_OPTIONS: { value: LeadSort; label: string }[] = [
+  { value: "activity", label: "الأحدث نشاطًا" },
+  { value: "newest", label: "الأحدث إضافةً" },
+  { value: "oldest", label: "الأقدم إضافةً" },
+  { value: "name", label: "حسب الاسم" },
+];
 
 // مظلّة «مهتم»: كل المتفاعلين (مهتم + زار + تفاوض + موعد لاحق) — الاستعلام يدعم stage IN أصلاً.
 const INTEREST_UMBRELLA = ["INTERESTED", "VIEWING", "NEGOTIATION", "FOLLOW_UP_LATER"];
@@ -52,6 +61,8 @@ export function LeadsFilterBar({
     if (stages.length) p.set("stages", stages.join(","));
     const emps = next.emps ?? filters.emps;
     if (emps.length) p.set("emps", emps.join(","));
+    const sort = next.sort ?? filters.sort;
+    if (sort && sort !== DEFAULT_LEAD_SORT) p.set("sort", sort); // نظافة الرابط
     const s = p.toString();
     return s ? `${basePath}?${s}` : basePath;
   }
@@ -129,6 +140,13 @@ export function LeadsFilterBar({
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1">
           <input value={qLocal} onChange={(e) => setQLocal(e.target.value)} placeholder="ابحث بالاسم أو الجوال…" className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-gold" />
+        </div>
+        {/* الترتيب */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">الترتيب:</span>
+          <select value={filters.sort} onChange={(e) => go({ sort: e.target.value as LeadSort })} className="select-base w-auto" aria-label="ترتيب القائمة">
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </div>
         {hasFilters && (
           <button

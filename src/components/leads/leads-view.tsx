@@ -20,9 +20,11 @@ import { FollowUpsDrawer } from "./followups-drawer";
 import { ImportDialog } from "@/components/team/import-dialog";
 import { useLeads } from "./use-leads";
 
+import { DEFAULT_LEAD_SORT, type LeadSort } from "@/lib/lead-filters";
+
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
-type Filters = { q: string; stages: string[]; emps: string[] };
+type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort };
 const PAGE_SIZE = 12;
 
 export function LeadsView({
@@ -60,6 +62,7 @@ export function LeadsView({
     if (filters.q) p.set("q", filters.q);
     if (filters.stages.length) p.set("stages", filters.stages.join(","));
     if (filters.emps.length) p.set("emps", filters.emps.join(","));
+    if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort); // يحفظ الترتيب عبر التبويبات
     const s = p.toString();
     startTransition(() => router.push(s ? `/leads?${s}` : "/leads"));
   }

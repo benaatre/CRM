@@ -23,12 +23,13 @@ export async function GET(req: Request) {
         : tabParam === "all" ? "all"
           : "working";
 
-  const { q, stages, assigneeIds, includeUnassigned } = parseLeadFilters({
+  const { q, stages, assigneeIds, includeUnassigned, sort } = parseLeadFilters({
     q: url.searchParams.get("q") ?? undefined,
     stages: url.searchParams.get("stages") ?? undefined,
     emps: url.searchParams.get("emps") ?? undefined,
+    sort: url.searchParams.get("sort") ?? undefined,
   });
 
-  const leads = await getLeads({ tab, stages, assigneeIds, includeUnassigned, q });
+  const leads = await getLeads({ tab, stages, assigneeIds, includeUnassigned, q, sort });
   return NextResponse.json({ leads });
 }
