@@ -45,6 +45,7 @@ export type BookingCard = {
   discountPercentAtBooking: number | null;
   maxDiscountPercentAtBooking: number | null;
   collected: number | null;
+  remaining: number | null;
   sellerName: string | null;
   // حقول الدفع المرنة
   expectedCheckDate: Date | null;
@@ -121,8 +122,10 @@ export async function getBookings(): Promise<BookingsData> {
       discountOverage: dec(b.discountOverage) ?? 0,
       discountPercentAtBooking: dec(b.discountPercentAtBooking),
       maxDiscountPercentAtBooking: dec(b.maxDiscountPercentAtBooking),
-      // المحصّل موحّد: بيع مكتمل = كامل السعر، غيره = المسجّل فعلياً (booking-finance).
+      // المحصّل والمتبقّي موحّدان من bookingCollection المحسوبة (لا العمود المخزّن remainingAmount):
+      // «تم البيع والاستلام» (DELIVERED) = كامل السعر ومتبقّي صفر، غيره = المسجّل فعلياً تراكميًا.
       collected: mine ? bookingCollection(b.stage, b.finalPrice.toNumber(), b.collectedAmount.toNumber()).collected : null,
+      remaining: mine ? bookingCollection(b.stage, b.finalPrice.toNumber(), b.collectedAmount.toNumber()).remaining : null,
       sellerName: b.seller?.name ?? null,
       expectedCheckDate: b.expectedCheckDate,
       expectedTransferDate: b.expectedTransferDate,

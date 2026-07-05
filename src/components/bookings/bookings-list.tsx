@@ -12,7 +12,7 @@ import {
 } from "@/lib/labels";
 import { formatCurrency, formatCurrencyFull, formatNumberShort, formatDate, timeAgo, toArabicDigits } from "@/lib/format";
 import type { BookingCard, BookingsData } from "@/lib/data/bookings";
-import { updateBookingStage, setFinanceRejected, cancelBooking } from "@/lib/actions/bookings";
+import { updateBookingStage, setFinanceRejected, cancelBooking, addBookingPayment } from "@/lib/actions/bookings";
 
 export function BookingsList({ data }: { data: BookingsData }) {
   const router = useRouter();
@@ -94,6 +94,8 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
   const [showLog, setShowLog] = useState(false);
+  const [showPay, setShowPay] = useState(false);
+  const [payAmount, setPayAmount] = useState("");
   // من يملك التحكم: بائع الحجز أو المدير/المالك (يطابق assertBookingAccess على الخادم).
   const canManage = manager || b.sellerId === currentUserId;
   const isSold = b.stage === "SOLD" || b.stage === "DELIVERED";
@@ -119,6 +121,19 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
   }
   function clearRejected() {
     startTransition(async () => { await setFinanceRejected(b.id, false); router.refresh(); });
+  }
+  function submitPayment() {
+    setError(null);
+    const amount = Number(payAmount.replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("اكتب مبلغ دفعة صحيح أكبر من صفر");
+      return;
+    }
+    startTransition(async () => {
+      const res = await addBookingPayment(b.id, amount);
+      if (!res.ok) setError(res.error ?? "صار خطأ");
+      else { setShowPay(false); setPayAmount(""); router.refresh(); }
+    });
   }
   function cancel() {
     if (!confirm(`متأكد تبي تلغي حجز وحدة ${b.unitNumber}؟ بترجع «متاحة» ويختفي من خط المبيعات.`)) return;
@@ -186,7 +201,6 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
         {b.includesVAT && b.vatAmount != null && <Row label="ض. القيمة المضافة ١٥٪" value={formatCurrencyFull(b.vatAmount)} />}
         {b.includesVAT && b.vatAmount != null && b.finalPrice != null && <Row label="الإجمالي مع VAT" value={formatCurrencyFull(b.finalPrice + b.vatAmount)} strong />}
         {b.secondaryPhone && <Row label="رقم إضافي" value={b.secondaryPhone} />}
-        <Row label="محصّل" value={formatCurrencyFull(b.collected)} />
         {b.expectedTransferDate && <Row label="موعد التحويل" value={formatDate(b.expectedTransferDate)} />}
         {b.installments && b.installments.length > 0 && <Row label="الدفعات" value={`${toArabicDigits(b.installments.length)} دفعة`} />}
         {b.cashAmount != null && <Row label="مبلغ الكاش" value={formatCurrencyFull(b.cashAmount)} />}
@@ -195,6 +209,24 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
         <Row label="التسليم" value={deliveryStatusLabels[b.deliveryStatus]} />
         {b.sellerName && <Row label="البائع" value={b.sellerName} />}
       </dl>
+
+      {/* ملخّص المحصّل — الأرقام الثلاثة (مشتقّة من bookingCollection المحسوبة) */}
+      {b.finalPrice != null && (
+        <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-border bg-secondary/30 p-3 text-center">
+          <div>
+            <div className="text-[0.65rem] text-muted-foreground">السعر بعد الخصم</div>
+            <div className="mt-1 text-sm font-bold text-foreground">{formatCurrencyFull(b.finalPrice)}</div>
+          </div>
+          <div className="border-x border-border">
+            <div className="text-[0.65rem] text-muted-foreground">المحصّل حتى الآن</div>
+            <div className="mt-1 text-sm font-bold text-success">{formatCurrencyFull(b.collected)}</div>
+          </div>
+          <div>
+            <div className="text-[0.65rem] text-muted-foreground">المتبقّي</div>
+            <div className={`mt-1 text-sm font-bold ${(b.remaining ?? 0) > 0 ? "text-gold" : "text-success"}`}>{formatCurrencyFull(b.remaining)}</div>
+          </div>
+        </div>
+      )}
 
       {b.financeRejected && b.financeRejectedReason && (
         <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">السبب: {b.financeRejectedReason}</p>
@@ -226,6 +258,10 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
                 )}
               </>
             )}
+            {/* تسجيل دفعة: يظهر ما دام فيه متبقّي (يختفي عند التحصيل الكامل/التسليم) */}
+            {(b.remaining ?? 0) > 0 && (
+              <button onClick={() => { setShowPay((v) => !v); setError(null); }} disabled={pending} className="flex items-center gap-1 rounded-lg border border-gold/50 bg-gold/10 px-3 py-2 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"><Coins className="size-3.5" /> تسجيل دفعة</button>
+            )}
             {/* إلغاء الحجز: قبل البيع للبائع/المدير، وبعد البيع للمالك فقط */}
             {(!isSold || isOwner) && (
               <button onClick={cancel} disabled={pending} className="flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"><Ban className="size-3.5" /> إلغاء الحجز</button>
@@ -234,6 +270,27 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
           </>
         )}
       </div>
+
+      {showPay && canManage && (b.remaining ?? 0) > 0 && (
+        <div className="mt-2 rounded-lg border border-gold/30 bg-gold/[0.06] p-3">
+          <div className="mb-2 text-xs text-muted-foreground">
+            المتبقّي على الحجز: <span className="font-bold text-gold">{formatCurrencyFull(b.remaining)}</span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !pending) submitPayment(); }}
+              inputMode="numeric"
+              placeholder="مبلغ الدفعة بالريال…"
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-gold"
+            />
+            <button onClick={submitPayment} disabled={pending} className="rounded-lg bg-gold px-4 py-1.5 text-sm font-medium text-[#0A0A0B] hover:bg-gold/90 disabled:opacity-50">
+              {pending ? "جارٍ…" : "تأكيد الدفعة"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showReason && !b.financeRejected && (
         <div className="mt-2 flex gap-2">

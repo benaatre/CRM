@@ -112,13 +112,13 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const vatAmount = includesVAT ? Math.round(finalPrice * 0.15) : null;
     const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
 
-    // المحصّل = العربون · المتبقي = الإجمالي (مع VAT لو مفعّل) − العربون
-    const totalAfterDiscount = finalPrice + (vatAmount ?? 0);
-    const collectedAmount = deposit ?? 0;
-    const remainingAmount = totalAfterDiscount - collectedAmount;
-
-    // «تم الشراء» الفوري (كاش): يُسجَّل مباعًا مباشرة بدل حجز
+    // «تم الشراء» الفوري (كاش): يُسجَّل مباعًا مباشرة بدل حجز — مدفوع كامل.
     const immediateSale = String(formData.get("immediateSale") ?? "") === "yes";
+
+    // المحصّل: شراء فوري = كامل السعر بعد الخصم؛ حجز عادي = العربون (يتراكم لاحقًا عبر «تسجيل دفعة»).
+    const totalAfterDiscount = finalPrice + (vatAmount ?? 0);
+    const collectedAmount = immediateSale ? finalPrice : (deposit ?? 0);
+    const remainingAmount = totalAfterDiscount - collectedAmount;
 
     // تفاصيل الدفعات [{amount, date}]
     let installments: { amount: number; date: string }[] | null = null;
@@ -455,5 +455,53 @@ export async function setFinanceRejected(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * تسجيل دفعة محصّلة على حجز — تراكمية (تُضاف للمحصّل الحالي لا تستبدله).
+ * الصلاحية: المالك/المدير أو صاحب الحجز فقط (نفس نمط الإلغاء/التعديل — على الخادم).
+ * حارسان: المبلغ موجب (> صفر)، والمحصّل التراكمي ما يتجاوز السعر بعد الخصم.
+ */
+export async function addBookingPayment(bookingId: string, amount: number): Promise<ActionResult> {
+  try {
+    const { user } = await assertBookingAccess(bookingId); // بائع الحجز أو مدير/مالك فقط
+    // حارس ١: المبلغ موجب — لا سالب ولا صفر.
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { ok: false, error: "اكتب مبلغ دفعة صحيح أكبر من صفر" };
+    }
+    const b = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { finalPrice: true, collectedAmount: true },
+    });
+    if (!b) return { ok: false, error: "الحجز غير موجود" };
+    const finalPrice = b.finalPrice.toNumber();
+    const current = b.collectedAmount.toNumber();
+    const next = current + amount;
+    // حارس ٢: المحصّل التراكمي ما يتجاوز السعر بعد الخصم.
+    if (next > finalPrice) {
+      const room = Math.max(0, finalPrice - current);
+      return {
+        ok: false,
+        error: room > 0
+          ? `المبلغ أكبر من المتبقّي — أقصى دفعة ${room.toLocaleString("en-US")} ر.س`
+          : "الحجز محصّل بالكامل — ما فيه متبقّي",
+      };
+    }
+    await prisma.booking.update({
+      where: { id: bookingId },
+      // remainingAmount المخزّن يُواءم مع المحسوب (بلا VAT) للاتساق.
+      data: { collectedAmount: next, remainingAmount: Math.max(0, finalPrice - next) },
+    });
+    // سجل تدقيق — فشله ما يُفشِل تسجيل الدفعة.
+    await notifyBestEffort("booking.payment", () =>
+      logAudit(prisma, {
+        userId: user.id, action: "booking.payment", entity: "booking", entityId: bookingId,
+        summary: `سجّل دفعة ${amount.toLocaleString("en-US")} ر.س (المحصّل ${next.toLocaleString("en-US")} من ${finalPrice.toLocaleString("en-US")})`,
+      }));
+    revalidateBookings();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e, "booking.payment") };
   }
 }

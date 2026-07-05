@@ -3,7 +3,6 @@ import "server-only";
 import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { stageLabels, channelLabels } from "@/lib/labels";
-import { SOLD_STAGES } from "@/lib/booking-finance";
 
 /** يبني ملخّصًا مضغوطًا (مُحجّمًا بالدور) لتغذية المساعد الذكي — بدون بيانات حساسة زائدة. */
 export async function buildAiContext(user: { id: string; role: Role }): Promise<string> {
@@ -30,13 +29,13 @@ export async function buildAiContext(user: { id: string; role: Role }): Promise<
   const channels: Record<string, number> = {};
   for (const g of byChannel) channels[channelLabels[g.channel]] = g._count._all;
 
-  // المحصّل موحّد: بيع مكتمل = كامل السعر بعد الخصم، غيره = العربون المسجّل (يطابق bookingCollection).
+  // المحصّل: «تم البيع والاستلام» (DELIVERED) = كامل السعر، غيره = المسجّل فعلياً (يطابق bookingCollection).
   const bookingScope = manager ? {} : { sellerId: user.id };
-  const [soldColl, otherColl] = await Promise.all([
-    prisma.booking.aggregate({ where: { ...bookingScope, stage: { in: SOLD_STAGES } }, _sum: { finalPrice: true } }),
-    prisma.booking.aggregate({ where: { ...bookingScope, stage: { notIn: SOLD_STAGES } }, _sum: { collectedAmount: true } }),
+  const [deliveredColl, otherColl] = await Promise.all([
+    prisma.booking.aggregate({ where: { ...bookingScope, stage: "DELIVERED" }, _sum: { finalPrice: true } }),
+    prisma.booking.aggregate({ where: { ...bookingScope, stage: { not: "DELIVERED" } }, _sum: { collectedAmount: true } }),
   ]);
-  const collectedTotal = Number(soldColl._sum.finalPrice ?? 0) + Number(otherColl._sum.collectedAmount ?? 0);
+  const collectedTotal = Number(deliveredColl._sum.finalPrice ?? 0) + Number(otherColl._sum.collectedAmount ?? 0);
 
   const context = {
     دور_المستخدم: manager ? "مدير" : "موظف",
