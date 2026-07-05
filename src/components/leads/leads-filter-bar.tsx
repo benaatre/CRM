@@ -9,6 +9,9 @@ import type { LeadFilterValues } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
 
+// مظلّة «مهتم»: كل المتفاعلين (مهتم + زار + تفاوض + موعد لاحق) — الاستعلام يدعم stage IN أصلاً.
+const INTEREST_UMBRELLA = ["INTERESTED", "VIEWING", "NEGOTIATION", "FOLLOW_UP_LATER"];
+
 // عنصر مختار: أخضر #22c55e بخلفية خضراء شفافة. غير مختار: رمادي محايد.
 function chip(active: boolean) {
   return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`;
@@ -65,6 +68,16 @@ export function LeadsFilterBar({
   function toggleStage(s: string) {
     go({ stages: filters.stages.includes(s) ? filters.stages.filter((x) => x !== s) : [...filters.stages, s] });
   }
+  // مظلّة «مهتم» نشطة فقط لمّا تكون المراحل الأربع كلها محدّدة (يميّزها عن ضغط زر فرعي واحد).
+  const interestUmbrellaActive = INTEREST_UMBRELLA.every((s) => filters.stages.includes(s));
+  function toggleInterestUmbrella() {
+    // نشطة → أزل الأربع؛ غير نشطة → أضفها للمحدّد الحالي (بلا تكرار، يحفظ أي مراحل أخرى).
+    go({
+      stages: interestUmbrellaActive
+        ? filters.stages.filter((x) => !INTEREST_UMBRELLA.includes(x))
+        : [...new Set([...filters.stages, ...INTEREST_UMBRELLA])],
+    });
+  }
   function toggleEmp(t: string) {
     go({ emps: filters.emps.includes(t) ? filters.emps.filter((x) => x !== t) : [...filters.emps, t] });
   }
@@ -89,9 +102,14 @@ export function LeadsFilterBar({
       {/* فلتر المراحل */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button onClick={() => go({ stages: [] })} className={chipAll(filters.stages.length === 0)}>كل المراحل</button>
-        {stageOrder.map((s) => (
-          <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
-        ))}
+        {stageOrder.map((s) =>
+          s === "INTERESTED" ? (
+            // مظلّة شاملة بدل مرحلة حرفية — تفلتر كل المتفاعلين دفعة واحدة.
+            <button key={s} onClick={toggleInterestUmbrella} className={chip(interestUmbrellaActive)}>{stageLabels.INTERESTED}</button>
+          ) : (
+            <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
+          )
+        )}
       </div>
 
       {/* فلتر الموظفين (للمدير) */}
