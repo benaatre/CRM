@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { LeadStage } from "@prisma/client";
-import { FollowUpType } from "@prisma/client";
+import { FollowUpType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopeForUser, getOwnerIds } from "@/lib/data/leads";
 import { ksaTodayStart } from "@/lib/auto-distribute";
@@ -86,8 +86,93 @@ export type DashboardData = {
   waitingCount: number; // إجمالي «لم يتم التواصل» (NEW + مُسند)
   recentSales: RecentSale[];
   funnel: { stage: LeadStage; count: number }[];
+  sentiment: InterestSentiment;
   team: TeamRow[];
 };
+
+// «مشاعر الاهتمام» — كتلة محسوبة منفصلة عن القمع (لا تلمس FUNNEL/funnelStages).
+export type InterestSentiment = {
+  interested: {
+    total: number;      // مجموع الأربعة أدناه
+    interested: number;  // INTERESTED
+    viewed: number;      // VIEWING (زار)
+    negotiating: number; // NEGOTIATION (تفاوض)
+    followUpLater: number; // FOLLOW_UP_LATER المهتم فقط (section آخر متابعة = INTERESTED)
+  };
+  notInterested: {
+    total: number;      // CLOSED_LOST + الانسحاب الناعم
+    closedLost: number;  // CLOSED_LOST
+    softDecline: number; // FOLLOW_UP_LATER بـ section=NOT_INTERESTED
+    // تفصيل الأسباب من آخر متابعة منظّمة (بعد ٥-ب)؛ القديمة/الناعمة = غير محدّد.
+    reasons: { location: number; price: number; space: number; final: number; unspecified: number };
+  };
+};
+
+/**
+ * تجميع «مشاعر الاهتمام» ضمن نفس نطاق المستخدم/الفترة.
+ * الفصل الدقيق لـ«موعد لاحق»: يعتمد على section آخر متابعة لكل عميل — يُجلب باستعلام
+ * واحد (leadId IN …) ويُختزل بالذاكرة (بلا N+1). محصور بعملاء FOLLOW_UP_LATER/CLOSED_LOST فقط.
+ */
+async function computeInterestSentiment(scope: Prisma.LeadWhereInput): Promise<InterestSentiment> {
+  const [stageGrp, splitLeads] = await Promise.all([
+    prisma.lead.groupBy({ by: ["stage"], where: scope, _count: { _all: true } }),
+    prisma.lead.findMany({
+      where: { ...scope, stage: { in: ["FOLLOW_UP_LATER", "CLOSED_LOST"] } },
+      select: { id: true, stage: true },
+    }),
+  ]);
+  const cnt = (s: LeadStage) => stageGrp.find((g) => g.stage === s)?._count._all ?? 0;
+
+  // آخر متابعة لكل عميل في (موعد لاحق/مقفول-خسارة): استعلام واحد ثم أول ظهور = الأحدث (desc).
+  const ids = splitLeads.map((l) => l.id);
+  const fus = ids.length
+    ? await prisma.followUp.findMany({
+        where: { leadId: { in: ids } },
+        orderBy: { createdAt: "desc" },
+        select: { leadId: true, section: true, result: true },
+      })
+    : [];
+  const latest = new Map<string, { section: string | null; result: string }>();
+  for (const f of fus) if (!latest.has(f.leadId)) latest.set(f.leadId, { section: f.section, result: f.result });
+
+  // موعد لاحق: انسحاب ناعم = آخر متابعة section=NOT_INTERESTED؛ الباقي مهتم (افتراض آمن للغامض).
+  const fulLeads = splitLeads.filter((l) => l.stage === "FOLLOW_UP_LATER");
+  const fulSoft = fulLeads.filter((l) => latest.get(l.id)?.section === "NOT_INTERESTED");
+  const fulInterested = fulLeads.length - fulSoft.length;
+
+  const interested = cnt("INTERESTED");
+  const viewed = cnt("VIEWING");
+  const negotiating = cnt("NEGOTIATION");
+
+  // أسباب «غير مهتم»: تُعدّ من آخر نتيجة منظّمة عبر عملاء CLOSED_LOST + الانسحاب الناعم.
+  // مجموع الأسباب = notInterested.total (اتساق). القديم/الناعم بلا سبب منظّم = unspecified.
+  const lostLeads = splitLeads.filter((l) => l.stage === "CLOSED_LOST");
+  const reasons = { location: 0, price: 0, space: 0, final: 0, unspecified: 0 };
+  const tally = (leadId: string) => {
+    switch (latest.get(leadId)?.result) {
+      case "NOT_INTERESTED_LOCATION": reasons.location++; break;
+      case "NOT_INTERESTED_PRICE": reasons.price++; break;
+      case "NOT_INTERESTED_SPACE": reasons.space++; break;
+      case "NOT_INTERESTED_FINAL": reasons.final++; break;
+      default: reasons.unspecified++;
+    }
+  };
+  for (const l of lostLeads) tally(l.id);
+  for (const l of fulSoft) tally(l.id);
+
+  return {
+    interested: {
+      total: interested + viewed + negotiating + fulInterested,
+      interested, viewed, negotiating, followUpLater: fulInterested,
+    },
+    notInterested: {
+      total: lostLeads.length + fulSoft.length,
+      closedLost: lostLeads.length,
+      softDecline: fulSoft.length,
+      reasons,
+    },
+  };
+}
 
 const CLOSED: LeadStage[] = ["CLOSED_WON", "CLOSED_LOST"];
 
@@ -206,6 +291,9 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     count: countByStage.get(stage) ?? 0,
   }));
 
+  // مشاعر الاهتمام — نفس نطاق المستخدم + فلتر الفترة (createdAt) المطبّق على مؤشرات الفترة.
+  const sentiment = await computeInterestSentiment({ ...where, ...periodFilter });
+
   // أداء الموظفين (للمدير فقط)
   let team: TeamRow[] = [];
   if (manager) {
@@ -264,6 +352,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     waitingCount,
     recentSales,
     funnel,
+    sentiment,
     team,
   };
 }

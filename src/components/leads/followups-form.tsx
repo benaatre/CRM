@@ -16,6 +16,20 @@ type SaveBody = {
 
 const NI_REASONS = ["الموقع", "السعر", "المساحة", "غير مهتم نهائيًا"];
 
+// سبب «غير مهتم» → نتيجة FollowUpResult منظّمة (لتحليلات الأسباب لاحقًا).
+// أسباب محدّدة فقط؛ «غير مهتم نهائيًا»/بدون سبب = NOT_INTERESTED_FINAL.
+const NI_REASON_RESULT: Record<string, FollowUpResult> = {
+  الموقع: "NOT_INTERESTED_LOCATION",
+  السعر: "NOT_INTERESTED_PRICE",
+  المساحة: "NOT_INTERESTED_SPACE",
+};
+// السبب الرئيسي المنظّم = أول سبب محدّد مختار حسب ترتيب العرض (الموقع ← السعر ← المساحة)؛
+// وإلا نهائي. بقية الأسباب المختارة تبقى نصًّا في note (لا نعقّد النموذج).
+function primaryNiResult(rs: Set<string>): FollowUpResult {
+  for (const r of NI_REASONS) if (NI_REASON_RESULT[r] && rs.has(r)) return NI_REASON_RESULT[r];
+  return "NOT_INTERESTED_FINAL";
+}
+
 // أزرار نتيجة المتابعة المتاحة حسب مرحلة العميل الحالية — كل مرحلة تعرض خطواتها
 // المباشرة التالية فقط (حسب قمع المبيعات)، لا كل الخيارات مع بعض.
 function resultsFor(stage: LeadStage): string[] {
@@ -117,9 +131,11 @@ export function FollowUpsForm({
       case "negotiation":
         return post({ type: "CALL", result: "NEGOTIATING", section: "INTERESTED", stage: "NEGOTIATION", note: compose("تفاوض", [], note) });
       case "notInterested":
+        // نحاول لاحقًا = انسحاب ناعم (يبقى FOLLOW_UP_LATER، لا نصنّفه سببًا نهائيًا).
+        // نهائي = غير مهتم فعلي → نتيجة منظّمة بالسبب الرئيسي (CLOSED_LOST).
         return post(niRetry === "yes"
           ? { type: "CALL", result: "FOLLOW_UP_SCHEDULED", section: "NOT_INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("غير مهتم — نحاول لاحقًا", [...reasons], note), nextDate: date }
-          : { type: "CALL", result: "NOT_INTERESTED_FINAL", section: "NOT_INTERESTED", stage: "CLOSED_LOST", note: compose("غير مهتم", [...reasons], note) });
+          : { type: "CALL", result: primaryNiResult(reasons), section: "NOT_INTERESTED", stage: "CLOSED_LOST", note: compose("غير مهتم", [...reasons], note) });
     }
   }
 

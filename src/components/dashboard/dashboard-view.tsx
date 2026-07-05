@@ -249,6 +249,56 @@ export function DashboardView({ data }: { data: DashboardData }) {
         </div>
       </Section>
 
+      {/* مشاعر الاهتمام — مهتمين / غير مهتمين (نفس فلتر الفترة/الموظف) */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* مهتمين */}
+        <Section title="مهتمين" hint="العملاء المهتمين فعليًا في خط البيع" bar="bg-gold">
+          <div className="mb-4 flex items-baseline gap-2">
+            <span style={{ fontSize: 40, fontWeight: 700, letterSpacing: "-1px", color: "#E2C078", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+              {toArabicDigits(data.sentiment.interested.total)}
+            </span>
+            <span className="text-sm text-muted-foreground">عميل مهتم</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+            <S label="مهتم" v={data.sentiment.interested.interested} cls="text-gold" />
+            <S label="زار مشروع" v={data.sentiment.interested.viewed} />
+            <S label="تفاوض" v={data.sentiment.interested.negotiating} />
+            <S label="موعد لاحق" v={data.sentiment.interested.followUpLater} />
+          </div>
+        </Section>
+
+        {/* غير مهتمين */}
+        <Section title="غير مهتمين" hint="انسحبوا أو ما ناسبهم" bar="bg-destructive">
+          <div className="mb-4 flex items-baseline gap-2">
+            <span style={{ fontSize: 40, fontWeight: 700, letterSpacing: "-1px", color: "#F0685F", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+              {toArabicDigits(data.sentiment.notInterested.total)}
+            </span>
+            <span className="text-sm text-muted-foreground">عميل</span>
+          </div>
+          {(() => {
+            const reasons = [
+              { label: "الموقع", v: data.sentiment.notInterested.reasons.location },
+              { label: "السعر", v: data.sentiment.notInterested.reasons.price },
+              { label: "المساحة", v: data.sentiment.notInterested.reasons.space },
+              { label: "نهائي", v: data.sentiment.notInterested.reasons.final },
+              { label: "غير محدّد", v: data.sentiment.notInterested.reasons.unspecified },
+            ].filter((r) => r.v > 0);
+            return reasons.length === 0 ? (
+              <p className="text-xs text-muted-foreground">ما تسجّل سبب بعد</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {reasons.map((r) => (
+                  <span key={r.label} className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/50 px-2.5 py-1 text-xs">
+                    <span className="text-muted-foreground">{r.label}</span>
+                    <span className="font-bold text-foreground">{toArabicDigits(r.v)}</span>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+        </Section>
+      </div>
+
       {/* أداء الموظفين */}
       {data.manager && data.team.length > 0 && (
         <Section title="أداء الموظفين" hint="ملخّص نشاط كل موظف نحو هدفه">
