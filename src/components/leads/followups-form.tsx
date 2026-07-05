@@ -129,6 +129,10 @@ export function FollowUpsForm({
   } as const;
   function submitFirstContact() {
     if (!fcSel) return;
+    // «غير مهتم» في أول تواصل = نفس منطق المتابعة العادية (أسباب منظّمة + retry).
+    if (fcSel === "notInterested") {
+      return post(buildNotInterestedBody(reasons, niRetry, date, note));
+    }
     const m = FC_MAP[fcSel];
     post({ type: "CALL", result: m.result as FollowUpResult, section: m.section as FollowUpSection, stage: m.stage as LeadStage, note: compose(`تم تسجيل أول تواصل: ${m.label}`, [], note) });
   }
@@ -144,7 +148,7 @@ export function FollowUpsForm({
             <button
               key={k}
               type="button"
-              onClick={() => { setFcSel(k); setError(null); }}
+              onClick={() => { setFcSel(k); setError(null); setReasons(new Set()); setNiRetry("no"); setDate(""); }}
               className={`rounded-lg border px-4 py-2 text-sm transition-colors ${fcSel === k ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`}
             >
               {FC_MAP[k].label}
@@ -153,10 +157,21 @@ export function FollowUpsForm({
         </div>
         {fcSel && (
           <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
+            {/* «غير مهتم» في أول تواصل: نفس شرائح الأسباب المنظّمة + «نحاول لاحقًا» */}
+            {fcSel === "notInterested" && (
+              <NotInterestedReasons
+                reasons={reasons}
+                onToggle={(r) => toggle(setReasons, r)}
+                retry={niRetry}
+                onRetry={setNiRetry}
+                date={date}
+                onDate={setDate}
+              />
+            )}
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ملاحظة (اختياري)…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
             <div className="flex justify-end">
-              <button type="button" onClick={submitFirstContact} disabled={pending} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
+              <button type="button" onClick={submitFirstContact} disabled={pending || (fcSel === "notInterested" && niRetry === "yes" && !date)} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
             </div>
           </div>
         )}
