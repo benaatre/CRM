@@ -48,6 +48,9 @@ key.json
 dev.log
 devserver.log
 
+# تقارير تدقيق محلية — لا تُرفع
+AUDIT-FULL-2026-07-04.md
+
 # vercel
 .vercel
 
