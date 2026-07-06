@@ -26,8 +26,10 @@ export function Topbar({
   logoUrl,
   falLicense,
   isManager,
+  isOwner = false,
   employees,
   availability,
+  dupCount = 0,
 }: {
   userName: string;
   roleLabel: string;
@@ -35,8 +37,10 @@ export function Topbar({
   logoUrl?: string | null;
   falLicense: string | null;
   isManager: boolean;
+  isOwner?: boolean;
   employees: Employee[];
   availability: MyAvailability | null;
+  dupCount?: number;
 }) {
   const router = useRouter();
   const [dark, setDark] = useState(true);
@@ -131,7 +135,7 @@ export function Topbar({
         >
           {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
         </button>
-        <MobileNav isManager={isManager} companyName={companyName} logoUrl={logoUrl} falLicense={falLicense} />
+        <MobileNav isManager={isManager} isOwner={isOwner} companyName={companyName} logoUrl={logoUrl} falLicense={falLicense} dupCount={dupCount} />
       </div>
 
       <NewLeadDialog

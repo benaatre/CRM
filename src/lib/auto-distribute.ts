@@ -5,6 +5,7 @@ import { ActivityType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notify, ownerIds } from "@/lib/notify";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
+import { duplicateLeadIds } from "@/lib/phone-dupe";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -226,11 +227,12 @@ export async function availableParticipants(db: Db, settings: DistSettings, now:
  * يوزّعهم على المتاحين بنفس منطق الإعداد (دوري ثابت / الأقل حملًا) ويضبط assignedAt
  * ليدخلوا دورة إعادة التوجيه. يُحدّث المؤشّر (في القاعدة والذاكرة). يرجّع عدد الموزّعين.
  */
-async function distributeUnassignedPass(settings: DistSettings, now: Date): Promise<number> {
+async function distributeUnassignedPass(settings: DistSettings, now: Date, dupIds: Set<string>): Promise<number> {
   const available = await availableParticipants(prisma, settings, now);
   if (available.length === 0) return 0;
   const unassigned = await prisma.lead.findMany({
-    where: { assignedToId: null, stage: "NEW", isArchived: false },
+    // المكررون يُستثنون من التوزيع التلقائي — يُوزّعون حصريًا من «العملاء المكررون».
+    where: { assignedToId: null, stage: "NEW", isArchived: false, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) },
     select: { id: true, name: true },
     orderBy: { createdAt: "asc" },
   });
@@ -336,8 +338,11 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
       return { ok: true, reassigned: 0, checked: 0, skipped: "خارج نافذة العمل" };
     }
 
+    // المكررون يُستثنون من كل مسارات التوزيع التلقائي (التقاط أولي + إعادة توجيه).
+    const dupIds = await duplicateLeadIds();
+
     // (ب) توزيع أولي للعملاء غير الموزّعين — يعتمد على المتاحين (نشط + غير موقوف)، يحترم النافذة.
-    const distributed = await distributeUnassignedPass(settings, now);
+    const distributed = await distributeUnassignedPass(settings, now, dupIds);
 
     // (ج) إعادة توجيه المتأخرين — يكفي متواجد واحد كمستقبِل (ننقل من الغايب المقصّر إليه).
     // الحلقة تتخطّى أي عميل مستقبِله الوحيد هو صاحبه الحالي (toUserId === from).
@@ -355,6 +360,7 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
         isArchived: false,
         stage: { notIn: [...ADVANCED_STAGES] },
         reassignCount: { lt: MAX_REASSIGNS }, // #22: تجاوزوا السقف يبقون مع آخر موظف
+        ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}), // المكرر لا يُعاد توجيهه آليًا
       },
       select: { id: true, assignedToId: true, name: true },
       orderBy: { assignedAt: "asc" },

@@ -2,7 +2,7 @@ import "server-only";
 
 import type { LeadStage, FollowUpResult, Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireUser } from "@/lib/auth-guards";
 import { dedupeKey } from "@/lib/phone-dupe";
 
 export type DupFollowUp = { result: FollowUpResult; createdAt: Date; note: string | null };
@@ -42,7 +42,7 @@ const BOOKED_STAGES: LeadStage[] = ["RESERVED", "CLOSED_WON"];
  */
 export async function getDuplicateLeads(): Promise<DuplicatesData> {
   const user = await requireUser();
-  if (!isManager(user.role)) return { active: [], booked: [] };
+  if (user.role !== "OWNER") return { active: [], booked: [] }; // المالك فقط
 
   // ١) كل العملاء بالحقول اللازمة (بلا سقف — فحص شامل للمكررات). استعلام واحد.
   const leads = await prisma.lead.findMany({
@@ -114,4 +114,25 @@ export async function getDuplicateLeads(): Promise<DuplicatesData> {
     active: all.filter((g) => !g.hasBooked),
     booked: all.filter((g) => g.hasBooked),
   };
+}
+
+/**
+ * عدّاد خفيف لشارة التنقّل: عدد مجموعات المكررين «النشطة» (count>1 بلا سجل محجوز/مباع).
+ * استعلام واحد (phone, stage) + تجميع بالذاكرة. يُستدعى للمدير فقط (التنقّل managerOnly).
+ */
+export async function activeDuplicateGroupCount(): Promise<number> {
+  const leads = await prisma.lead.findMany({ select: { phone: true, stage: true } });
+  const byKey = new Map<string, LeadStage[]>();
+  for (const l of leads) {
+    const k = dedupeKey(l.phone);
+    if (!k) continue;
+    const arr = byKey.get(k);
+    if (arr) arr.push(l.stage);
+    else byKey.set(k, [l.stage]);
+  }
+  let count = 0;
+  for (const stages of byKey.values()) {
+    if (stages.length > 1 && !stages.some((s) => BOOKED_STAGES.includes(s))) count++;
+  }
+  return count;
 }

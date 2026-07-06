@@ -6,25 +6,30 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, SunMoon, LogOut } from "lucide-react";
 import { signOutAction } from "@/lib/actions/auth";
+import { toArabicDigits } from "@/lib/format";
 import { navForRole } from "./nav-items";
 import { Brand } from "./brand";
 
 /** زر القائمة (☰) + درج جانبي من اليمين للجوال — يُغلق تلقائيًا عند الضغط على رابط. */
 export function MobileNav({
   isManager,
+  isOwner = false,
   companyName,
   logoUrl,
   falLicense,
+  dupCount = 0,
 }: {
   isManager: boolean;
+  isOwner?: boolean;
   companyName: string;
   logoUrl?: string | null;
   falLicense: string | null;
+  dupCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
-  const nav = navForRole(isManager);
+  const nav = navForRole(isManager, isOwner);
 
   // الدرج يُحقن في <body> عبر portal حتى لا يتأثر بـ backdrop-filter في الهيدر
   // (الذي يكسر fixed ويجعل محتوى الدرج يتسرّب فوق الصفحة).
@@ -80,7 +85,10 @@ export function MobileNav({
                     }`}
                   >
                     <Icon className="size-5" />
-                    {item.label}
+                    <span className="flex-1">{item.label}</span>
+                    {item.href === "/leads/duplicates" && dupCount > 0 && (
+                      <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs font-bold text-gold">{toArabicDigits(dupCount)}</span>
+                    )}
                   </Link>
                 );
               })}

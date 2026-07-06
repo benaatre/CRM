@@ -77,6 +77,20 @@ export function dupeCheckKey(phone: string, ad: { sourceId: string | null; chann
 }
 
 /**
+ * هل يوجد Lead موجود يطابق هذا الجوال (آخر ٩)؟ — لتحديد أن الليد الجديد «مكرر» وقت الإنشاء
+ * فلا يُسنَد آليًا (يبقى معلّقًا في «العملاء المكررون»).
+ */
+export async function phoneHasExistingLead(phone: string, db: PrismaClient = prisma): Promise<boolean> {
+  const key = dedupeKey(phone);
+  if (!key) return false;
+  const cand = await db.lead.findMany({
+    where: { phone: { in: phoneVariants(normalizePhone(phone)) } },
+    select: { phone: true },
+  });
+  return cand.some((c) => dedupeKey(c.phone) === key);
+}
+
+/**
  * معرّفات كل الليدات التي جوالها (آخر ٩) مكرر (يظهر في أكثر من سجل) — لاستثناء المكررين المعلّقين
  * من عدّاد الداشبورد. استعلام واحد (id, phone) + تجميع بالذاكرة (بلا N+1).
  */

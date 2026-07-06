@@ -18,13 +18,14 @@ export type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   managerOnly: boolean;
+  ownerOnly?: boolean;
 };
 
 // عناصر التنقّل — مشتركة بين الشريط الجانبي (سطح المكتب) ودرج الجوال.
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, managerOnly: false },
   { href: "/leads", label: "كل العملاء", icon: Contact, managerOnly: false },
-  { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, managerOnly: true },
+  { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, managerOnly: true, ownerOnly: true },
   { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, managerOnly: false },
   { href: "/projects", label: "المشاريع", icon: Building2, managerOnly: false },
   { href: "/bookings", label: "خط المبيعات", icon: Handshake, managerOnly: false },
@@ -36,5 +37,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "الإعدادات", icon: SettingsIcon, managerOnly: true },
 ];
 
-export const navForRole = (isManager: boolean): NavItem[] =>
-  NAV_ITEMS.filter((n) => !n.managerOnly || isManager);
+export const navForRole = (isManager: boolean, isOwner = false): NavItem[] =>
+  NAV_ITEMS.filter((n) => (!n.managerOnly || isManager) && (!n.ownerOnly || isOwner));

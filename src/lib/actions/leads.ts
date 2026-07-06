@@ -16,7 +16,7 @@ import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards"
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
-import { isRecentSameAdDuplicate } from "@/lib/phone-dupe";
+import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -73,12 +73,22 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     const budget = budgetRaw ? Number(budgetRaw) : null;
     const notes = String(formData.get("notes") ?? "").trim() || null;
 
-    // الإسناد: المدير يقدر يحدّد موظفًا؛ أو توزيع تلقائي ذكي (الدور/الأقل حملًا)؛ غير ذلك = نفسه.
-    // autoDistributed = أُسند عبر نظام التوزيع التلقائي → يبدأ عدّاد إعادة التوجيه (assignedAt).
-    let assignedToId = user.id;
+    // استثناء المكرر: نفس الرقم + نفس الإعلان (المصدر) خلال ٤٨ ساعة = ضجيج/تكرار آلي → لا نضيف نسخة.
+    // غير ذلك (مصدر مختلف أو بعد ٤٨ ساعة) يُضاف ويظهر في «العملاء المكررون».
+    if (await isRecentSameAdDuplicate(phone, { sourceId, channel }, new Date())) {
+      return { ok: false, error: "هذا الرقم مضاف من نفس المصدر خلال آخر ٤٨ ساعة — ما نضيف نسخة مكرّرة." };
+    }
+    // مكرر (جواله يطابق سجلًا موجودًا بآخر-٩) = لا يُسنَد آليًا؛ يبقى معلّقًا في «العملاء المكررون».
+    const isDup = await phoneHasExistingLead(phone);
+
+    // الإسناد: المكرر لا يُوزّع آليًا (يبقى غير موزّع) — نحترم اختيار المدير الصريح فقط.
+    // autoDistributed = أُسند عبر التوزيع التلقائي → يبدأ عدّاد إعادة التوجيه (assignedAt).
+    let assignedToId: string | null = isDup ? null : user.id;
     let autoDistributed = false;
     const chosen = String(formData.get("assignedToId") ?? "");
-    if (isManager(user.role)) {
+    if (isDup) {
+      if (isManager(user.role) && chosen) assignedToId = chosen; // اختيار صريح فقط، لا تلقائي
+    } else if (isManager(user.role)) {
       if (chosen) {
         assignedToId = chosen;
       } else {
@@ -105,12 +115,6 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
           }
         }
       }
-    }
-
-    // استثناء المكرر: نفس الرقم + نفس الإعلان (المصدر) خلال ٤٨ ساعة = ضجيج/تكرار آلي → لا نضيف نسخة.
-    // غير ذلك (مصدر مختلف أو بعد ٤٨ ساعة) يُضاف ويظهر في «العملاء المكررون».
-    if (await isRecentSameAdDuplicate(phone, { sourceId, channel }, new Date())) {
-      return { ok: false, error: "هذا الرقم مضاف من نفس المصدر خلال آخر ٤٨ ساعة — ما نضيف نسخة مكرّرة." };
     }
 
     const tomorrow = new Date();
@@ -368,7 +372,7 @@ export async function distributeDuplicateLead(
 ): Promise<ActionResult> {
   try {
     const user = await requireUser();
-    if (!isManager(user.role)) return { ok: false, error: "توزيع المكررين للمدير أو المالك فقط" };
+    if (user.role !== "OWNER") return { ok: false, error: "توزيع المكررين للمالك فقط" };
     if (!leadId) return { ok: false, error: "ما فيه عميل محدّد" };
 
     const needsEmployee = mode === "asis" || mode === "freshKeepEmployee";

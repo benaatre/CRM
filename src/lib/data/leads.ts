@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
+import { duplicateLeadIds } from "@/lib/phone-dupe";
 import type { LeadSort } from "@/lib/lead-filters";
 import type { Prisma } from "@prisma/client";
 
@@ -256,6 +257,11 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
     const term = q.trim();
     and.push({ OR: [{ name: { contains: term } }, { phone: { contains: term } }] });
   }
+  // «غير موزّعين» يستثني المكررين — يُوزّعون حصريًا من «العملاء المكررون».
+  if (tab === "unassigned") {
+    const dupIds = await duplicateLeadIds();
+    if (dupIds.size) and.push({ id: { notIn: [...dupIds] } });
+  }
 
   const leads = await prisma.lead.findMany({
     where: { ...where, ...(and.length ? { AND: and } : {}) },
@@ -270,11 +276,17 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
 export async function getLeadCounts(): Promise<{ working: number; archived: number; hidden: number; unassigned: number }> {
   const { where } = await scopeForUser();
   const ownerIds = await getOwnerIds();
+  const dupIds = await duplicateLeadIds(); // لاستثناء المكررين من عدّاد «غير موزّعين» فقط
+  const unassignedWhere = {
+    ...where,
+    ...tabWhere("unassigned", ownerIds),
+    ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}),
+  };
   const [working, archived, hidden, unassigned] = await Promise.all([
     prisma.lead.count({ where: { ...where, ...tabWhere("working", ownerIds) } }),
     prisma.lead.count({ where: { ...where, ...tabWhere("archived", ownerIds) } }),
     prisma.lead.count({ where: { ...where, ...tabWhere("hidden", ownerIds) } }),
-    prisma.lead.count({ where: { ...where, ...tabWhere("unassigned", ownerIds) } }),
+    prisma.lead.count({ where: unassignedWhere }),
   ]);
   return { working, archived, hidden, unassigned };
 }

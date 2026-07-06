@@ -17,6 +17,8 @@ import { requireUser, isManager } from "@/lib/auth-guards";
 import { roleLabel } from "@/lib/labels";
 import { getSettings } from "@/lib/data/settings";
 import { getEmployees } from "@/lib/data/leads";
+import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
+import { toArabicDigits } from "@/lib/format";
 import { getMyAvailability } from "@/lib/actions/availability";
 import { Topbar } from "@/components/layout/topbar";
 import { Brand } from "@/components/layout/brand";
@@ -32,25 +34,27 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   const manager = isManager(user.role);
-  const [settings, employees, availability] = await Promise.all([
+  const owner = user.role === "OWNER"; // ميزة المكررين للمالك فقط
+  const [settings, employees, availability, dupCount] = await Promise.all([
     getSettings(),
     manager ? getEmployees() : Promise.resolve([]),
     getMyAvailability(),
+    owner ? activeDuplicateGroupCount() : Promise.resolve(0),
   ]);
 
   const nav = [
-    { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true },
-    { href: "/leads", label: "كل العملاء", icon: Contact, show: true },
-    { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, show: manager },
-    { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true },
-    { href: "/projects", label: "المشاريع", icon: Building2, show: true },
-    { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true },
-    { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, show: true },
-    { href: "/analytics", label: "التحليلات", icon: BarChart3, show: true },
-    { href: "/admin", label: "الفريق", icon: Users2, show: manager },
-    { href: "/distribution", label: "التوزيع التلقائي", icon: Share2, show: manager },
-    { href: "/audit", label: "سجل التدقيق", icon: ScrollText, show: manager },
-    { href: "/settings", label: "الإعدادات", icon: SettingsIcon, show: manager },
+    { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true, badge: 0 },
+    { href: "/leads", label: "كل العملاء", icon: Contact, show: true, badge: 0 },
+    { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, show: owner, badge: dupCount },
+    { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true, badge: 0 },
+    { href: "/projects", label: "المشاريع", icon: Building2, show: true, badge: 0 },
+    { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true, badge: 0 },
+    { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, show: true, badge: 0 },
+    { href: "/analytics", label: "التحليلات", icon: BarChart3, show: true, badge: 0 },
+    { href: "/admin", label: "الفريق", icon: Users2, show: manager, badge: 0 },
+    { href: "/distribution", label: "التوزيع التلقائي", icon: Share2, show: manager, badge: 0 },
+    { href: "/audit", label: "سجل التدقيق", icon: ScrollText, show: manager, badge: 0 },
+    { href: "/settings", label: "الإعدادات", icon: SettingsIcon, show: manager, badge: 0 },
   ].filter((n) => n.show);
 
   return (
@@ -73,7 +77,10 @@ export default async function AppLayout({
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
                 <Icon className="size-4" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.badge > 0 && (
+                  <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs font-bold text-gold">{toArabicDigits(item.badge)}</span>
+                )}
               </Link>
             );
           })}
@@ -95,8 +102,10 @@ export default async function AppLayout({
           logoUrl={settings.logoUrl}
           falLicense={settings.falLicense ?? null}
           isManager={manager}
+          isOwner={owner}
           employees={employees}
           availability={manager ? null : availability}
+          dupCount={dupCount}
         />
         <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>
