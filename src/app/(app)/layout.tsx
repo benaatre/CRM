@@ -10,6 +10,7 @@ import {
   ScrollText,
   MessagesSquare,
   Share2,
+  Copy,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -40,6 +41,7 @@ export default async function AppLayout({
   const nav = [
     { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true },
     { href: "/leads", label: "كل العملاء", icon: Contact, show: true },
+    { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, show: manager },
     { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true },
     { href: "/projects", label: "المشاريع", icon: Building2, show: true },
     { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true },
