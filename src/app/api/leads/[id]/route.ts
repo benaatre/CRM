@@ -4,6 +4,7 @@ import { LeadStage, ActivityType, FirstContactStage, FollowUpType, FollowUpResul
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { markContacted } from "@/lib/auto-distribute";
 import { stageLabels, firstContactStageLabels } from "@/lib/labels";
 
 // سحب العميل في الكانبان لإحدى مراحل «أول تواصل» الثلاث → يحدّد المرحلة الأولى تلقائيًا.
@@ -86,6 +87,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         },
       });
     }
+    // أي نقل مرحلة بالسحب = مبادرة/محاولة تواصل → يوقف عدّاد إعادة التوجيه (يضبط contactedAt إن كان null).
+    await markContacted(tx, id);
   });
   await logAudit(prisma, {
     userId: session.user.id, action: "lead.stage", entity: "lead", entityId: id,

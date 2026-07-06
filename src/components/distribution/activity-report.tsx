@@ -49,33 +49,25 @@ export function ActivityReportView({
         </div>
       </div>
 
-      {/* جدول الموظفين — الأعمدة بترتيب الأولويات */}
+      {/* جدول الموظفين — الأعمدة الأساسية فقط */}
       <div className="overflow-x-auto rounded-2xl border border-border bg-card">
-        <table className="w-full min-w-[680px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <table className="w-full min-w-[360px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
               <th className="px-3 py-2.5 font-medium">الموظف</th>
               <th className="px-3 py-2.5 font-medium">استقبل</th>
               <th className="px-3 py-2.5 font-medium">تأخّر / فات منه</th>
-              <th className="px-3 py-2.5 font-medium">متابعات</th>
-              <th className="px-3 py-2.5 font-medium">زيارات</th>
-              <th className="px-3 py-2.5 font-medium">حجوزات</th>
-              <th className="px-3 py-2.5 font-medium">غير مهتم</th>
             </tr>
           </thead>
           <tbody>
             {data.rows.length === 0 ? (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">ما فيه نشاط في هذه الفترة.</td></tr>
+              <tr><td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">ما فيه نشاط في هذه الفترة.</td></tr>
             ) : (
               data.rows.map((r) => (
                 <tr key={r.id} className="border-t border-border hover:bg-secondary/40">
                   <td className="px-3 py-2.5 font-medium text-foreground">{r.name}</td>
                   <td className="px-3 py-2.5 text-info">{toArabicDigits(r.received)}</td>
                   <td className={`px-3 py-2.5 font-medium ${r.lateLost > 0 ? "text-destructive" : "text-muted-foreground"}`}>{toArabicDigits(r.lateLost)}</td>
-                  <td className="px-3 py-2.5 text-foreground">{toArabicDigits(r.followups)}</td>
-                  <td className="px-3 py-2.5 text-foreground">{toArabicDigits(r.visits)}</td>
-                  <td className="px-3 py-2.5 font-medium text-success">{toArabicDigits(r.bookings)}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{toArabicDigits(r.notInterested)}</td>
                 </tr>
               ))
             )}

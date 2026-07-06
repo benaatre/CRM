@@ -11,6 +11,29 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 // المراحل المتقدّمة التي لا يُعاد توجيه عملائها (حجز/بيع + مقفول-خسارة #19).
 const ADVANCED_STAGES = ["RESERVED", "CLOSED_WON", "CLOSED_LOST"] as const;
+// «ليس متأخّرًا»: المتقدّمة + ATTEMPTED (بادر بمحاولة/لم يرد) — لا يُحسب متأخّرًا ولا يُعاد توجيهه.
+const NOT_LATE_STAGES = [...ADVANCED_STAGES, "ATTEMPTED"] as const;
+
+/**
+ * تحصين كشف التأخّر: «بادر بمحاولة» = له متابعة (FollowUp) بتاريخ ≥ الإسناد.
+ * يُستثنى من المتأخرين حتى لو لم يُضبط contactedAt لأي سبب. (استعلام واحد، بلا N+1.)
+ */
+async function excludeAttempted<T extends { id: string; assignedAt: Date | null }>(leads: T[]): Promise<T[]> {
+  if (leads.length === 0) return leads;
+  const fus = await prisma.followUp.findMany({
+    where: { leadId: { in: leads.map((l) => l.id) } },
+    select: { leadId: true, createdAt: true },
+  });
+  const latest = new Map<string, Date>();
+  for (const f of fus) {
+    const cur = latest.get(f.leadId);
+    if (!cur || f.createdAt > cur) latest.set(f.leadId, f.createdAt);
+  }
+  return leads.filter((l) => {
+    const fu = latest.get(l.id);
+    return !(fu && l.assignedAt && fu >= l.assignedAt); // له متابعة بعد الإسناد → بادر → يُستثنى
+  });
+}
 
 // سقف إعادة التوجيه التلقائي — بعده يبقى العميل مع آخر موظف ويُصعَّد للمالك (#22).
 const MAX_REASSIGNS = 3;
@@ -358,25 +381,27 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
         assignedAt: { not: null, lte: cutoff },
         contactedAt: null,
         isArchived: false,
-        stage: { notIn: [...ADVANCED_STAGES] },
+        stage: { notIn: [...NOT_LATE_STAGES] }, // المتقدّمة + ATTEMPTED (بادر بمحاولة)
         reassignCount: { lt: MAX_REASSIGNS }, // #22: تجاوزوا السقف يبقون مع آخر موظف
         ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}), // المكرر لا يُعاد توجيهه آليًا
       },
-      select: { id: true, assignedToId: true, name: true },
+      select: { id: true, assignedToId: true, name: true, assignedAt: true },
       orderBy: { assignedAt: "asc" },
     });
 
     // #22: عملاء بلغوا سقف إعادة التوجيه بلا تواصل → تصعيد للمالك (إشعار واحد لكل عميل).
     await escalateCappedLeads();
 
-    if (overdue.length === 0) return { ok: true, reassigned: 0, checked: 0, distributed };
+    // تحصين: من بادر بأي متابعة بعد الإسناد ليس متأخّرًا (حتى لو contactedAt غير مضبوط).
+    const candidates = await excludeAttempted(overdue);
+    if (candidates.length === 0) return { ok: true, reassigned: 0, checked: 0, distributed };
 
     let reassigned = 0;
     // نتتبّع المؤشّر محليًا حتى يدور بين المتأخرين في نفس الجولة (لوضع الدور الثابت).
     let pointer = settings.distPointer;
     const presentSet = new Set(present);
 
-    for (const lead of overdue) {
+    for (const lead of candidates) {
       const from = lead.assignedToId as string;
       let toUserId: string | null;
       if (settings.distReassignMode === "ROTATION") {
@@ -416,7 +441,7 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
     if (pointer !== settings.distPointer) {
       await prisma.settings.update({ where: { id: "singleton" }, data: { distPointer: pointer } });
     }
-    return { ok: true, reassigned, checked: overdue.length, distributed };
+    return { ok: true, reassigned, checked: candidates.length, distributed };
   } catch (e) {
     return { ok: false, reassigned: 0, checked: 0, error: (e as Error).message };
   }
