@@ -14,6 +14,7 @@ import {
   unitTypeLabels,
 } from "@/lib/labels";
 import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
+import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
 import { getOwnerIds } from "@/lib/data/leads";
 
 export type ImportResult = { ok: boolean; error?: string; created?: number; updated?: number; skipped?: number };
@@ -279,9 +280,13 @@ export async function previewMapped(
 export async function commitImport(rows: ImportRow[], assignMode: string, updateExisting = false, defaultChannel?: string): Promise<ImportResult> {
   try {
     const me = await requireManager();
-    const fresh = rows.filter((r) => r.status === "new");
+    // الافتراضي (بلا updateExisting): المطابق يُضاف كمكرر ليظهر في «العملاء المكررون»،
+    // إلا استثناء «نفس الرقم + نفس الإعلان (القناة) خلال ٤٨ ساعة». updateExisting = خيار صريح لتحديث الموجود بدل الإضافة.
+    const toCreateRows = updateExisting
+      ? rows.filter((r) => r.status === "new")
+      : rows.filter((r) => r.status === "new" || r.status === "exists" || r.status === "duplicate");
     const existing = updateExisting ? rows.filter((r) => r.status === "exists") : [];
-    if (fresh.length === 0 && existing.length === 0) return { ok: true, created: 0, updated: 0, skipped: rows.length };
+    if (toCreateRows.length === 0 && existing.length === 0) return { ok: true, created: 0, updated: 0, skipped: rows.length };
 
     const employees =
       assignMode === "roundrobin"
@@ -291,19 +296,27 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
     const projectByName = new Map(projects.map((p) => [p.name.trim(), p.id]));
     const ownerIds = await getOwnerIds(); // الإسناد للمالك = غير موزّع
 
+    // حارس استثناء ٤٨ ساعة/نفس الإعلان — مجموعة مفاتيح العملاء المُضافين خلال آخر ٤٨ ساعة (بلا N+1).
+    const recentSet = await recentSameAdKeys(new Date());
+
     // نبني كل السجلات ثم createMany (استعلام واحد بدل create لكل صف — #13).
     let rr = 0;
     const toCreate: Prisma.LeadCreateManyInput[] = [];
-    for (const r of fresh) {
+    for (const r of toCreateRows) {
+      const resolvedChannel: Channel =
+        (r.channel && channelBy[r.channel]) ||
+        (defaultChannel && defaultChannel in Channel ? (defaultChannel as Channel) : Channel.OTHER);
+      // نفس الرقم + نفس الإعلان (القناة) خلال ٤٨ ساعة → ضجيج، تخطّي. غير ذلك يُضاف كمكرر.
+      const ck = dupeCheckKey(r.phone, { sourceId: null, channel: resolvedChannel });
+      if (ck && recentSet.has(ck)) continue;
+      if (ck) recentSet.add(ck); // منع تكرار نفس الرقم/الإعلان داخل نفس الدفعة
+
       let assignedToId: string | null = me.id;
       if (assignMode === "roundrobin" && employees.length > 0) { assignedToId = employees[rr % employees.length].id; rr++; }
       else if (assignMode !== "self" && assignMode !== "roundrobin") assignedToId = assignMode;
       // ما تم تحديد موظف فعلي (الإسناد للمالك) → غير موزّع.
       if (assignedToId && ownerIds.includes(assignedToId)) assignedToId = null;
 
-      const resolvedChannel: Channel =
-        (r.channel && channelBy[r.channel]) ||
-        (defaultChannel && defaultChannel in Channel ? (defaultChannel as Channel) : Channel.OTHER);
       toCreate.push({
         name: r.name,
         phone: r.phone,

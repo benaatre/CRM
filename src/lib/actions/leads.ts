@@ -16,6 +16,7 @@ import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards"
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
+import { isRecentSameAdDuplicate } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -104,6 +105,12 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
           }
         }
       }
+    }
+
+    // استثناء المكرر: نفس الرقم + نفس الإعلان (المصدر) خلال ٤٨ ساعة = ضجيج/تكرار آلي → لا نضيف نسخة.
+    // غير ذلك (مصدر مختلف أو بعد ٤٨ ساعة) يُضاف ويظهر في «العملاء المكررون».
+    if (await isRecentSameAdDuplicate(phone, { sourceId, channel }, new Date())) {
+      return { ok: false, error: "هذا الرقم مضاف من نفس المصدر خلال آخر ٤٨ ساعة — ما نضيف نسخة مكرّرة." };
     }
 
     const tomorrow = new Date();
@@ -341,6 +348,48 @@ export async function unarchiveLeads(ids: string[], mode: UnarchiveMode): Promis
     const res = await prisma.lead.updateMany({ where: { id: { in: ids }, ...scope }, data });
     await logAudit(prisma, { userId: user.id, action: "lead.unarchived", entity: "lead", summary: `أرجع ${res.count} عميل من الأرشيف (${mode})` });
     revalidateLeads();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * توزيع سجل مكرر لموظف — بأنماط unarchive الثلاثة. المتابعات (FollowUp) لا تُمسح في أي نمط.
+ * مالك/مدير فقط (قائمة المكررين managerOnly) — الفرض على الخادم. الإسناد للمالك ممنوع.
+ * - asis: ينقله للموظف المختار، المرحلة والمتابعات محفوظة.
+ * - freshKeepEmployee: يصفّر المرحلة «جديد» ويُسنده للموظف المختار (المتابعات محفوظة).
+ * - freshUnassigned: يصفّر المرحلة «جديد» + بلا موظف → حوض «غير موزّعين» (المتابعات محفوظة).
+ */
+export async function distributeDuplicateLead(
+  leadId: string,
+  mode: UnarchiveMode,
+  toUserId: string | null,
+): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (!isManager(user.role)) return { ok: false, error: "توزيع المكررين للمدير أو المالك فقط" };
+    if (!leadId) return { ok: false, error: "ما فيه عميل محدّد" };
+
+    const needsEmployee = mode === "asis" || mode === "freshKeepEmployee";
+    if (needsEmployee) {
+      if (!toUserId) return { ok: false, error: "اختر الموظف" };
+      const target = await prisma.user.findUnique({ where: { id: toUserId }, select: { role: true, active: true } });
+      if (!target || !target.active || target.role === "OWNER") return { ok: false, error: "الموظف غير صالح" };
+    }
+
+    // نعدّل حقول Lead فقط — المتابعات تبقى محفوظة في الأنماط الثلاثة.
+    const data =
+      mode === "freshUnassigned"
+        ? { stage: LeadStage.NEW, assignedToId: null, assignedAt: null, contactedAt: null }
+        : mode === "freshKeepEmployee"
+          ? { stage: LeadStage.NEW, assignedToId: toUserId, assignedAt: new Date(), contactedAt: null }
+          : { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null }; // asis — يحفظ المرحلة
+
+    await prisma.lead.update({ where: { id: leadId }, data });
+    await logAudit(prisma, { userId: user.id, action: "lead.distributed", entity: "lead", entityId: leadId, summary: `وزّع مكرر (${mode})` });
+    revalidateLeads();
+    revalidatePath("/leads/duplicates");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: toUserError(e) };

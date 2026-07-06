@@ -5,6 +5,7 @@ import { FollowUpType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopeForUser, getOwnerIds } from "@/lib/data/leads";
 import { ksaTodayStart } from "@/lib/auto-distribute";
+import { duplicateLeadIds } from "@/lib/phone-dupe";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 // المتوقّع من اللمسات (متابعات) لكل عميل عند حساب نسبة النشاط.
@@ -200,6 +201,15 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   // فلتر الفترة على createdAt — يُطبَّق على كل المؤشرات (فاضي = الكل).
   const periodFilter = inPeriod ? { createdAt: inPeriod } : {};
 
+  // «غير موزّعين» يستثني المكررين المعلّقين (جوالهم مكرر) — يظهرون في قائمة المكررين لا هنا.
+  // استعلام كشف واحد (id, phone) للمدير فقط؛ لا يمسّ totalClients ولا المراحل (القرار: unassigned فقط).
+  const dupIds = manager ? await duplicateLeadIds() : new Set<string>();
+  const unassignedWhere = {
+    assignedToId: null,
+    ...periodFilter,
+    ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}),
+  };
+
   const [
     totalClients,
     unassigned,
@@ -208,7 +218,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     closedWon,
   ] = await Promise.all([
     prisma.lead.count({ where: { ...where, ...periodFilter } }),
-    manager ? prisma.lead.count({ where: { assignedToId: null, ...periodFilter } }) : Promise.resolve(0),
+    manager ? prisma.lead.count({ where: unassignedWhere }) : Promise.resolve(0),
     prisma.booking.count({ where: { ...bookingScope, ...periodFilter } }),
     prisma.followUp.count({ where: { type: { in: VISIT_TYPES }, ...fuVisitScope, ...periodFilter } }),
     prisma.lead.count({ where: { ...where, stage: "CLOSED_WON", ...periodFilter } }),

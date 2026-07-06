@@ -44,6 +44,10 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
 
   const newCount = previewRows.filter((r) => r.status === "new").length;
   const existsCount = previewRows.filter((r) => r.status === "exists").length;
+  // الافتراضي: المطابق «الموجود» يُضاف كمكرر (الخادم يقرّر التخطّي وفق حارس ٤٨ ساعة/نفس الإعلان).
+  // مع «تحديث الموجود» يُحدَّث بدل أن يُضاف، فلا يدخل عدّ الإضافة.
+  const willAdd = updateExisting ? newCount : newCount + existsCount;
+  const canCommit = channelReady && (willAdd > 0 || (updateExisting && existsCount > 0));
 
   // الحقول الإجبارية للمطابقة: الاسم (أو الأول+الأخير) + الجوال.
   const mappedFields = Object.values(mapping);
@@ -221,10 +225,15 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
                 <p className="text-xs text-muted-foreground">القناة تُقرأ من عمود في الملف.</p>
               )}
               {existsCount > 0 && (
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
-                  حدّث القيم الفاضية للعملاء الموجودين ({toArabicDigits(existsCount)}) من بيانات الملف — يعبّي الفاضي فقط
-                </label>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-info">
+                    {toArabicDigits(existsCount)} رقم موجود مسبقًا — بيُضاف كنسخة مكرّرة ويظهر في «العملاء المكررون» (إلا نفس الإعلان خلال ٤٨ ساعة).
+                  </p>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
+                    بدل إضافتهم كمكرر: حدّث القيم الفاضية للموجود ({toArabicDigits(existsCount)}) من بيانات الملف
+                  </label>
+                </div>
               )}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <button onClick={() => setStep("map")} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">رجوع للمطابقة</button>
@@ -234,8 +243,8 @@ export function ImportDialog({ onClose, employees }: { onClose: () => void; empl
                     <option value="roundrobin">توزيع بالتساوي</option>
                     {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
                   </select>
-                  <button onClick={commit} disabled={pending || !channelReady || (newCount === 0 && !(updateExisting && existsCount > 0))} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    {newCount > 0 ? `استيراد (${toArabicDigits(newCount)})` : `تحديث (${toArabicDigits(existsCount)})`}
+                  <button onClick={commit} disabled={pending || !canCommit} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    {willAdd > 0 ? `استيراد (${toArabicDigits(willAdd)})` : `تحديث (${toArabicDigits(existsCount)})`}
                   </button>
                 </div>
               </div>

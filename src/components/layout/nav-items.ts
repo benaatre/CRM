@@ -9,6 +9,7 @@ import {
   ScrollText,
   MessagesSquare,
   Share2,
+  Copy,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, managerOnly: false },
   { href: "/leads", label: "كل العملاء", icon: Contact, managerOnly: false },
+  { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, managerOnly: true },
   { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, managerOnly: false },
   { href: "/projects", label: "المشاريع", icon: Building2, managerOnly: false },
   { href: "/bookings", label: "خط المبيعات", icon: Handshake, managerOnly: false },

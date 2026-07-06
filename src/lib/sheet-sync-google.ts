@@ -3,7 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { readSheetValues, listSheetTabs } from "@/lib/google-sheets";
 import { parseRowsByContent } from "@/lib/utils/sheet-parse";
-import { normalizePhone, phoneVariants } from "@/lib/value-normalize";
+import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
+import type { Channel } from "@prisma/client";
 
 export type SheetSyncResult = {
   linkId: string;
@@ -57,21 +58,20 @@ export async function syncSheetLink(link: LinkWithSource, opts?: { limit?: numbe
     base.totalDataRows = totalDataRows;
     base.processed = leads.length;
 
-    // تفادي التكرار: اجمع الأرقام الصالحة واستعلم عن الموجود.
-    const phones = leads.filter((l) => l.valid).map((l) => l.phone);
-    const variants = [...new Set(phones.flatMap(phoneVariants))];
-    const existing = variants.length
-      ? await prisma.lead.findMany({ where: { phone: { in: variants } }, select: { phone: true } })
-      : [];
-    const existingSet = new Set(existing.map((e) => normalizePhone(e.phone)));
-    const seen = new Set<string>();
+    // المكرر يُسمح به ليظهر في القائمة، إلا استثناء «نفس الرقم + نفس الإعلان (المصدر) خلال ٤٨ ساعة».
+    // آمن هنا: المزامنة تقرأ الصفوف الجديدة فقط (lastRowSynced)، فلا تُعاد قراءة القديمة ولا تُضاف من جديد.
+    const now = new Date();
+    const recentSet = await recentSameAdKeys(now);
+    const ad = { sourceId: link.sourceId, channel: "OTHER" as Channel };
+    const seen = new Set<string>(); // منع تكرار نفس الرقم داخل نفس الدفعة
     const sourceName = link.source?.name ?? null;
 
     let created = 0, duplicates = 0, skipped = 0;
     for (const l of leads) {
       if (!l.valid) { skipped++; continue; }
-      if (existingSet.has(l.phone) || seen.has(l.phone)) { duplicates++; continue; }
-      seen.add(l.phone);
+      const ck = dupeCheckKey(l.phone, ad);
+      if (ck && (recentSet.has(ck) || seen.has(ck))) { duplicates++; continue; }
+      if (ck) { seen.add(ck); recentSet.add(ck); }
       await prisma.lead.create({
         data: {
           name: l.name,
