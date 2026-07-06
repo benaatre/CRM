@@ -405,6 +405,10 @@ export async function runReassignSweep(now: Date = new Date()): Promise<SweepRes
           body: `${lead.name} — أُعيد توجيهه بسبب تأخّر التواصل`,
           link: `/leads/${lead.id}`,
         }, tx);
+        // إشعار الخاسر (from) وحده — مرّة واحدة لكل حدث timeout، برسالة مهنية غير جارحة.
+        await notify(tx, [from], "lead_lost", "فاتك عميل",
+          `${lead.name} — تأخّرت بالتواصل فتحوّل لموظف ثاني. بادر بعملائك بسرعة.`,
+          `/leads/${lead.id}`);
       });
       reassigned++;
     }
