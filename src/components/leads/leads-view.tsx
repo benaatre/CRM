@@ -369,7 +369,6 @@ function UnassignedTools({
         <span className="text-sm font-medium text-foreground">طرق الإضافة:</span>
         <button onClick={onNew} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">عميل جديد</button>
         <button onClick={onImport} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary">استيراد (Excel / لصق / رابط Sheets)</button>
-        <Link href="/settings" className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">مزامنة Google Sheets (الإعدادات)</Link>
       </div>
 
       {/* التوزيع */}
