@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
 import { timeAgo } from "@/lib/format";
 import type { AppSettings } from "@/lib/data/settings";
-import { updateSettings, updateMyPin, syncGoogleSheet } from "@/lib/actions/settings";
+import { updateSettings, updateMyPin, syncGoogleSheet, setOwnerPassword } from "@/lib/actions/settings";
 import { NotificationsPanel } from "@/components/settings/notifications-panel";
 
-export function SettingsForm({ settings }: { settings: AppSettings }) {
+export function SettingsForm({ settings, isOwner }: { settings: AppSettings; isOwner: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
@@ -98,7 +98,44 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
       <SheetSync configured={!!settings.googleSheetUrl} lastSyncAt={settings.lastSyncAt} />
       <NotificationsPanel notify={settings.notify} />
       <PinForm />
+      {isOwner && <OwnerPassword />}
     </div>
+  );
+}
+
+// كلمة مرور قوية للمالك — بديل/إضافة على PIN. PIN يبقى شغّالًا كطريق رجوع.
+function OwnerPassword() {
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setMsg(null);
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const res = await setOwnerPassword(fd);
+      if (res.ok) { setMsg("تم تعيين كلمة المرور"); (e.target as HTMLFormElement).reset(); }
+      else setError(res.error ?? "صار خطأ");
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="glass max-w-xl space-y-4 rounded-2xl p-6">
+      <h2 className="font-semibold text-foreground">كلمة مرور المالك</h2>
+      <p className="text-xs text-muted-foreground">
+        كلمة مرور قوية للدخول (٨ أحرف على الأقل). الـPIN يبقى شغّالًا كطريق رجوع.
+      </p>
+      <Field label="كلمة المرور الجديدة">
+        <input name="password" type="password" autoComplete="new-password" minLength={8} dir="ltr" className="select-base" placeholder="••••••••" />
+      </Field>
+      {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
+      <button type="submit" disabled={pending} className="rounded-xl border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 disabled:opacity-50">
+        {pending ? "جارٍ…" : "تعيين كلمة المرور"}
+      </button>
+    </form>
   );
 }
 
