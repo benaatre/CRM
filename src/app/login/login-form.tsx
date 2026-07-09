@@ -90,21 +90,20 @@ export function LoginForm({
 
         <div className="space-y-2">
           <label htmlFor="pin" className="block text-sm text-muted-foreground">
-            الرمز (PIN)
+            الرمز أو كلمة المرور
           </label>
+          {/* حقل واحد للتبويبين: الموظف يكتب PIN (٤–٦ أرقام)، المالك/المدير يكتب كلمة المرور.
+              القيمة تصل كما هي للـauthorize اللي يجرّب كلمة المرور ثم PIN. */}
           <input
             id="pin"
             name="pin"
             type="password"
-            inputMode="numeric"
-            autoComplete="off"
+            autoComplete="current-password"
             required
             minLength={4}
-            maxLength={6}
-            pattern="\d{4,6}"
-            placeholder="••••"
+            placeholder="الرمز أو كلمة المرور"
             disabled={noUsers}
-            className="w-full rounded-xl border border-border bg-background px-4 py-3 text-center text-2xl tracking-[0.5em] text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
+            className="w-full rounded-xl border border-border bg-background px-4 py-3 text-center text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
           />
         </div>
 

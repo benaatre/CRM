@@ -30,9 +30,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (f && f.until > Date.now()) return null;
 
         const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user || !user.active || !user.pinHash) return null;
+        // يقبل من عنده كلمة مرور أو PIN (أحدهما يكفي).
+        if (!user || !user.active || (!user.pinHash && !user.passwordHash)) return null;
 
-        const ok = await bcrypt.compare(pin, user.pinHash);
+        // يجرّب كلمة المرور أولًا (المالك/المدير)، ثم يرجع للـPIN — PIN يبقى شغّالًا دائمًا (طريق رجوع، لا قفل خارجي).
+        let ok = false;
+        if (user.passwordHash) ok = await bcrypt.compare(pin, user.passwordHash);
+        if (!ok && user.pinHash) ok = await bcrypt.compare(pin, user.pinHash);
         if (!ok) {
           const n = (fails.get(userId)?.n ?? 0) + 1;
           fails.set(userId, { n, until: n >= 5 ? Date.now() + 15 * 60_000 : 0 });

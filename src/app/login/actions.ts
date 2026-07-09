@@ -5,7 +5,8 @@ import { signIn } from "@/auth";
 
 export type LoginState = { error?: string } | undefined;
 
-// أكشن الدخول برمز PIN — يُستدعى من فورم الدخول.
+// أكشن الدخول — يقبل رمز PIN رقمي (موظف) أو كلمة مرور نصية (مالك/مدير).
+// نفس القيمة تُمرَّر للـauthorize اللي يجرّب passwordHash ثم pinHash.
 export async function loginWithPin(
   _prev: LoginState,
   formData: FormData,
@@ -14,7 +15,10 @@ export async function loginWithPin(
   const pin = String(formData.get("pin") ?? "");
 
   if (!userId) return { error: "اختر اسمك أول" };
-  if (!/^\d{4,6}$/.test(pin)) return { error: "الرمز لازم يكون ٤–٦ أرقام" };
+  // يقبل: PIN من ٤–٦ أرقام، أو كلمة مرور طولها ٨ فأكثر.
+  const isPin = /^\d{4,6}$/.test(pin);
+  const isPassword = pin.length >= 8;
+  if (!isPin && !isPassword) return { error: "اكتب رمز PIN (٤–٦ أرقام) أو كلمة المرور" };
 
   try {
     await signIn("pin", {

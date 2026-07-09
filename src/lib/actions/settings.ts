@@ -105,3 +105,22 @@ export async function updateMyPin(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: toUserError(e) };
   }
 }
+
+/** تعيين كلمة مرور قوية للمالك (بديل/إضافة على PIN) — المالك فقط، على الخادم. */
+export async function setOwnerPassword(formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    // فرض الصلاحية على الخادم — المالك فقط (لا يكفي إخفاء الحقل بالواجهة).
+    if (user.role !== "OWNER") return { ok: false, error: "هذي الميزة للمالك فقط" };
+    const password = String(formData.get("password") ?? "");
+    if (password.length < 8) return { ok: false, error: "كلمة المرور لازم ٨ أحرف على الأقل" };
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: bcrypt.hashSync(password, 10) },
+    });
+    await logAudit(prisma, { userId: user.id, action: "user.passwordSet", entity: "user", entityId: user.id, summary: "عيّن كلمة مرور" });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}

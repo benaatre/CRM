@@ -5,7 +5,7 @@ import { SettingsForm } from "@/components/settings/settings-form";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  await requireManager();
+  const user = await requireManager();
   const settings = await getSettings();
 
   return (
@@ -14,7 +14,7 @@ export default async function SettingsPage() {
         <h1 className="text-2xl font-bold text-foreground">الإعدادات</h1>
         <p className="mt-1 text-sm text-muted-foreground">بيانات الشركة وترخيص فال — تظهر في الواجهة والإعلانات</p>
       </header>
-      <SettingsForm settings={settings} />
+      <SettingsForm settings={settings} isOwner={user.role === "OWNER"} />
     </div>
   );
 }
