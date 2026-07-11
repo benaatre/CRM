@@ -97,6 +97,8 @@ export type BookingSummary = {
   installmentsCount: number | null;
   includesVAT: boolean;
   vatAmount: number | null;
+  subjectToTax: boolean;
+  taxAmount: number | null;
   discountExceeded: boolean;
   sellerName: string | null;
 };
@@ -360,6 +362,8 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
       installmentsCount: b.installmentsCount,
       includesVAT: b.includesVAT,
       vatAmount: b.vatAmount ? b.vatAmount.toNumber() : null,
+      subjectToTax: b.subjectToTax,
+      taxAmount: b.taxAmount ? b.taxAmount.toNumber() : null,
       discountExceeded: b.discountExceeded,
       sellerName: b.seller?.name ?? null,
     })),

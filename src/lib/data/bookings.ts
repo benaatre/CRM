@@ -170,7 +170,7 @@ export type ProjectWithUnits = {
   name: string;
   maxDiscountPercent: number | null;
   maxDiscountAmount: number | null;
-  units: { id: string; number: string; price: number | null }[];
+  units: { id: string; number: string; price: number | null; discountedPrice: number | null; discountPercent: number | null }[];
 };
 
 /** المشاريع مع وحداتها المتاحة — لنموذج الحجز. */
@@ -181,7 +181,7 @@ export async function getProjectsWithAvailableUnits(): Promise<ProjectWithUnits[
       units: {
         where: { status: "AVAILABLE", booking: null },
         orderBy: { number: "asc" },
-        select: { id: true, number: true, price: true },
+        select: { id: true, number: true, price: true, discountedPrice: true, discountPercent: true },
       },
     },
   });
@@ -193,6 +193,6 @@ export async function getProjectsWithAvailableUnits(): Promise<ProjectWithUnits[
     units: p.units
       .slice()
       .sort((a, b) => compareUnitNumbers(a.number, b.number))
-      .map((u) => ({ id: u.id, number: u.number, price: dec(u.price) })),
+      .map((u) => ({ id: u.id, number: u.number, price: dec(u.price), discountedPrice: dec(u.discountedPrice), discountPercent: dec(u.discountPercent) })),
   }));
 }

@@ -104,19 +104,16 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const installmentAmount = numOf(formData, "installmentAmount");
     const expectedTransferDate = dateOf(String(formData.get("expectedTransferDate") ?? ""));
 
-    // ضريبة التصرفات العقارية (5% — قديم)
-    const subjectToTax = String(formData.get("subjectToTax") ?? "") === "yes";
+    // ضريبة ٥٪ على السعر بعد الخصم — يتحكم بها زر الفورم (كان includesVAT/VAT ١٥٪). لا VAT بعد الآن.
+    const subjectToTax = String(formData.get("includesVAT") ?? "") === "yes";
     const taxAmount = subjectToTax ? Math.round(finalPrice * 0.05) : null;
-    // ضريبة القيمة المضافة VAT (15% على السعر بعد الخصم)
-    const includesVAT = String(formData.get("includesVAT") ?? "") === "yes";
-    const vatAmount = includesVAT ? Math.round(finalPrice * 0.15) : null;
     const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
 
     // «تم الشراء» الفوري (كاش): يُسجَّل مباعًا مباشرة بدل حجز — مدفوع كامل.
     const immediateSale = String(formData.get("immediateSale") ?? "") === "yes";
 
     // المحصّل: شراء فوري = كامل السعر بعد الخصم؛ حجز عادي = العربون (يتراكم لاحقًا عبر «تسجيل دفعة»).
-    const totalAfterDiscount = finalPrice + (vatAmount ?? 0);
+    const totalAfterDiscount = finalPrice + (taxAmount ?? 0);
     const collectedAmount = immediateSale ? finalPrice : (deposit ?? 0);
     const remainingAmount = totalAfterDiscount - collectedAmount;
 
@@ -197,7 +194,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           installmentsCount, installmentAmount,
           installments: installments ?? undefined,
           subjectToTax, taxAmount,
-          includesVAT, vatAmount,
+          includesVAT: false, vatAmount: null,
           secondaryPhone,
           collectedAmount, remainingAmount,
         },
@@ -220,7 +217,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
         data: {
           leadId, userId: user.id, type: ActivityType.NOTE,
           note: immediateSale
-            ? `تم تسجيل شراء فوري — الوحدة ${unit.number} — المشروع ${unit.project?.name ?? "—"} — المبلغ ${(finalPrice + (vatAmount ?? 0)).toLocaleString("en-US")} ر.س`
+            ? `تم تسجيل شراء فوري — الوحدة ${unit.number} — المشروع ${unit.project?.name ?? "—"} — المبلغ ${(finalPrice + (taxAmount ?? 0)).toLocaleString("en-US")} ر.س`
             : `تم تسجيل حجز — الوحدة ${unit.number} — المشروع ${unit.project?.name ?? "—"}`,
         },
       });
