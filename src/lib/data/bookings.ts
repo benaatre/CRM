@@ -33,7 +33,7 @@ export type BookingCard = {
   paymentMethod: PaymentMethod | null;
   bankName: SaudiBank | null;
   deposit: number | null;
-  price: number;
+  price: number | null;
   discount: number | null;
   finalPrice: number | null;
   stage: BookingStage;
@@ -111,7 +111,7 @@ export async function getBookings(): Promise<BookingsData> {
       paymentMethod: mine ? b.paymentMethod : null,
       bankName: mine ? b.bankName : null,
       deposit: mine ? dec(b.deposit) : null,
-      price: b.price.toNumber(),
+      price: mine ? b.price.toNumber() : null,
       discount: mine ? b.discount.toNumber() : null,
       finalPrice: mine ? b.finalPrice.toNumber() : null,
       stage: b.stage,

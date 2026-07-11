@@ -101,13 +101,13 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
                   {b.secondaryPhone && <BRow label="رقم إضافي" value={b.secondaryPhone} ltr />}
                   <div className="my-1 border-t border-border" />
                   <BRow label="سعر الوحدة" value={formatCurrencyFull(b.price)} />
-                  <BRow label="الخصم" value={b.discount > 0 ? `- ${formatCurrencyFull(b.discount)}` : "—"} />
+                  <BRow label="الخصم" value={(b.discount ?? 0) > 0 ? `- ${formatCurrencyFull(b.discount)}` : "—"} />
                   <BRow label="السعر النهائي" value={formatCurrencyFull(b.finalPrice)} strong />
                   {(b.taxAmount ?? b.vatAmount) != null && <BRow label="ضريبة" value={formatCurrencyFull(b.taxAmount ?? b.vatAmount)} />}
-                  {(b.taxAmount ?? b.vatAmount) != null && <BRow label="الإجمالي مع الضريبة" value={formatCurrencyFull(b.finalPrice + (b.taxAmount ?? b.vatAmount ?? 0))} strong />}
+                  {(b.taxAmount ?? b.vatAmount) != null && <BRow label="الإجمالي مع الضريبة" value={formatCurrencyFull((b.finalPrice ?? 0) + (b.taxAmount ?? b.vatAmount ?? 0))} strong />}
                   <BRow label="العربون" value={b.deposit != null ? formatCurrencyFull(b.deposit) : "—"} />
                   <div className="my-1 border-t border-border" />
-                  <BRow label="طريقة الدفع" value={`${paymentMethodLabels[b.paymentMethod]}${b.bankName ? ` · ${bankLabels[b.bankName]}` : ""}`} />
+                  <BRow label="طريقة الدفع" value={b.paymentMethod ? `${paymentMethodLabels[b.paymentMethod]}${b.bankName ? ` · ${bankLabels[b.bankName]}` : ""}` : "—"} />
                   {b.cashPaymentType && <BRow label="دفع الكاش" value={`${cashPaymentTypeLabels[b.cashPaymentType]}${b.installmentsCount ? ` (${b.installmentsCount} دفعة)` : ""}`} />}
                   <BRow label="تاريخ الحجز" value={formatDate(b.createdAt)} />
                   {b.sellerName && <BRow label="الموظف" value={b.sellerName} />}

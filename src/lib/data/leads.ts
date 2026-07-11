@@ -86,11 +86,11 @@ export type BookingSummary = {
   nationality: Nationality | null;
   nationalId: string | null;
   secondaryPhone: string | null;
-  price: number;
-  discount: number;
-  finalPrice: number;
+  price: number | null;
+  discount: number | null;
+  finalPrice: number | null;
   deposit: number | null;
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod | null;
   bankName: SaudiBank | null;
   cashPaymentType: CashPaymentType | null;
   installments: { amount: number; date: string }[] | null;
@@ -132,10 +132,10 @@ type LeadWithRels = {
   firstContactStage: FirstContactStage | null;
   firstContactDate: Date | null;
   isArchived: boolean;
-  bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number } }[];
+  bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
 };
 
-function toRow(l: LeadWithRels): LeadRow {
+function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): LeadRow {
   return {
     id: l.id,
     name: l.name,
@@ -159,9 +159,13 @@ function toRow(l: LeadWithRels): LeadRow {
     firstContactStage: l.firstContactStage,
     firstContactDate: l.firstContactDate,
     isArchived: l.isArchived,
-    booking: l.bookings && l.bookings[0]
-      ? bookingCollection(l.bookings[0].stage, l.bookings[0].finalPrice.toNumber(), l.bookings[0].collectedAmount.toNumber())
-      : null,
+    // المحصّل/المتبقّي يظهر فقط للبائع أو المدير — وإلا يُحجب (null).
+    booking: (() => {
+      const bk = l.bookings?.[0];
+      if (!bk) return null;
+      const mine = ctx.manager || bk.sellerId === ctx.userId;
+      return mine ? bookingCollection(bk.stage, bk.finalPrice.toNumber(), bk.collectedAmount.toNumber()) : null;
+    })(),
   };
 }
 
@@ -169,7 +173,7 @@ const rowInclude = {
   assignedTo: { select: { id: true, name: true, role: true } },
   project: { select: { name: true } },
   _count: { select: { activities: true, followUps: true } },
-  bookings: { select: { stage: true, finalPrice: true, collectedAmount: true }, orderBy: { createdAt: "desc" }, take: 1 },
+  bookings: { select: { stage: true, finalPrice: true, collectedAmount: true, sellerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
 } as const;
 
 export type LeadTab = "working" | "archived" | "hidden" | "unassigned" | "all";
@@ -235,7 +239,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  * tab: working = جاري العمل · archived = تم الحجز/الشراء · unassigned = غير موزّعين · all = الكل (للكانبان).
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
-  const { where, manager } = await scopeForUser();
+  const { user, where, manager } = await scopeForUser();
   const { tab = "working", stages, assigneeIds, includeUnassigned, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
@@ -271,7 +275,7 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
     include: rowInclude,
     take: 500, // سقف مؤقت لحين الترقيم server-side (#14)
   });
-  return leads.map(toRow);
+  return leads.map((l) => toRow(l, { userId: user.id, manager }));
 }
 
 /** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
@@ -295,19 +299,19 @@ export async function getLeadCounts(): Promise<{ working: number; archived: numb
 
 /** العملاء مجمّعين حسب المرحلة — للكانبان. */
 export async function getPipeline(): Promise<LeadRow[]> {
-  const { where } = await scopeForUser();
+  const { user, where, manager } = await scopeForUser();
   const leads = await prisma.lead.findMany({
     where,
     orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
     include: rowInclude,
     take: 500, // سقف مؤقت لحين ترقيم الكانبان لكل عمود (#14)
   });
-  return leads.map(toRow);
+  return leads.map((l) => toRow(l, { userId: user.id, manager }));
 }
 
 /** تفاصيل عميل واحد + سجل المتابعات — مع تحقق الصلاحية. يرجّع null إن لم يُسمح. */
 export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
-  const { where } = await scopeForUser();
+  const { user, where, manager } = await scopeForUser();
   const lead = await prisma.lead.findFirst({
     where: { id, ...where },
     include: {
@@ -328,7 +332,7 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
   });
   if (!lead) return null;
   return {
-    ...toRow(lead),
+    ...toRow(lead, { userId: user.id, manager }),
     nationalId: lead.nationalId,
     notes: lead.notes,
     firstContactAt: lead.firstContactAt,
@@ -342,31 +346,35 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     sourceName: lead.leadSource?.name ?? null,
     source: lead.source,
     bookingId: lead.bookings[0]?.id ?? null,
-    bookings: lead.bookings.map((b) => ({
-      id: b.id,
-      createdAt: b.createdAt,
-      unitNumber: b.unit?.number ?? "—",
-      floor: b.unit?.floorLevel ? floorLabels[b.unit.floorLevel] : (b.unit?.floor ?? null),
-      projectName: b.unit?.project?.name ?? null,
-      nationality: b.nationality,
-      nationalId: b.nationalId,
-      secondaryPhone: b.secondaryPhone,
-      price: b.price.toNumber(),
-      discount: b.discount.toNumber(),
-      finalPrice: b.finalPrice.toNumber(),
-      deposit: b.deposit ? b.deposit.toNumber() : null,
-      paymentMethod: b.paymentMethod,
-      bankName: b.bankName,
-      cashPaymentType: b.cashPaymentType,
-      installments: (b.installments as { amount: number; date: string }[] | null) ?? null,
-      installmentsCount: b.installmentsCount,
-      includesVAT: b.includesVAT,
-      vatAmount: b.vatAmount ? b.vatAmount.toNumber() : null,
-      subjectToTax: b.subjectToTax,
-      taxAmount: b.taxAmount ? b.taxAmount.toNumber() : null,
-      discountExceeded: b.discountExceeded,
-      sellerName: b.seller?.name ?? null,
-    })),
+    bookings: lead.bookings.map((b) => {
+      // المبالغ تظهر فقط للبائع أو المدير/المالك — وإلا تُحجب (null).
+      const mineBooking = manager || b.sellerId === user.id;
+      return {
+        id: b.id,
+        createdAt: b.createdAt,
+        unitNumber: b.unit?.number ?? "—",
+        floor: b.unit?.floorLevel ? floorLabels[b.unit.floorLevel] : (b.unit?.floor ?? null),
+        projectName: b.unit?.project?.name ?? null,
+        nationality: b.nationality,
+        nationalId: b.nationalId,
+        secondaryPhone: b.secondaryPhone,
+        price: mineBooking ? b.price.toNumber() : null,
+        discount: mineBooking ? b.discount.toNumber() : null,
+        finalPrice: mineBooking ? b.finalPrice.toNumber() : null,
+        deposit: mineBooking && b.deposit ? b.deposit.toNumber() : null,
+        paymentMethod: mineBooking ? b.paymentMethod : null,
+        bankName: mineBooking ? b.bankName : null,
+        cashPaymentType: mineBooking ? b.cashPaymentType : null,
+        installments: mineBooking ? ((b.installments as { amount: number; date: string }[] | null) ?? null) : null,
+        installmentsCount: b.installmentsCount,
+        includesVAT: b.includesVAT,
+        vatAmount: mineBooking && b.vatAmount ? b.vatAmount.toNumber() : null,
+        subjectToTax: b.subjectToTax,
+        taxAmount: mineBooking && b.taxAmount ? b.taxAmount.toNumber() : null,
+        discountExceeded: b.discountExceeded,
+        sellerName: b.seller?.name ?? null,
+      };
+    }),
     activities: lead.activities.map((a) => ({
       id: a.id,
       type: a.type,
