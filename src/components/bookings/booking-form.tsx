@@ -9,6 +9,15 @@ import { createBooking, fetchProjectsWithUnits } from "@/lib/actions/bookings";
 import type { ProjectWithUnits } from "@/lib/data/bookings";
 
 type CashType = "CHECK" | "TRANSFER" | "INSTALLMENTS";
+type UnitLite = ProjectWithUnits["units"][number];
+
+/** السعر الأساسي للوحدة حسب الوضع: «قبل الخصم» = السعر، «بعد الخصم» = discountedPrice أو محسوب من النسبة. */
+function unitBasePrice(u: UnitLite, mode: "before" | "after"): number | null {
+  if (mode === "before") return u.price;
+  if (u.discountedPrice != null) return u.discountedPrice;
+  if (u.price != null && u.discountPercent != null) return Math.round(u.price * (1 - u.discountPercent / 100));
+  return u.price;
+}
 
 export function BookingForm({
   open, onClose, leadId, leadName, onDone, presetUnitId, immediateSale = false,
@@ -34,6 +43,7 @@ export function BookingForm({
   const [cashType, setCashType] = useState<CashType>("CHECK");
   const [nationality, setNationality] = useState<"SAUDI" | "RESIDENT">("SAUDI");
   const [vatIncluded, setVatIncluded] = useState(false);
+  const [priceMode, setPriceMode] = useState<"before" | "after">("after");
   const [instRows, setInstRows] = useState<{ amount: string; date: string }[]>([{ amount: "", date: "" }]);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,18 +61,26 @@ export function BookingForm({
         setProjectId(proj.id);
         setUnitId(presetUnitId);
         const u = proj.units.find((x) => x.id === presetUnitId);
-        if (u?.price) setPrice(String(u.price));
+        if (u) { setPriceMode("after"); const bp = unitBasePrice(u, "after"); if (bp != null) setPrice(String(bp)); }
       }
     }
   }, [presetUnitId, projects]);
 
+  // الوحدة المختارة + هل فيها خصم مخزّن (نسبة أو سعر بعد الخصم) → نعرض خيار قبل/بعد.
+  const selUnit = units.find((u) => u.id === unitId);
+  const hasUnitDiscount = !!selUnit && (selUnit.discountedPrice != null || selUnit.discountPercent != null);
+  function changePriceMode(mode: "before" | "after") {
+    setPriceMode(mode);
+    if (selUnit) { const bp = unitBasePrice(selUnit, mode); if (bp != null) setPrice(String(bp)); }
+  }
+
   const priceNum = Number(price.replace(/\D/g, "")) || 0;
   const discountNum = Number(discount.replace(/\D/g, "")) || 0;
   const finalPrice = priceNum - discountNum;
-  const vat = vatIncluded ? Math.round(finalPrice * 0.15) : 0;
+  const tax = vatIncluded ? Math.round(finalPrice * 0.05) : 0;
   // المحصّل (العربون) والمتبقي — لحظيًا.
   const depositNum = Number(deposit.replace(/\D/g, "")) || 0;
-  const totalAfterDiscount = finalPrice + vat;
+  const totalAfterDiscount = finalPrice + tax;
   const remaining = totalAfterDiscount - depositNum;
 
   // الحد الأقصى للخصم من إعدادات المشروع
@@ -148,11 +166,30 @@ export function BookingForm({
 
           {/* الوحدة (متاحة فقط) */}
           <Field label="الوحدة *">
-            <select name="unitId" value={unitId} onChange={(e) => { setUnitId(e.target.value); const u = units.find((x) => x.id === e.target.value); if (u?.price) setPrice(String(u.price)); }} required disabled={!projectId} className="select-base">
+            <select name="unitId" value={unitId} onChange={(e) => { const id = e.target.value; setUnitId(id); const u = units.find((x) => x.id === id); if (u) { setPriceMode("after"); const bp = unitBasePrice(u, "after"); if (bp != null) setPrice(String(bp)); } }} required disabled={!projectId} className="select-base">
               <option value="" disabled>{projectId ? (units.length ? "اختر الوحدة" : "ما فيه وحدات متاحة") : "اختر المشروع أول"}</option>
               {units.map((u) => <option key={u.id} value={u.id}>{u.number}{u.price ? ` — ${toArabicDigits(u.price.toLocaleString("en-US"))} ر.س` : ""}</option>)}
             </select>
           </Field>
+
+          {/* خيار السعر قبل/بعد الخصم — يظهر فقط للوحدات اللي فيها خصم مخزّن */}
+          {hasUnitDiscount && selUnit && (
+            <div className="rounded-xl border border-border p-3">
+              <div className="mb-2 text-sm text-foreground">سعر الوحدة (فيها خصم)</div>
+              <div className="grid grid-cols-2 gap-2">
+                {([["after", "السعر بعد الخصم"], ["before", "السعر قبل الخصم"]] as const).map(([v, label]) => {
+                  const bp = unitBasePrice(selUnit, v) ?? 0;
+                  return (
+                    <label key={v} className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-lg border px-2 py-2 text-xs ${priceMode === v ? "border-gold/50 bg-gold/10 text-gold" : "border-border text-muted-foreground"}`}>
+                      <input type="radio" name="priceModeRadio" checked={priceMode === v} onChange={() => changePriceMode(v)} className="hidden" />
+                      <span>{label}</span>
+                      <span className="font-semibold" dir="ltr">{formatCurrencyFull(bp)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* المبالغ — عمود واحد على الجوال */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -161,9 +198,9 @@ export function BookingForm({
             <Field label="العربون"><input name="deposit" value={deposit} onChange={(e) => setDeposit(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
           </div>
 
-          {/* ضريبة القيمة المضافة (VAT 15%) */}
+          {/* ضريبة ٥٪ على السعر بعد الخصم */}
           <div className="rounded-xl border border-border p-3">
-            <div className="mb-2 text-sm text-foreground">يُضاف VAT (١٥٪) على السعر؟</div>
+            <div className="mb-2 text-sm text-foreground">تُضاف ضريبة (٥٪) على السعر؟</div>
             <div className="grid grid-cols-2 gap-2">
               {([[true, "نعم"], [false, "لا"]] as const).map(([v, label]) => (
                 <label key={String(v)} className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-sm ${vatIncluded === v ? "border-gold/50 bg-gold/10 text-gold" : "border-border text-muted-foreground"}`}>
@@ -183,7 +220,7 @@ export function BookingForm({
           {/* ملخّص السعر + الدفع */}
           <div className="space-y-1 rounded-lg bg-secondary/50 px-3 py-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">السعر بعد الخصم</span><span className="text-foreground">{formatCurrencyFull(finalPrice)}</span></div>
-            {vatIncluded && <div className="flex justify-between"><span className="text-muted-foreground">ضريبة القيمة المضافة (١٥٪)</span><span className="text-warning">{formatCurrencyFull(vat)}</span></div>}
+            {vatIncluded && <div className="flex justify-between"><span className="text-muted-foreground">ضريبة (٥٪)</span><span className="text-warning">{formatCurrencyFull(tax)}</span></div>}
             <div className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">الإجمالي</span><span className="font-bold text-gold">{formatCurrencyFull(totalAfterDiscount)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">المبلغ المحصّل</span><span className="text-success">{formatCurrencyFull(depositNum)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">المبلغ المتبقي</span><span className={remaining < 0 ? "font-bold text-destructive" : "font-bold text-foreground"}>{formatCurrencyFull(remaining)}</span></div>

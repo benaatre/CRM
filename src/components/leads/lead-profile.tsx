@@ -103,8 +103,8 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
                   <BRow label="سعر الوحدة" value={formatCurrencyFull(b.price)} />
                   <BRow label="الخصم" value={b.discount > 0 ? `- ${formatCurrencyFull(b.discount)}` : "—"} />
                   <BRow label="السعر النهائي" value={formatCurrencyFull(b.finalPrice)} strong />
-                  {b.includesVAT && b.vatAmount != null && <BRow label="ضريبة القيمة المضافة (١٥٪)" value={formatCurrencyFull(b.vatAmount)} />}
-                  {b.includesVAT && b.vatAmount != null && <BRow label="الإجمالي مع الضريبة" value={formatCurrencyFull(b.finalPrice + b.vatAmount)} strong />}
+                  {(b.taxAmount ?? b.vatAmount) != null && <BRow label="ضريبة" value={formatCurrencyFull(b.taxAmount ?? b.vatAmount)} />}
+                  {(b.taxAmount ?? b.vatAmount) != null && <BRow label="الإجمالي مع الضريبة" value={formatCurrencyFull(b.finalPrice + (b.taxAmount ?? b.vatAmount ?? 0))} strong />}
                   <BRow label="العربون" value={b.deposit != null ? formatCurrencyFull(b.deposit) : "—"} />
                   <div className="my-1 border-t border-border" />
                   <BRow label="طريقة الدفع" value={`${paymentMethodLabels[b.paymentMethod]}${b.bankName ? ` · ${bankLabels[b.bankName]}` : ""}`} />

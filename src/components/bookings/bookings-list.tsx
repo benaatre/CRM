@@ -198,8 +198,8 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
         <Row label="بعد الخصم" value={formatCurrencyFull(b.finalPrice)} strong />
         {b.subjectToTax && b.taxAmount != null && <Row label="الضريبة ٥٪" value={formatCurrencyFull(b.taxAmount)} />}
         {b.subjectToTax && b.taxAmount != null && b.finalPrice != null && <Row label="الإجمالي" value={formatCurrencyFull(b.finalPrice + b.taxAmount)} strong />}
-        {b.includesVAT && b.vatAmount != null && <Row label="ض. القيمة المضافة ١٥٪" value={formatCurrencyFull(b.vatAmount)} />}
-        {b.includesVAT && b.vatAmount != null && b.finalPrice != null && <Row label="الإجمالي مع VAT" value={formatCurrencyFull(b.finalPrice + b.vatAmount)} strong />}
+        {b.includesVAT && b.vatAmount != null && <Row label="ضريبة" value={formatCurrencyFull(b.vatAmount)} />}
+        {b.includesVAT && b.vatAmount != null && b.finalPrice != null && <Row label="الإجمالي مع الضريبة" value={formatCurrencyFull(b.finalPrice + b.vatAmount)} strong />}
         {b.secondaryPhone && <Row label="رقم إضافي" value={b.secondaryPhone} />}
         {b.expectedTransferDate && <Row label="موعد التحويل" value={formatDate(b.expectedTransferDate)} />}
         {b.installments && b.installments.length > 0 && <Row label="الدفعات" value={`${toArabicDigits(b.installments.length)} دفعة`} />}
