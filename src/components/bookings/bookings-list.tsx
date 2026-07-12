@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Building2, Clock, BadgeCheck, Coins, Wallet, AlertTriangle, History, Ban,
+  Building2, Clock, BadgeCheck, Coins, Wallet, AlertTriangle, History, Ban, Pencil,
 } from "lucide-react";
+import { BookingForm } from "@/components/bookings/booking-form";
 import type { BookingStage } from "@prisma/client";
 import {
   bookingStageOrder, bookingStageLabels, paymentMethodLabels, bankLabels,
@@ -17,7 +18,7 @@ import { updateBookingStage, setFinanceRejected, cancelBooking, addBookingPaymen
 export function BookingsList({ data }: { data: BookingsData }) {
   const router = useRouter();
   const [filter, setFilter] = useState<"all" | "mine">("all");
-  const [stageFilter, setStageFilter] = useState<"all" | "working" | "delivered">("all");
+  const [stageFilter, setStageFilter] = useState<"all" | "working" | "sold" | "delivered">("all");
 
   // تحديث تلقائي كل ٣٠ ثانية (خط مبيعات مشترك)
   useEffect(() => {
@@ -28,7 +29,8 @@ export function BookingsList({ data }: { data: BookingsData }) {
   // الفلاتر تعمل مع بعض: الملكية (الكل/حجوزاتي) + المرحلة (جاري العمل/تم التسليم).
   const cards = useMemo(() => {
     let c = filter === "mine" ? data.cards.filter((x) => x.sellerId === data.currentUserId) : data.cards;
-    if (stageFilter === "working") c = c.filter((x) => x.stage !== "DELIVERED");
+    if (stageFilter === "working") c = c.filter((x) => x.stage !== "DELIVERED" && x.stage !== "SOLD");
+    else if (stageFilter === "sold") c = c.filter((x) => x.stage === "SOLD");
     else if (stageFilter === "delivered") c = c.filter((x) => x.stage === "DELIVERED");
     return c;
   }, [data.cards, data.currentUserId, filter, stageFilter]);
@@ -55,7 +57,7 @@ export function BookingsList({ data }: { data: BookingsData }) {
             ))}
           </div>
           <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
-            {([["working", "جاري العمل"], ["delivered", "تم البيع والتسليم"]] as const).map(([v, label]) => (
+            {([["working", "جاري العمل"], ["sold", "لم تُسلّم"], ["delivered", "تم التسليم"]] as const).map(([v, label]) => (
               <button key={v} onClick={() => setStageFilter((cur) => (cur === v ? "all" : v))} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${stageFilter === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
             ))}
           </div>
@@ -96,13 +98,25 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
   const [showLog, setShowLog] = useState(false);
   const [showPay, setShowPay] = useState(false);
   const [payAmount, setPayAmount] = useState("");
+  const [editing, setEditing] = useState(false);
   // من يملك التحكم: بائع الحجز أو المدير/المالك (يطابق assertBookingAccess على الخادم).
   const canManage = manager || b.sellerId === currentUserId;
+  // تعديل الحجز: بلا محصّل → بائع/مدير؛ فيه محصّل → المالك فقط (الخادم يفرضها فعلاً — هذا دفاع أمامي).
+  const canEdit = (b.collectedAmount ?? 0) > 0 ? isOwner : canManage;
   const isSold = b.stage === "SOLD" || b.stage === "DELIVERED";
-  // SOLD وDELIVERED مدموجان في «تم البيع والاستلام» (= DELIVERED). نخفي SOLD من الواجهة.
-  const STAGES = bookingStageOrder.filter((s) => s !== "SOLD");
+  const soldPending = b.stage === "SOLD";      // مباع بانتظار التسليم (كهرماني)
+  const delivered = b.stage === "DELIVERED";   // تم الاستلام (أخضر)
+  // مراحل معروضة (عرض فقط — لا تمسّ stage/stageIndex/enum): الكاش مسار مختصر بلا أوراق/تقييم.
+  const FULL_STAGES = bookingStageOrder.filter((s) => s !== "SOLD");
+  const CASH_STAGES: BookingStage[] = ["RESERVATION", "SIGNING", "TRANSFER", "DELIVERED"];
+  const STAGES = b.paymentMethod === "CASH" ? CASH_STAGES : FULL_STAGES;
+  // خيارات التغيير: نفس المسار + «تم البيع (بانتظار التسليم)» قبل «تم الاستلام».
+  const SELECT_STAGES: BookingStage[] = [...STAGES.filter((s) => s !== "DELIVERED"), "SOLD", "DELIVERED"];
   const effStage: BookingStage = b.stage === "SOLD" ? "DELIVERED" : b.stage;
-  const currentIdx = STAGES.indexOf(effStage);
+  const effFullIdx = bookingStageOrder.indexOf(effStage);
+  let currentIdx = STAGES.indexOf(effStage);
+  // لو المرحلة المخزّنة غير معروضة (مثلاً كاش بمرحلة أوراق) — نحدّد آخر مرحلة معروضة وصلناها.
+  if (currentIdx === -1) currentIdx = STAGES.reduce((acc, s, i) => (bookingStageOrder.indexOf(s) <= effFullIdx ? i : acc), -1);
 
   function setStage(stage: BookingStage) {
     setError(null);
@@ -145,9 +159,9 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
     });
   }
 
-  const delivered = effStage === "DELIVERED";
   return (
-    <article className={`glass overflow-hidden rounded-2xl p-5 ${delivered ? "border-[#16a34a] bg-[#16a34a]/[0.08]" : b.discountOverage > 0 ? "border-destructive" : b.financeRejected ? "border-destructive/50" : ""}`}>
+    <>
+    <article className={`glass overflow-hidden rounded-2xl p-5 ${delivered ? "border-[#16a34a] bg-[#16a34a]/[0.08]" : soldPending ? "border-warning bg-warning/[0.06]" : b.discountOverage > 0 ? "border-destructive" : b.financeRejected ? "border-destructive/50" : ""}`}>
       {/* شريط تجاوز الخصم — بارز فوق الكرت */}
       {b.discountOverage > 0 && (
         <div className="-mx-5 -mt-5 mb-4 bg-destructive px-4 py-2.5 text-center text-sm font-bold text-white">
@@ -165,6 +179,9 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
           <div className="mt-1 text-sm text-gold">{b.projectName ?? "—"} · وحدة <span dir="ltr">{b.unitNumber}</span></div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
+          {soldPending && (
+            <span className="flex items-center gap-1 rounded-full bg-warning/15 px-2 py-1 text-xs font-medium text-warning"><Clock className="size-3.5" /> مباع · بانتظار التسليم</span>
+          )}
           {delivered && (
             <span className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium" style={{ color: "#16a34a", background: "rgba(22,163,74,0.15)" }}><BadgeCheck className="size-3.5" /> تم البيع والاستلام</span>
           )}
@@ -180,12 +197,23 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
       {/* شريط تقدّم البيع */}
       <div className="mt-4">
         <div className="flex gap-1">
-          {STAGES.map((s, i) => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full ${i <= currentIdx ? "bg-gold" : "bg-secondary"}`} title={bookingStageLabels[s]} />
-          ))}
+          {STAGES.map((s, i) => {
+            const done = i <= currentIdx;
+            const isFinal = s === "DELIVERED";
+            const cls = !done ? "bg-secondary"
+              : isFinal && soldPending ? "bg-warning"   // كهرماني — مباع بانتظار التسليم
+              : isFinal && delivered ? "bg-success"     // أخضر — تم الاستلام
+              : "bg-gold";
+            return <div key={s} className={`h-1.5 flex-1 rounded-full ${cls}`} title={bookingStageLabels[s]} />;
+          })}
         </div>
         <div className="mt-1.5 flex justify-between text-[0.65rem] text-muted-foreground">
-          {STAGES.map((s, i) => <span key={s} className={i === currentIdx ? "font-bold text-gold" : ""}>{bookingStageLabels[s]}</span>)}
+          {STAGES.map((s, i) => {
+            const label = s === "DELIVERED" ? "التسليم" : bookingStageLabels[s];
+            const active = i === currentIdx;
+            const cls = !active ? "" : s === "DELIVERED" && soldPending ? "font-bold text-warning" : s === "DELIVERED" && delivered ? "font-bold text-success" : "font-bold text-gold";
+            return <span key={s} className={cls}>{label}</span>;
+          })}
         </div>
       </div>
 
@@ -243,20 +271,25 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
         {/* السجل — متاح للكل (قراءة فقط) */}
         <button onClick={() => setShowLog((v) => !v)} className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground"><History className="size-3.5" /> السجل</button>
+        {canEdit && (
+          <button onClick={() => setEditing(true)} disabled={pending} className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="size-3.5" /> تعديل</button>
+        )}
         {canManage && (
           <>
             {/* بعد البيع: تُخفى مراحل البيع وفشل التمويل */}
-            {!isSold && (
-              <>
-                <select value={effStage} disabled={pending} onChange={(e) => setStage(e.target.value as BookingStage)} className="select-base w-auto">
-                  {STAGES.map((s) => <option key={s} value={s}>{bookingStageLabels[s]}</option>)}
-                </select>
-                {b.financeRejected ? (
-                  <button onClick={clearRejected} disabled={pending} className="rounded-lg border border-success/40 px-3 py-2 text-xs text-success hover:bg-success/10">ألغِ رفض التمويل</button>
-                ) : (
-                  <button onClick={() => setShowReason((v) => !v)} disabled={pending} className="rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10">فشل التمويل</button>
-                )}
-              </>
+            {/* التغيير متاح حتى الاستلام — يقدر يعلّم «تم البيع (بانتظار التسليم)» ثم «تم الاستلام». */}
+            {!delivered && (
+              <select value={b.stage} disabled={pending} onChange={(e) => setStage(e.target.value as BookingStage)} className="select-base w-auto">
+                {SELECT_STAGES.map((s) => <option key={s} value={s}>{s === "SOLD" ? "تم البيع (بانتظار التسليم)" : bookingStageLabels[s]}</option>)}
+              </select>
+            )}
+            {/* فشل التمويل — قبل البيع فقط، ولحجوزات فيها تمويل بنكي (لا يظهر للكاش الصافي). */}
+            {!isSold && (b.paymentMethod === "BANK_FINANCE" || b.paymentMethod === "CASH_AND_FINANCE") && (
+              b.financeRejected ? (
+                <button onClick={clearRejected} disabled={pending} className="rounded-lg border border-success/40 px-3 py-2 text-xs text-success hover:bg-success/10">ألغِ رفض التمويل</button>
+              ) : (
+                <button onClick={() => setShowReason((v) => !v)} disabled={pending} className="rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/10">فشل التمويل</button>
+              )
             )}
             {/* تسجيل دفعة: يظهر ما دام فيه متبقّي (يختفي عند التحصيل الكامل/التسليم) */}
             {(b.remaining ?? 0) > 0 && (
@@ -314,7 +347,20 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
           )}
         </div>
       )}
+
     </article>
+      {/* تعديل الحجز — نافذة overlay خارج بطاقة الـglass (وإلا يُحتجز الـfixed داخلها) */}
+      {editing && (
+        <BookingForm
+          open={editing}
+          booking={b}
+          leadId={b.leadId}
+          leadName={b.leadName}
+          onClose={() => setEditing(false)}
+          onDone={() => router.refresh()}
+        />
+      )}
+    </>
   );
 }
 

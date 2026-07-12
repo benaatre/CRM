@@ -30,6 +30,11 @@ export type BookingCard = {
   nationalId: string | null;
   projectName: string | null;
   unitNumber: string;
+  // معرّفات للتعديل (فتح الفورم محمّلاً)
+  leadId: string;
+  unitId: string;
+  projectId: string | null;
+  collectedAmount: number | null;
   paymentMethod: PaymentMethod | null;
   bankName: SaudiBank | null;
   deposit: number | null;
@@ -86,7 +91,7 @@ export async function getBookings(): Promise<BookingsData> {
     take: 500, // سقف مؤقت لحين الترقيم (#14)
     include: {
       lead: { select: { name: true } },
-      unit: { select: { number: true, project: { select: { name: true } } } },
+      unit: { select: { number: true, project: { select: { id: true, name: true } } } },
       seller: { select: { name: true } },
       events: {
         orderBy: { createdAt: "desc" },
@@ -108,6 +113,10 @@ export async function getBookings(): Promise<BookingsData> {
       nationalId: mine ? b.nationalId : null,
       projectName: b.unit.project?.name ?? null,
       unitNumber: b.unit.number,
+      leadId: b.leadId,
+      unitId: b.unitId,
+      projectId: b.unit.project?.id ?? null,
+      collectedAmount: mine ? b.collectedAmount.toNumber() : null,
       paymentMethod: mine ? b.paymentMethod : null,
       bankName: mine ? b.bankName : null,
       deposit: mine ? dec(b.deposit) : null,

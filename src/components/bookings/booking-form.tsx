@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import type { PaymentMethod } from "@prisma/client";
 import { bankLabels, paymentMethodLabels } from "@/lib/labels";
 import { formatCurrencyFull, toArabicDigits } from "@/lib/format";
-import { createBooking, fetchProjectsWithUnits } from "@/lib/actions/bookings";
-import type { ProjectWithUnits } from "@/lib/data/bookings";
+import { createBooking, updateBooking, fetchProjectsWithUnits } from "@/lib/actions/bookings";
+import type { ProjectWithUnits, BookingCard } from "@/lib/data/bookings";
 
 type CashType = "CHECK" | "TRANSFER" | "INSTALLMENTS";
 type UnitLite = ProjectWithUnits["units"][number];
@@ -20,7 +20,7 @@ function unitBasePrice(u: UnitLite, mode: "before" | "after"): number | null {
 }
 
 export function BookingForm({
-  open, onClose, leadId, leadName, onDone, presetUnitId, immediateSale = false,
+  open, onClose, leadId, leadName, onDone, presetUnitId, immediateSale = false, booking,
 }: {
   open: boolean;
   onClose: () => void;
@@ -29,7 +29,9 @@ export function BookingForm({
   onDone?: () => void;
   presetUnitId?: string;
   immediateSale?: boolean;
+  booking?: BookingCard; // مُرّر = وضع تعديل (يُهيّئ الفورم بقيم الحجز)
 }) {
+  const editing = !!booking;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [projects, setProjects] = useState<ProjectWithUnits[]>([]);
@@ -48,8 +50,38 @@ export function BookingForm({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) { fetchProjectsWithUnits().then(setProjects); setError(null); }
-  }, [open]);
+    if (!open) return;
+    setError(null);
+    fetchProjectsWithUnits().then((ps) => {
+      // وضع التعديل: الوحدة الحالية ليست ضمن «المتاحة» — نحقنها في مشروعها لتظهر مختارة.
+      if (booking && booking.projectId) {
+        ps = ps.map((p) =>
+          p.id === booking.projectId && !p.units.some((u) => u.id === booking.unitId)
+            ? { ...p, units: [{ id: booking.unitId, number: booking.unitNumber, price: booking.price, discountedPrice: null, discountPercent: null }, ...p.units] }
+            : p,
+        );
+      }
+      setProjects(ps);
+    });
+  }, [open, booking]);
+
+  // تعبئة الفورم بقيم الحجز عند فتح وضع التعديل.
+  useEffect(() => {
+    if (!open || !booking) return;
+    setProjectId(booking.projectId ?? "");
+    setUnitId(booking.unitId);
+    setPrice(booking.price != null ? String(booking.price) : "");
+    setDiscount(booking.discount != null && booking.discount > 0 ? String(booking.discount) : "");
+    setDeposit(booking.deposit != null ? String(booking.deposit) : "");
+    setIdNumber(booking.nationalId ?? "");
+    setMethod(booking.paymentMethod ?? "CASH");
+    setNationality(booking.nationality === "RESIDENT" ? "RESIDENT" : "SAUDI");
+    setVatIncluded(booking.subjectToTax);
+    setCashType((booking.cashPaymentType as CashType) ?? "CHECK");
+    if (booking.installments && booking.installments.length) {
+      setInstRows(booking.installments.map((r) => ({ amount: String(r.amount), date: r.date })));
+    }
+  }, [open, booking]);
 
   const units = useMemo(() => projects.find((p) => p.id === projectId)?.units ?? [], [projects, projectId]);
 
@@ -102,8 +134,6 @@ export function BookingForm({
     const fd = new FormData(e.currentTarget);
     fd.set("leadId", leadId);
     fd.set("includesVAT", vatIncluded ? "yes" : "no");
-    // الشراء الفوري = نفس فورم الحجز، لكن الوحدة تُباع والعميل يُقفل (داخل createBooking).
-    fd.set("immediateSale", immediateSale ? "yes" : "no");
 
     if (showCash && cashType === "INSTALLMENTS") {
       const rows = instRows
@@ -113,7 +143,15 @@ export function BookingForm({
       fd.set("installmentsCount", String(rows.length));
     }
     startTransition(async () => {
-      const res = await createBooking(fd);
+      let res;
+      if (editing && booking) {
+        fd.set("bookingId", booking.id);
+        res = await updateBooking(fd);
+      } else {
+        // الشراء الفوري = نفس فورم الحجز، لكن الوحدة تُباع والعميل يُقفل (داخل createBooking).
+        fd.set("immediateSale", immediateSale ? "yes" : "no");
+        res = await createBooking(fd);
+      }
       if (res.ok) { router.refresh(); onDone?.(); onClose(); }
       else setError(res.error ?? "صار خطأ");
     });
@@ -125,7 +163,7 @@ export function BookingForm({
       <div className="glass relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-y-auto rounded-2xl p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-foreground">{immediateSale ? "شراء فوري" : "حجز جديد"}</h2>
+            <h2 className="text-lg font-bold text-foreground">{editing ? "تعديل الحجز" : immediateSale ? "شراء فوري" : "حجز جديد"}</h2>
             <p className="text-xs text-muted-foreground">للعميل: {leadName}</p>
             {idNumber.trim() && (
               <p className="text-xs text-muted-foreground">{nationality === "SAUDI" ? "رقم الهوية" : "رقم الإقامة"}: <span dir="ltr">{idNumber.trim()}</span></p>
@@ -152,7 +190,7 @@ export function BookingForm({
             </label>
             <label className="mt-3 block space-y-1.5">
               <span className="text-xs text-muted-foreground">رقم إضافي (اختياري)</span>
-              <input name="secondaryPhone" inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" />
+              <input name="secondaryPhone" defaultValue={booking?.secondaryPhone ?? ""} inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" />
             </label>
           </div>
 
@@ -244,7 +282,7 @@ export function BookingForm({
             <div className="space-y-3 rounded-xl border border-border p-3">
               <div className="text-xs font-medium text-muted-foreground">تفاصيل الكاش</div>
               {method === "CASH_AND_FINANCE" && (
-                <Field label="المبلغ الكاش"><input name="cashAmount" inputMode="numeric" dir="ltr" className="select-base" /></Field>
+                <Field label="المبلغ الكاش"><input name="cashAmount" defaultValue={booking?.cashAmount != null ? String(booking.cashAmount) : ""} inputMode="numeric" dir="ltr" className="select-base" /></Field>
               )}
               <Field label="طريقة دفع الكاش">
                 <div className="grid grid-cols-3 gap-2">
@@ -256,8 +294,8 @@ export function BookingForm({
                   ))}
                 </div>
               </Field>
-              {cashType === "CHECK" && <Field label="موعد الشيك المتوقع"><input name="expectedCheckDate" type="date" className="select-base" /></Field>}
-              {cashType === "TRANSFER" && <Field label="تاريخ التحويل المتوقع"><input name="expectedTransferDate" type="date" className="select-base" /></Field>}
+              {cashType === "CHECK" && <Field label="موعد الشيك المتوقع"><input name="expectedCheckDate" type="date" defaultValue={booking?.expectedCheckDate ? new Date(booking.expectedCheckDate).toISOString().slice(0, 10) : ""} className="select-base" /></Field>}
+              {cashType === "TRANSFER" && <Field label="تاريخ التحويل المتوقع"><input name="expectedTransferDate" type="date" defaultValue={booking?.expectedTransferDate ? new Date(booking.expectedTransferDate).toISOString().slice(0, 10) : ""} className="select-base" /></Field>}
               {cashType === "INSTALLMENTS" && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -281,7 +319,7 @@ export function BookingForm({
             <div className="space-y-3 rounded-xl border border-border p-3">
               <div className="text-xs font-medium text-muted-foreground">تفاصيل التمويل</div>
               <Field label="البنك *">
-                <select name="bankName" required className="select-base" defaultValue="">
+                <select name="bankName" required className="select-base" defaultValue={booking?.bankName ?? ""}>
                   <option value="" disabled>اختر البنك</option>
                   {(Object.keys(bankLabels) as (keyof typeof bankLabels)[]).map((b) => <option key={b} value={b}>{bankLabels[b]}</option>)}
                 </select>
@@ -294,7 +332,7 @@ export function BookingForm({
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="min-h-12 flex-1 rounded-xl border border-border px-4 text-sm text-muted-foreground sm:flex-none">إلغاء</button>
             <button type="submit" disabled={pending} className="min-h-12 flex-1 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-              {pending ? "جارٍ…" : immediateSale ? "سجّل الشراء" : "سجّل الحجز"}
+              {pending ? "جارٍ…" : editing ? "حفظ التعديلات" : immediateSale ? "سجّل الشراء" : "سجّل الحجز"}
             </button>
           </div>
         </form>
