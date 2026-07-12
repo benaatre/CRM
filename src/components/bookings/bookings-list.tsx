@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Building2, Clock, BadgeCheck, Coins, Wallet, AlertTriangle, History, Ban,
+  Building2, Clock, BadgeCheck, Coins, Wallet, AlertTriangle, History, Ban, Pencil,
 } from "lucide-react";
+import { BookingForm } from "@/components/bookings/booking-form";
 import type { BookingStage } from "@prisma/client";
 import {
   bookingStageOrder, bookingStageLabels, paymentMethodLabels, bankLabels,
@@ -97,8 +98,11 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
   const [showLog, setShowLog] = useState(false);
   const [showPay, setShowPay] = useState(false);
   const [payAmount, setPayAmount] = useState("");
+  const [editing, setEditing] = useState(false);
   // من يملك التحكم: بائع الحجز أو المدير/المالك (يطابق assertBookingAccess على الخادم).
   const canManage = manager || b.sellerId === currentUserId;
+  // تعديل الحجز: بلا محصّل → بائع/مدير؛ فيه محصّل → المالك فقط (الخادم يفرضها فعلاً — هذا دفاع أمامي).
+  const canEdit = (b.collectedAmount ?? 0) > 0 ? isOwner : canManage;
   const isSold = b.stage === "SOLD" || b.stage === "DELIVERED";
   const soldPending = b.stage === "SOLD";      // مباع بانتظار التسليم (كهرماني)
   const delivered = b.stage === "DELIVERED";   // تم الاستلام (أخضر)
@@ -156,6 +160,7 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
   }
 
   return (
+    <>
     <article className={`glass overflow-hidden rounded-2xl p-5 ${delivered ? "border-[#16a34a] bg-[#16a34a]/[0.08]" : soldPending ? "border-warning bg-warning/[0.06]" : b.discountOverage > 0 ? "border-destructive" : b.financeRejected ? "border-destructive/50" : ""}`}>
       {/* شريط تجاوز الخصم — بارز فوق الكرت */}
       {b.discountOverage > 0 && (
@@ -266,6 +271,9 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
         {/* السجل — متاح للكل (قراءة فقط) */}
         <button onClick={() => setShowLog((v) => !v)} className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground"><History className="size-3.5" /> السجل</button>
+        {canEdit && (
+          <button onClick={() => setEditing(true)} disabled={pending} className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="size-3.5" /> تعديل</button>
+        )}
         {canManage && (
           <>
             {/* بعد البيع: تُخفى مراحل البيع وفشل التمويل */}
@@ -339,7 +347,20 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
           )}
         </div>
       )}
+
     </article>
+      {/* تعديل الحجز — نافذة overlay خارج بطاقة الـglass (وإلا يُحتجز الـfixed داخلها) */}
+      {editing && (
+        <BookingForm
+          open={editing}
+          booking={b}
+          leadId={b.leadId}
+          leadName={b.leadName}
+          onClose={() => setEditing(false)}
+          onDone={() => router.refresh()}
+        />
+      )}
+    </>
   );
 }
 

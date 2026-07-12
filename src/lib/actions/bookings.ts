@@ -256,6 +256,112 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
 }
 
 /**
+ * تعديل حجز موجود (بيانات الوحدة/المبالغ/الدفع/العميل) — لا يلمس stage/stageIndex.
+ * الحارس المزدوج: بلا محصّل → البائع أو المدير/المالك؛ فيه محصّل → المالك فقط.
+ * حماية المحصّل: collectedAmount لا يُمسّ؛ نعيد حساب المتبقّي فقط.
+ * تبديل الوحدة (إن تغيّر unitId): يتحقّق أنها متاحة، يحرّر القديمة ويحجز الجديدة داخل transaction ذرّية.
+ */
+export async function updateBooking(formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const bookingId = String(formData.get("bookingId") ?? "");
+    if (!bookingId) return { ok: false, error: "معرّف الحجز مفقود" };
+
+    const existing = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { sellerId: true, unitId: true, collectedAmount: true },
+    });
+    if (!existing) return { ok: false, error: "الحجز غير موجود" };
+
+    // الحارس المزدوج على الخادم (لا نعتمد على إخفاء الواجهة).
+    const collected = existing.collectedAmount.toNumber();
+    if (collected > 0) {
+      if (user.role !== "OWNER") return { ok: false, error: "ما يمكن تعديل حجز فيه دفعات محصّلة إلا من المالك" };
+    } else if (!isManager(user.role) && existing.sellerId !== user.id) {
+      return { ok: false, error: "ما عندك صلاحية على هذا الحجز" };
+    }
+
+    const unitId = String(formData.get("unitId") ?? "");
+    if (!unitId) return { ok: false, error: "اختر الوحدة" };
+
+    const price = numOf(formData, "price");
+    if (!price || price <= 0) return { ok: false, error: "اكتب سعر الشقة" };
+    const discount = numOf(formData, "discount") ?? 0;
+    const finalPrice = price - discount;
+    const deposit = numOf(formData, "deposit");
+
+    const paymentMethod = parseEnum(PaymentMethod, formData.get("paymentMethod"), PaymentMethod.CASH)!;
+    const bankName = parseEnum(SaudiBank, String(formData.get("bankName") ?? ""));
+    if ((paymentMethod === "BANK_FINANCE" || paymentMethod === "CASH_AND_FINANCE") && !bankName)
+      return { ok: false, error: "اختر البنك" };
+    const cashAmount = numOf(formData, "cashAmount");
+    const cashPaymentType = parseEnum(CashPaymentType, String(formData.get("cashPaymentType") ?? ""));
+    const expectedCheckDate = dateOf(String(formData.get("expectedCheckDate") ?? ""));
+    const expectedTransferDate = dateOf(String(formData.get("expectedTransferDate") ?? ""));
+    const installmentsCount = formData.get("installmentsCount") ? Number(numOf(formData, "installmentsCount")) : null;
+    const installmentAmount = numOf(formData, "installmentAmount");
+
+    // ضريبة ٥٪ فقط (لا VAT ١٥٪).
+    const subjectToTax = String(formData.get("includesVAT") ?? "") === "yes";
+    const taxAmount = subjectToTax ? Math.round(finalPrice * 0.05) : null;
+
+    let installments: { amount: number; date: string }[] | null = null;
+    const installmentsRaw = String(formData.get("installments") ?? "");
+    if (installmentsRaw) {
+      try { const parsed = JSON.parse(installmentsRaw); if (Array.isArray(parsed) && parsed.length) installments = parsed; } catch {}
+    }
+
+    const nationality = parseEnum(Nationality, String(formData.get("nationality") ?? ""));
+    const nationalId = String(formData.get("nationalId") ?? "").trim() || null;
+    const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
+
+    // حماية المحصّل: لا نمسّ collectedAmount؛ نعيد حساب المتبقّي فقط (finalPrice − المحصّل).
+    const remainingAmount = Math.max(0, finalPrice - collected);
+    const unitChanged = unitId !== existing.unitId;
+
+    await prisma.$transaction(async (tx) => {
+      // تبديل الوحدة الذرّي: تحقّق التوفّر، حرّر القديمة، احجز الجديدة.
+      if (unitChanged) {
+        const newUnit = await tx.unit.findUnique({ where: { id: unitId }, select: { status: true } });
+        if (!newUnit || newUnit.status !== "AVAILABLE") {
+          throw new Error("الوحدة صارت محجوزة، اختر وحدة ثانية");
+        }
+        await tx.unit.update({ where: { id: existing.unitId }, data: { status: "AVAILABLE" } });
+        await tx.unit.update({ where: { id: unitId }, data: { status: "RESERVED" } });
+      }
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          unitId,
+          price, discount, finalPrice,
+          paymentMethod, bankName,
+          deposit,
+          cashPaymentType, cashAmount,
+          expectedCheckDate, expectedTransferDate,
+          installmentsCount, installmentAmount,
+          installments: installments ?? undefined,
+          subjectToTax, taxAmount,
+          includesVAT: false, vatAmount: null,
+          nationality, nationalId, secondaryPhone,
+          remainingAmount, // المتبقّي فقط — collectedAmount يبقى كما هو
+        },
+      });
+    });
+
+    await notifyBestEffort("booking.update", () =>
+      logAudit(prisma, {
+        userId: user.id, action: "booking.update", entity: "booking", entityId: bookingId,
+        summary: `عدّل بيانات الحجز${unitChanged ? " (تبديل وحدة)" : ""}`,
+      }));
+
+    revalidateBookings();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
  * شراء كاش فوري لعدة وحدات لنفس العميل — يُنشئ حجزًا «مباع» لكل وحدة.
  * يدعم وحدة واحدة أو أكثر. كل الوحدات لازم تكون متاحة وعليها سعر.
  */
