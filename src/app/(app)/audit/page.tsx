@@ -1,9 +1,19 @@
 import { requireManager } from "@/lib/auth-guards";
 import { getAuditLog } from "@/lib/data/audit";
-import { timeAgo, formatDate } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
+
+// عرض الوقت في السجل: «اليوم/أمس + الساعة»، والأقدم تاريخ+ساعة كامل (ar-SA بالأرقام العربية).
+function auditWhen(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const days = Math.round((d.getTime() - Date.now()) / 86_400_000);
+  const time = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { hour: "numeric", minute: "2-digit" }).format(d);
+  if (days === 0) return `اليوم ${time}`;
+  if (days === -1) return `أمس ${time}`;
+  return formatDateTime(d);
+}
 
 const actionColor: Record<string, string> = {
   "booking.created": "text-success",
@@ -39,7 +49,7 @@ export default async function AuditPage() {
                   <p className="mt-0.5 text-xs text-muted-foreground">{e.userName ?? "النظام"}</p>
                 </div>
               </div>
-              <div className="shrink-0 text-left text-xs text-muted-foreground" title={formatDate(e.createdAt)}>{timeAgo(e.createdAt)}</div>
+              <div className="shrink-0 text-left text-xs text-muted-foreground" title={formatDate(e.createdAt)}>{auditWhen(e.createdAt)}</div>
             </li>
           ))}
         </ol>
