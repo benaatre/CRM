@@ -66,6 +66,7 @@ export type BookingCard = {
   vatAmount: number | null;
   secondaryPhone: string | null;
   stageIndex: number;
+  createdAt: Date; // تاريخ الحجز (للتعبئة في وضع التعديل)
   events: BookingEventDTO[];
 };
 
@@ -149,6 +150,7 @@ export async function getBookings(): Promise<BookingsData> {
       vatAmount: mine ? dec(b.vatAmount) : null,
       secondaryPhone: mine ? b.secondaryPhone : null,
       stageIndex: b.stageIndex,
+      createdAt: b.createdAt,
       events: b.events.map((e) => ({
         toStage: e.toStage,
         userName: e.user?.name ?? null,

@@ -57,6 +57,16 @@ const dateOf = (raw: string): Date | null => {
 };
 
 /**
+ * تاريخ حجز يدوي اختياري (لإدخال بيعات قديمة بأثر رجعي): null لو فارغ →
+ * تترك القاعدة now(). يرمي لو غير صالح أو مستقبلي (يمنع أخطاء الإدخال).
+ */
+const bookingDateOf = (raw: string): Date | null => {
+  const d = dateOf(raw);
+  if (d && d.getTime() > Date.now()) throw new Error("تاريخ الحجز ما يكون بالمستقبل");
+  return d;
+};
+
+/**
  * يتحقق أن الحجز ضمن صلاحية المستخدم (بائعه أو مدير) — الصلاحية على الخادم لا إخفاء الواجهة.
  * يرجّع المستخدم والحجز (بالحقول التي تحتاجها إجراءات الحجز) أو يرمي خطأً يلتقطه try/catch.
  */
@@ -108,6 +118,9 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     const subjectToTax = String(formData.get("includesVAT") ?? "") === "yes";
     const taxAmount = subjectToTax ? Math.round(finalPrice * 0.05) : null;
     const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
+
+    // تاريخ حجز يدوي اختياري (بيعات قديمة) — فارغ = تاريخ اليوم من القاعدة.
+    const createdAt = bookingDateOf(String(formData.get("bookingDate") ?? ""));
 
     // «تم الشراء» الفوري (كاش): يُسجَّل مباعًا مباشرة بدل حجز — مدفوع كامل.
     const immediateSale = String(formData.get("immediateSale") ?? "") === "yes";
@@ -197,6 +210,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
           includesVAT: false, vatAmount: null,
           secondaryPhone,
           collectedAmount, remainingAmount,
+          ...(createdAt ? { createdAt } : {}), // تاريخ يدوي إن مُرِّر، وإلا now() من القاعدة
         },
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });
@@ -314,6 +328,8 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
     const nationality = parseEnum(Nationality, String(formData.get("nationality") ?? ""));
     const nationalId = String(formData.get("nationalId") ?? "").trim() || null;
     const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
+    // تاريخ حجز يدوي (بيعات قديمة) — فارغ = لا يُغيَّر createdAt.
+    const createdAt = bookingDateOf(String(formData.get("bookingDate") ?? ""));
 
     // حماية المحصّل: لا نمسّ collectedAmount؛ نعيد حساب المتبقّي فقط (finalPrice − المحصّل).
     const remainingAmount = Math.max(0, finalPrice - collected);
@@ -344,6 +360,7 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
           includesVAT: false, vatAmount: null,
           nationality, nationalId, secondaryPhone,
           remainingAmount, // المتبقّي فقط — collectedAmount يبقى كما هو
+          ...(createdAt ? { createdAt } : {}), // تاريخ يدوي إن مُرِّر، وإلا يبقى كما هو
         },
       });
     });
