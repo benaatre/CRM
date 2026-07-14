@@ -46,6 +46,7 @@ export function BookingForm({
   const [nationality, setNationality] = useState<"SAUDI" | "RESIDENT">("SAUDI");
   const [vatIncluded, setVatIncluded] = useState(false);
   const [priceMode, setPriceMode] = useState<"before" | "after">("after");
+  const [bookingDate, setBookingDate] = useState(""); // تاريخ حجز يدوي اختياري (بيعات قديمة)
   const [instRows, setInstRows] = useState<{ amount: string; date: string }[]>([{ amount: "", date: "" }]);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +79,7 @@ export function BookingForm({
     setNationality(booking.nationality === "RESIDENT" ? "RESIDENT" : "SAUDI");
     setVatIncluded(booking.subjectToTax);
     setCashType((booking.cashPaymentType as CashType) ?? "CHECK");
+    setBookingDate(booking.createdAt ? new Date(booking.createdAt).toISOString().slice(0, 10) : "");
     if (booking.installments && booking.installments.length) {
       setInstRows(booking.installments.map((r) => ({ amount: String(r.amount), date: r.date })));
     }
@@ -248,6 +250,12 @@ export function BookingForm({
               ))}
             </div>
           </div>
+
+          {/* تاريخ الحجز اليدوي — لإدخال بيعات قديمة بأثر رجعي */}
+          <Field label="تاريخ الحجز (اختياري)">
+            <input name="bookingDate" type="date" value={bookingDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setBookingDate(e.target.value)} className="select-base" />
+            <span className="mt-1 block text-[0.7rem] text-muted-foreground">اتركه فارغًا لو البيعة اليوم — أو حدّد تاريخ البيعة لو قديمة.</span>
+          </Field>
 
           {maxDiscount != null && (
             <p className={`rounded-lg px-3 py-2 text-xs ${discountExceeds ? "bg-destructive/10 text-destructive" : "bg-secondary/50 text-muted-foreground"}`}>
