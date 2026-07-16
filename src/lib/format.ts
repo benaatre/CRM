@@ -5,6 +5,9 @@ import { ar } from "date-fns/locale";
 
 const AR_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
 
+/** توقيت السعودية — تُثبَّت به كل تنسيقات الوقت/التاريخ (بغض النظر عن توقيت الخادم). */
+export const RIYADH_TZ = "Asia/Riyadh";
+
 /** عتبة «متصل الآن» — آخر نشاط أقل من ٥ دقائق. */
 export const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
 
@@ -68,6 +71,8 @@ export function formatDate(date: Date | string | null | undefined): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
   return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
+    calendar: "gregory",
+    timeZone: RIYADH_TZ,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -79,6 +84,8 @@ export function formatDateTime(date: Date | string | null | undefined): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
   return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
+    calendar: "gregory",
+    timeZone: RIYADH_TZ,
     year: "numeric",
     month: "short",
     day: "numeric",
