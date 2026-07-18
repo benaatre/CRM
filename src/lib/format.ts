@@ -27,6 +27,15 @@ export function toArabicDigits(input: string | number): string {
 }
 
 /**
+ * عدد صحيح دقيق بفواصل آلاف عربية (١٬٢٥٠) — للعدّادات (عملاء/حجوزات…).
+ * لا يختصر ولا يقرّب: خلاف formatNumberShort المخصّص للمبالغ (٦٩٠ك).
+ */
+export function formatCount(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return new Intl.NumberFormat("ar-SA").format(Math.round(n));
+}
+
+/**
  * ترتيب طبيعي لأرقام الوحدات النصّية: ٢ قبل ١٠ (وليس معجميًا "١٠" قبل "٢").
  * يدعم الأرقام والمختلط (A2 قبل A10) عبر مقارنة numeric.
  */
