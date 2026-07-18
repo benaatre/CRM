@@ -283,15 +283,18 @@ export async function getLeadCounts(): Promise<{ working: number; archived: numb
   const { where } = await scopeForUser();
   const ownerIds = await getOwnerIds();
   const dupIds = await duplicateLeadIds(); // لاستثناء المكررين من عدّاد «غير موزّعين» فقط
+  // دمج التحجيم مع شرط التبويب تحت AND — لا spread يطغى على assignedToId (كان يمسح تحجيم الموظف).
   const unassignedWhere = {
-    ...where,
-    ...tabWhere("unassigned", ownerIds),
-    ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}),
+    AND: [
+      where,
+      tabWhere("unassigned", ownerIds) ?? {},
+      ...(dupIds.size ? [{ id: { notIn: [...dupIds] } }] : []),
+    ],
   };
   const [working, archived, hidden, unassigned] = await Promise.all([
-    prisma.lead.count({ where: { ...where, ...tabWhere("working", ownerIds) } }),
-    prisma.lead.count({ where: { ...where, ...tabWhere("archived", ownerIds) } }),
-    prisma.lead.count({ where: { ...where, ...tabWhere("hidden", ownerIds) } }),
+    prisma.lead.count({ where: { AND: [where, tabWhere("working", ownerIds) ?? {}] } }),
+    prisma.lead.count({ where: { AND: [where, tabWhere("archived", ownerIds) ?? {}] } }),
+    prisma.lead.count({ where: { AND: [where, tabWhere("hidden", ownerIds) ?? {}] } }),
     prisma.lead.count({ where: unassignedWhere }),
   ]);
   return { working, archived, hidden, unassigned };
@@ -395,7 +398,8 @@ export async function getNotContactedCount(assigneeIds?: string[]): Promise<numb
   const assignee = assigneeIds && assigneeIds.length
     ? { in: assigneeIds }
     : { not: null, ...(ownerIds.length ? { notIn: ownerIds } : {}) };
-  return prisma.lead.count({ where: { ...where, stage: "NEW", isArchived: false, assignedToId: assignee } });
+  // دمج تحت AND — يمنع assignedToId من مسح تحجيم الموظف (where) في الـ spread.
+  return prisma.lead.count({ where: { AND: [where, { stage: "NEW", isArchived: false, assignedToId: assignee }] } });
 }
 
 /** قائمة الموظفين (لفلتر المدير وإعادة الإسناد). */
