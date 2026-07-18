@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Phone, MessageCircle, LayoutGrid, BarChart2, Rows3, Check } from "lucide-react";
 import { stageLabels, stageColor } from "@/lib/labels";
-import { formatCurrency, formatNumberShort, timeAgo, toArabicDigits } from "@/lib/format";
+import { formatCurrency, formatCount, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
 import { DistributeDialog } from "@/components/leads/distribute-dialog";
 
@@ -50,11 +50,11 @@ export function DashboardView({ data }: { data: DashboardData }) {
   // «غير موزّعين» بيانات إدارية — تظهر للمالك/المدير فقط (الموظف يشوف نطاقه هو).
   const cards = [
     { label: "معدل التحويل", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false, show: true },
-    { label: "إجمالي العملاء", value: formatNumberShort(k.totalClients), unit: "عميل", fill: 100, up: true, chip: null, action: false, show: true },
+    { label: "إجمالي العملاء", value: formatCount(k.totalClients), unit: "عميل", fill: 100, up: true, chip: null, action: false, show: true },
     { label: "غير موزّعين", value: toArabicDigits(k.unassigned), unit: "ليد", fill: pct(k.unassigned), up: false, chip: k.unassigned > 0 ? toArabicDigits(k.unassigned) : null, action: data.manager && k.unassigned > 0, show: data.manager },
-    { label: "عدد الحجوزات", value: formatNumberShort(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false, show: true },
-    { label: "عدد الزيارات", value: formatNumberShort(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false, show: true },
-    { label: "صفقات مقفولة", value: formatNumberShort(k.closedWon), unit: "صفقة", fill: pct(k.closedWon), up: true, chip: null, action: false, show: true },
+    { label: "عدد الحجوزات", value: formatCount(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false, show: true },
+    { label: "عدد الزيارات", value: formatCount(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false, show: true },
+    { label: "صفقات مقفولة", value: formatCount(k.closedWon), unit: "صفقة", fill: pct(k.closedWon), up: true, chip: null, action: false, show: true },
   ].filter((c) => c.show);
 
   return (

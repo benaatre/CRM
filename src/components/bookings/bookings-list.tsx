@@ -11,7 +11,7 @@ import {
   bookingStageOrder, bookingStageLabels, paymentMethodLabels, bankLabels,
   nationalityLabels, deliveryStatusLabels, cashPaymentTypeLabels,
 } from "@/lib/labels";
-import { formatCurrency, formatCurrencyFull, formatNumberShort, formatDate, timeAgo, toArabicDigits } from "@/lib/format";
+import { formatCurrency, formatCurrencyFull, formatCount, formatDate, timeAgo, toArabicDigits } from "@/lib/format";
 import type { BookingCard, BookingsData } from "@/lib/data/bookings";
 import { updateBookingStage, setFinanceRejected, cancelBooking, addBookingPayment } from "@/lib/actions/bookings";
 
@@ -36,9 +36,9 @@ export function BookingsList({ data }: { data: BookingsData }) {
   }, [data.cards, data.currentUserId, filter, stageFilter]);
 
   const kpis = [
-    { label: "إجمالي الحجوزات", value: formatNumberShort(data.kpis.total), icon: Building2, accent: "text-gold" },
-    { label: "قيد البيع", value: formatNumberShort(data.kpis.inProgress), icon: Clock, accent: "text-warning" },
-    { label: "تم البيع والاستلام", value: formatNumberShort(data.kpis.sold), icon: BadgeCheck, accent: "text-success", green: true },
+    { label: "إجمالي الحجوزات", value: formatCount(data.kpis.total), icon: Building2, accent: "text-gold" },
+    { label: "قيد البيع", value: formatCount(data.kpis.inProgress), icon: Clock, accent: "text-warning" },
+    { label: "تم البيع والاستلام", value: formatCount(data.kpis.sold), icon: BadgeCheck, accent: "text-success", green: true },
     { label: "إجمالي العرابين", value: formatCurrency(data.kpis.deposits), icon: Coins, accent: "text-info" },
     { label: "قيمة المبيعات", value: formatCurrency(data.kpis.salesValue), icon: Wallet, accent: "text-gold" },
   ];
