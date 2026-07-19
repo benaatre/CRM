@@ -11,6 +11,7 @@ export const NOTIFICATION_EVENTS = [
   { key: "followup_due", label: "قرب موعد متابعة", audience: "ASSIGNED" },
   { key: "employee_paused", label: "موظف وقف نفسه", audience: "MANAGERS" },
   { key: "unit_booked_sold", label: "تم حجز / بيع وحدة", audience: "ALL" },
+  { key: "no_response.warn", label: "إنذار سحب عميل", audience: "ASSIGNED" },
 ] as const;
 
 export type AudienceCode = "OWNER" | "MANAGERS" | "ASSIGNED" | "MANAGERS_AND_ASSIGNED" | "ALL";
@@ -94,8 +95,10 @@ export async function ensureNotificationDefaults(): Promise<void> {
       skipDuplicates: true,
     });
   }
-  // إعدادات الأحداث — النغمة الافتراضية = «تنبيه ناعم».
-  if ((await prisma.notificationSetting.count()) === 0) {
+  // إعدادات الأحداث — النغمة الافتراضية = «تنبيه ناعم». نزرع الناقص فقط (idempotent):
+  // إضافة حدث جديد لاحقًا (مثل «إنذار سحب عميل») تُزرع تلقائيًا دون مسّ إعدادات الموجود،
+  // وهذا ضروري لأن updateNotificationEvent يستخدم update لا upsert (يحتاج صفًّا موجودًا).
+  if ((await prisma.notificationSetting.count()) < NOTIFICATION_EVENTS.length) {
     const softSound = await prisma.soundAsset.findFirst({ where: { fileUrl: "/sounds/soft.wav" }, select: { id: true } });
     await prisma.notificationSetting.createMany({
       data: NOTIFICATION_EVENTS.map((e) => ({ eventKey: e.key, audience: e.audience, soundId: softSound?.id ?? null })),
