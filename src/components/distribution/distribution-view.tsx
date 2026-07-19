@@ -4,24 +4,37 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Zap, Clock, Users2, ArrowUp, ArrowDown, Plus, X,
-  CheckCircle2, AlertTriangle, RefreshCw, Repeat,
+  CheckCircle2, AlertTriangle, RefreshCw, Repeat, ShieldAlert, Power,
+  ShieldCheck, CalendarClock, Hand, UserCheck,
 } from "lucide-react";
 import { toArabicDigits, formatDateTime } from "@/lib/format";
 import { stageLabels } from "@/lib/labels";
 import type { LeadStage } from "@prisma/client";
 import {
   updateDistributionConfig, runSweepNow,
-  type DistConfig, type DistEmployee,
+  approveSweepPull, dismissSweepCandidate, dismissAllSweepCandidates,
+  updateSweepCutoff, protectAllCurrentFromSweep,
+  type DistConfig, type DistEmployee, type LastCron, type SweepCandidateRow,
 } from "@/lib/actions/distribution";
 import type { DistributionBoard } from "@/lib/data/distribution";
 import { ManageEmployeeAvailability } from "@/components/availability/manage-availability";
 
+// الحد الأدنى المسموح لمهلة السحب (٢٤ ساعة بالدقائق) — يُفرَض في الواجهة والخادم معًا.
+const MIN_TIMEOUT_MIN = 24 * 60;
+
+export type DistSwitches = { initialOn: boolean; reassignOn: boolean };
+
 export function DistributionView({
-  config, employees, board,
+  config, employees, board, switches, lastCron, isOwner, sweepCutoffAt, candidates,
 }: {
   config: DistConfig;
   employees: DistEmployee[];
   board: DistributionBoard;
+  switches: DistSwitches;
+  lastCron: LastCron;
+  isOwner: boolean;
+  sweepCutoffAt: Date;
+  candidates: SweepCandidateRow[];
 }) {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -29,9 +42,239 @@ export function DistributionView({
         <Zap className="size-6 text-gold" />
         <h1 className="text-xl font-bold text-foreground">التوزيع التلقائي الذكي</h1>
       </div>
+      {/* المالك فقط: مرشّحو السحب + السويتشين + الحاجز التاريخي */}
+      {isOwner && <CandidatesPanel candidates={candidates} />}
+      {isOwner && <SwitchesPanel switches={switches} lastCron={lastCron} />}
+      {isOwner && <SweepCutoffPanel sweepCutoffAt={sweepCutoffAt} />}
       <SettingsPanel config={config} employees={employees} />
       <MonitorPanel board={board} />
     </div>
+  );
+}
+
+// ===================== قاعدة ٥: مرشّحو السحب (موافقة المالك) =====================
+
+function CandidatesPanel({ candidates }: { candidates: SweepCandidateRow[] }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function act(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>, id?: string) {
+    setMsg(null); setBusyId(id ?? "all");
+    startTransition(async () => {
+      const res = await fn();
+      setMsg(res.ok ? res.message ?? "تم" : res.error ?? "صار خطأ");
+      setBusyId(null);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="glass space-y-4 rounded-2xl border border-gold/30 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+          <Hand className="size-4 text-gold" /> مرشّحون للسحب — بانتظار قرارك
+          <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs font-bold text-gold">{toArabicDigits(candidates.length)}</span>
+        </div>
+        {candidates.length > 0 && (
+          <button
+            onClick={() => act(() => dismissAllSweepCandidates())}
+            disabled={pending}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-foreground hover:text-foreground disabled:opacity-50"
+          >
+            {busyId === "all" ? "…" : "اترك الكل عند موظفيهم"}
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        الـsweep يقترح فقط ولا ينقل أحدًا تلقائيًا. «اسحب» تنقله لموظف آخر، و«اترك عنده» تمنحه حصانة دائمة فلا يُرشَّح ثانية.
+      </p>
+
+      {msg && <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">{msg}</p>}
+
+      {candidates.length === 0 ? (
+        <p className="rounded-xl border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+          ما فيه مرشّحون للسحب الآن. 👌
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-right text-sm">
+            <thead className="bg-secondary/50 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2.5 font-medium">العميل</th>
+                <th className="px-3 py-2.5 font-medium">الموظف الحالي</th>
+                <th className="px-3 py-2.5 font-medium">وقت الإسناد</th>
+                <th className="px-3 py-2.5 font-medium">آخر نشاط</th>
+                <th className="px-3 py-2.5 font-medium">السبب</th>
+                <th className="px-3 py-2.5 font-medium">القرار</th>
+              </tr>
+            </thead>
+            <tbody>
+              {candidates.map((c) => (
+                <tr key={c.id} className="border-t border-border">
+                  <td className="px-3 py-2.5 text-foreground">{c.leadName}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{c.fromName ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{c.assignedAt ? formatDateTime(c.assignedAt) : "—"}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{c.lastActivityAt ? formatDateTime(c.lastActivityAt) : "—"}</td>
+                  <td className="px-3 py-2.5">
+                    <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs text-warning">
+                      تأخّر تواصل{c.timeoutMin ? ` (${toArabicDigits(Math.round(c.timeoutMin / 60))}س)` : ""}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => act(() => approveSweepPull(c.id), c.id)}
+                        disabled={pending}
+                        className="flex items-center gap-1 rounded-lg bg-destructive/15 px-2.5 py-1 text-xs font-semibold text-destructive hover:bg-destructive/25 disabled:opacity-50"
+                      >
+                        {busyId === c.id ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} اسحب
+                      </button>
+                      <button
+                        onClick={() => act(() => dismissSweepCandidate(c.id), c.id)}
+                        disabled={pending}
+                        className="flex items-center gap-1 rounded-lg bg-success/15 px-2.5 py-1 text-xs font-semibold text-success hover:bg-success/25 disabled:opacity-50"
+                      >
+                        <UserCheck className="size-3.5" /> اتركه عنده
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== قاعدة ٣: الحاجز التاريخي للسحب — المالك فقط =====================
+
+function SweepCutoffPanel({ sweepCutoffAt }: { sweepCutoffAt: Date }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [local, setLocal] = useState<string>(toLocalInput(sweepCutoffAt));
+
+  function run(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await fn();
+      setMsg(res.ok ? res.message ?? "تم" : res.error ?? "صار خطأ");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="glass space-y-4 rounded-2xl p-6">
+      <div className="flex items-center gap-1.5 font-semibold text-foreground">
+        <CalendarClock className="size-4 text-gold" /> الحاجز التاريخي للسحب
+      </div>
+      <p className="text-xs text-muted-foreground">
+        الـsweep يتجاهل أي عميل أُسند <b>قبل</b> هذا التاريخ — يعني كل العملاء الحاليين محميّون، والسحب يشتغل فقط على ما بعده.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block space-y-1.5">
+          <span className="text-xs text-muted-foreground">التوزيع التلقائي يبدأ من تاريخ</span>
+          <input
+            type="datetime-local" dir="ltr" value={local}
+            onChange={(e) => setLocal(e.target.value)}
+            className="select-base"
+          />
+        </label>
+        <button
+          onClick={() => run(() => updateSweepCutoff(new Date(local).toISOString()))}
+          disabled={pending || !local}
+          className="rounded-xl border border-gold/40 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/10 disabled:opacity-50"
+        >
+          حفظ التاريخ
+        </button>
+        <button
+          onClick={() => run(() => protectAllCurrentFromSweep())}
+          disabled={pending}
+          className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >
+          <ShieldCheck className="size-4" /> حماية كل العملاء الحاليين
+        </button>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        الحاجز الحالي: <b className="text-foreground">{formatDateTime(sweepCutoffAt)}</b>
+      </div>
+      {msg && <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">{msg}</p>}
+    </div>
+  );
+}
+
+/** Date → قيمة input[type=datetime-local] بالتوقيت المحلي للمتصفح. */
+function toLocalInput(d: Date): string {
+  const dt = new Date(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+// ===================== لوحة السويتشين (عرض فقط من env) — المالك فقط =====================
+
+function SwitchesPanel({ switches, lastCron }: { switches: DistSwitches; lastCron: LastCron }) {
+  return (
+    <div className="glass space-y-4 rounded-2xl p-6">
+      <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+        <Power className="size-4 text-gold" /> مفاتيح دورة الكرون (من إعدادات الخادم — عرض فقط)
+      </div>
+
+      {/* سويتش التوزيع الأولي */}
+      <div className="flex items-start justify-between gap-3 rounded-xl border border-border p-4">
+        <div>
+          <div className="font-semibold text-foreground">التوزيع الأولي</div>
+          <div className="text-xs text-muted-foreground">يوزّع العملاء غير الموزّعين والجدد على الموظفين.</div>
+          <div className="mt-1 text-[0.7rem] text-muted-foreground/70 ltr:text-left" dir="ltr">AUTO_INITIAL_DISTRIBUTE</div>
+        </div>
+        <SwitchPill on={switches.initialOn} />
+      </div>
+
+      {/* سويتش السحب التلقائي + تحذير أحمر */}
+      <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+        <div>
+          <div className="flex items-center gap-1.5 font-semibold text-foreground">
+            <ShieldAlert className="size-4 text-destructive" /> السحب التلقائي (إعادة توجيه المتأخرين)
+          </div>
+          <div className="mt-1 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive">
+            ينقل العملاء من موظف لآخر إذا ما تسجّل تواصل في النظام خلال المهلة.
+          </div>
+          <div className="mt-1 text-[0.7rem] text-muted-foreground/70" dir="ltr">AUTO_REASSIGN_SWEEP</div>
+        </div>
+        <SwitchPill on={switches.reassignOn} danger />
+      </div>
+
+      {/* بطاقة آخر دورة كرون */}
+      <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
+        <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Clock className="size-3.5 text-gold" /> آخر دورة كرون
+        </div>
+        {lastCron.at ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-foreground">
+            <span>{formatDateTime(lastCron.at)}</span>
+            <span className="text-muted-foreground">وزّع <b className="text-gold">{toArabicDigits(lastCron.distributed)}</b></span>
+            <span className="text-muted-foreground">سحب <b className="text-gold">{toArabicDigits(lastCron.reassigned)}</b></span>
+          </div>
+        ) : (
+          <div className="text-muted-foreground">ما فيه دورة كرون مسجّلة بعد.</div>
+        )}
+      </div>
+
+      <p className="text-center text-[0.7rem] text-muted-foreground">ترخيص فال (REGA): {toArabicDigits("1200021029")}</p>
+    </div>
+  );
+}
+
+function SwitchPill({ on, danger }: { on: boolean; danger?: boolean }) {
+  const onColor = danger ? "bg-destructive/15 text-destructive" : "bg-success/15 text-success";
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${on ? onColor : "bg-secondary text-muted-foreground"}`}>
+      <span className={`size-2 rounded-full ${on ? (danger ? "bg-destructive" : "bg-success") : "bg-muted-foreground/40"}`} />
+      {on ? "مُفعّل" : "مطفأ"}
+    </span>
   );
 }
 
@@ -68,6 +311,11 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
 
   function save() {
     setMsg(null); setError(null);
+    // فرض الحد الأدنى ٢٤ ساعة في الواجهة أيضًا (الخادم يفرضه كذلك).
+    if (timeout < MIN_TIMEOUT_MIN) {
+      setError(`مهلة السحب لازم ٢٤ ساعة على الأقل (${toArabicDigits(MIN_TIMEOUT_MIN)} دقيقة). مهلة أقصر تسحب العملاء بسرعة قبل تسجيل التواصل وتسبّب فوضى توزيع.`);
+      return;
+    }
     startTransition(async () => {
       const res = await updateDistributionConfig({
         autoDistribute: on, distStartHour: startHour, distEndHour: endHour,
@@ -95,7 +343,7 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <NumField label="بداية النافذة (ساعة)" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
           <NumField label="نهاية النافذة (ساعة)" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
-          <NumField label="مهلة إعادة التوجيه (دقيقة)" value={timeout} onChange={setTimeoutMin} min={1} max={1440} />
+          <NumField label="مهلة السحب (دقيقة)" value={timeout} onChange={setTimeoutMin} min={MIN_TIMEOUT_MIN} max={10080} hint={timeout < MIN_TIMEOUT_MIN ? "٢٤ ساعة على الأقل!" : `≈ ${toArabicDigits(Math.round(timeout / 60))} ساعة`} />
           <NumField label="حد التواجد (دقيقة)" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
         </div>
 

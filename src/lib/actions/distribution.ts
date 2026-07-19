@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
-import { requireManager } from "@/lib/auth-guards";
-import { runReassignSweep } from "@/lib/auto-distribute";
+import { requireManager, requireRole } from "@/lib/auth-guards";
+import { runDistributionPasses, executeSweepPull, MIN_REASSIGN_TIMEOUT_MIN } from "@/lib/auto-distribute";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -26,14 +26,17 @@ export type DistEmployee = {
 
 const ONLINE_MS = 5 * 60 * 1000;
 
-/** إعدادات التوزيع + قائمة الموظفين (للوحة الإعدادات). */
-export async function getDistributionConfig(): Promise<{ config: DistConfig; employees: DistEmployee[] }> {
+export type LastCron = { at: Date | null; distributed: number; reassigned: number };
+
+/** إعدادات التوزيع + قائمة الموظفين + آخر دورة كرون + الحاجز التاريخي (للوحة الإعدادات). */
+export async function getDistributionConfig(): Promise<{ config: DistConfig; employees: DistEmployee[]; lastCron: LastCron; sweepCutoffAt: Date }> {
   await requireManager();
   const s = await prisma.settings.upsert({
     where: { id: "singleton" }, update: {}, create: { id: "singleton" },
     select: {
       autoDistribute: true, distStartHour: true, distEndHour: true, distTimeoutMin: true,
       distPresenceMin: true, distOrder: true, distInitialMode: true, distReassignMode: true,
+      lastCronAt: true, lastCronDistributed: true, lastCronReassigned: true, sweepCutoffAt: true,
     },
   });
   const emps = await prisma.user.findMany({
@@ -66,6 +69,8 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
         paused: e.availabilityPaused, pauseReason: e.pauseReason, pauseUntil: e.pauseUntil,
       };
     }),
+    lastCron: { at: s.lastCronAt, distributed: s.lastCronDistributed, reassigned: s.lastCronReassigned },
+    sweepCutoffAt: s.sweepCutoffAt,
   };
 }
 
@@ -87,7 +92,12 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
     }
     const startHour = clampHour(input.distStartHour);
     const endHour = clampHour(input.distEndHour);
-    const timeout = Math.max(1, Math.round(input.distTimeoutMin || 60));
+    // مهلة السحب: الحد الأدنى ٢٤ ساعة (تُفرَض على الخادم — لا نكتفي بالواجهة). #خطر: مهلة أقصر
+    // تسحب العملاء من الموظفين قبل ما يسجّلوا تواصلهم بالجوال، فتسبّب موجة إعادة توزيع خاطئة.
+    const timeout = Math.round(input.distTimeoutMin || 0);
+    if (timeout < MIN_REASSIGN_TIMEOUT_MIN) {
+      return { ok: false, error: `مهلة السحب لازم ٢٤ ساعة على الأقل (${MIN_REASSIGN_TIMEOUT_MIN} دقيقة). مهلة أقصر تسحب العملاء بسرعة قبل تسجيل التواصل وتسبّب فوضى توزيع.` };
+    }
     const presence = Math.max(0, Math.round(input.distPresenceMin ?? 30));
     const initialMode = input.distInitialMode === "LEAST_LOADED" ? "LEAST_LOADED" : "ROUND_ROBIN";
     const reassignMode = input.distReassignMode === "ROTATION" ? "ROTATION" : "MOST_ACTIVE";
@@ -114,15 +124,136 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
   }
 }
 
-/** تشغيل فحص إعادة التوجيه يدويًا (زر «افحص الآن» في اللوحة). */
+/** تشغيل دورة التوزيع يدويًا (زر «افحص الآن» في اللوحة) — يحترم السويتشين. */
 export async function runSweepNow(): Promise<ActionResult> {
   try {
     await requireManager();
-    const res = await runReassignSweep();
+    const res = await runDistributionPasses();
     if (!res.ok) return { ok: false, error: res.error ?? "صار خطأ" };
     revalidatePath("/distribution");
     revalidatePath("/leads");
-    return { ok: true, message: res.skipped ?? `تم الفحص — أُعيد توجيه ${res.reassigned} من ${res.checked} متأخّر` };
+    const i = res.initialDistribute;
+    const s = res.reassignSweep;
+    const part = (label: string, p: typeof i) => `${label}: ${p.on ? p.count : "مطفأ"}${p.on && p.skipped ? ` (${p.skipped})` : ""}`;
+    return { ok: true, message: `${part("توزيع أولي", i)} · ${part("ترشيح للسحب", s)}` };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+// ===================== قاعدة ٥: مرشّحو السحب (موافقة المالك) =====================
+
+export type SweepCandidateRow = {
+  id: string;
+  leadId: string;
+  leadName: string;
+  fromName: string | null;
+  assignedAt: Date | null;
+  lastActivityAt: Date | null;
+  reason: string;
+  timeoutMin: number | null;
+};
+
+/** قائمة المرشّحين للسحب (المعلّقين بانتظار قرار المالك). */
+export async function getSweepCandidates(): Promise<SweepCandidateRow[]> {
+  await requireManager();
+  const cands = await prisma.sweepCandidate.findMany({
+    orderBy: { createdAt: "asc" },
+    include: {
+      lead: { select: { name: true, activities: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } } } },
+    },
+  });
+  const fromIds = [...new Set(cands.map((c) => c.fromUserId).filter(Boolean) as string[])];
+  const users = fromIds.length
+    ? await prisma.user.findMany({ where: { id: { in: fromIds } }, select: { id: true, name: true } })
+    : [];
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+  return cands.map((c) => ({
+    id: c.id,
+    leadId: c.leadId,
+    leadName: c.lead?.name ?? "—",
+    fromName: c.fromUserId ? nameById.get(c.fromUserId) ?? null : null,
+    assignedAt: c.leadAssignedAt,
+    lastActivityAt: c.lead?.activities[0]?.createdAt ?? null,
+    reason: c.reason,
+    timeoutMin: c.timeoutMin,
+  }));
+}
+
+/** «اسحب» — المالك يوافق على سحب مرشّح واحد وينقله فعليًا. */
+export async function approveSweepPull(candidateId: string): Promise<ActionResult> {
+  try {
+    await requireRole("OWNER");
+    const cand = await prisma.sweepCandidate.findUnique({ where: { id: candidateId }, select: { leadId: true } });
+    if (!cand) return { ok: false, error: "المرشّح غير موجود (ربما عُولج)" };
+    const res = await executeSweepPull(cand.leadId);
+    if (!res.ok) return { ok: false, error: res.error ?? "تعذّر السحب" };
+    revalidatePath("/distribution");
+    revalidatePath("/leads");
+    return { ok: true, message: "تم سحب العميل ونقله لموظف آخر" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** «اترك عنده» — يترك العميل عند موظفه ويمنحه حصانة دائمة (لا يُرشَّح ثانية). */
+export async function dismissSweepCandidate(candidateId: string): Promise<ActionResult> {
+  try {
+    await requireRole("OWNER");
+    const cand = await prisma.sweepCandidate.findUnique({ where: { id: candidateId }, select: { leadId: true } });
+    if (!cand) return { ok: false, error: "المرشّح غير موجود" };
+    await prisma.$transaction([
+      prisma.lead.update({ where: { id: cand.leadId }, data: { manualAssignedAt: new Date() } }),
+      prisma.sweepCandidate.delete({ where: { id: candidateId } }),
+    ]);
+    revalidatePath("/distribution");
+    return { ok: true, message: "تُرك العميل عند موظفه (حصانة دائمة)" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** «اترك الكل» — يترك كل المرشّحين المعلّقين ويمنحهم حصانة دائمة. */
+export async function dismissAllSweepCandidates(): Promise<ActionResult> {
+  try {
+    await requireRole("OWNER");
+    const cands = await prisma.sweepCandidate.findMany({ select: { id: true, leadId: true } });
+    if (cands.length === 0) return { ok: true, message: "ما فيه مرشّحون" };
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.lead.updateMany({ where: { id: { in: cands.map((c) => c.leadId) } }, data: { manualAssignedAt: now } }),
+      prisma.sweepCandidate.deleteMany({ where: { id: { in: cands.map((c) => c.id) } } }),
+    ]);
+    revalidatePath("/distribution");
+    return { ok: true, message: `تُرك ${cands.length} عميل عند موظفيهم` };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+// ===================== قاعدة ٣: الحاجز التاريخي للسحب =====================
+
+/** ضبط تاريخ بداية السحب (أي ليد أُسند قبله محميّ). */
+export async function updateSweepCutoff(iso: string): Promise<ActionResult> {
+  try {
+    await requireRole("OWNER");
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return { ok: false, error: "تاريخ غير صالح" };
+    await prisma.settings.update({ where: { id: "singleton" }, data: { sweepCutoffAt: d } });
+    revalidatePath("/distribution");
+    return { ok: true, message: "تم تحديث حاجز السحب التاريخي" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** «حماية كل العملاء الحاليين» — يضبط الحاجز على الآن، فالسحب يبدأ من ما بعده فقط. */
+export async function protectAllCurrentFromSweep(): Promise<ActionResult> {
+  try {
+    await requireRole("OWNER");
+    await prisma.settings.update({ where: { id: "singleton" }, data: { sweepCutoffAt: new Date() } });
+    revalidatePath("/distribution");
+    return { ok: true, message: "تم حماية كل العملاء الحاليين — السحب يبدأ من الآن" };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
