@@ -4,24 +4,32 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Zap, Clock, Users2, ArrowUp, ArrowDown, Plus, X,
-  CheckCircle2, AlertTriangle, RefreshCw, Repeat,
+  CheckCircle2, AlertTriangle, RefreshCw, Repeat, ShieldAlert, Power,
 } from "lucide-react";
 import { toArabicDigits, formatDateTime } from "@/lib/format";
 import { stageLabels } from "@/lib/labels";
 import type { LeadStage } from "@prisma/client";
 import {
   updateDistributionConfig, runSweepNow,
-  type DistConfig, type DistEmployee,
+  type DistConfig, type DistEmployee, type LastCron,
 } from "@/lib/actions/distribution";
 import type { DistributionBoard } from "@/lib/data/distribution";
 import { ManageEmployeeAvailability } from "@/components/availability/manage-availability";
 
+// الحد الأدنى المسموح لمهلة السحب (٢٤ ساعة بالدقائق) — يُفرَض في الواجهة والخادم معًا.
+const MIN_TIMEOUT_MIN = 24 * 60;
+
+export type DistSwitches = { initialOn: boolean; reassignOn: boolean };
+
 export function DistributionView({
-  config, employees, board,
+  config, employees, board, switches, lastCron, isOwner,
 }: {
   config: DistConfig;
   employees: DistEmployee[];
   board: DistributionBoard;
+  switches: DistSwitches;
+  lastCron: LastCron;
+  isOwner: boolean;
 }) {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -29,9 +37,75 @@ export function DistributionView({
         <Zap className="size-6 text-gold" />
         <h1 className="text-xl font-bold text-foreground">التوزيع التلقائي الذكي</h1>
       </div>
+      {/* لوحة السويتشين + تحذير السحب + آخر دورة كرون — المالك فقط */}
+      {isOwner && <SwitchesPanel switches={switches} lastCron={lastCron} />}
       <SettingsPanel config={config} employees={employees} />
       <MonitorPanel board={board} />
     </div>
+  );
+}
+
+// ===================== لوحة السويتشين (عرض فقط من env) — المالك فقط =====================
+
+function SwitchesPanel({ switches, lastCron }: { switches: DistSwitches; lastCron: LastCron }) {
+  return (
+    <div className="glass space-y-4 rounded-2xl p-6">
+      <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+        <Power className="size-4 text-gold" /> مفاتيح دورة الكرون (من إعدادات الخادم — عرض فقط)
+      </div>
+
+      {/* سويتش التوزيع الأولي */}
+      <div className="flex items-start justify-between gap-3 rounded-xl border border-border p-4">
+        <div>
+          <div className="font-semibold text-foreground">التوزيع الأولي</div>
+          <div className="text-xs text-muted-foreground">يوزّع العملاء غير الموزّعين والجدد على الموظفين.</div>
+          <div className="mt-1 text-[0.7rem] text-muted-foreground/70 ltr:text-left" dir="ltr">AUTO_INITIAL_DISTRIBUTE</div>
+        </div>
+        <SwitchPill on={switches.initialOn} />
+      </div>
+
+      {/* سويتش السحب التلقائي + تحذير أحمر */}
+      <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+        <div>
+          <div className="flex items-center gap-1.5 font-semibold text-foreground">
+            <ShieldAlert className="size-4 text-destructive" /> السحب التلقائي (إعادة توجيه المتأخرين)
+          </div>
+          <div className="mt-1 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive">
+            ينقل العملاء من موظف لآخر إذا ما تسجّل تواصل في النظام خلال المهلة.
+          </div>
+          <div className="mt-1 text-[0.7rem] text-muted-foreground/70" dir="ltr">AUTO_REASSIGN_SWEEP</div>
+        </div>
+        <SwitchPill on={switches.reassignOn} danger />
+      </div>
+
+      {/* بطاقة آخر دورة كرون */}
+      <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
+        <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Clock className="size-3.5 text-gold" /> آخر دورة كرون
+        </div>
+        {lastCron.at ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-foreground">
+            <span>{formatDateTime(lastCron.at)}</span>
+            <span className="text-muted-foreground">وزّع <b className="text-gold">{toArabicDigits(lastCron.distributed)}</b></span>
+            <span className="text-muted-foreground">سحب <b className="text-gold">{toArabicDigits(lastCron.reassigned)}</b></span>
+          </div>
+        ) : (
+          <div className="text-muted-foreground">ما فيه دورة كرون مسجّلة بعد.</div>
+        )}
+      </div>
+
+      <p className="text-center text-[0.7rem] text-muted-foreground">ترخيص فال (REGA): {toArabicDigits("1200021029")}</p>
+    </div>
+  );
+}
+
+function SwitchPill({ on, danger }: { on: boolean; danger?: boolean }) {
+  const onColor = danger ? "bg-destructive/15 text-destructive" : "bg-success/15 text-success";
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${on ? onColor : "bg-secondary text-muted-foreground"}`}>
+      <span className={`size-2 rounded-full ${on ? (danger ? "bg-destructive" : "bg-success") : "bg-muted-foreground/40"}`} />
+      {on ? "مُفعّل" : "مطفأ"}
+    </span>
   );
 }
 
@@ -68,6 +142,11 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
 
   function save() {
     setMsg(null); setError(null);
+    // فرض الحد الأدنى ٢٤ ساعة في الواجهة أيضًا (الخادم يفرضه كذلك).
+    if (timeout < MIN_TIMEOUT_MIN) {
+      setError(`مهلة السحب لازم ٢٤ ساعة على الأقل (${toArabicDigits(MIN_TIMEOUT_MIN)} دقيقة). مهلة أقصر تسحب العملاء بسرعة قبل تسجيل التواصل وتسبّب فوضى توزيع.`);
+      return;
+    }
     startTransition(async () => {
       const res = await updateDistributionConfig({
         autoDistribute: on, distStartHour: startHour, distEndHour: endHour,
@@ -95,7 +174,7 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <NumField label="بداية النافذة (ساعة)" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
           <NumField label="نهاية النافذة (ساعة)" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
-          <NumField label="مهلة إعادة التوجيه (دقيقة)" value={timeout} onChange={setTimeoutMin} min={1} max={1440} />
+          <NumField label="مهلة السحب (دقيقة)" value={timeout} onChange={setTimeoutMin} min={MIN_TIMEOUT_MIN} max={10080} hint={timeout < MIN_TIMEOUT_MIN ? "٢٤ ساعة على الأقل!" : `≈ ${toArabicDigits(Math.round(timeout / 60))} ساعة`} />
           <NumField label="حد التواجد (دقيقة)" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
         </div>
 

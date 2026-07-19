@@ -247,7 +247,7 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
       }
       if (pick === null) break; // كل الموظفين وصلوا حدّهم الأقصى
       cap.set(pick, (cap.get(pick) as number) - 1);
-      updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: pick } }));
+      updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: pick, manualAssignedAt: new Date() } }));
       bumpBucket(buckets, pick, lead.id, lead.name);
     }
     if (updates.length === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
@@ -306,7 +306,7 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
         targets.push({ id: unassigned[i].id, name: unassigned[i].name, userId: a.userId });
       }
     }
-    await prisma.$transaction(targets.map((t) => prisma.lead.update({ where: { id: t.id }, data: { assignedToId: t.userId } })));
+    await prisma.$transaction(targets.map((t) => prisma.lead.update({ where: { id: t.id }, data: { assignedToId: t.userId, manualAssignedAt: new Date() } })));
     const buckets = new Map<string, LeadAssignedBucket>();
     for (const t of targets) bumpBucket(buckets, t.userId, t.id, t.name);
     await emitLeadAssignedBatch([...buckets.values()]);
@@ -343,7 +343,7 @@ export async function distributeLeastLoaded(): Promise<ActionResult> {
       if (best === null) break; // كل الموظفين وصلوا حدّهم الأقصى
       load.set(best, (load.get(best) ?? 0) + 1);
       cap.set(best, (cap.get(best) as number) - 1);
-      updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: best } }));
+      updates.push(prisma.lead.update({ where: { id: lead.id }, data: { assignedToId: best, manualAssignedAt: new Date() } }));
       bumpBucket(buckets, best, lead.id, lead.name);
     }
     if (updates.length === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };

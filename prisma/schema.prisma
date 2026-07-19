@@ -381,6 +381,8 @@ model Lead {
   contactedAt  DateTime?
   /// كم مرة أُعيد توجيه هذا العميل تلقائيًا بسبب التقصير
   reassignCount Int        @default(0)
+  /// وقت آخر إسناد يدوي (نقل/توزيع من مدير) — يمنح حصانة ٧٢ ساعة من السحب التلقائي
+  manualAssignedAt DateTime?
 
   // المصدر المهيكل (من جدول LeadSource) — يتعايش مع source النصّي القديم.
   sourceId   String?
@@ -608,6 +610,14 @@ model Settings {
   distInitialMode  String   @default("ROUND_ROBIN")
   /// طريقة إعادة التوجيه: MOST_ACTIVE (الأكثر نشاطًا اليوم) | ROTATION (التالي في الدور)
   distReassignMode String   @default("MOST_ACTIVE")
+
+  // ===== آخر دورة كرون (لعرضها في لوحة التوزيع) =====
+  /// وقت آخر تشغيل لدورة الكرون (توزيع/سحب)
+  lastCronAt          DateTime?
+  /// كم عميلًا وُزّع (توزيع أولي) في آخر دورة
+  lastCronDistributed Int      @default(0)
+  /// كم عميلًا سُحب (إعادة توجيه) في آخر دورة
+  lastCronReassigned  Int      @default(0)
 
   /// رابط جوجل شيت للمزامنة التلقائية (CSV عام أو رابط شيت)
   googleSheetUrl String?

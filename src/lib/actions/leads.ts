@@ -272,7 +272,8 @@ export async function bulkReassign(ids: string[], toUserId: string): Promise<Act
     if (!target) return { ok: false, error: "الموظف غير موجود" };
 
     // #8: النقل اليدوي يبدأ مهلة الموظف الجديد من جديد (assignedAt=الآن) ويُلغي احتساب تواصل السابق.
-    await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null } });
+    // manualAssignedAt يمنح حصانة ٧٢س من السحب التلقائي.
+    await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null, manualAssignedAt: new Date() } });
     await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", summary: `نقل ${ids.length} عميل إلى موظف` });
     // إشعار مجمّع للموظف المعني.
     await emitLeadAssignedBatch([{ userId: toUserId, count: ids.length, sampleLeadId: ids[0] }]);
@@ -553,11 +554,12 @@ export async function transferLeads(
             firstContactStage: null, firstContactDate: null, firstContactAt: null,
             lastContact: null, nextFollowup: null,
             assignedAt: new Date(), contactedAt: null, // #8
+            manualAssignedAt: new Date(), // حصانة ٧٢س من السحب التلقائي
           },
         });
       } else {
         // #8: النقل اليدوي يبدأ مهلة الموظف الجديد من جديد ويُلغي احتساب تواصل السابق.
-        await tx.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null } });
+        await tx.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null, manualAssignedAt: new Date() } });
       }
       await tx.activity.createMany({
         data: ids.map((leadId) => ({
@@ -632,8 +634,8 @@ export async function reassignLead(
     await prisma.$transaction([
       prisma.lead.update({
         where: { id: leadId },
-        // #8: مهلة جديدة للموظف الجديد + إلغاء احتساب تواصل السابق.
-        data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null },
+        // #8: مهلة جديدة للموظف الجديد + إلغاء احتساب تواصل السابق + حصانة يدوية ٧٢س.
+        data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null, manualAssignedAt: new Date() },
       }),
       prisma.activity.create({
         data: {

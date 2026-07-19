@@ -1,5 +1,6 @@
 import { requireManager } from "@/lib/auth-guards";
 import { getDistributionConfig } from "@/lib/actions/distribution";
+import { initialDistributeOn, reassignSweepOn } from "@/lib/auto-distribute";
 import { getDistributionBoard } from "@/lib/data/distribution";
 import { getSourcesAndLinks } from "@/lib/data/sources";
 import { getActivityReport } from "@/lib/data/activity-report";
@@ -20,16 +21,18 @@ export default async function DistributionPage({
   const sp = await searchParams;
   const mode: "today" | "all" | "day" = sp.arday ? "day" : sp.arp === "all" ? "all" : "today";
 
-  const [{ config, employees }, board, { sources, links }, activity] = await Promise.all([
+  const [{ config, employees, lastCron }, board, { sources, links }, activity] = await Promise.all([
     getDistributionConfig(),
     getDistributionBoard(),
     getSourcesAndLinks(),
     isOwner ? getActivityReport({ day: sp.arday, all: sp.arp === "all" }) : Promise.resolve(null),
   ]);
+  // حالة السويتشين من env (عرض فقط) — تُقرأ على الخادم.
+  const switches = { initialOn: initialDistributeOn(), reassignOn: reassignSweepOn() };
   return (
     <>
       <AutoRefresh seconds={30} />
-      <DistributionView config={config} employees={employees} board={board} />
+      <DistributionView config={config} employees={employees} board={board} switches={switches} lastCron={lastCron} isOwner={isOwner} />
       {/* تقرير النشاط — المالك فقط (الجلب والفرض على الخادم) */}
       {isOwner && activity && (
         <ActivityReportView data={activity} mode={mode} day={sp.arday ?? ""} />
