@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
 import { requireManager, requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
-import { runSheetSync, type SyncResult } from "@/lib/sheet-sync";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -43,24 +42,6 @@ export async function updateSettings(formData: FormData): Promise<ActionResult> 
     revalidatePath("/", "layout");
     revalidatePath("/settings");
     return { ok: true };
-  } catch (e) {
-    return { ok: false, error: toUserError(e) };
-  }
-}
-
-/** مزامنة فورية من جوجل شيت (زر «مزامنة الآن» + التشغيل الدوري). */
-export async function syncGoogleSheet(): Promise<SyncResult> {
-  try {
-    await requireManager();
-    const res = await runSheetSync();
-    if (res.ok) {
-      revalidatePath("/leads");
-      revalidatePath("/pipeline");
-      revalidatePath("/dashboard");
-      revalidatePath("/admin");
-      revalidatePath("/settings");
-    }
-    return res;
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
