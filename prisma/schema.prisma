@@ -228,6 +228,8 @@ model User {
   /// رمز دعوة تغيير الـ PIN (يُرسل بالإيميل) — bcrypt-free، عشوائي + انتهاء
   pinResetToken String?  @unique
   pinResetExp   DateTime?
+  /// إبطال كل الجلسات قبل هذا الوقت (خروج من كل الأجهزة) — يُقارَن بـ loginAt في الـJWT
+  sessionsValidFrom DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -394,6 +396,7 @@ model Lead {
   followUps  FollowUp[]
   referrals  Referral[]
   reassignments Reassignment[]
+  sweepCandidate SweepCandidate?
 
   @@index([stage])
   @@index([assignedToId])
@@ -416,6 +419,25 @@ model Reassignment {
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
+  @@index([createdAt])
+}
+
+/// مرشّح للسحب (rule 5): الـsweep يكتب هنا بدل ما ينفّذ — المالك يوافق («اسحب») أو يترك.
+/// صف واحد معلّق لكل ليد (leadId فريد). يُحذف عند القرار (سحب أو ترك).
+model SweepCandidate {
+  id             String    @id @default(cuid())
+  leadId         String    @unique
+  /// الموظف الحالي (المصدر) وقت الترشيح
+  fromUserId     String?
+  reason         String    @default("timeout")
+  /// المهلة المطبّقة (دقائق) التي رشّحته
+  timeoutMin     Int?
+  /// وقت إسناد الليد وقت الترشيح (لعرضه في القائمة)
+  leadAssignedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
   @@index([createdAt])
 }
 
@@ -610,6 +632,9 @@ model Settings {
   distInitialMode  String   @default("ROUND_ROBIN")
   /// طريقة إعادة التوجيه: MOST_ACTIVE (الأكثر نشاطًا اليوم) | ROTATION (التالي في الدور)
   distReassignMode String   @default("MOST_ACTIVE")
+  /// الحاجز التاريخي للسحب: الـsweep يتجاهل أي ليد assignedAt < هذا التاريخ. الافتراضي now
+  /// عند الترحيل — يعني كل العملاء الحاليين محميّون فورًا، والسحب يشتغل فقط على ما بعده.
+  sweepCutoffAt    DateTime @default(now())
 
   // ===== آخر دورة كرون (لعرضها في لوحة التوزيع) =====
   /// وقت آخر تشغيل لدورة الكرون (توزيع/سحب)

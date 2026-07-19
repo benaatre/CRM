@@ -6,37 +6,15 @@ import { prisma } from "@/lib/prisma";
 import { notify, ownerIds } from "@/lib/notify";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
+import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
+
+// نعيد تصدير الحد الأدنى للمهلة (تستورده أكشنات التوزيع من هنا) — مصدره الوحدة النقية.
+export { MIN_REASSIGN_TIMEOUT_MIN } from "./sweep-eligibility";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
 // المراحل المتقدّمة التي لا يُعاد توجيه عملائها (حجز/بيع + مقفول-خسارة #19).
 const ADVANCED_STAGES = ["RESERVED", "CLOSED_WON", "CLOSED_LOST"] as const;
-// «ليس متأخّرًا»: المتقدّمة + ATTEMPTED (بادر بمحاولة/لم يرد) — لا يُحسب متأخّرًا ولا يُعاد توجيهه.
-const NOT_LATE_STAGES = [...ADVANCED_STAGES, "ATTEMPTED"] as const;
-
-/**
- * تحصين كشف التأخّر: «بادر بمحاولة» = له متابعة (FollowUp) بتاريخ ≥ الإسناد.
- * يُستثنى من المتأخرين حتى لو لم يُضبط contactedAt لأي سبب. (استعلام واحد، بلا N+1.)
- */
-async function excludeAttempted<T extends { id: string; assignedAt: Date | null }>(leads: T[]): Promise<T[]> {
-  if (leads.length === 0) return leads;
-  const fus = await prisma.followUp.findMany({
-    where: { leadId: { in: leads.map((l) => l.id) } },
-    select: { leadId: true, createdAt: true },
-  });
-  const latest = new Map<string, Date>();
-  for (const f of fus) {
-    const cur = latest.get(f.leadId);
-    if (!cur || f.createdAt > cur) latest.set(f.leadId, f.createdAt);
-  }
-  return leads.filter((l) => {
-    const fu = latest.get(l.id);
-    return !(fu && l.assignedAt && fu >= l.assignedAt); // له متابعة بعد الإسناد → بادر → يُستثنى
-  });
-}
-
-// سقف إعادة التوجيه التلقائي — بعده يبقى العميل مع آخر موظف ويُصعَّد للمالك (#22).
-const MAX_REASSIGNS = 3;
 
 // ===================== سويتشات env: فصل التوزيع الأولي عن السحب =====================
 //
@@ -53,29 +31,11 @@ export function initialDistributeOn(): boolean { return envSwitch(process.env.AU
 /** سحب المتأخرين وإعادة توجيههم — مطفأ افتراضيًا (خطر: ينقل بين الموظفين). */
 export function reassignSweepOn(): boolean { return envSwitch(process.env.AUTO_REASSIGN_SWEEP, false); }
 
-// ===================== شبكة أمان السحب =====================
-export const MIN_REASSIGN_TIMEOUT_MIN = 24 * 60;   // الحد الأدنى المطلق لمهلة السحب: ٢٤ ساعة (لا أقل مهما كان الإعداد)
-export const ESTABLISHED_TIMEOUT_MIN = 48 * 60;    // مهلة الليد المُسند من زمان (الافتراضي الموصى): ٤٨ ساعة
-const NEW_LEAD_TIMEOUT_MIN = 60;            // مهلة الليد الجديد فعلًا: ٦٠ دقيقة
-const NEW_LEAD_MAX_AGE_MS = 6 * 60 * 60_000; // نافذة «جديد فعلًا»: دخل النظام وأُسند خلال آخر ٦ ساعات
-const MANUAL_IMMUNITY_MS = 72 * 60 * 60_000; // حصانة الإسناد اليدوي: لا يُسحب خلال ٧٢ ساعة من نقل يدوي
-const SWEEP_CAP = 5;                          // سقف مطلق: لا يُسحب أكثر من ٥ عملاء في نداء الكرون الواحد
+// سقف مطلق: لا يُرشَّح أكثر من ٥ عملاء في نداء الكرون الواحد.
+const SWEEP_CAP = 5;
 
-/**
- * مهلة السحب لعميل بعينه بالدقائق حسب نموذج المهلتين:
- *  - «جديد فعلًا» (٦٠ دقيقة) فقط لو الشروط الثلاثة معًا: reassignCount==0 + createdAt خلال ٦ ساعات
- *    + assignedAt خلال ٦ ساعات. (createdAt هو المؤشّر غير الملوّث بتصفير العدّاد في الاسترجاعات.)
- *  - غير ذلك → مهلة المُسند من زمان (٤٨ ساعة)، بحدّ أدنى مطلق ٢٤ ساعة على أي إعداد.
- */
-function leadTimeoutMin(lead: { reassignCount: number; createdAt: Date; assignedAt: Date | null }, settings: DistSettings, now: Date): number {
-  const isTrulyNew =
-    lead.reassignCount === 0 &&
-    now.getTime() - lead.createdAt.getTime() <= NEW_LEAD_MAX_AGE_MS &&
-    lead.assignedAt != null && now.getTime() - lead.assignedAt.getTime() <= NEW_LEAD_MAX_AGE_MS;
-  if (isTrulyNew) return NEW_LEAD_TIMEOUT_MIN;
-  // المُسند من زمان: مهلة الإعداد، وبأي حال لا أقل من ٢٤ ساعة (الحد الأدنى المطلق).
-  return Math.max(settings.distTimeoutMin, MIN_REASSIGN_TIMEOUT_MIN);
-}
+// ملاحظة: منطق الأهلية النقي (نموذج المهلتين + قواعد الحماية + الحاجز التاريخي) في
+// ./sweep-eligibility — بلا server-only ليُختبَر مباشرة. نستورده أعلاه ونعيد تصدير حدّ المهلة.
 
 // ===================== أدوات التوقيت (توقيت السعودية UTC+3 بلا تغيير صيفي) =====================
 
@@ -114,11 +74,13 @@ export type DistSettings = {
   distPointer: number;
   distInitialMode: string; // ROUND_ROBIN | LEAST_LOADED
   distReassignMode: string; // MOST_ACTIVE | ROTATION
+  sweepCutoffAt: Date; // الحاجز التاريخي — لا يُرشَّح ليد assignedAt < هذا التاريخ
 };
 
 const DIST_SELECT = {
   autoDistribute: true, distStartHour: true, distEndHour: true, distTimeoutMin: true,
   distPresenceMin: true, distOrder: true, distPointer: true, distInitialMode: true, distReassignMode: true,
+  sweepCutoffAt: true,
 } as const;
 
 /** يجلب إعدادات التوزيع (ينشئ السجل إن لزم). */
@@ -384,95 +346,112 @@ async function escalateCappedLeads(): Promise<void> {
 }
 
 /**
- * pass السحب: يعيد توجيه المتأخرين مع شبكة أمان — نموذج المهلتين + حصانة الإسناد اليدوي (٧٢س)
- * + سقف ٥ لكل نداء + لوق إجباري قبل كل سحب. يفترض المنادي تحقّق مسبقًا من السويتش + autoDistribute
- * + النافذة. يرجّع عدد المسحوبين + المفحوصين (أو skipped لو ما فيه متواجدون).
+ * pass السحب (قاعدة ٥ — اقتراح لا تنفيذ): يرشّح المتأخرين للمالك بدل ما يسحبهم. يطبّق شبكة
+ * الأمان الكاملة عبر sweepEligible (النقي)، سقف ٥ لكل نداء، ولوق إجباري، ثم يكتب SweepCandidate
+ * (upsert) ويشعر المالك بعدد الجدد. لا ينقل أي عميل — النقل بضغطة المالك (executeSweepPull) فقط.
+ * يرجّع عدد المرشّحين الجدد + المفحوصين.
  */
-async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: Set<string>): Promise<{ reassigned: number; checked: number; skipped?: string }> {
-  const present = await presentParticipants(prisma, settings, now);
-  if (present.length === 0) return { reassigned: 0, checked: 0, skipped: "ما فيه موظفون متواجدون لإعادة التوجيه" };
-
-  // نجلب بأوسع مهلة ممكنة (٦٠ دقيقة = أقصر مهلة في النموذج)، ثم نصفّي كل عميل حسب مهلته الفعلية.
+async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: Set<string>): Promise<{ proposed: number; checked: number; skipped?: string }> {
+  // استعلام تقريبي على القاعدة (للأداء) يعكس قواعد الحماية الدائمة؛ الحكم النهائي بـ sweepEligible.
   const loosest = new Date(now.getTime() - NEW_LEAD_TIMEOUT_MIN * 60_000);
-  const immunityCutoff = new Date(now.getTime() - MANUAL_IMMUNITY_MS);
   const overdueRaw = await prisma.lead.findMany({
     where: {
       assignedToId: { not: null },
-      assignedAt: { not: null, lte: loosest },
-      contactedAt: null,
+      assignedAt: { not: null, lte: loosest, gte: settings.sweepCutoffAt }, // قاعدة ٣: بعد الحاجز التاريخي فقط
+      contactedAt: null,                    // قاعدة ١: تواصل مسجّل → حصانة
+      stage: "NEW",                          // قاعدة ١: المرحلة ∉ [NEW] → حصانة
       isArchived: false,
-      stage: { notIn: [...NOT_LATE_STAGES] }, // المتقدّمة + ATTEMPTED (بادر بمحاولة)
+      manualAssignedAt: null,                // قاعدة ٢: حصانة الإسناد اليدوي الدائمة
+      followUps: { none: {} },               // قاعدة ١: أي متابعة واحدة → حصانة دائمة
       reassignCount: { lt: MAX_REASSIGNS }, // #22: تجاوزوا السقف يبقون مع آخر موظف
-      // حصانة الإسناد اليدوي ٧٢ ساعة: من أُسند يدويًا حديثًا لا يُسحب.
-      OR: [{ manualAssignedAt: null }, { manualAssignedAt: { lte: immunityCutoff } }],
-      ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}), // المكرر لا يُعاد توجيهه آليًا
+      ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}), // المكرر لا يُرشَّح آليًا
     },
-    select: { id: true, assignedToId: true, name: true, assignedAt: true, createdAt: true, reassignCount: true },
+    select: {
+      id: true, assignedToId: true, name: true, assignedAt: true, createdAt: true,
+      reassignCount: true, contactedAt: true, isArchived: true, stage: true, manualAssignedAt: true,
+    },
     orderBy: { assignedAt: "asc" },
   });
 
   // #22: عملاء بلغوا سقف إعادة التوجيه بلا تواصل → تصعيد للمالك.
   await escalateCappedLeads();
 
-  // تحصين المتابعات ثم تطبيق نموذج المهلتين لكل عميل (جديد فعلًا ٦٠د / مُسند ٤٨س بحدّ أدنى ٢٤س).
-  const attempted = await excludeAttempted(overdueRaw);
-  const overdue = attempted.filter((l) => {
-    const tmin = leadTimeoutMin(l, settings, now);
-    return l.assignedAt != null && l.assignedAt.getTime() <= now.getTime() - tmin * 60_000;
-  });
-  if (overdue.length === 0) return { reassigned: 0, checked: 0 };
+  // الحكم النهائي بالدالة النقية (مصدر الحقيقة). hasFollowUp=false لأن الاستعلام صفّى ذوي المتابعات.
+  const overdue = overdueRaw.filter((l) => sweepEligible({ ...l, hasFollowUp: false }, settings, now));
+  if (overdue.length === 0) return { proposed: 0, checked: 0 };
 
-  // سقف مطلق: لا أكثر من ٥ عملاء في نداء الكرون الواحد.
+  // سقف مطلق: لا أكثر من ٥ مرشّحين في نداء الكرون الواحد.
   const candidates = overdue.slice(0, SWEEP_CAP);
 
-  let reassigned = 0;
-  let pointer = settings.distPointer;
-  const presentSet = new Set(present);
-
+  let proposed = 0; // الجدد فقط (لإشعار المالك)
   for (const lead of candidates) {
     const from = lead.assignedToId as string;
-    let toUserId: string | null;
-    if (settings.distReassignMode === "ROTATION") {
-      const picked = pickRotation(settings.distOrder, presentSet, pointer, from);
-      if (picked) { toUserId = picked.userId; pointer = picked.pointer; }
-      else toUserId = null;
-    } else {
-      toUserId = await pickMostActiveToday(prisma, settings.distOrder, present, now, from);
-    }
-    if (!toUserId || toUserId === from) continue; // ما فيه بديل مناسب
-
-    // لوق إجباري قبل أي سحب: leadId · من · إلى · وقت الإسناد · السبب (المهلة المطبّقة).
+    const tmin = leadTimeoutMin(lead, settings, now);
+    // لوق إجباري قبل كل ترشيح: leadId · من · وقت الإسناد · السبب (المهلة المطبّقة).
     console.info(
-      `[sweep] pull lead=${lead.id} from=${from} to=${toUserId} assignedAt=${lead.assignedAt?.toISOString()} reason=timeout(${leadTimeoutMin(lead, settings, now)}min)`,
+      `[sweep] propose lead=${lead.id} from=${from} assignedAt=${lead.assignedAt?.toISOString()} reason=timeout(${tmin}min)`,
     );
-
-    await prisma.$transaction(async (tx) => {
-      await tx.lead.update({
-        where: { id: lead.id },
-        data: { assignedToId: toUserId, assignedAt: now, reassignCount: { increment: 1 } },
-      });
-      await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: from, toUserId, reason: "timeout" } });
-      await tx.activity.create({
-        data: { leadId: lead.id, userId: null, type: ActivityType.ASSIGNMENT, note: "إعادة توجيه تلقائي (تقصير في التواصل)" },
-      });
-      await emitNotification({
-        eventKey: "lead_reassigned",
-        assignedUserId: toUserId,
-        title: "إعادة توزيع عميل",
-        body: `${lead.name} — أُعيد توجيهه بسبب تأخّر التواصل`,
-        link: `/leads/${lead.id}`,
-      }, tx);
-      await notify(tx, [from], "lead_lost", "فاتك عميل",
-        `${lead.name} — تأخّرت بالتواصل فتحوّل لموظف ثاني. بادر بعملائك بسرعة.`,
-        `/leads/${lead.id}`);
+    const existing = await prisma.sweepCandidate.findUnique({ where: { leadId: lead.id }, select: { id: true } });
+    await prisma.sweepCandidate.upsert({
+      where: { leadId: lead.id },
+      update: { fromUserId: from, reason: "timeout", timeoutMin: tmin, leadAssignedAt: lead.assignedAt },
+      create: { leadId: lead.id, fromUserId: from, reason: "timeout", timeoutMin: tmin, leadAssignedAt: lead.assignedAt },
     });
-    reassigned++;
+    if (!existing) proposed++;
   }
 
-  if (pointer !== settings.distPointer) {
+  // إشعار المالك بعدد المرشّحين الجدد فقط (لا إزعاج لو ما فيه جديد).
+  if (proposed > 0) {
+    const owners = await ownerIds(prisma);
+    await notify(prisma, owners, "dist.sweep_candidates", "مرشّحون للسحب",
+      `فيه ${proposed} عميل مرشّح للسحب — راجعهم قبل ما يُنقلوا`, "/distribution");
+  }
+
+  return { proposed, checked: candidates.length };
+}
+
+/**
+ * تنفيذ سحب مرشّح واحد بموافقة المالك (زر «اسحب»): يختار المستقبِل حسب وضع إعادة التوجيه ثم ينقل
+ * العميل فعليًا (assignedAt=now, reassignCount+1) مع سجل/نشاط/إشعارات، ويحذف بطاقة الترشيح.
+ * لا يضبط manualAssignedAt — الموظف الجديد يبدأ مهلته من جديد ويدخل الدورة عاديًا.
+ */
+export async function executeSweepPull(leadId: string, now: Date = new Date()): Promise<{ ok: boolean; toUserId?: string; error?: string }> {
+  const settings = await getDistSettings(prisma);
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true, assignedToId: true } });
+  if (!lead || !lead.assignedToId) return { ok: false, error: "العميل غير موجود أو غير مُسند" };
+  const from = lead.assignedToId;
+
+  const present = await presentParticipants(prisma, settings, now);
+  if (present.length === 0) return { ok: false, error: "ما فيه موظف متواجد لاستقبال العميل الآن" };
+
+  let toUserId: string | null;
+  let pointer = settings.distPointer;
+  if (settings.distReassignMode === "ROTATION") {
+    const picked = pickRotation(settings.distOrder, new Set(present), pointer, from);
+    if (picked) { toUserId = picked.userId; pointer = picked.pointer; } else toUserId = null;
+  } else {
+    toUserId = await pickMostActiveToday(prisma, settings.distOrder, present, now, from);
+  }
+  if (!toUserId || toUserId === from) return { ok: false, error: "ما فيه موظف بديل مناسب لاستقباله" };
+  const target = toUserId;
+
+  console.info(`[sweep] pull(approved) lead=${lead.id} from=${from} to=${target}`);
+  await prisma.$transaction(async (tx) => {
+    await tx.lead.update({ where: { id: lead.id }, data: { assignedToId: target, assignedAt: now, reassignCount: { increment: 1 } } });
+    await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: from, toUserId: target, reason: "timeout" } });
+    await tx.activity.create({ data: { leadId: lead.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سحب بموافقة المالك (تقصير في التواصل)" } });
+    await emitNotification({
+      eventKey: "lead_reassigned", assignedUserId: target, title: "إعادة توزيع عميل",
+      body: `${lead.name} — نُقل إليك بعد تأخّر الموظف السابق`, link: `/leads/${lead.id}`,
+    }, tx);
+    await notify(tx, [from], "lead_lost", "فاتك عميل",
+      `${lead.name} — سحبه المالك بعد تأخّر التواصل. بادر بعملائك بسرعة.`, `/leads/${lead.id}`);
+    await tx.sweepCandidate.deleteMany({ where: { leadId: lead.id } });
+  });
+  if (settings.distReassignMode === "ROTATION" && pointer !== settings.distPointer) {
     await prisma.settings.update({ where: { id: "singleton" }, data: { distPointer: pointer } });
   }
-  return { reassigned, checked: candidates.length };
+  return { ok: true, toUserId: target };
 }
 
 export type PassResult = { on: boolean; count: number; skipped?: string };
@@ -508,13 +487,13 @@ export async function runDistributionPasses(now: Date = new Date()): Promise<Dis
     else if (gateSkip) initial = { on: true, count: 0, skipped: gateSkip };
     else initial = { on: true, count: await distributeUnassignedPass(settings, now, dupIds) };
 
-    // pass ٢: سحب المتأخرين (مطفأ افتراضيًا — خطر النقل بين الموظفين).
+    // pass ٢: ترشيح المتأخرين للسحب (مطفأ افتراضيًا). true = «اقترح للمالك»، لا تنفيذ تلقائي.
     let sweep: PassResult;
     if (!sweepOn) sweep = { on: false, count: 0, skipped: "السويتش مطفأ (AUTO_REASSIGN_SWEEP)" };
     else if (gateSkip) sweep = { on: true, count: 0, skipped: gateSkip };
     else {
       const r = await runReassignSweepPass(settings, now, dupIds);
-      sweep = { on: true, count: r.reassigned, skipped: r.skipped };
+      sweep = { on: true, count: r.proposed, skipped: r.skipped };
     }
 
     // «آخر دورة كرون» — لعرضها في اللوحة. فشل التحديث لا يُفشِل الدورة.
