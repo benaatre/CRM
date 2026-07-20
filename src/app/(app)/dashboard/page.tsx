@@ -18,12 +18,12 @@ export default async function DashboardPage({
   // بانر الإنذار للموظف فقط (المالك/المدير يشوفون لوحة «لم يتم الرد» الكاملة).
   const [data, alert] = await Promise.all([
     getDashboard(period),
-    user.role === Role.EMPLOYEE ? getMyNoResponseAlert(user.id) : Promise.resolve({ late: 0, pulled: 0 }),
+    user.role === Role.EMPLOYEE ? getMyNoResponseAlert(user.id) : Promise.resolve({ lines: [], late: 0, pulled: 0 }),
   ]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <NoResponseBanner late={alert.late} pulled={alert.pulled} />
+      <NoResponseBanner lines={alert.lines} pulled={alert.pulled} />
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">هلا {user.name}</h1>
