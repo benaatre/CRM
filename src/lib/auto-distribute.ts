@@ -7,6 +7,7 @@ import { notify, ownerIds } from "@/lib/notify";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
+import { getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats } from "./no-response-escalation";
 
 // نعيد تصدير الحد الأدنى للمهلة (تستورده أكشنات التوزيع من هنا) — مصدره الوحدة النقية.
 export { MIN_REASSIGN_TIMEOUT_MIN } from "./sweep-eligibility";
@@ -522,44 +523,6 @@ export async function runDistributionPasses(now: Date = new Date()): Promise<Dis
 // مُصدَّرة: مصدر واحد للمراحل تشاركه لوحة «لم يتم الرد» (data/no-response.ts).
 export const NO_RESPONSE_STAGES = ["NEW", "ATTEMPTED"] as const;
 
-export const WARN_AFTER_H = 48; // تنبيه الموظف: باقي يوم
-export const PULL_AFTER_H = 72; // سحب العميل من الموظف
-
-// مفتاح التشغيل: بدونه = DRY_RUN (تسجيل فقط، بلا أي كتابة/إشعار). مُصدَّر لعرض حالة النظام.
-export const PULL_ENABLED = process.env.NO_RESPONSE_PULL === "on";
-
-// تاريخ تفعيل النظام: يمنع السحب الجماعي للمتراكم التاريخي — العدّاد يبدأ من هذه اللحظة
-// كحدّ أدنى لكل عميل. غير مضبوط (أو تاريخ غير صالح) → لا خطّ أساس (سلوك بلا تفعيل).
-const ACTIVATION: Date | null = (() => {
-  const raw = process.env.NO_RESPONSE_ACTIVATION_DATE;
-  if (!raw) return null;
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d;
-})();
-
-/**
- * آخر «لمسة» على العميل = الأحدث بين وقت الإسناد وآخر تواصل وتاريخ التفعيل. نأخذ الأحدث
- * (max) لا `??` حتى يحصل كل إسناد جديد على نافذة كاملة: بعد إعادة التوزيع يصير assignedAt
- * هو الأحدث، فلا يُحتسب العميل متأخّرًا فورًا لمجرّد أن lastContact قديم (تاريخي).
- * ودمج ACTIVATION يمنع سحب المتراكم القديم عند أول تشغيل — عدّاد الجميع يبدأ من التفعيل.
- */
-function lastTouch(l: { assignedAt: Date | null; lastContact: Date | null }): Date | null {
-  const t = Math.max(
-    l.assignedAt?.getTime() ?? 0,
-    l.lastContact?.getTime() ?? 0,
-    ACTIVATION?.getTime() ?? 0,
-  );
-  return t > 0 ? new Date(t) : null;
-}
-
-/**
- * خطّ الأساس الزمني لعميل في حوكمة «لم يتم الرد» — نفس منطق السحب بالضبط (max مع التفعيل).
- * مُصدَّر لتستخدمه لوحة «بانتظار السحب» فتطابق المحرّك حرفيًا (لا منطق مكرّر).
- */
-export function noResponseBaseline(l: { assignedAt: Date | null; lastContact: Date | null }): Date | null {
-  return lastTouch(l);
-}
-
 export type PullbackResult = {
   ok: boolean;
   mode: "live" | "dry-run";
@@ -571,47 +534,61 @@ export type PullbackResult = {
 };
 
 /**
- * حوكمة «لم يتم الرد»: تنبيه الموظف بعد ٤٨ ساعة بلا تحرّك، وسحب العميل بعد ٧٢ ساعة
- * (assignedToId=null + reassignCount++ + Reassignment{no_response} + إشعار المالك + تدقيق).
- * لا يسحب من بلغ سقف إعادة التوجيه (reassignCount ≥ MAX_REASSIGNS) — يُترك «مستنفدًا».
- * محمي بمفتاح NO_RESPONSE_PULL؛ بدونه DRY_RUN (تسجيل من كان سيُنبَّه/يُسحب، بلا كتابة).
+ * حوكمة «لم يتم الرد» — تصعيد متدرّج حسب عدد المتابعات (منطق التصعيد في no-response-escalation):
+ * المرجع الزمني = آخر متابعة (أو الإسناد لو صفر متابعات). كل فئة لها مهلة إنذار/سحب مختلفة،
+ * و٥+ متابعات = محصّن نهائيًا. يحترم الحصانات: manualAssignedAt · sweepCutoffAt · سقف الدورات.
+ * الإنذارات مجمّعة لكل موظف منفصلة لكل فئة (dedup يومي). محمي بـ enabled؛ بدونه DRY_RUN.
  */
 export async function runNoResponsePullback(now: Date = new Date()): Promise<PullbackResult> {
-  const mode: "live" | "dry-run" = PULL_ENABLED ? "live" : "dry-run";
-  if (mode === "dry-run") {
-    console.info(`[no-response] activation=${ACTIVATION ? ACTIVATION.toISOString() : "غير مضبوط"}`);
-  }
+  const config = getNoResponseConfig();
+  const mode: "live" | "dry-run" = config.enabled ? "live" : "dry-run";
   try {
-    const warnCutoff = new Date(now.getTime() - WARN_AFTER_H * 3_600_000);
-    const pullCutoff = new Date(now.getTime() - PULL_AFTER_H * 3_600_000);
-
-    // موزّعون لموظف فعلي (ليس مالكًا)، غير مؤرشفين، في مراحل «لم يتم الرد».
     const owners = await ownerIds(prisma);
+
+    // مرشّحون: موزّعون لموظف فعلي، غير مؤرشفين، مراحل عدم الرد، دون سقف الدورات، غير محصّنين يدويًا.
+    // ملاحظة: لا حاجز sweepCutoffAt هنا — نظام «لم يتم الرد» مستقلّ، حاجزه الاختياري ACTIVATION في الـbaseline.
     const candidates = await prisma.lead.findMany({
       where: {
         assignedToId: { not: null, ...(owners.length ? { notIn: owners } : {}) },
         isArchived: false,
         stage: { in: [...NO_RESPONSE_STAGES] },
+        reassignCount: { lt: MAX_REASSIGNS },
+        manualAssignedAt: null,
       },
-      select: { id: true, name: true, assignedToId: true, assignedAt: true, lastContact: true, reassignCount: true },
+      select: { id: true, name: true, assignedToId: true, assignedAt: true },
     });
+    if (candidates.length === 0) return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, capped: 0 };
+
+    // متابعات كل عميل (نتيجة + وقت) لحساب «لم يرد» فقط (دفعة واحدة، بلا N+1).
+    const ids = candidates.map((c) => c.id);
+    const fus = await prisma.followUp.findMany({ where: { leadId: { in: ids } }, select: { leadId: true, result: true, createdAt: true } });
+    const fuByLead = new Map<string, { result: string; createdAt: Date }[]>();
+    for (const f of fus) {
+      const arr = fuByLead.get(f.leadId);
+      if (arr) arr.push({ result: f.result, createdAt: f.createdAt });
+      else fuByLead.set(f.leadId, [{ result: f.result, createdAt: f.createdAt }]);
+    }
 
     let warned = 0;
     let pulled = 0;
     let capped = 0;
+    // إنذارات مجمّعة: مفتاح = `${userId}|${noAnswerCount}` → عدد العملاء في هذي الفئة.
+    const warnBuckets = new Map<string, number>();
 
     for (const l of candidates) {
-      const touch = lastTouch(l);
-      if (!touch) continue; // بلا مرجع زمني
+      const stats = noAnswerStats(fuByLead.get(l.id) ?? []);
+      if (!stats.included) continue; // آخر متابعة نتيجتها ليست «لم يرد» → رد العميل → خارج النظام
+      const fu = stats.noAnswerCount;
+      const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
+      const { state } = noResponseState(fu, baseline, now, config);
 
-      // بلغ السقف → مستنفد: لا تنبيه ولا سحب.
-      if (l.reassignCount >= MAX_REASSIGNS) { capped++; continue; }
+      if (state === "immune") { capped++; continue; }
 
-      // (١) سحب بعد ٧٢ ساعة.
-      if (touch <= pullCutoff) {
+      // (١) سحب (بلغ يوم السحب لفئته).
+      if (state === "overdue") {
         const from = l.assignedToId as string;
         if (mode === "dry-run") {
-          console.info(`[no-response][dry-run] سيُسحب ${l.id} (${l.name}) من ${from} — بلا لمسة منذ ${touch.toISOString()}`);
+          console.info(`[no-response][dry-run] سيُسحب ${l.id} (${l.name}) من ${from} — متابعات=${fu}`);
           pulled++;
           continue;
         }
@@ -625,32 +602,38 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
             data: { leadId: l.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سُحب تلقائيًا — لم يتم الرد على العميل" },
           });
           await notify(tx, [from], "lead_lost", "انسحب منك عميل",
-            `${l.name} — عدّى ٣ أيام بلا رد فانسحب منك. بادر بعملائك بسرعة.`, `/leads/${l.id}`);
+            `${l.name} — عدّى مهلته بلا رد فانسحب منك. بادر بعملائك بسرعة.`, `/leads/${l.id}`);
         });
         await notify(prisma, owners, "no_response.pulled", "عميل انسحب لعدم الرد",
-          `${l.name} — عدّى ٣ أيام بلا رد وانسحب من الموظف. متاح للتوزيع من «لم يتم الرد».`, "/no-response");
+          `${l.name} — انسحب من الموظف لعدم الرد. متاح للتوزيع من «لم يتم الرد».`, "/no-response");
         pulled++;
         continue;
       }
 
-      // (٢) تنبيه بعد ٤٨ ساعة — مرّة واحدة لكل دورة إسناد.
-      if (touch <= warnCutoff) {
-        const link = `/leads/${l.id}`;
-        if (mode === "dry-run") {
-          console.info(`[no-response][dry-run] سيُنبَّه ${l.assignedToId} على ${l.id} (${l.name})`);
-          warned++;
-          continue;
-        }
-        // dedup: تنبيه بعد آخر لمسة → لا يتكرّر يوميًا، ويتجدّد مع كل إسناد جديد.
+      // (٢) إنذار (بلغ يوم الإنذار) — نجمّعه لإرساله مجمّعًا لكل موظف/فئة.
+      if (state === "pending") {
+        const key = `${l.assignedToId}|${fu}`;
+        warnBuckets.set(key, (warnBuckets.get(key) ?? 0) + 1);
+      }
+    }
+
+    // إرسال الإنذارات المجمّعة (منفصل لكل موظف + فئة) مع dedup يومي.
+    if (mode === "live") {
+      const todayStart = ksaTodayStart(now);
+      for (const [key, count] of warnBuckets) {
+        const [userId, fuStr] = key.split("|");
+        const fu = Number(fuStr);
+        const link = `/leads?stages=NEW,ATTEMPTED&sort=oldest#nr-fu-${fu}`;
         const already = await prisma.notification.findFirst({
-          where: { type: "no_response.warn", link, userId: l.assignedToId ?? undefined, createdAt: { gte: touch } },
+          where: { type: "no_response.warn", userId, link, createdAt: { gte: todayStart } },
           select: { id: true },
         });
         if (already) continue;
-        await notify(prisma, [l.assignedToId], "no_response.warn", "تحرّك على عميلك",
-          `تحرّك على ${l.name} — باقي يوم وينسحب منك.`, link);
-        warned++;
+        await notify(prisma, [userId], "no_response.warn", "متابعة مطلوبة", warnMessage(fu, count), link);
+        warned += count;
       }
+    } else {
+      for (const count of warnBuckets.values()) warned += count;
     }
 
     return { ok: true, mode, scanned: candidates.length, warned, pulled, capped };

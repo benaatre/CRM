@@ -1,8 +1,9 @@
 import { Role } from "@prisma/client";
 import { requireRole } from "@/lib/auth-guards";
 import {
-  getNoResponseLeads, getPendingPullByEmployee, getActiveEmployeeLoads, type NoResponseSort,
+  getPendingPullByEmployee, getPoolBySourceEmployee, getActiveEmployeeLoads, type NoResponseSort,
 } from "@/lib/data/no-response";
+import { getNoResponseConfig } from "@/lib/no-response-escalation";
 import { NoResponseView } from "@/components/no-response/no-response-view";
 
 export const dynamic = "force-dynamic";
@@ -25,18 +26,19 @@ export default async function NoResponsePage({
   const sortRaw = one(sp.sort) as NoResponseSort;
   const sort = SORTS.includes(sortRaw) ? sortRaw : "recent";
 
-  const [summary, rows, employeeLoads] = await Promise.all([
+  const [summary, pool, employeeLoads] = await Promise.all([
     getPendingPullByEmployee(),
-    getNoResponseLeads({ q: q || undefined, prevEmp: prevEmp || undefined, rounds, sort }),
+    getPoolBySourceEmployee(),
     getActiveEmployeeLoads(),
   ]);
 
   return (
     <NoResponseView
       summary={summary}
-      rows={rows}
+      pool={pool}
       employeeLoads={employeeLoads}
       filters={{ q, emp: prevEmp, rounds: rounds ?? 0, sort }}
+      config={getNoResponseConfig()}
     />
   );
 }

@@ -1,54 +1,45 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import Link from "next/link";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PhoneMissed, AlertTriangle, Share2, BellRing } from "lucide-react";
-import { formatDate, formatCount, toArabicDigits } from "@/lib/format";
-import { stageLabels, channelLabels } from "@/lib/labels";
-import type { NoResponseRow, NoResponseSort, PendingPullSummary, EmployeeLoad } from "@/lib/data/no-response";
+import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X } from "lucide-react";
+import { formatCount, toArabicDigits } from "@/lib/format";
+import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, CategoryStat, EmployeeLoad } from "@/lib/data/no-response";
+import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseConfig, type EscalationCategory } from "@/lib/no-response-escalation";
 import {
-  distributeNoResponseBatch, autoDistributeNoResponse, warnEmployee, warnAllEmployees,
-  type DistributeOpts,
+  warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch,
+  type DistributeOpts, type PullGroupCategory,
 } from "@/lib/actions/no-response";
 
 type Employee = { id: string; name: string };
 type Filters = { q: string; emp: string; rounds: number; sort: NoResponseSort };
-const PAGE_SIZE = 12;
+
+// فئات «بانتظار السحب» حسب عدد المتابعات (بلا محصّن — لا يُسحب).
+const PENDING_COLS: { cat: EscalationCategory; pull: PullGroupCategory; label: string }[] = [
+  { cat: "none", pull: "pending_0", label: "بلا متابعة" },
+  { cat: "one", pull: "pending_1", label: "متابعة أولى" },
+  { cat: "two", pull: "pending_2", label: "متابعة ثانية" },
+  { cat: "threePlus", pull: "pending_3plus", label: "متابعة ثالثة" },
+];
+
+type PullAsk = { employeeId: string; employeeName: string; category: PullGroupCategory; count: number };
+type DistAsk = { count: number; sourceEmpIds: string[]; sourceEmployeeId: string | null; leadIds: string[]; who: string };
 
 export function NoResponseView({
-  summary, rows, employeeLoads, filters,
+  summary, pool, employeeLoads, filters, config,
 }: {
   summary: PendingPullSummary;
-  rows: NoResponseRow[];
+  pool: PoolSourceGroup[];
   employeeLoads: EmployeeLoad[];
   filters: Filters;
+  config: NoResponseConfig;
 }) {
   const employees: Employee[] = employeeLoads.map((e) => ({ id: e.id, name: e.name }));
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [page, setPage] = useState(1);
-  const [sel, setSel] = useState<Set<string>>(new Set());
-  const [dist, setDist] = useState<{ ids: string[] } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-
-  useEffect(() => { setPage(1); setSel(new Set()); }, [rows]);
-
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const curPage = Math.min(page, pages);
-  const pageRows = rows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
-  // القابلون للتوزيع فقط (غير المستنفدين) — أساس «تحديد الكل».
-  const selectable = rows.filter((r) => !r.exhausted);
-  const allSelected = selectable.length > 0 && selectable.every((r) => sel.has(r.id));
-  const someSelected = sel.size > 0 && !allSelected;
-
-  function toggleSel(id: string) {
-    setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  }
-  function toggleSelectAll() {
-    setSel(allSelected ? new Set() : new Set(selectable.map((r) => r.id)));
-  }
-  function clearSel() { setSel(new Set()); }
+  const [pullAsk, setPullAsk] = useState<PullAsk | null>(null);
+  const [dist, setDist] = useState<DistAsk | null>(null);
 
   function run(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
     setMsg(null);
@@ -59,7 +50,6 @@ export function NoResponseView({
     });
   }
 
-  // تحديث الرابط بالفلاتر (server-side) مع الحفاظ على البقية.
   function pushFilters(next: Partial<Filters>) {
     const f = { ...filters, ...next };
     const p = new URLSearchParams();
@@ -70,6 +60,15 @@ export function NoResponseView({
     const s = p.toString();
     startTransition(() => router.push(s ? `/no-response?${s}` : "/no-response"));
   }
+
+  // فلترة العرض حسب الموظف/البحث (تعمل على التجميع — بلا أسماء عملاء).
+  const q = filters.q.trim();
+  const matchEmp = (id: string, name: string) => (!filters.emp || id === filters.emp) && (!q || name.includes(q));
+
+  const overdueEmps = summary.employees.filter((e) => e.totalOverdue > 0 && matchEmp(e.id, e.name));
+  const pendingEmps = summary.employees.filter((e) => e.totalPending > 0 && matchEmp(e.id, e.name));
+  const poolGroups = pool.filter((g) => matchEmp(g.employeeId, g.employee));
+  const poolTotal = poolGroups.reduce((s, g) => s + g.count, 0);
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -90,7 +89,7 @@ export function NoResponseView({
       {/* بطاقات الإجمالي */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="بانتظار السحب" value={summary.totalPending} tone="gold" />
-        <StatCard label="يُسحبون الآن (+٧٢س)" value={summary.totalOverdue} tone="danger" />
+        <StatCard label="يُسحبون الآن" value={summary.totalOverdue} tone="danger" />
         <StatCard label="في الحوض" value={summary.inQueue} tone="plain" />
         <StatCard label="بلغوا السقف" value={summary.capped} tone="plain" />
       </div>
@@ -98,193 +97,197 @@ export function NoResponseView({
       {/* حالة النظام */}
       <div className={`mb-4 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm ${summary.live ? "border-success/40 bg-success/5 text-success" : "border-gold/40 bg-gold/5 text-gold"}`}>
         <span className={`inline-block size-2 rounded-full ${summary.live ? "bg-success" : "bg-gold"}`} />
-        <span className="font-medium">حالة النظام: {summary.live ? "مفعّل — السحب التلقائي يعمل" : "معاينة (dry-run) — لا سحب فعلي حتى التفعيل"}</span>
+        <span className="font-medium">حالة النظام: {summary.live ? "مفعّل — السحب التلقائي يعمل" : "معاينة (dry-run) — لا سحب تلقائي حتى التفعيل"}</span>
       </div>
 
-      {/* لوحة «بانتظار السحب» لكل موظف */}
-      <section className="mb-6 rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
-          <AlertTriangle className="size-4 text-gold" /> بانتظار السحب حسب الموظف
-        </h2>
-        {summary.employees.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">ما فيه موظفون عندهم عملاء متأخرون — كل شي تحت السيطرة.</p>
-        ) : (
-          <div className="space-y-2">
-            {summary.employees.map((e) => {
-              const total = e.pending + e.overdue;
-              const overduePct = total > 0 ? (e.overdue / total) * 100 : 0;
-              const pendingPct = total > 0 ? (e.pending / total) * 100 : 0;
-              return (
-                <div key={e.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-background/40 px-3 py-2.5">
-                  <span className="min-w-[7rem] font-medium text-foreground">{e.name}</span>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="rounded-full bg-gold/15 px-2 py-0.5 text-gold">بانتظار: {toArabicDigits(e.pending)}</span>
-                    <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-destructive">يُسحب: {toArabicDigits(e.overdue)}</span>
-                  </div>
-                  {/* شريط تقدّم: أحمر (يُسحب) + ذهبي (بانتظار) */}
-                  <div className="h-2 min-w-[8rem] flex-1 overflow-hidden rounded-full bg-secondary">
-                    <div className="flex h-full">
-                      <div className="h-full bg-destructive" style={{ width: `${overduePct}%` }} />
-                      <div className="h-full bg-gold" style={{ width: `${pendingPct}%` }} />
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => run(() => warnEmployee(e.id))}
-                    disabled={pending}
-                    className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
-                  >أرسل إنذار</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      {/* لوحة الأرقام العلوية (per-category) — كما هي */}
+      <NumbersPanel summary={summary} />
 
-      {/* البحث والفلاتر */}
+      {/* الإعدادات — كما هي */}
+      <NoResponseSettings config={config} />
+
+      {/* البحث والفلاتر — تعمل على التجميع */}
       <FilterBar filters={filters} employees={employees} onChange={pushFilters} />
 
-      {/* شريط أدوات التحديد + التوزيع */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 px-4 py-2.5 text-sm">
-        <span className="font-medium text-foreground">محدّد: {toArabicDigits(sel.size)} من {toArabicDigits(selectable.length)}</span>
-        <button
-          onClick={toggleSelectAll}
-          disabled={selectable.length === 0}
-          className={`rounded-lg border px-3 py-1.5 text-xs transition-colors disabled:opacity-40 ${allSelected ? "border-gold bg-gold/15 text-gold" : "border-border text-foreground hover:bg-secondary"}`}
-        >{allSelected ? "إلغاء تحديد الكل" : "تحديد الكل"}</button>
-        <div className="flex-1" />
-        <button
-          onClick={() => run(() => autoDistributeNoResponse())}
-          disabled={pending || summary.inQueue === 0}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50"
-        >وزّع تلقائيًا</button>
-        {sel.size > 0 && (
-          <>
-            <button
-              onClick={() => setDist({ ids: [...sel] })}
-              disabled={pending}
-              className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
-            >توزيع المحدّدين</button>
-            <button onClick={clearSel} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">إلغاء التحديد</button>
-          </>
-        )}
-      </div>
+      {msg && <p className="mb-4 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">{msg}</p>}
 
-      {msg && <p className="mb-3 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">{msg}</p>}
-
-      {/* الجدول */}
-      <div className="hidden overflow-x-auto rounded-2xl border border-border bg-card md:block">
-        <table className="w-full min-w-[1100px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-          <thead className="bg-secondary/40 text-muted-foreground">
-            <tr>
-              <th className="px-3 py-3"><input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={toggleSelectAll} aria-label="تحديد الكل" title="تحديد / إلغاء تحديد الكل" /></th>
-              <th className="px-3 py-3 font-medium">#</th>
-              <th className="px-4 py-3 font-medium">الاسم</th>
-              <th className="px-4 py-3 font-medium">الجوال</th>
-              <th className="px-4 py-3 font-medium">آخر موظف</th>
-              <th className="px-4 py-3 font-medium">تاريخ السحب</th>
-              <th className="px-4 py-3 font-medium">آخر تواصل</th>
-              <th className="px-4 py-3 font-medium">عدد الدورات</th>
-              <th className="px-4 py-3 font-medium">المرحلة</th>
-              <th className="px-4 py-3 font-medium">القناة</th>
-              <th className="px-3 py-3 font-medium">خيارات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageRows.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">ما فيه عملاء في الحوض.</td></tr>
-            ) : (
-              pageRows.map((r, i) => (
-                <tr key={r.id} className={`border-t border-border transition-colors hover:bg-secondary/40 ${r.exhausted ? "bg-destructive/[0.05]" : ""}`}>
+      {/* ===== ١) يُسحب الآن — صف لكل موظف ===== */}
+      <section className="mb-6">
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-destructive">
+          <AlertTriangle className="size-4" /> يُسحب الآن (تجاوزوا مهلتهم)
+        </h2>
+        <div className="overflow-x-auto rounded-2xl border border-destructive/30 bg-card">
+          <table className="w-full min-w-[640px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+            <thead className="bg-secondary/40 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-medium">الموظف</th>
+                <th className="px-3 py-3 text-center font-medium">متأخر جدًا (+٥ أيام)</th>
+                <th className="px-3 py-3 text-center font-medium">متأخر (+٣ أيام)</th>
+                <th className="px-3 py-3 text-center font-medium">الإجمالي</th>
+                <th className="px-3 py-3 font-medium">إجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              {overdueEmps.length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">ما فيه من يُسحب الآن.</td></tr>
+              ) : overdueEmps.map((e) => (
+                <tr key={e.id} className="border-t border-border">
+                  <td className="px-4 py-3 font-medium text-foreground">{e.name}</td>
+                  <NumPullCell value={e.overdueVery} tone="danger" onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "overdue_very", count: e.overdueVery })} pending={pending} />
+                  <NumPullCell value={e.overdueLate} tone="danger" onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "overdue_late", count: e.overdueLate })} pending={pending} />
+                  <td className="px-3 py-3 text-center font-bold text-destructive">{formatCount(e.totalOverdue)}</td>
                   <td className="px-3 py-3">
-                    <input type="checkbox" checked={sel.has(r.id)} disabled={r.exhausted} onChange={() => toggleSel(r.id)} aria-label={`تحديد ${r.name}`} />
-                  </td>
-                  <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    <Link href={`/leads/${r.id}`} className="hover:text-gold">{r.name}</Link>
-                    {r.exhausted && <span className="mr-2 rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive">مستنفد</span>}
-                  </td>
-                  <td className="px-4 py-3 text-gold" dir="ltr">{r.phone}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{r.lastEmployee ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{r.pullDate ? formatDate(r.pullDate) : "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{r.lastContact ? formatDate(r.lastContact) : "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{toArabicDigits(r.reassignCount)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{stageLabels[r.stage]}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{channelLabels[r.channel]}</td>
-                  <td className="px-3 py-3">
-                    {r.exhausted ? (
-                      <span className="text-xs text-muted-foreground">يحتاج تدخّلك</span>
-                    ) : (
-                      <button
-                        onClick={() => setDist({ ids: [r.id] })}
-                        className="flex items-center gap-1 rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20"
-                      ><Share2 className="size-3.5" /> توزيع</button>
-                    )}
+                    <PullBtn label="اسحب الكل" disabled={pending} onClick={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "overdue_all", count: e.totalOverdue })} />
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* بطاقات الجوال */}
-      <div className="space-y-3 md:hidden">
-        {pageRows.length === 0 ? (
-          <p className="rounded-2xl border border-border bg-card px-4 py-10 text-center text-muted-foreground">ما فيه عملاء في الحوض.</p>
-        ) : (
-          pageRows.map((r) => (
-            <div key={r.id} className={`rounded-2xl border p-4 ${r.exhausted ? "border-destructive/40 bg-destructive/[0.05]" : "border-border bg-card"}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" checked={sel.has(r.id)} disabled={r.exhausted} onChange={() => toggleSel(r.id)} aria-label={`تحديد ${r.name}`} />
-                    <Link href={`/leads/${r.id}`} className="font-medium text-foreground hover:text-gold">{r.name}</Link>
-                    {r.exhausted && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive">مستنفد</span>}
-                  </div>
-                  <a href={`tel:${r.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{r.phone}</a>
-                </div>
-                {!r.exhausted && (
-                  <button onClick={() => setDist({ ids: [r.id] })} className="flex min-h-11 shrink-0 items-center gap-1 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground hover:opacity-90">
-                    <Share2 className="size-3.5" /> توزيع
-                  </button>
-                )}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span>آخر موظف: {r.lastEmployee ?? "—"}</span>
-                <span>· دورات: {toArabicDigits(r.reassignCount)}</span>
-                <span>· {stageLabels[r.stage]}</span>
-                {r.pullDate && <span>· سُحب: {formatDate(r.pullDate)}</span>}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* ترقيم */}
-      {rows.length > 0 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <span>عرض {toArabicDigits((curPage - 1) * PAGE_SIZE + 1)}–{toArabicDigits(Math.min(curPage * PAGE_SIZE, rows.length))} من {toArabicDigits(rows.length)}</span>
-          <div className="flex items-center gap-1">
-            <button disabled={curPage === 1} onClick={() => setPage(curPage - 1)} className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">السابق</button>
-            <span className="px-2">{toArabicDigits(curPage)} / {toArabicDigits(pages)}</span>
-            <button disabled={curPage === pages} onClick={() => setPage(curPage + 1)} className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">التالي</button>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
+      </section>
+
+      {/* ===== ٢) بانتظار السحب — صف لكل موظف حسب عدد المتابعات ===== */}
+      <section className="mb-6">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-gold">
+          <AlertTriangle className="size-4" /> بانتظار السحب (لم يبلغوا الحد — سحبهم قرار يدوي)
+        </h2>
+        <div className="overflow-x-auto rounded-2xl border border-gold/30 bg-card">
+          <table className="w-full min-w-[720px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+            <thead className="bg-secondary/40 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-medium">الموظف</th>
+                {PENDING_COLS.map((c) => <th key={c.cat} className="px-3 py-3 text-center font-medium">{c.label}</th>)}
+                <th className="px-3 py-3 text-center font-medium">الإجمالي</th>
+                <th className="px-3 py-3 font-medium">إجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingEmps.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">ما فيه أحد بانتظار السحب.</td></tr>
+              ) : pendingEmps.map((e) => (
+                <tr key={e.id} className="border-t border-border">
+                  <td className="px-4 py-3 font-medium text-foreground">{e.name}</td>
+                  {PENDING_COLS.map((c) => (
+                    <NumPullCell key={c.cat} value={e.byCategory[c.cat].pending} tone="gold"
+                      onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: c.pull, count: e.byCategory[c.cat].pending })} pending={pending} />
+                  ))}
+                  <td className="px-3 py-3 text-center font-bold text-gold">{formatCount(e.totalPending)}</td>
+                  <td className="px-3 py-3">
+                    <PullBtn label="اسحب الكل" disabled={pending} onClick={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "pending_all", count: e.totalPending })} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* ===== ٣) الحوض — مقسّم بالموظف المسحوب منه ===== */}
+      <section className="mb-6">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
+            <Share2 className="size-4 text-gold" /> الحوض — بانتظار التوزيع
+          </h2>
+          <button
+            onClick={() => setDist({ count: poolTotal, sourceEmpIds: poolGroups.map((g) => g.employeeId), sourceEmployeeId: null, leadIds: poolGroups.flatMap((g) => g.leadIds), who: "كل الحوض" })}
+            disabled={pending || poolTotal === 0}
+            className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40"
+          >وزّع الكل ({toArabicDigits(poolTotal)})</button>
+        </div>
+        <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+          <table className="w-full min-w-[720px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+            <thead className="bg-secondary/40 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-medium">الموظف المسحوب منه</th>
+                <th className="px-3 py-3 text-center font-medium">العدد</th>
+                {CATEGORY_ORDER.map((c) => <th key={c} className="px-3 py-3 text-center font-medium">{CATEGORY_LABEL[c]}</th>)}
+                <th className="px-3 py-3 font-medium">إجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              {poolGroups.length === 0 ? (
+                <tr><td colSpan={CATEGORY_ORDER.length + 3} className="px-4 py-8 text-center text-muted-foreground">الحوض فاضي.</td></tr>
+              ) : poolGroups.map((g) => (
+                <tr key={g.employeeId} className="border-t border-border">
+                  <td className="px-4 py-3 font-medium text-foreground">{g.employee}</td>
+                  <td className="px-3 py-3 text-center font-bold text-gold">{formatCount(g.count)}</td>
+                  {CATEGORY_ORDER.map((c) => (
+                    <td key={c} className="px-3 py-3 text-center text-muted-foreground">{g.byFollowup[c] > 0 ? toArabicDigits(g.byFollowup[c]) : "—"}</td>
+                  ))}
+                  <td className="px-3 py-3">
+                    <button
+                      onClick={() => setDist({ count: g.count, sourceEmpIds: [g.employeeId], sourceEmployeeId: g.employeeId, leadIds: g.leadIds, who: g.employee })}
+                      disabled={pending}
+                      className="flex items-center gap-1 rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
+                    ><Share2 className="size-3.5" /> وزّع</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* تأكيد السحب */}
+      {pullAsk && (
+        <ConfirmModal
+          title="تأكيد السحب"
+          body={`تسحب ${toArabicDigits(pullAsk.count)} عميل من ${pullAsk.employeeName}؟`}
+          confirmLabel="اسحب"
+          danger
+          pending={pending}
+          onCancel={() => setPullAsk(null)}
+          onConfirm={() => { const a = pullAsk; setPullAsk(null); run(() => pullGroup(a.employeeId, a.category)); }}
+        />
       )}
 
+      {/* نافذة التوزيع */}
       {dist && (
         <DistributeDialog
-          count={dist.ids.length}
+          count={dist.count}
+          who={dist.who}
           employeeLoads={employeeLoads}
+          sourceEmpIds={dist.sourceEmpIds}
           onClose={() => setDist(null)}
           onConfirm={(opts) => {
-            const ids = dist.ids;
+            const d = dist;
             setDist(null);
-            run(async () => { const r = await distributeNoResponseBatch(ids, opts); clearSel(); return r; });
+            run(async () => d.sourceEmployeeId
+              ? distributePoolGroup(d.sourceEmployeeId, opts)
+              : distributeNoResponseBatch(d.leadIds, opts));
           }}
         />
       )}
     </div>
+  );
+}
+
+// ===================== عناصر مساعدة =====================
+
+function PullBtn({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className="flex items-center gap-1 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 disabled:opacity-40">
+      <UserMinus className="size-3.5" /> {label}
+    </button>
+  );
+}
+
+// خانة رقم + زر «اسحب» صغير للمجموعة (لا يظهر الزر لو الرقم صفر).
+function NumPullCell({ value, tone, onPull, pending }: { value: number; tone: "danger" | "gold"; onPull: () => void; pending: boolean }) {
+  const color = tone === "danger" ? "text-destructive" : "text-gold";
+  return (
+    <td className="px-3 py-3 text-center">
+      {value === 0 ? (
+        <span className="text-muted-foreground">—</span>
+      ) : (
+        <div className="flex items-center justify-center gap-1.5">
+          <span className={`font-bold ${color}`}>{formatCount(value)}</span>
+          <button onClick={onPull} disabled={pending} title="اسحب هذي المجموعة"
+            className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-40">اسحب</button>
+        </div>
+      )}
+    </td>
   );
 }
 
@@ -298,80 +301,142 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone: 
   );
 }
 
-function FilterBar({
-  filters, employees, onChange,
-}: {
-  filters: Filters;
-  employees: Employee[];
-  onChange: (next: Partial<Filters>) => void;
-}) {
-  const [q, setQ] = useState(filters.q);
-  useEffect(() => { setQ(filters.q); }, [filters.q]);
+// لوحة الأرقام العلوية (per-category) — كما هي: لكل موظف/فئة بانتظار/يُسحب.
+function NumbersPanel({ summary }: { summary: PendingPullSummary }) {
+  return (
+    <section className="mb-6 rounded-2xl border border-border bg-card p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-foreground">
+        <AlertTriangle className="size-4 text-gold" /> الأرقام حسب الموظف والفئة
+      </h2>
+      <p className="mb-3 text-xs text-muted-foreground">
+        كل خانة: <span className="text-gold">بانتظار الإنذار</span> · <span className="text-destructive">يُسحب الآن</span> — «محصّن» = عدد المحصّنين (٥+ متابعات).
+      </p>
+      {summary.employees.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">كل شي تحت السيطرة.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+            <thead className="text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 font-medium">الموظف</th>
+                {CATEGORY_ORDER.map((c) => <th key={c} className="px-3 py-2 text-center font-medium">{CATEGORY_LABEL[c]}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {summary.employees.map((e) => (
+                <tr key={e.id} className="border-t border-border">
+                  <td className="px-3 py-2.5 font-medium text-foreground">{e.name}</td>
+                  {CATEGORY_ORDER.map((c) => <CatCell key={c} cat={c} stat={e.byCategory[c]} />)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
+function CatCell({ cat, stat }: { cat: EscalationCategory; stat: CategoryStat }) {
+  if (cat === "immune") {
+    return <td className="px-3 py-2.5 text-center text-muted-foreground">{stat.total > 0 ? toArabicDigits(stat.total) : "—"}</td>;
+  }
+  const empty = stat.pending === 0 && stat.overdue === 0;
+  return (
+    <td className="px-3 py-2.5 text-center">
+      {empty ? <span className="text-muted-foreground">—</span> : (
+        <span className="inline-flex items-center justify-center gap-1" title={`بانتظار ${stat.pending} · يُسحب ${stat.overdue}`}>
+          {stat.pending > 0 && <span className="rounded bg-gold/15 px-1.5 py-0.5 text-[11px] font-medium text-gold">{toArabicDigits(stat.pending)}</span>}
+          {stat.overdue > 0 && <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-[11px] font-medium text-destructive">{toArabicDigits(stat.overdue)}</span>}
+        </span>
+      )}
+    </td>
+  );
+}
+
+function NoResponseSettings({ config }: { config: NoResponseConfig }) {
+  return (
+    <section className="mb-6 rounded-2xl border border-border bg-card p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-foreground">
+        <SlidersHorizontal className="size-4 text-gold" /> إعدادات «لم يتم الرد» (مستقلة عن التوزيع)
+      </h2>
+      <div className="mb-3 rounded-lg border border-gold/30 bg-gold/5 px-3 py-2 text-xs text-gold">
+        القراءة حاليًا من متغيّرات البيئة (env): <span dir="ltr">NO_RESPONSE_PULL</span> · <span dir="ltr">NO_RESPONSE_DAYS</span> ·{" "}
+        <span dir="ltr">NO_RESPONSE_IMMUNITY_CAP</span> · <span dir="ltr">NO_RESPONSE_ACTIVATION_DATE</span>. التعديل من الواجهة يحتاج حقل قاعدة (schema).
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-border bg-background/40 px-3 py-2.5">
+          <div className="text-xs text-muted-foreground">حالة النظام</div>
+          <div className={`mt-1 text-sm font-bold ${config.enabled ? "text-success" : "text-gold"}`}>{config.enabled ? "مفعّل (سحب حقيقي)" : "معاينة (dry-run)"}</div>
+        </div>
+        <div className="rounded-xl border border-border bg-background/40 px-3 py-2.5">
+          <div className="text-xs text-muted-foreground">جدول المهل (يوم لكل عدد متابعات)</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {config.timeoutDays.map((d, i) => (
+              <span key={i} className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-foreground">{toArabicDigits(i)}م: {toArabicDigits(d)} يوم</span>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-background/40 px-3 py-2.5">
+          <div className="text-xs text-muted-foreground">سقف الحصانة (متابعات)</div>
+          <div className="mt-1 text-sm font-bold text-foreground">{toArabicDigits(config.immunityCap)}{config.immunityCap === DEFAULT_IMMUNITY_CAP ? " (افتراضي)" : ""}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FilterBar({ filters, employees, onChange }: { filters: Filters; employees: Employee[]; onChange: (next: Partial<Filters>) => void }) {
+  const [q, setQ] = useState(filters.q);
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
-      <form
-        onSubmit={(e) => { e.preventDefault(); onChange({ q: q.trim() }); }}
-        className="flex flex-1 items-center gap-2"
-      >
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="بحث بالاسم أو الجوال…"
-          className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold"
-        />
+      <form onSubmit={(e) => { e.preventDefault(); onChange({ q: q.trim() }); }} className="flex flex-1 items-center gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="بحث باسم الموظف…" className="min-w-[12rem] flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold" />
         <button type="submit" className="rounded-xl border border-border px-4 py-2.5 text-sm text-foreground hover:bg-secondary">بحث</button>
       </form>
-
-      <select
-        value={filters.emp}
-        onChange={(e) => onChange({ emp: e.target.value })}
-        className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold"
-      >
-        <option value="">كل الموظفين السابقين</option>
+      <select value={filters.emp} onChange={(e) => onChange({ emp: e.target.value })} className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold">
+        <option value="">كل الموظفين</option>
         {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-      </select>
-
-      <select
-        value={filters.rounds || ""}
-        onChange={(e) => onChange({ rounds: Number(e.target.value) || 0 })}
-        className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold"
-      >
-        <option value="">كل الدورات</option>
-        <option value="1">دورة واحدة</option>
-        <option value="2">دورتان</option>
-        <option value="3">٣ فأكثر</option>
-      </select>
-
-      <select
-        value={filters.sort}
-        onChange={(e) => onChange({ sort: e.target.value as NoResponseSort })}
-        className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold"
-      >
-        <option value="recent">الأحدث سحبًا</option>
-        <option value="oldest">الأقدم سحبًا</option>
-        <option value="rounds">عدد الدورات</option>
       </select>
     </div>
   );
 }
 
-function DistributeDialog({
-  count, employeeLoads, onClose, onConfirm,
-}: {
-  count: number;
-  employeeLoads: EmployeeLoad[];
-  onClose: () => void;
-  onConfirm: (opts: DistributeOpts) => void;
+function ConfirmModal({ title, body, confirmLabel, danger, pending, onCancel, onConfirm }: {
+  title: string; body: string; confirmLabel: string; danger?: boolean; pending: boolean; onCancel: () => void; onConfirm: () => void;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-card p-5 shadow-2xl">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-foreground">{title}</h3>
+            <button onClick={onCancel} className="rounded p-1 text-muted-foreground hover:text-foreground"><X className="size-4" /></button>
+          </div>
+          <p className="text-sm text-foreground">{body}</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={onCancel} disabled={pending} className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary disabled:opacity-50">إلغاء</button>
+            <button onClick={onConfirm} disabled={pending} className={`rounded-lg px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50 ${danger ? "bg-destructive" : "bg-primary"}`}>{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function DistributeDialog({ count, who, employeeLoads, sourceEmpIds, onClose, onConfirm }: {
+  count: number; who: string; employeeLoads: EmployeeLoad[]; sourceEmpIds: string[]; onClose: () => void; onConfirm: (opts: DistributeOpts) => void;
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<"even" | "single">("even");
   const [leadState, setLeadState] = useState<"asis" | "fresh">("asis");
+  const sourceSet = new Set(sourceEmpIds);
 
   function toggle(id: string) {
+    if (sourceSet.has(id)) return;
     setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
-
   const ids = [...picked];
   const canConfirm = ids.length > 0 && (mode === "even" || ids.length === 1);
 
@@ -381,32 +446,37 @@ function DistributeDialog({
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="max-h-[90dvh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl">
           <div>
-            <h2 className="font-bold text-foreground">توزيع {toArabicDigits(count)} عميل</h2>
-            <p className="mt-1 text-xs text-muted-foreground">اختر الموظفين المشاركين وطريقة التوزيع وحالة العميل.</p>
+            <h2 className="font-bold text-foreground">توزيع {toArabicDigits(count)} عميل ({who})</h2>
+            <p className="mt-1 text-xs text-muted-foreground">اختر الموظفين المستلمين وطريقة التوزيع وحالة العميل. الموظف المسحوب منه معطّل.</p>
           </div>
 
-          {/* أ) اختيار الموظفين المشاركين */}
           <div className="space-y-1.5">
-            <div className="text-xs font-medium text-muted-foreground">الموظفون المشاركون</div>
+            <div className="text-xs font-medium text-muted-foreground">الموظفون المستلمون</div>
             {employeeLoads.length === 0 ? (
               <p className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">ما فيه موظفون نشطون.</p>
             ) : (
               <div className="max-h-52 space-y-1 overflow-y-auto rounded-xl border border-border p-1.5">
-                {employeeLoads.map((e) => (
-                  <label key={e.id} className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${picked.has(e.id) ? "bg-gold/10" : "hover:bg-secondary/40"}`}>
-                    <input type="checkbox" checked={picked.has(e.id)} onChange={() => toggle(e.id)} className="accent-[var(--gold)]" />
-                    <span className="flex-1 text-foreground">{e.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {toArabicDigits(e.count)}{e.maxClients != null ? ` / ${toArabicDigits(e.maxClients)}` : ""}
-                      {e.remaining != null && <span className="mr-1 text-gold">(متبقّي {toArabicDigits(e.remaining)})</span>}
-                    </span>
-                  </label>
-                ))}
+                {employeeLoads.map((e) => {
+                  const isSource = sourceSet.has(e.id);
+                  return (
+                    <label key={e.id} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${isSource ? "cursor-not-allowed opacity-50" : picked.has(e.id) ? "cursor-pointer bg-gold/10" : "cursor-pointer hover:bg-secondary/40"}`}>
+                      <input type="checkbox" checked={picked.has(e.id)} disabled={isSource} onChange={() => toggle(e.id)} className="accent-[var(--gold)]" />
+                      <span className="flex-1 text-foreground">{e.name}</span>
+                      {isSource ? (
+                        <span className="text-[11px] text-muted-foreground">سُحب منه</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {toArabicDigits(e.count)}{e.maxClients != null ? ` / ${toArabicDigits(e.maxClients)}` : ""}
+                          {e.remaining != null && <span className="mr-1 text-gold">(متبقّي {toArabicDigits(e.remaining)})</span>}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* ب) طريقة التوزيع */}
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground">طريقة التوزيع</div>
             <div className="grid grid-cols-2 gap-2">
@@ -417,12 +487,9 @@ function DistributeDialog({
                 </label>
               ))}
             </div>
-            {mode === "single" && ids.length > 1 && (
-              <p className="text-xs text-destructive">«كلهم لموظف واحد» — اختر موظفًا واحدًا فقط.</p>
-            )}
+            {mode === "single" && ids.length > 1 && <p className="text-xs text-destructive">«كلهم لموظف واحد» — اختر موظفًا واحدًا فقط.</p>}
           </div>
 
-          {/* ج) حالة العميل */}
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground">حالة العميل</div>
             <div className="space-y-1.5">
@@ -443,11 +510,7 @@ function DistributeDialog({
 
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
-            <button
-              onClick={() => canConfirm && onConfirm({ employeeIds: ids, mode, leadState })}
-              disabled={!canConfirm}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-            >وزّع</button>
+            <button onClick={() => canConfirm && onConfirm({ employeeIds: ids, mode, leadState })} disabled={!canConfirm} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">وزّع</button>
           </div>
         </div>
       </div>

@@ -20,6 +20,9 @@
 # production
 /build
 
+# لقطات تراجع سكربتات الطوارئ (بيانات إنتاج — لا تدخل git)
+/scripts/out/
+
 # misc
 .DS_Store
 *.pem
