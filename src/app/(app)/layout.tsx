@@ -11,6 +11,7 @@ import {
   MessagesSquare,
   Share2,
   Copy,
+  PhoneMissed,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -18,6 +19,7 @@ import { roleLabel } from "@/lib/labels";
 import { getSettings } from "@/lib/data/settings";
 import { getEmployees } from "@/lib/data/leads";
 import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
+import { getNoResponseCount } from "@/lib/data/no-response";
 import { toArabicDigits } from "@/lib/format";
 import { getMyAvailability } from "@/lib/actions/availability";
 import { Topbar } from "@/components/layout/topbar";
@@ -35,17 +37,19 @@ export default async function AppLayout({
   const user = await requireUser();
   const manager = isManager(user.role);
   const owner = user.role === "OWNER"; // ميزة المكررين للمالك فقط
-  const [settings, employees, availability, dupCount] = await Promise.all([
+  const [settings, employees, availability, dupCount, noResponseCount] = await Promise.all([
     getSettings(),
     manager ? getEmployees() : Promise.resolve([]),
     getMyAvailability(),
     owner ? activeDuplicateGroupCount() : Promise.resolve(0),
+    owner ? getNoResponseCount() : Promise.resolve(0),
   ]);
 
   const nav = [
     { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true, badge: 0 },
     { href: "/leads", label: "كل العملاء", icon: Contact, show: true, badge: 0 },
     { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, show: owner, badge: dupCount },
+    { href: "/no-response", label: "لم يتم الرد", icon: PhoneMissed, show: owner, badge: noResponseCount },
     { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true, badge: 0 },
     { href: "/projects", label: "المشاريع", icon: Building2, show: true, badge: 0 },
     { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true, badge: 0 },

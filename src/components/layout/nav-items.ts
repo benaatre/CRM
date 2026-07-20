@@ -10,6 +10,7 @@ import {
   MessagesSquare,
   Share2,
   Copy,
+  PhoneMissed,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, managerOnly: false },
   { href: "/leads", label: "كل العملاء", icon: Contact, managerOnly: false },
   { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, managerOnly: true, ownerOnly: true },
+  { href: "/no-response", label: "لم يتم الرد", icon: PhoneMissed, managerOnly: true, ownerOnly: true },
   { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, managerOnly: false },
   { href: "/projects", label: "المشاريع", icon: Building2, managerOnly: false },
   { href: "/bookings", label: "خط المبيعات", icon: Handshake, managerOnly: false },

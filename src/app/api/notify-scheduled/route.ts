@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { runFollowupDueCheck, runIdleEmployeeCheck } from "@/lib/notifications/scheduled";
+import { runNoResponsePullback } from "@/lib/auto-distribute";
 import { isCronAuthorized } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
@@ -22,9 +23,15 @@ export async function GET(req: Request) {
     if (r.status === "fulfilled") counts[names[i]] = r.value;
     else { failed.push(names[i]); console.error(`[notify-scheduled] ${names[i]}`, r.reason); }
   });
-  if (counts.followupDue > 0 || counts.idle > 0) revalidatePath("/", "layout");
+
+  // حوكمة «لم يتم الرد» — تنبيه ٤٨س + سحب ٧٢س (DRY_RUN افتراضيًا خلف NO_RESPONSE_PULL).
+  const pullback = await runNoResponsePullback();
+  if (!pullback.ok) { failed.push("noResponse"); console.error("[notify-scheduled] noResponse", pullback.error); }
+
+  const touched = counts.followupDue > 0 || counts.idle > 0 || (pullback.ok && (pullback.warned > 0 || pullback.pulled > 0));
+  if (touched) revalidatePath("/", "layout");
   return NextResponse.json(
-    { ok: failed.length === 0, ...counts, ...(failed.length ? { failed } : {}) },
+    { ok: failed.length === 0, ...counts, noResponse: pullback, ...(failed.length ? { failed } : {}) },
     { status: failed.length ? 500 : 200 },
   );
 }
