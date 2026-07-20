@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { ActivityType, LeadStage, Role } from "@prisma/client";
@@ -8,7 +9,7 @@ import { toUserError } from "@/lib/action-error";
 import { requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notify";
-import { emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
+import { emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import {
   warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, type EscalationCategory,
@@ -59,28 +60,32 @@ export type LeadState = "asis" | "fresh";
  * لا يلمس reassignCount: العدّاد ملك السحب التلقائي وحده (زيادته هنا تُضاعف العدّ وتكسر سقف «٣ دورات»).
  * fresh = يرجّع المرحلة «جديد» ويصفّر nextFollowup — المتابعات محفوظة (سجل تاريخي، لا تُحذف).
  */
-function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toUserId: string, actorId: string, now: Date, state: LeadState) {
+async function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toUserId: string, actorId: string, now: Date, state: LeadState): Promise<boolean> {
   const fresh = state === "fresh";
-  return Promise.all([
-    tx.lead.update({
-      where: { id: leadId },
-      data: {
-        assignedToId: toUserId, assignedAt: now, contactedAt: null,
-        ...(fresh ? { stage: LeadStage.NEW, nextFollowup: null } : {}),
-      },
-    }),
-    tx.reassignment.create({ data: { leadId, fromUserId: null, toUserId, reason: "manual_redistribute" } }),
-    tx.activity.create({ data: { leadId, userId: actorId, type: ActivityType.ASSIGNMENT, note: fresh ? "توزيع يدوي من «لم يتم الرد» (كعميل جديد)" : "توزيع يدوي من «لم يتم الرد»" } }),
-  ]);
+  // حارس تزامن: لا نُسند إلا إذا كان لا يزال في الحوض (assignedToId=null). count!==1 → أُسند بالتزامن → تخطٍّ صامت.
+  const res = await tx.lead.updateMany({
+    where: { id: leadId, assignedToId: null },
+    data: {
+      assignedToId: toUserId, assignedAt: now, contactedAt: null,
+      ...(fresh ? { stage: LeadStage.NEW, nextFollowup: null } : {}),
+    },
+  });
+  if (res.count !== 1) return false;
+  await tx.reassignment.create({ data: { leadId, fromUserId: null, toUserId, reason: "manual_redistribute" } });
+  await tx.activity.create({ data: { leadId, userId: actorId, type: ActivityType.ASSIGNMENT, note: fresh ? "توزيع يدوي من «لم يتم الرد» (كعميل جديد)" : "توزيع يدوي من «لم يتم الرد»" } });
+  return true;
 }
 
-/** العملاء الصالحون للتوزيع من الحوض ضمن مجموعة معرّفات (في الحوض + دون السقف). */
-async function eligibleQueueLeads(ids: string[]) {
+/**
+ * العملاء الصالحون للتوزيع من الحوض ضمن مجموعة معرّفات (في الحوض).
+ * افتراضيًا دون السقف؛ allowExhausted=true يسمح بالمستنفدين (reassignCount ≥ MAX) — للتوزيع الاستثنائي.
+ */
+async function eligibleQueueLeads(ids: string[], allowExhausted = false) {
   return prisma.lead.findMany({
     where: {
       id: { in: ids },
       assignedToId: null,
-      reassignCount: { gt: 0, lt: MAX_REASSIGNS },
+      reassignCount: allowExhausted ? { gt: 0 } : { gt: 0, lt: MAX_REASSIGNS },
       isArchived: false,
       stage: { in: [...NO_RESPONSE_STAGES] },
     },
@@ -109,6 +114,7 @@ export type DistributeOpts = {
   employeeIds: string[];        // المشاركون في التوزيع (المالك يختارهم)
   mode: "single" | "even";      // كلهم لموظف واحد | بالتساوي على المشاركين
   leadState: LeadState;         // ببياناته كما هي | كعميل جديد
+  override?: boolean;           // توزيع استثنائي: يسمح بالمستنفدين (تجاوز السقف) — بموافقة صريحة
 };
 
 /**
@@ -139,7 +145,7 @@ export async function distributeNoResponseBatch(leadIds: string[], opts: Distrib
     if (emps.length === 0) return { ok: false, error: "الموظفون المختارون غير متاحين" };
     const nameById = new Map(emps.map((e) => [e.id, e.name]));
 
-    const eligible = await eligibleQueueLeads(ids);
+    const eligible = await eligibleQueueLeads(ids, opts.override === true);
     if (eligible.length === 0) return { ok: false, error: "ما فيه عملاء صالحون للتوزيع (خرجوا من الحوض أو مستنفدون)" };
 
     // فرض على الخادم: لا يُوزَّع عميل لموظف سُحب منه (يطابق تعطيل الواجهة). المصدر = آخر سحب (Reassignment→null).
@@ -177,27 +183,32 @@ export async function distributeNoResponseBatch(leadIds: string[], opts: Distrib
     }
     if (plan.length === 0) return { ok: false, error: "الموظفون المختارون وصلوا حدّهم الأقصى" };
 
+    const succeeded = new Set<string>();
     await prisma.$transaction(async (tx) => {
-      for (const p of plan) await assignQueueLead(tx, p.leadId, p.toUserId, actor.id, now, opts.leadState);
+      for (const p of plan) {
+        if (await assignQueueLead(tx, p.leadId, p.toUserId, actor.id, now, opts.leadState)) succeeded.add(p.leadId);
+      }
     });
+    const donePlan = plan.filter((p) => succeeded.has(p.leadId));
+    if (donePlan.length === 0) return { ok: false, error: "ما تم توزيع أحد (تغيّرت الإسنادات) — حدّث الصفحة" };
 
     const buckets = new Map<string, LeadAssignedBucket>();
-    for (const p of plan) {
+    for (const p of donePlan) {
       const b = buckets.get(p.toUserId);
       if (b) b.count++;
       else buckets.set(p.toUserId, { userId: p.toUserId, count: 1, sampleLeadId: p.leadId, sampleName: p.name });
     }
-    await emitLeadAssignedBatch([...buckets.values()]);
+    await emitTransferredLeadsBatch([...buckets.values()]);
     await logAudit(prisma, {
       userId: actor.id, action: "lead.no_response.distributed", entity: "lead",
-      summary: `وزّع ${plan.length} عميل من «لم يتم الرد» (${opts.mode === "single" ? `إلى ${nameById.get(order[0])}` : `بالتساوي على ${buckets.size} موظف`}${opts.leadState === "fresh" ? " — كعميل جديد" : ""})`,
+      summary: `وزّع ${donePlan.length} عميل من «لم يتم الرد» (${opts.mode === "single" ? `إلى ${nameById.get(order[0])}` : `بالتساوي على ${buckets.size} موظف`}${opts.leadState === "fresh" ? " — كعميل جديد" : ""}${opts.override ? " — توزيع استثنائي (تجاوز السقف)" : ""}) · العملاء=${donePlan.map((p) => p.leadId).slice(0, 50).join(",")}`,
     });
 
     revalidateNoResponse();
-    const skipped = ids.length - plan.length;
+    const skipped = ids.length - donePlan.length;
     const who = opts.mode === "single" ? `إلى ${nameById.get(order[0])}` : `على ${buckets.size} موظف`;
-    const base = `وُزّع ${plan.length} عميل ${who}`;
-    return { ok: true, message: skipped > 0 ? `${base} — تُخطّي ${skipped} (خارج الحوض/مستنفد/سعة)` : base };
+    const base = `وُزّع ${donePlan.length} عميل ${who}`;
+    return { ok: true, message: skipped > 0 ? `${base} — تُخطّي ${skipped} (خارج الحوض/مستنفد/سعة/تزامن)` : base };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
@@ -243,19 +254,28 @@ export async function autoDistributeNoResponse(): Promise<ActionResult> {
     }
     if (assignments.length === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
 
+    const succeeded = new Set<string>();
     await prisma.$transaction(async (tx) => {
-      for (const a of assignments) await assignQueueLead(tx, a.leadId, a.toUserId, actor.id, now, "asis");
+      for (const a of assignments) {
+        if (await assignQueueLead(tx, a.leadId, a.toUserId, actor.id, now, "asis")) succeeded.add(a.leadId);
+      }
     });
-    await emitLeadAssignedBatch([...buckets.values()]);
+    const doneCount = succeeded.size;
+    if (doneCount === 0) return { ok: false, error: "ما تم توزيع أحد (تغيّرت الإسنادات) — حدّث الصفحة" };
+    // نُبقي في الدلاء فقط من نجح إسناده فعليًا (تجنّب إشعار زائد عند تخطٍّ تزامنيّ).
+    const doneBuckets = [...buckets.values()]
+      .map((b) => ({ ...b, count: assignments.filter((a) => a.toUserId === b.userId && succeeded.has(a.leadId)).length }))
+      .filter((b) => b.count > 0);
+    await emitTransferredLeadsBatch(doneBuckets);
     await logAudit(prisma, {
       userId: actor.id, action: "lead.no_response.autoDistributed", entity: "lead",
-      summary: `وزّع تلقائيًا ${assignments.length} عميل من «لم يتم الرد» على ${buckets.size} موظف`,
+      summary: `وزّع تلقائيًا ${doneCount} عميل من «لم يتم الرد» على ${doneBuckets.length} موظف`,
     });
 
     revalidateNoResponse();
-    const leftover = queue.length - assignments.length;
-    const base = `وُزّع ${assignments.length} عميل على ${buckets.size} موظف`;
-    return { ok: true, message: leftover > 0 ? `${base} — بقي ${leftover} (الموظفون وصلوا حدّهم)` : base };
+    const leftover = queue.length - doneCount;
+    const base = `وُزّع ${doneCount} عميل على ${doneBuckets.length} موظف`;
+    return { ok: true, message: leftover > 0 ? `${base} — بقي ${leftover} (الموظفون وصلوا حدّهم/تزامن)` : base };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
@@ -303,7 +323,7 @@ export async function warnAllEmployees(): Promise<ActionResult> {
  * يعمل حتى في وضع dry-run (فعل يدوي صريح). OWNER فقط، مفروض على الخادم.
  * لكل عميل: reassignCount++ · Reassignment{manual_pull} · نشاط · إشعار الموظف · تدقيق.
  */
-export async function manualPullBatch(leadIds: string[]): Promise<ActionResult> {
+export async function manualPullBatch(leadIds: string[], ctx?: { note?: string }): Promise<ActionResult> {
   try {
     const actor = await requireOwner();
     const ids = [...new Set((leadIds ?? []).filter(Boolean))];
@@ -318,30 +338,76 @@ export async function manualPullBatch(leadIds: string[]): Promise<ActionResult> 
     if (targets.length === 0) return { ok: false, error: "ما فيه عملاء صالحون للسحب (غير مُسندين لموظف)" };
 
     const now = new Date();
-    await prisma.$transaction(async (tx) => {
-      for (const l of targets) {
-        const from = l.assignedToId as string;
-        await tx.lead.update({
-          where: { id: l.id },
+    const batchId = randomUUID();
+    const CHUNK = 100;
+    // من نجح سحبه فعليًا — للإشعارات المجمّعة والتدقيق الدقيق.
+    const pulledTargets: { id: string; name: string; from: string }[] = [];
+
+    // نقسّم لمجموعات (١٠٠) ولكل مجموعة معاملة واحدة بكتابات مجمّعة (٥ استعلامات ثابتة بدل ٤/عميل)
+    // — يتفادى P2028 (timeout المعاملة التفاعلية). timeout=15000ms كهامش أمان إضافي لا كحل أساسي.
+    const targetIds = targets.map((t) => t.id);
+    for (let i = 0; i < targetIds.length; i += CHUNK) {
+      const chunkIds = targetIds.slice(i, i + CHUNK);
+      const rows = await prisma.$transaction(async (tx) => {
+        // حارس ذري: نقرأ الحالة الحالية داخل المعاملة (لا يزال مُسندًا لموظف فعلي) قبل التحديث.
+        const confirmed = await tx.lead.findMany({
+          where: { id: { in: chunkIds }, assignedToId: { not: null }, isArchived: false, assignedTo: { role: Role.EMPLOYEE } },
+          select: { id: true, name: true, assignedToId: true },
+        });
+        if (confirmed.length === 0) return [] as { id: string; name: string; from: string }[];
+        const cids = confirmed.map((c) => c.id);
+        // تحديث مجمّع بشرط الحالة (لا يزال مُسندًا) — من صار null بين القراءة والكتابة يُستثنى.
+        await tx.lead.updateMany({
+          where: { id: { in: cids }, assignedToId: { not: null } },
           data: { assignedToId: null, assignedAt: null, contactedAt: null, reassignCount: { increment: 1 } },
         });
-        await tx.reassignment.create({ data: { leadId: l.id, fromUserId: from, toUserId: null, reason: "manual_pull" } });
-        await tx.activity.create({ data: { leadId: l.id, userId: actor.id, type: ActivityType.ASSIGNMENT, note: "سحب يدوي من الإدارة — لم يتم الرد" } });
-      }
-    });
+        const confirmedRows = confirmed.map((c) => ({ id: c.id, name: c.name, from: c.assignedToId as string }));
+        // كتابات مجمّعة (createMany) بدل create في حلقة: Reassignment · Activity · AuditLog دفعةً.
+        await tx.reassignment.createMany({ data: confirmedRows.map((r) => ({ leadId: r.id, fromUserId: r.from, toUserId: null, reason: "manual_pull" })) });
+        await tx.activity.createMany({ data: confirmedRows.map((r) => ({ leadId: r.id, userId: actor.id, type: ActivityType.ASSIGNMENT, note: "سحب يدوي من الإدارة — لم يتم الرد" })) });
+        await tx.auditLog.createMany({ data: confirmedRows.map((r) => ({
+          userId: actor.id, action: "lead.no_response.manualPulled", entity: "lead", entityId: r.id,
+          summary: `[batch=${batchId}] سحب يدوي · from=${r.from}${ctx?.note ? ` · ${ctx.note}` : ""}`,
+        })) });
+        return confirmedRows;
+      }, { timeout: 15000 });
+      pulledTargets.push(...rows);
+    }
+    if (pulledTargets.length === 0) return { ok: false, error: "ما تم سحب أحد (تغيّرت الإسنادات) — حدّث الصفحة" };
 
-    // إشعارات + تدقيق (معزولة — فشلها لا يوقف العملية).
+    // إشعارات مجمّعة لكل موظف (مرة واحدة لكل موظف لا لكل عميل) — خارج المعاملة تمامًا (معزولة).
+    const byEmp = new Map<string, { id: string; name: string }[]>();
+    for (const t of pulledTargets) {
+      const arr = byEmp.get(t.from);
+      if (arr) arr.push({ id: t.id, name: t.name });
+      else byEmp.set(t.from, [{ id: t.id, name: t.name }]);
+    }
     try {
-      for (const l of targets) {
-        await notify(prisma, [l.assignedToId], "lead_lost", "انسحب منك عميل",
-          `${l.name} — سُحب منك من الإدارة لعدم التواصل. بادر بعملائك بسرعة.`, `/leads/${l.id}`);
+      for (const [empId, list] of byEmp) {
+        if (list.length === 1) {
+          await notify(prisma, [empId], "lead_lost", "انسحب منك عميل",
+            `${list[0].name} — سُحب منك من الإدارة لعدم التواصل. بادر بعملائك بسرعة.`, `/leads/${list[0].id}`);
+        } else {
+          await notify(prisma, [empId], "lead_lost", "انسحبوا منك عملاء",
+            `سُحب منك ${list.length} عملاء من الإدارة لعدم التواصل. بادر بعملائك بسرعة.`, "/leads?stages=NEW,ATTEMPTED&sort=oldest");
+        }
       }
     } catch (e) { console.error("[manual_pull] إشعارات", e); }
-    await logAudit(prisma, { userId: actor.id, action: "lead.no_response.manualPull", entity: "lead", summary: `سحب يدوي لـ ${targets.length} عميل إلى حوض «لم يتم الرد»` });
+
+    // ملخّص الدفعة: batchId · العدد · معرّفات العملاء · الموظفون المصدر (بدل العدد فقط).
+    const affected = new Map<string, number>();
+    for (const t of pulledTargets) affected.set(t.from, (affected.get(t.from) ?? 0) + 1);
+    const names = await prisma.user.findMany({ where: { id: { in: [...affected.keys()] } }, select: { id: true, name: true } });
+    const nameById = new Map(names.map((u) => [u.id, u.name]));
+    const who = [...affected.entries()].map(([id, n]) => `${nameById.get(id) ?? id}:${n}`).join(" · ");
+    await logAudit(prisma, {
+      userId: actor.id, action: "lead.no_response.manualPullBatch", entity: "lead", entityId: batchId,
+      summary: `سحب يدوي [batch=${batchId}]${ctx?.note ? ` (${ctx.note})` : ""} · العدد=${pulledTargets.length} · العملاء=${pulledTargets.map((t) => t.id).slice(0, 50).join(",")} · الموظفون=${who}`,
+    });
 
     revalidateNoResponse();
-    const skipped = ids.length - targets.length;
-    return { ok: true, message: skipped > 0 ? `سُحب ${targets.length} عميل — تُخطّي ${skipped}` : `سُحب ${targets.length} عميل إلى الحوض` };
+    const skipped = ids.length - pulledTargets.length;
+    return { ok: true, message: skipped > 0 ? `سُحب ${pulledTargets.length} عميل — تُخطّي ${skipped}` : `سُحب ${pulledTargets.length} عميل إلى الحوض` };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
@@ -411,7 +477,7 @@ export async function pullGroup(employeeId: string, category: PullGroupCategory)
       if (matchPullCategory(category, state, daysSince, stats.noAnswerCount)) picked.push(l.id);
     }
     if (picked.length === 0) return { ok: false, error: "ما فيه عملاء في هذي المجموعة" };
-    return manualPullBatch(picked);
+    return manualPullBatch(picked, { note: `مجموعة=${category} · موظف=${employeeId}` });
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
@@ -439,6 +505,91 @@ export async function distributePoolGroup(sourceEmployeeId: string, opts: Distri
     const ids = leads.filter((l) => l.reassignments[0]?.fromUserId === sourceEmployeeId).map((l) => l.id);
     if (ids.length === 0) return { ok: false, error: "ما فيه عملاء في حوض هذا الموظف" };
     return distributeNoResponseBatch(ids, opts);
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+// نافذة التراجع عن السحب — آخر ٢٤ ساعة فقط.
+const UNDO_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PULL_BATCH_ACTIONS = ["lead.no_response.autoPullBatch", "lead.no_response.manualPullBatch"];
+const PULLED_ACTIONS = ["lead.no_response.autoPulled", "lead.no_response.manualPulled"];
+
+/**
+ * التراجع عن دفعة سحب (تلقائية أو يدوية) خلال ٢٤ ساعة — للمالك فقط.
+ * يقرأ سجلّات السحب من AuditLog (batchId)، ويُرجع كل عميل لا يزال في الحوض إلى موظفه الأصلي
+ * (assignedToId=fromUserId · assignedAt=now · reassignCount--)، ويحذف سطر السحب الأصلي، ويشعر الموظف.
+ * ⚠️ لا يمرّ عبر distributeNoResponseBatch فلا تنطبق قاعدة «منع التوزيع للمصدر» — الإرجاع للأصل هو الهدف.
+ * حارس تزامن: من أُعيد توزيعه بعد السحب لا يُرجَع (يُتخطّى بصمت).
+ */
+export async function undoPull(batchId: string): Promise<ActionResult> {
+  try {
+    const actor = await requireOwner();
+    const id = batchId?.trim();
+    if (!id) return { ok: false, error: "حدّد الدفعة" };
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - UNDO_WINDOW_MS);
+
+    // ملخّص الدفعة داخل نافذة ٢٤ ساعة (يحمل وقتها لتحديد نافذة حذف سطر السحب).
+    const batch = await prisma.auditLog.findFirst({
+      where: { entityId: id, action: { in: PULL_BATCH_ACTIONS }, createdAt: { gte: cutoff } },
+      select: { createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!batch) return { ok: false, error: "الدفعة غير موجودة أو مضى عليها أكثر من ٢٤ ساعة" };
+
+    // سجلّات السحب لكل عميل في الدفعة (entityId=leadId، والمصدر داخل الملخّص: from=<id>).
+    const leadAudits = await prisma.auditLog.findMany({
+      where: { action: { in: PULLED_ACTIONS }, summary: { contains: `batch=${id}` }, createdAt: { gte: cutoff } },
+      select: { entityId: true, summary: true },
+    });
+    const parsed = leadAudits
+      .map((a) => ({ leadId: a.entityId, from: /from=([^ ·]+)/.exec(a.summary)?.[1] ?? null }))
+      .filter((x): x is { leadId: string; from: string } => !!x.leadId && !!x.from);
+    if (parsed.length === 0) return { ok: false, error: "ما فيه عمليات سحب قابلة للتراجع في هذي الدفعة" };
+
+    // نافذة زمنية ضيّقة حول وقت الدفعة لحذف سطر السحب الصحيح (تجنّب حذف سحب لاحق لنفس العميل).
+    const winStart = new Date(batch.createdAt.getTime() - 5 * 60_000);
+    const winEnd = new Date(batch.createdAt.getTime() + 5 * 60_000);
+
+    const restored: { leadId: string; to: string; name: string }[] = [];
+    for (const p of parsed) {
+      const name = await prisma.$transaction(async (tx) => {
+        // حارس: لا يزال في الحوض (لم يُعَد توزيعه) → نرجّعه لموظفه الأصلي بنافذة مهلة جديدة.
+        const res = await tx.lead.updateMany({
+          where: { id: p.leadId, assignedToId: null, reassignCount: { gt: 0 } },
+          data: { assignedToId: p.from, assignedAt: now, contactedAt: null, reassignCount: { decrement: 1 } },
+        });
+        if (res.count !== 1) return null;
+        // احذف سطر السحب الأصلي (يبقى الأثر الدائم في AuditLog).
+        await tx.reassignment.deleteMany({
+          where: { leadId: p.leadId, fromUserId: p.from, toUserId: null, reason: { in: ["no_response", "manual_pull"] }, createdAt: { gte: winStart, lte: winEnd } },
+        });
+        await tx.activity.create({ data: { leadId: p.leadId, userId: actor.id, type: ActivityType.ASSIGNMENT, note: "تراجع عن السحب — رجع للموظف الأصلي" } });
+        await logAudit(tx, { userId: actor.id, action: "lead.no_response.undoPull", entity: "lead", entityId: p.leadId, summary: `[batch=${id}] تراجع عن السحب · أُرجع إلى ${p.from}` });
+        const lead = await tx.lead.findUnique({ where: { id: p.leadId }, select: { name: true } });
+        return lead?.name ?? "عميل";
+      });
+      if (name === null) continue;
+      restored.push({ leadId: p.leadId, to: p.from, name });
+    }
+    if (restored.length === 0) return { ok: false, error: "ما رجع أحد — غالبًا أُعيد توزيعهم بعد السحب" };
+
+    // إشعار الموظفين المُرجَع إليهم (معزول).
+    try {
+      for (const r of restored) {
+        await notify(prisma, [r.to], "lead_assigned", "رجع لك عميل", `${r.name} — رجع لك بعد التراجع عن سحب خاطئ.`, `/leads/${r.leadId}`);
+      }
+    } catch (e) { console.error("[undoPull] إشعارات", e); }
+
+    await logAudit(prisma, {
+      userId: actor.id, action: "lead.no_response.undoPullBatch", entity: "lead", entityId: id,
+      summary: `تراجع عن دفعة سحب [batch=${id}] · أُرجع=${restored.length} عميل`,
+    });
+
+    revalidateNoResponse();
+    const skipped = parsed.length - restored.length;
+    return { ok: true, message: skipped > 0 ? `رجّع ${restored.length} عميل — تخطّى ${skipped} (أُعيد توزيعهم)` : `رجّع ${restored.length} عميل لموظفيهم` };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
