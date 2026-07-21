@@ -74,3 +74,23 @@ export async function emitLeadAssignedBatch(buckets: LeadAssignedBucket[], db: D
     }, db);
   }
 }
+
+/**
+ * إطلاق «وصلك عملاء محوّلون» مجمّعًا لكل موظف — لتوزيع عملاء «لم يتم الرد» (عملاء سبق سحبهم).
+ * صياغة تميّزهم عن العملاء الجدد وتحثّ على المتابعة السريعة. إشعار واحد لكل موظف.
+ */
+export async function emitTransferredLeadsBatch(buckets: LeadAssignedBucket[], db: Db = prisma): Promise<void> {
+  for (const b of buckets) {
+    if (!b.userId || b.count <= 0) continue;
+    const single = b.count === 1;
+    await emitNotification({
+      eventKey: "lead_assigned",
+      assignedUserId: b.userId,
+      title: single ? "وصلك عميل محوّل" : "وصلوك عملاء محوّلون",
+      body: single
+        ? (b.sampleName ? `${b.sampleName} — عميل محوّل يحتاج متابعة سريعة` : "عميل محوّل يحتاج متابعة سريعة")
+        : `وصلك ${b.count} عملاء محوّلين، يحتاجون متابعة سريعة`,
+      link: single && b.sampleLeadId ? `/leads/${b.sampleLeadId}` : "/leads",
+    }, db);
+  }
+}

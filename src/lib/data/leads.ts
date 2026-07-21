@@ -15,6 +15,8 @@ import type {
   SaudiBank,
   CashPaymentType,
   BookingStage,
+  FollowUpResult,
+  FollowUpType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -49,6 +51,8 @@ export type LeadRow = {
   isArchived: boolean;
   // الحجز النشط (لعرض المحصّل/المتبقي في بطاقة الكانبان)
   booking: { collected: number; remaining: number } | null;
+  // عميل محوّل يحتاج اهتمام: أُعيد توجيهه (reassignCount>0) وما فيه متابعة بعد آخر إسناد (نجمة ⭐).
+  isTransferred: boolean;
 };
 
 export type LeadActivity = {
@@ -132,6 +136,9 @@ type LeadWithRels = {
   firstContactStage: FirstContactStage | null;
   firstContactDate: Date | null;
   isArchived: boolean;
+  reassignCount: number;
+  assignedAt: Date | null;
+  followUps?: { createdAt: Date }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
 };
 
@@ -166,6 +173,12 @@ function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): Lead
       const mine = ctx.manager || bk.sellerId === ctx.userId;
       return mine ? bookingCollection(bk.stage, bk.finalPrice.toNumber(), bk.collectedAmount.toNumber()) : null;
     })(),
+    // نجمة العميل المحوّل: أُعيد توجيهه ولم يُسجّل أي متابعة بعد آخر إسناد (تختفي أول متابعة).
+    isTransferred: (() => {
+      if (l.reassignCount <= 0 || l.assignedAt == null) return false;
+      const latestFu = l.followUps?.[0]?.createdAt ?? null;
+      return latestFu == null || latestFu <= l.assignedAt;
+    })(),
   };
 }
 
@@ -173,6 +186,8 @@ const rowInclude = {
   assignedTo: { select: { id: true, name: true, role: true } },
   project: { select: { name: true } },
   _count: { select: { activities: true, followUps: true } },
+  // آخر متابعة فقط (تاريخها) — لحساب نجمة العميل المحوّل بلا جلب كل المتابعات.
+  followUps: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
   bookings: { select: { stage: true, finalPrice: true, collectedAmount: true, sellerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
 } as const;
 
@@ -384,6 +399,52 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
       note: a.note,
       createdAt: a.createdAt,
       userName: a.user?.name ?? null,
+    })),
+  };
+}
+
+// ===== سجل التحويلات (للمالك فقط) — رؤية كاملة دائمًا =====
+
+export type LeadTransferEntry = { id: string; fromName: string | null; toName: string | null; reason: string; createdAt: Date };
+export type LeadFollowUpEntry = { id: string; result: FollowUpResult; type: FollowUpType; note: string | null; authorName: string | null; createdAt: Date };
+export type LeadTransferHistory = { transferCount: number; transfers: LeadTransferEntry[]; followUps: LeadFollowUpEntry[] };
+
+/**
+ * سجل تحويلات عميل + متابعاته بنصّها وكاتبها — للمالك فقط (نصوص متابعات الموظفين حسّاسة).
+ * يُقرأ من Reassignment (من→إلى·السبب·الوقت) + FollowUp (النتيجة·النص·الكاتب·الوقت) — بلا حقول جديدة.
+ * غير المالك يرجّع null (الصلاحية على الخادم لا الواجهة).
+ */
+export async function getLeadTransferHistory(id: string): Promise<LeadTransferHistory | null> {
+  const user = await requireUser();
+  if (user.role !== "OWNER") return null;
+  const [reassignments, followUps] = await Promise.all([
+    prisma.reassignment.findMany({
+      where: { leadId: id }, orderBy: { createdAt: "asc" },
+      select: { id: true, fromUserId: true, toUserId: true, reason: true, createdAt: true },
+    }),
+    prisma.followUp.findMany({
+      where: { leadId: id }, orderBy: { createdAt: "asc" },
+      select: { id: true, result: true, type: true, note: true, createdAt: true, createdBy: true },
+    }),
+  ]);
+  const userIds = [...new Set(
+    [...reassignments.flatMap((r) => [r.fromUserId, r.toUserId]), ...followUps.map((f) => f.createdBy)]
+      .filter((x): x is string => !!x),
+  )];
+  const users = userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+  return {
+    // عدد التحويلات الفعلية (بلا الإسناد الأولي «initial»).
+    transferCount: reassignments.filter((r) => r.reason !== "initial").length,
+    transfers: reassignments.map((r) => ({
+      id: r.id,
+      fromName: r.fromUserId ? (nameById.get(r.fromUserId) ?? null) : null,
+      toName: r.toUserId ? (nameById.get(r.toUserId) ?? null) : null,
+      reason: r.reason, createdAt: r.createdAt,
+    })),
+    followUps: followUps.map((f) => ({
+      id: f.id, result: f.result, type: f.type, note: f.note,
+      authorName: nameById.get(f.createdBy) ?? null, createdAt: f.createdAt,
     })),
   };
 }

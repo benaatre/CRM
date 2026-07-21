@@ -1,9 +1,11 @@
 import "server-only";
 
+import { randomUUID } from "crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ActivityType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notify, ownerIds } from "@/lib/notify";
+import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
@@ -34,6 +36,13 @@ export function reassignSweepOn(): boolean { return envSwitch(process.env.AUTO_R
 
 // سقف مطلق: لا يُرشَّح أكثر من ٥ عملاء في نداء الكرون الواحد.
 const SWEEP_CAP = 5;
+
+// سقف مطلق للسحب التلقائي في «لم يتم الرد» لكل نداء كرون (افتراضي ٥، قابل للضبط عبر NO_RESPONSE_CAP).
+// يمنع سحبًا جماعيًا في دورة واحدة عند تفعيل النظام على متراكم قديم — نظير SWEEP_CAP.
+function noResponseCap(): number {
+  const n = Number(process.env.NO_RESPONSE_CAP);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 5;
+}
 
 // ملاحظة: منطق الأهلية النقي (نموذج المهلتين + قواعد الحماية + الحاجز التاريخي) في
 // ./sweep-eligibility — بلا server-only ليُختبَر مباشرة. نستورده أعلاه ونعيد تصدير حدّ المهلة.
@@ -313,12 +322,13 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
 
 /**
  * #22: يصعّد للمالك العملاء الذين بلغوا سقف إعادة التوجيه (reassignCount ≥ MAX) بلا تواصل —
- * ما زالوا مفتوحين ومع آخر موظف. إشعار واحد لكل عميل (dedup عبر سجل الإشعارات).
+ * سواء ما زالوا مع آخر موظف أو انسحبوا للحوض (assignedToId=null) وعلقوا بلا توزيع.
+ * إشعار واحد لكل عميل (dedup عبر سجل الإشعارات).
  */
 async function escalateCappedLeads(): Promise<void> {
   const capped = await prisma.lead.findMany({
     where: {
-      assignedToId: { not: null },
+      // بلا شرط الإسناد — يشمل المسحوبين للحوض (المستنفدون العالقون) والمُسندين لآخر موظف.
       contactedAt: null,
       isArchived: false,
       stage: { notIn: [...ADVANCED_STAGES] },
@@ -541,11 +551,22 @@ export type PullbackResult = {
  */
 export async function runNoResponsePullback(now: Date = new Date()): Promise<PullbackResult> {
   const config = getNoResponseConfig();
-  const mode: "live" | "dry-run" = config.enabled ? "live" : "dry-run";
+  const wantLive = config.enabled;
+  // حماية تفعيل: السحب الحقيقي يتطلب ضبط حاجز التفعيل NO_RESPONSE_ACTIVATION_DATE. بدونه نرفض
+  // السحب كليًا (حمايةً من سحب جماعي فوري للمتراكم القديم) ونطبع تحذيرًا — ونبقى في وضع dry-run.
+  const activationMissing = wantLive && !config.activationDate;
+  const mode: "live" | "dry-run" = wantLive && !activationMissing ? "live" : "dry-run";
+  if (activationMissing) {
+    console.warn(
+      "[no-response] ⚠️ NO_RESPONSE_PULL=on لكن NO_RESPONSE_ACTIVATION_DATE غير مضبوط — " +
+        "السحب التلقائي معطّل حمايةً من السحب الجماعي. اضبط حاجز التفعيل (تاريخ الآن) أولًا قبل التشغيل.",
+    );
+  }
+  const cap = noResponseCap();
   try {
     const owners = await ownerIds(prisma);
 
-    // مرشّحون: موزّعون لموظف فعلي، غير مؤرشفين، مراحل عدم الرد، دون سقف الدورات، غير محصّنين يدويًا.
+    // مرشّحون: موزّعون لموظف فعلي، غير مؤرشفين, مراحل عدم الرد، دون سقف الدورات، غير محصّنين يدويًا.
     // ملاحظة: لا حاجز sweepCutoffAt هنا — نظام «لم يتم الرد» مستقلّ، حاجزه الاختياري ACTIVATION في الـbaseline.
     const candidates = await prisma.lead.findMany({
       where: {
@@ -557,6 +578,10 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       },
       select: { id: true, name: true, assignedToId: true, assignedAt: true },
     });
+
+    // تصعيد المستنفدين للمالك — شامل المسحوبين العالقين في الحوض (كل دورة، مع dedup الإشعار).
+    await escalateCappedLeads();
+
     if (candidates.length === 0) return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, capped: 0 };
 
     // متابعات كل عميل (نتيجة + وقت) لحساب «لم يرد» فقط (دفعة واحدة، بلا N+1).
@@ -569,55 +594,89 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       else fuByLead.set(f.leadId, [{ result: f.result, createdAt: f.createdAt }]);
     }
 
-    let warned = 0;
-    let pulled = 0;
     let capped = 0;
     // إنذارات مجمّعة: مفتاح = `${userId}|${noAnswerCount}` → عدد العملاء في هذي الفئة.
     const warnBuckets = new Map<string, number>();
+    // مرشّحو السحب (overdue): نجمعهم أولًا، ثم نرتّب بالأقدم تأخّرًا، ثم نطبّق السقف.
+    type OverdueTarget = { id: string; name: string; from: string; fu: number; daysSince: number };
+    const overdue: OverdueTarget[] = [];
 
     for (const l of candidates) {
       const stats = noAnswerStats(fuByLead.get(l.id) ?? []);
       if (!stats.included) continue; // آخر متابعة نتيجتها ليست «لم يرد» → رد العميل → خارج النظام
       const fu = stats.noAnswerCount;
       const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
-      const { state } = noResponseState(fu, baseline, now, config);
+      const { state, daysSince } = noResponseState(fu, baseline, now, config);
 
       if (state === "immune") { capped++; continue; }
-
-      // (١) سحب (بلغ يوم السحب لفئته).
-      if (state === "overdue") {
-        const from = l.assignedToId as string;
-        if (mode === "dry-run") {
-          console.info(`[no-response][dry-run] سيُسحب ${l.id} (${l.name}) من ${from} — متابعات=${fu}`);
-          pulled++;
-          continue;
-        }
-        await prisma.$transaction(async (tx) => {
-          await tx.lead.update({
-            where: { id: l.id },
-            data: { assignedToId: null, assignedAt: null, contactedAt: null, reassignCount: { increment: 1 } },
-          });
-          await tx.reassignment.create({ data: { leadId: l.id, fromUserId: from, toUserId: null, reason: "no_response" } });
-          await tx.activity.create({
-            data: { leadId: l.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سُحب تلقائيًا — لم يتم الرد على العميل" },
-          });
-          await notify(tx, [from], "lead_lost", "انسحب منك عميل",
-            `${l.name} — عدّى مهلته بلا رد فانسحب منك. بادر بعملائك بسرعة.`, `/leads/${l.id}`);
-        });
-        await notify(prisma, owners, "no_response.pulled", "عميل انسحب لعدم الرد",
-          `${l.name} — انسحب من الموظف لعدم الرد. متاح للتوزيع من «لم يتم الرد».`, "/no-response");
-        pulled++;
-        continue;
-      }
-
-      // (٢) إنذار (بلغ يوم الإنذار) — نجمّعه لإرساله مجمّعًا لكل موظف/فئة.
-      if (state === "pending") {
+      if (state === "overdue") overdue.push({ id: l.id, name: l.name, from: l.assignedToId as string, fu, daysSince });
+      else if (state === "pending") {
         const key = `${l.assignedToId}|${fu}`;
         warnBuckets.set(key, (warnBuckets.get(key) ?? 0) + 1);
       }
     }
 
+    // الأقدم تأخّرًا أولًا (daysSince الأكبر)، ثم السقف: لا نسحب أكثر من cap في الدورة الواحدة.
+    overdue.sort((a, b) => b.daysSince - a.daysSince);
+    const targets = overdue.slice(0, cap);
+    const deferred = overdue.length - targets.length; // تجاوزوا السقف — تُلتقط الدورة القادمة
+
+    let pulled = 0;
+    const batchId = randomUUID();
+    const affected = new Map<string, number>(); // fromUserId → عدد المسحوبين منه
+
+    for (const t of targets) {
+      if (mode === "dry-run") {
+        console.info(
+          `[no-response][dry-run] سيُسحب ${t.id} (${t.name}) من ${t.from} — متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي`,
+        );
+        pulled++;
+        affected.set(t.from, (affected.get(t.from) ?? 0) + 1);
+        continue;
+      }
+      // حارس تزامن: لا نسحب إلا إذا كان لا يزال مُسندًا لنفس الموظف (count===1). غير ذلك → تخطٍّ صامت.
+      const done = await prisma.$transaction(async (tx) => {
+        const res = await tx.lead.updateMany({
+          where: { id: t.id, assignedToId: t.from },
+          data: { assignedToId: null, assignedAt: null, contactedAt: null, reassignCount: { increment: 1 } },
+        });
+        if (res.count !== 1) return false;
+        await tx.reassignment.create({ data: { leadId: t.id, fromUserId: t.from, toUserId: null, reason: "no_response" } });
+        await tx.activity.create({
+          data: { leadId: t.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سُحب تلقائيًا — لم يتم الرد على العميل" },
+        });
+        await notify(tx, [t.from], "lead_lost", "انسحب منك عميل",
+          `${t.name} — عدّى مهلته بلا رد فانسحب منك. بادر بعملائك بسرعة.`, `/leads/${t.id}`);
+        // سجل تدقيق لكل سحب: batchId · leadId · fromUserId · المتابعات · أيام التأخير · السبب.
+        await logAudit(tx, {
+          userId: null, action: "lead.no_response.autoPulled", entity: "lead", entityId: t.id,
+          summary: `[batch=${batchId}] سحب تلقائي · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=no_response`,
+        });
+        return true;
+      });
+      if (!done) continue;
+      await notify(prisma, owners, "no_response.pulled", "عميل انسحب لعدم الرد",
+        `${t.name} — انسحب من الموظف لعدم الرد. متاح للتوزيع من «لم يتم الرد».`, "/no-response");
+      pulled++;
+      affected.set(t.from, (affected.get(t.from) ?? 0) + 1);
+    }
+
+    // ملخّص الدورة في سجل التدقيق: batchId · العدد الكلي · المؤجّل · الموظفون المتأثرون.
+    if (pulled > 0 && mode === "live") {
+      const names = await prisma.user.findMany({ where: { id: { in: [...affected.keys()] } }, select: { id: true, name: true } });
+      const nameById = new Map(names.map((u) => [u.id, u.name]));
+      const who = [...affected.entries()].map(([id, n]) => `${nameById.get(id) ?? id}:${n}`).join(" · ");
+      await logAudit(prisma, {
+        userId: null, action: "lead.no_response.autoPullBatch", entity: "lead", entityId: batchId,
+        summary: `دورة سحب تلقائي [batch=${batchId}] · المسحوبون=${pulled} · مؤجّل للسقف=${deferred} · الموظفون=${who}`,
+      });
+    }
+    if (deferred > 0) {
+      console.info(`[no-response] السقف ${cap}/دورة — سُحب ${pulled}، وأُجّل ${deferred} للدورة القادمة.`);
+    }
+
     // إرسال الإنذارات المجمّعة (منفصل لكل موظف + فئة) مع dedup يومي.
+    let warned = 0;
     if (mode === "live") {
       const todayStart = ksaTodayStart(now);
       for (const [key, count] of warnBuckets) {

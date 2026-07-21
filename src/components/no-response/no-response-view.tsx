@@ -2,14 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X } from "lucide-react";
+import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X, Undo2, Archive } from "lucide-react";
 import { formatCount, toArabicDigits } from "@/lib/format";
-import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, CategoryStat, EmployeeLoad } from "@/lib/data/no-response";
+import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, CategoryStat, EmployeeLoad, ExhaustedRow, UndoableBatch } from "@/lib/data/no-response";
 import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseConfig, type EscalationCategory } from "@/lib/no-response-escalation";
 import {
-  warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch,
+  warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch, undoPull,
   type DistributeOpts, type PullGroupCategory,
 } from "@/lib/actions/no-response";
+import { bulkArchive } from "@/lib/actions/leads";
 
 type Employee = { id: string; name: string };
 type Filters = { q: string; emp: string; rounds: number; sort: NoResponseSort };
@@ -23,14 +24,16 @@ const PENDING_COLS: { cat: EscalationCategory; pull: PullGroupCategory; label: s
 ];
 
 type PullAsk = { employeeId: string; employeeName: string; category: PullGroupCategory; count: number };
-type DistAsk = { count: number; sourceEmpIds: string[]; sourceEmployeeId: string | null; leadIds: string[]; who: string };
+type DistAsk = { count: number; sourceEmpIds: string[]; sourceEmployeeId: string | null; leadIds: string[]; who: string; override?: boolean };
 
 export function NoResponseView({
-  summary, pool, employeeLoads, filters, config,
+  summary, pool, employeeLoads, exhausted, undoBatches, filters, config,
 }: {
   summary: PendingPullSummary;
   pool: PoolSourceGroup[];
   employeeLoads: EmployeeLoad[];
+  exhausted: ExhaustedRow[];
+  undoBatches: UndoableBatch[];
   filters: Filters;
   config: NoResponseConfig;
 }) {
@@ -99,6 +102,17 @@ export function NoResponseView({
         <span className={`inline-block size-2 rounded-full ${summary.live ? "bg-success" : "bg-gold"}`} />
         <span className="font-medium">حالة النظام: {summary.live ? "مفعّل — السحب التلقائي يعمل" : "معاينة (dry-run) — لا سحب تلقائي حتى التفعيل"}</span>
       </div>
+
+      {/* تراجع عن آخر سحب (آخر ٢٤ ساعة) */}
+      <UndoPanel batches={undoBatches} pending={pending} onUndo={(batchId) => run(() => undoPull(batchId))} />
+
+      {/* مستنفدون عالقون في الحوض — يحتاجون قرار المالك */}
+      <ExhaustedPanel
+        rows={exhausted}
+        pending={pending}
+        onDistribute={(r) => setDist({ count: 1, sourceEmpIds: r.lastEmployeeId ? [r.lastEmployeeId] : [], sourceEmployeeId: null, leadIds: [r.id], who: r.name, override: true })}
+        onArchive={(id) => run(() => bulkArchive([id]))}
+      />
 
       {/* لوحة الأرقام العلوية (per-category) — كما هي */}
       <NumbersPanel summary={summary} />
@@ -252,9 +266,10 @@ export function NoResponseView({
           onConfirm={(opts) => {
             const d = dist;
             setDist(null);
+            const finalOpts = d.override ? { ...opts, override: true } : opts;
             run(async () => d.sourceEmployeeId
-              ? distributePoolGroup(d.sourceEmployeeId, opts)
-              : distributeNoResponseBatch(d.leadIds, opts));
+              ? distributePoolGroup(d.sourceEmployeeId, finalOpts)
+              : distributeNoResponseBatch(d.leadIds, finalOpts));
           }}
         />
       )}
@@ -351,6 +366,82 @@ function CatCell({ cat, stat }: { cat: EscalationCategory; stat: CategoryStat })
         </span>
       )}
     </td>
+  );
+}
+
+// لوحة التراجع عن السحب — دفعات آخر ٢٤ ساعة فيها عملاء لا يزالون في الحوض.
+function UndoPanel({ batches, pending, onUndo }: { batches: UndoableBatch[]; pending: boolean; onUndo: (batchId: string) => void }) {
+  const undoable = batches.filter((b) => b.undoable > 0);
+  if (undoable.length === 0) return null;
+  return (
+    <section className="mb-6 rounded-2xl border border-gold/30 bg-gold/5 p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-gold">
+        <Undo2 className="size-4" /> تراجع عن السحب (آخر ٢٤ ساعة)
+      </h2>
+      <p className="mb-3 text-xs text-muted-foreground">يرجّع العملاء لموظفيهم الأصليين — فقط من لا يزال في الحوض (لم يُعَد توزيعه).</p>
+      <div className="space-y-2">
+        {undoable.map((b) => (
+          <div key={b.batchId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
+            <div className="text-sm text-foreground">
+              <span className="font-medium">{b.kind === "auto" ? "سحب تلقائي" : "سحب يدوي"}</span>
+              <span className="mr-2 text-muted-foreground">قابل للإرجاع: <span className="font-bold text-gold">{toArabicDigits(b.undoable)}</span> من {toArabicDigits(b.total)}</span>
+            </div>
+            <button onClick={() => onUndo(b.batchId)} disabled={pending}
+              className="flex items-center gap-1.5 rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40">
+              <Undo2 className="size-3.5" /> تراجع
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// لوحة المستنفدين العالقين — بلغوا سقف الدورات وعلقوا في الحوض؛ قرار المالك: توزيع استثنائي أو أرشفة.
+function ExhaustedPanel({ rows, pending, onDistribute, onArchive }: {
+  rows: ExhaustedRow[]; pending: boolean; onDistribute: (r: ExhaustedRow) => void; onArchive: (id: string) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <section className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/[0.05] p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-destructive">
+        <AlertTriangle className="size-4" /> مستنفد — يحتاج قرارك ({toArabicDigits(rows.length)})
+      </h2>
+      <p className="mb-3 text-xs text-muted-foreground">بلغوا سقف الدورات وعلقوا في الحوض — لا يوزّعهم النظام تلقائيًا. وزّعهم استثنائيًا (تجاوز السقف) أو أرشفهم.</p>
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <table className="w-full min-w-[560px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <thead className="bg-secondary/40 text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">العميل</th>
+              <th className="px-3 py-3 text-center font-medium">الدورات</th>
+              <th className="px-3 py-3 font-medium">آخر موظف</th>
+              <th className="px-3 py-3 font-medium">إجراء</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-t border-border">
+                <td className="px-4 py-3 font-medium text-foreground">{r.name}</td>
+                <td className="px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(r.reassignCount)}</td>
+                <td className="px-3 py-3 text-muted-foreground">{r.lastEmployee ?? "—"}</td>
+                <td className="px-3 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => onDistribute(r)} disabled={pending}
+                      className="flex items-center gap-1 rounded-lg border border-gold/50 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40">
+                      <Share2 className="size-3.5" /> وزّع استثنائيًا
+                    </button>
+                    <button onClick={() => onArchive(r.id)} disabled={pending}
+                      className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-40">
+                      <Archive className="size-3.5" /> أرشف
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

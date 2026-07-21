@@ -9,6 +9,7 @@ import type { LeadFilterValues } from "@/lib/lead-filters";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { LeadDrawer } from "./lead-drawer";
 import { NotInterestedDialog } from "./not-interested-dialog";
+import { TransferStar } from "./transfer-star";
 import { useLeads } from "./use-leads";
 
 type Employee = { id: string; name: string };
@@ -94,7 +95,7 @@ export function KanbanBoard({
               <article key={l.id} className={`rounded-xl border border-r-4 border-border bg-card p-4 ${priorityBorder[l.priority]}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-medium text-foreground">{l.name}</div>
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">{l.name}<TransferStar show={l.isTransferred} /></div>
                     <a href={`tel:${l.phone}`} className="text-xs text-gold" dir="ltr">{l.phone}</a>
                   </div>
                   <Link href={`/leads/${l.id}`} className="flex min-h-11 shrink-0 items-center rounded-lg border border-border px-3 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold">فتح</Link>
@@ -143,7 +144,7 @@ export function KanbanBoard({
                     title={`أولوية ${priorityLabels[l.priority]}`}
                     className={`cursor-pointer rounded-xl border border-r-4 border-border bg-card p-3 shadow-sm transition-all hover:border-gold/40 ${priorityBorder[l.priority]} ${dragId === l.id ? "opacity-40" : ""}`}
                   >
-                    <div className="font-medium text-foreground">{l.name}</div>
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">{l.name}<TransferStar show={l.isTransferred} /></div>
                     <div className="mt-0.5 text-xs text-gold" dir="ltr">{l.phone}</div>
                     <div className="mt-1.5 text-xs text-muted-foreground">
                       {l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"} · {l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}

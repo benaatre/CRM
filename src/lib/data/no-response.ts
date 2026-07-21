@@ -420,3 +420,106 @@ export async function getMyNoResponseAlert(userId: string, now: Date = new Date(
 
   return { lines, late, pulled };
 }
+
+// ===================== المستنفدون العالقون في الحوض =====================
+
+export type ExhaustedRow = {
+  id: string;
+  name: string;
+  reassignCount: number;
+  lastEmployeeId: string | null; // آخر موظف سُحب منه (لتعطيله في التوزيع الاستثنائي)
+  lastEmployee: string | null;
+  pullDate: Date | null;
+};
+
+/**
+ * عملاء الحوض الذين بلغوا سقف الدورات (reassignCount ≥ MAX): مسحوبون (assignedToId=null) وعالقون
+ * — لا يوزّعهم التوزيع العادي ولا يسحبهم المحرّك. يحتاجون قرار المالك (توزيع استثنائي أو أرشفة). للمالك فقط.
+ */
+export async function getExhaustedPoolLeads(): Promise<ExhaustedRow[]> {
+  const leads = await prisma.lead.findMany({
+    where: { assignedToId: null, isArchived: false, stage: { in: [...NO_RESPONSE_STAGES] }, reassignCount: { gte: MAX_REASSIGNS } },
+    select: {
+      id: true, name: true, reassignCount: true,
+      reassignments: { where: { toUserId: null }, orderBy: { createdAt: "desc" }, take: 1, select: { fromUserId: true, createdAt: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 200,
+  });
+  const fromIds = [...new Set(leads.map((l) => l.reassignments[0]?.fromUserId).filter((x): x is string => !!x))];
+  const users = fromIds.length ? await prisma.user.findMany({ where: { id: { in: fromIds } }, select: { id: true, name: true } }) : [];
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+  return leads.map((l) => {
+    const last = l.reassignments[0];
+    return {
+      id: l.id, name: l.name, reassignCount: l.reassignCount,
+      lastEmployeeId: last?.fromUserId ?? null,
+      lastEmployee: last?.fromUserId ? (nameById.get(last.fromUserId) ?? null) : null,
+      pullDate: last?.createdAt ?? null,
+    };
+  });
+}
+
+// ===================== دفعات السحب القابلة للتراجع (آخر ٢٤ ساعة) =====================
+
+export type UndoableBatch = {
+  batchId: string;
+  kind: "auto" | "manual";
+  at: Date;
+  total: number;    // إجمالي المسحوبين في الدفعة (من سجل التدقيق)
+  undoable: number; // كم لا يزال في الحوض قابلًا للإرجاع فعلًا
+};
+
+const AUTO_BATCH = "lead.no_response.autoPullBatch";
+const MANUAL_BATCH = "lead.no_response.manualPullBatch";
+const AUTO_PULLED = "lead.no_response.autoPulled";
+const MANUAL_PULLED = "lead.no_response.manualPulled";
+
+/**
+ * دفعات السحب في آخر ٢٤ ساعة مع عدد القابل للإرجاع فعلًا (لا يزال في الحوض). ٣ استعلامات فقط:
+ * ملخّصات الدفعات · سجلّات السحب لكل عميل · حالة العملاء الحالية. للمالك فقط.
+ */
+export async function getUndoablePullBatches(now: Date = new Date()): Promise<UndoableBatch[]> {
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const [batches, leadRows] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: { action: { in: [AUTO_BATCH, MANUAL_BATCH] }, createdAt: { gte: cutoff } },
+      select: { entityId: true, action: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+    }),
+    prisma.auditLog.findMany({
+      where: { action: { in: [AUTO_PULLED, MANUAL_PULLED] }, createdAt: { gte: cutoff } },
+      select: { entityId: true, summary: true },
+    }),
+  ]);
+  if (batches.length === 0) return [];
+
+  // اجمع معرّفات العملاء لكل دفعة (batchId من داخل الملخّص).
+  const byBatch = new Map<string, Set<string>>();
+  const allLeadIds = new Set<string>();
+  for (const r of leadRows) {
+    if (!r.entityId) continue;
+    const bid = /batch=([^ \]·]+)/.exec(r.summary)?.[1];
+    if (!bid) continue;
+    const set = byBatch.get(bid) ?? new Set<string>();
+    set.add(r.entityId);
+    byBatch.set(bid, set);
+    allLeadIds.add(r.entityId);
+  }
+
+  // العملاء الذين لا يزالون في الحوض (قابلون للإرجاع).
+  const poolLeads = allLeadIds.size
+    ? await prisma.lead.findMany({ where: { id: { in: [...allLeadIds] }, assignedToId: null, reassignCount: { gt: 0 } }, select: { id: true } })
+    : [];
+  const inPool = new Set(poolLeads.map((l) => l.id));
+
+  return batches
+    .filter((b): b is typeof b & { entityId: string } => !!b.entityId)
+    .map((b) => {
+      const set = byBatch.get(b.entityId) ?? new Set<string>();
+      const undoable = [...set].filter((lid) => inPool.has(lid)).length;
+      return { batchId: b.entityId, kind: b.action === AUTO_BATCH ? "auto" as const : "manual" as const, at: b.createdAt, total: set.size, undoable };
+    })
+    .filter((b) => b.total > 0);
+}

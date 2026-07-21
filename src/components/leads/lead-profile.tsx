@@ -7,19 +7,20 @@ import type { PurchaseGoal, PurchaseMethod, Channel } from "@prisma/client";
 import {
   purchaseGoalLabels, purchaseMethodLabels, purchaseMethodOptions, stageLabels, stageColor,
   paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels, channelLabels,
+  followUpResultLabels, followUpTypeLabels,
 } from "@/lib/labels";
 import { updateLeadIntake, updateLeadChannel } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
 import { cancelBooking } from "@/lib/actions/bookings";
-import { formatDate, formatCurrencyFull } from "@/lib/format";
-import type { LeadDetail } from "@/lib/data/leads";
+import { formatDate, formatCurrencyFull, toArabicDigits } from "@/lib/format";
+import type { LeadDetail, LeadTransferHistory } from "@/lib/data/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { useFollowUps } from "./use-followups";
 
-type Tab = "data" | "followups" | "ai";
+type Tab = "data" | "followups" | "ai" | "transfers";
 type Analysis = { temperature: string; interest: number; nextStep: string; whatsapp: string; source?: string };
 
 const tempColor: Record<string, string> = {
@@ -28,10 +29,13 @@ const tempColor: Record<string, string> = {
   "بارد": "bg-info/15 text-info",
 };
 
-export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects: { id: string; name: string }[] }) {
+export function LeadProfile({ detail, projects, transferHistory }: { detail: LeadDetail; projects: { id: string; name: string }[]; transferHistory: LeadTransferHistory | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("data");
+  // تبويب «سجل التحويلات» للمالك فقط (transferHistory != null يعني مالك — الصلاحية من الخادم).
+  const tabs: [Tab, string][] = [["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]];
+  if (transferHistory) tabs.push(["transfers", "سجل التحويلات"]);
   const [reserveMode, setReserveMode] = useState<"reserve" | "instant" | null>(null);
   const { items, loading, reload } = useFollowUps(detail.id);
 
@@ -74,7 +78,7 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
 
       {/* التبويبات — قابلة للتمرير أفقيًا على الجوال */}
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
-        {([["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]] as const).map(([v, label]) => (
+        {tabs.map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
         ))}
       </div>
@@ -130,6 +134,8 @@ export function LeadProfile({ detail, projects }: { detail: LeadDetail; projects
       )}
 
       {tab === "ai" && <AiTab leadId={detail.id} phone={detail.phone} />}
+
+      {tab === "transfers" && transferHistory && <TransferHistorySection data={transferHistory} />}
 
       {/* زرّان ثابتان دائمًا (إلا لو العميل محجوز/مشترٍ مسبقًا) */}
       {!detail.isArchived && (
@@ -315,6 +321,70 @@ function AiTab({ leadId, phone }: { leadId: string; phone: string }) {
         </div>
       )}
     </section>
+  );
+}
+
+// ===== سجل التحويلات (للمالك فقط) =====
+const REASON_LABELS: Record<string, string> = {
+  initial: "إسناد أولي",
+  timeout: "سحب بعد تأخّر التواصل",
+  no_response: "سحب — لم يتم الرد",
+  manual_pull: "سحب يدوي (الإدارة)",
+  manual_redistribute: "توزيع يدوي",
+};
+
+function TransferHistorySection({ data }: { data: LeadTransferHistory }) {
+  return (
+    <div className="space-y-5">
+      <section className="glass space-y-3 rounded-2xl p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-foreground">سجل التحويلات</h2>
+          <span className="rounded-full bg-gold/15 px-2.5 py-0.5 text-xs font-medium text-gold">تحوّل {toArabicDigits(data.transferCount)} مرة</span>
+        </div>
+        {data.transfers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">ما فيه تحويلات مسجّلة.</p>
+        ) : (
+          <ol className="space-y-2">
+            {data.transfers.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border p-3 text-sm">
+                <div className="flex items-center gap-2 text-foreground">
+                  <span>{t.fromName ?? "—"}</span>
+                  <span className="text-muted-foreground">←</span>
+                  <span className="font-medium">{t.toName ?? "الحوض"}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="rounded bg-secondary px-1.5 py-0.5">{REASON_LABELS[t.reason] ?? t.reason}</span>
+                  <span>{formatDate(t.createdAt)}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+
+      <section className="glass space-y-3 rounded-2xl p-5">
+        <h2 className="font-semibold text-foreground">متابعات كل موظف (بنصّها وكاتبها)</h2>
+        {data.followUps.length === 0 ? (
+          <p className="text-sm text-muted-foreground">ما فيه متابعات مسجّلة.</p>
+        ) : (
+          <ul className="space-y-2">
+            {data.followUps.map((f) => (
+              <li key={f.id} className="space-y-1 rounded-xl border border-border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-medium text-gold">{f.authorName ?? "—"}</span>
+                  <span className="text-muted-foreground">{formatDate(f.createdAt)}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="rounded bg-secondary px-1.5 py-0.5 text-foreground">{followUpTypeLabels[f.type]}</span>
+                  <span className="rounded bg-secondary px-1.5 py-0.5 text-muted-foreground">{followUpResultLabels[f.result]}</span>
+                </div>
+                {f.note && <p className="whitespace-pre-wrap text-sm text-foreground">{f.note}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   );
 }
 
