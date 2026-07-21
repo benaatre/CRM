@@ -1,7 +1,7 @@
-// نسخ الأصول داخل خرج الـ standalone بعد البناء (postbuild)،
-// ثم نسخ البناء كاملاً إلى مجلد تشغيل Hostinger وعمل restart عبر Passenger.
-// عابر للأنظمة: يتخطّى خطوة النشر تلقائيًا في التطوير المحلي (ويندوز).
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+// نسخ الأصول داخل خرج الـ standalone بعد البناء (postbuild)، ثم إعادة تشغيل Passenger.
+// على الخادم يُبنى التطبيق داخل مجلد التشغيل نفسه (public_html = PassengerAppRoot)، فلا نسخ مطلوب —
+// يكفي لمس tmp/restart.txt. عابر للأنظمة: يتخطّى إعادة التشغيل تلقائيًا في التطوير المحلي (ويندوز).
+import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const standalone = ".next/standalone";
@@ -22,36 +22,22 @@ if (existsSync(".next/static")) {
   console.log("✓ نُسخ .next/static → .next/standalone/.next/static");
 }
 
-// ===== ٢) نسخ البناء كاملاً إلى مجلد تشغيل Hostinger + إعادة التشغيل =====
-const appDir = process.env.HOSTINGER_APP_DIR || "/home/u616466986/nodejs";
+// ===== ٢) إعادة تشغيل Passenger (بلا نسخ — البناء يتمّ داخل مجلد التشغيل نفسه) =====
+// مجلد تشغيل Passenger = PassengerAppRoot للدومين (public_html). على الخادم يُبنى التطبيق داخله
+// مباشرة، فالبناء ينزل في .next هناك ولا حاجة لأي نسخ؛ يكفي لمس tmp/restart.txt (= PassengerRestartDir)
+// لتُعيد Passenger تشغيل العملية. يمكن تجاوز المسار عبر HOSTINGER_APP_DIR.
+const appDir = process.env.HOSTINGER_APP_DIR || "/home/u616466986/domains/crm.benaatre.com/public_html";
 
 if (!existsSync(appDir)) {
-  // تطوير محلي: مجلد التشغيل غير موجود — نتخطّى النشر بدون خطأ.
-  console.log(`ℹ️  مجلد التشغيل غير موجود (${appDir}) — تخطّي النسخ والـ restart (تطوير محلي).`);
-} else if (path.resolve(appDir) === path.resolve(standalone)) {
-  // البناء يتم داخل نفس مجلد التشغيل — لا حاجة للنسخ.
-  console.log("ℹ️  مجلد التشغيل هو نفسه مجلد البناء — لا حاجة للنسخ.");
+  // تطوير محلي (ويندوز): مجلد تشغيل Passenger غير موجود — نتخطّى إعادة التشغيل بدون خطأ.
+  console.log(`ℹ️  تشغيل محلي — مجلد تشغيل Passenger غير موجود (${appDir})، نتخطّى إعادة التشغيل.`);
 } else {
-  console.log(`→ نشر البناء إلى مجلد التشغيل: ${appDir}`);
-
-  // حذف نظيف: نمسح بناء .next القديم فقط (نُبقي node_modules و tmp).
-  const appNext = path.join(appDir, ".next");
-  if (existsSync(appNext)) {
-    rmSync(appNext, { recursive: true, force: true });
-    console.log("🧹 حُذف البناء القديم: .next في مجلد التشغيل");
-  }
-
-  // .next/standalone مكتفٍ ذاتيًا (server.js + .next/server + node_modules + public + static).
-  // ننسخ محتواه كاملاً إلى مجلد التشغيل.
-  cpSync(standalone, appDir, { recursive: true });
-  console.log("✓ نُسخ البناء الكامل إلى مجلد التشغيل");
-
-  // المس tmp/restart.txt لإجبار Passenger على إعادة تشغيل العملية.
+  // تشغيل على الخادم: البناء نزل في .next داخل مجلد التشغيل. نكتفي بإشارة إعادة التشغيل لـ Passenger.
   const tmpDir = path.join(appDir, "tmp");
   mkdirSync(tmpDir, { recursive: true });
   const restartFile = path.join(tmpDir, "restart.txt");
   writeFileSync(restartFile, String(Date.now())); // إنشاء/تحديث الملف = إشارة restart لـ Passenger
-  console.log(`✓ تم لمس ${restartFile} — Passenger سيعيد تشغيل التطبيق`);
+  console.log(`✓ نشر على الخادم — لُمس ${restartFile}، Passenger سيعيد تشغيل التطبيق.`);
 }
 
 console.log("postbuild: تمّ ✅");
