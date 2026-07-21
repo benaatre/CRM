@@ -67,16 +67,20 @@ export function noAnswerStats(followups: { result: string; createdAt: Date }[]):
 }
 
 /**
- * المرجع الزمني للعميل في التصعيد = آخر متابعة «لم يرد»، أو وقت الإسناد لو ما فيه ولا وحدة.
- * مصدر واحد يشاركه المحرّك واللوحات. (لا يدمج lastContact — المتابعة هي مؤشّر التحرّك.)
+ * المرجع الزمني للعميل في التصعيد = الأحدث بين آخر إسناد (assignedAt) وآخر متابعة «لم يرد» —
+ * max(assignedAt, lastFollowUpAt). فأي توزيع جديد (assignedAt يتجدّد عند الاستلام) يمنح الموظف
+ * مهلته كاملة من لحظة الاستلام، حتى لو للعميل متابعات «لم يرد» قديمة.
+ * ⚠️ عدد المتابعات لا يتصفّر (يبقى في noAnswerStats) — فقط المرجع الزمني يتجدّد.
+ * مصدر واحد يشاركه المحرّك واللوحات. (لا يدمج lastContact — المتابعة/الإسناد هما مؤشّرا التحرّك.)
  *
  * حاجز التفعيل الاختياري (NO_RESPONSE_ACTIVATION_DATE): لو مضبوط → baseline = max(المرجع, التفعيل)
  * فيبدأ عدّاد المتراكم القديم من لحظة التفعيل (لا يُسحب فورًا). لو غير مضبوط → بلا حاجز.
  * ملاحظة: هذا مستقلّ تمامًا عن sweepCutoffAt الخاص بمسار السحب بالمهلة.
  */
 export function noResponseBaseline(assignedAt: Date | null, lastFollowUpAt: Date | null, activation: Date | null = null): Date | null {
-  const ref = lastFollowUpAt ?? assignedAt;
-  const t = Math.max(ref?.getTime() ?? 0, activation?.getTime() ?? 0);
+  // الأحدث بين الإسناد وآخر متابعة «لم يرد» — لا «آخر متابعة إن وُجدت وإلا الإسناد».
+  const ref = Math.max(assignedAt?.getTime() ?? 0, lastFollowUpAt?.getTime() ?? 0);
+  const t = Math.max(ref, activation?.getTime() ?? 0);
   return t > 0 ? new Date(t) : null;
 }
 
