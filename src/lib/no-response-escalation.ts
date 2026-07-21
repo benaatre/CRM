@@ -144,6 +144,33 @@ export function escalationCategory(followUpCount: number, config: NoResponseConf
   return "threePlus"; // ٣ أو ٤ (دون الحصانة)
 }
 
+// ===================== فئات عمر التأخير («يُسحب الآن») =====================
+// تفصيل المتأخرين حسب daysSince إلى فترات واضحة (مطلقة، مستقلة عن عدد المتابعات).
+// مصدر واحد يشاركه العرض (getPendingPullByEmployee) والسحب (pullGroup) — فما يفترق التصنيف.
+
+export type OverdueAgeBucket = "age_3_7" | "age_8_14" | "age_15_30" | "age_30plus";
+
+export const OVERDUE_AGE_ORDER: OverdueAgeBucket[] = ["age_3_7", "age_8_14", "age_15_30", "age_30plus"];
+
+export const OVERDUE_AGE_LABEL: Record<OverdueAgeBucket, string> = {
+  age_3_7: "٣–٧ أيام",
+  age_8_14: "٨–١٤ يوم",
+  age_15_30: "١٥–٣٠ يوم",
+  age_30plus: "أكثر من شهر",
+};
+
+/**
+ * فئة عمر التأخير حسب daysSince (أيام منذ المرجع الزمني noResponseBaseline). تُستدعى فقط لمن حالته
+ * overdue. حدود شاملة بالأرضية (floor): ٣–٧ · ٨–١٤ · ١٥–٣٠ · ٣١+ — بلا فجوات (أي overdue يقع في واحدة).
+ */
+export function overdueAgeBucket(daysSince: number): OverdueAgeBucket {
+  const d = Math.floor(daysSince);
+  if (d < 8) return "age_3_7";      // ٣–٧ (وأي حدّ أدنى للسحب)
+  if (d < 15) return "age_8_14";    // ٨–١٤
+  if (d < 31) return "age_15_30";   // ١٥–٣٠
+  return "age_30plus";              // أكثر من شهر
+}
+
 // ===================== نص الإنذار (سعودي — صياغة حرفية) =====================
 // الترتيب: عدد المتابعات السابقة → «للمرة [الثانية/الثالثة/الرابعة/الخامسة]».
 //   متابعة وحدة (١) ← الثانية · متابعتين (٢) ← الثالثة · ٣ ← الرابعة · ٤ ← الخامسة.

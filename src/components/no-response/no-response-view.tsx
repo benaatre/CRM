@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X, Undo2, Archive } from "lucide-react";
 import { formatCount, toArabicDigits } from "@/lib/format";
 import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, CategoryStat, EmployeeLoad, ExhaustedRow, UndoableBatch } from "@/lib/data/no-response";
-import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseConfig, type EscalationCategory } from "@/lib/no-response-escalation";
+import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseConfig, type EscalationCategory, type OverdueAgeBucket } from "@/lib/no-response-escalation";
 import {
   warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch, undoPull,
   type DistributeOpts, type PullGroupCategory,
@@ -14,6 +14,14 @@ import { bulkArchive } from "@/lib/actions/leads";
 
 type Employee = { id: string; name: string };
 type Filters = { q: string; emp: string; rounds: number; sort: NoResponseSort };
+
+// أعمدة «يُسحب الآن» حسب فترة العمر — تدرّج لوني: الأحدث أفتح (كهرماني) → الأقدم أحمر أقوى.
+const AGE_COLS: { bucket: OverdueAgeBucket; label: string; chip: string }[] = [
+  { bucket: "age_3_7", label: "٣–٧ أيام", chip: "bg-warning/15 text-warning" },
+  { bucket: "age_8_14", label: "٨–١٤ يوم", chip: "bg-destructive/15 text-destructive" },
+  { bucket: "age_15_30", label: "١٥–٣٠ يوم", chip: "bg-destructive/25 text-destructive" },
+  { bucket: "age_30plus", label: "أكثر من شهر", chip: "bg-destructive/40 text-destructive font-extrabold" },
+];
 
 // فئات «بانتظار السحب» حسب عدد المتابعات (بلا محصّن — لا يُسحب).
 const PENDING_COLS: { cat: EscalationCategory; pull: PullGroupCategory; label: string }[] = [
@@ -125,30 +133,33 @@ export function NoResponseView({
 
       {msg && <p className="mb-4 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">{msg}</p>}
 
-      {/* ===== ١) يُسحب الآن — صف لكل موظف ===== */}
+      {/* ===== ١) يُسحب الآن — صف لكل موظف، مفصّل بفترات العمر ===== */}
       <section className="mb-6">
         <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-destructive">
           <AlertTriangle className="size-4" /> يُسحب الآن (تجاوزوا مهلتهم)
         </h2>
         <div className="overflow-x-auto rounded-2xl border border-destructive/30 bg-card">
-          <table className="w-full min-w-[640px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <table className="w-full min-w-[820px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-medium">الموظف</th>
-                <th className="px-3 py-3 text-center font-medium">متأخر جدًا (+٥ أيام)</th>
-                <th className="px-3 py-3 text-center font-medium">متأخر (+٣ أيام)</th>
+                {AGE_COLS.map((c) => <th key={c.bucket} className="px-3 py-3 text-center font-medium">{c.label}</th>)}
+                <th className="px-3 py-3 text-center font-medium">أقدم تأخير</th>
                 <th className="px-3 py-3 text-center font-medium">الإجمالي</th>
                 <th className="px-3 py-3 font-medium">إجراء</th>
               </tr>
             </thead>
             <tbody>
               {overdueEmps.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">ما فيه من يُسحب الآن.</td></tr>
+                <tr><td colSpan={AGE_COLS.length + 4} className="px-4 py-8 text-center text-muted-foreground">ما فيه من يُسحب الآن.</td></tr>
               ) : overdueEmps.map((e) => (
                 <tr key={e.id} className="border-t border-border">
                   <td className="px-4 py-3 font-medium text-foreground">{e.name}</td>
-                  <NumPullCell value={e.overdueVery} tone="danger" onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "overdue_very", count: e.overdueVery })} pending={pending} />
-                  <NumPullCell value={e.overdueLate} tone="danger" onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "overdue_late", count: e.overdueLate })} pending={pending} />
+                  {AGE_COLS.map((c) => (
+                    <AgePullCell key={c.bucket} value={e.byAge[c.bucket]} chipCls={c.chip}
+                      onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: c.bucket, count: e.byAge[c.bucket] })} pending={pending} />
+                  ))}
+                  <td className="px-3 py-3 text-center font-medium text-muted-foreground">{e.oldestOverdueDays > 0 ? `${toArabicDigits(e.oldestOverdueDays)} يوم` : "—"}</td>
                   <td className="px-3 py-3 text-center font-bold text-destructive">{formatCount(e.totalOverdue)}</td>
                   <td className="px-3 py-3">
                     <PullBtn label="اسحب الكل" disabled={pending} onClick={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "overdue_all", count: e.totalOverdue })} />
@@ -299,6 +310,23 @@ function NumPullCell({ value, tone, onPull, pending }: { value: number; tone: "d
         <div className="flex items-center justify-center gap-1.5">
           <span className={`font-bold ${color}`}>{formatCount(value)}</span>
           <button onClick={onPull} disabled={pending} title="اسحب هذي المجموعة"
+            className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-40">اسحب</button>
+        </div>
+      )}
+    </td>
+  );
+}
+
+// خانة فترة عمر «يُسحب الآن»: رقم كشارة ملوّنة (تدرّج حسب العمر) + زر «اسحب» لتلك الفئة.
+function AgePullCell({ value, chipCls, onPull, pending }: { value: number; chipCls: string; onPull: () => void; pending: boolean }) {
+  return (
+    <td className="px-3 py-3 text-center">
+      {value === 0 ? (
+        <span className="text-muted-foreground">—</span>
+      ) : (
+        <div className="flex items-center justify-center gap-1.5">
+          <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${chipCls}`}>{formatCount(value)}</span>
+          <button onClick={onPull} disabled={pending} title="اسحب هذي الفئة"
             className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-40">اسحب</button>
         </div>
       )}

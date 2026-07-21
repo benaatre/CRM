@@ -12,7 +12,8 @@ import { notify } from "@/lib/notify";
 import { emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import {
-  warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, type EscalationCategory,
+  warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, overdueAgeBucket,
+  type EscalationCategory, type OverdueAgeBucket,
 } from "@/lib/no-response-escalation";
 import { getPendingPullByEmployee, type PendingPullEmployee } from "@/lib/data/no-response";
 
@@ -420,21 +421,15 @@ export async function manualPullLead(leadId: string): Promise<ActionResult> {
   return manualPullBatch([leadId]);
 }
 
-// فئة مجموعة السحب: «يُسحب الآن» (overdue) بعتباتها، أو «بانتظار» (pending) حسب عدد المتابعات.
+// فئة مجموعة السحب: «يُسحب الآن» كلها أو حسب فترة العمر (٣–٧ · ٨–١٤ · ١٥–٣٠ · ٣٠+)،
+// أو «بانتظار» (pending) حسب عدد المتابعات. فترات العمر مصدرها overdueAgeBucket (نفس العرض).
 export type PullGroupCategory =
-  | "overdue_all" | "overdue_very" | "overdue_late"
+  | "overdue_all" | OverdueAgeBucket
   | "pending_all" | "pending_0" | "pending_1" | "pending_2" | "pending_3plus";
 
-const OVERDUE_VERY_DAYS = 5;
-const OVERDUE_LATE_DAYS = 3;
-
 function matchPullCategory(cat: PullGroupCategory, state: string, daysSince: number, fu: number): boolean {
-  if (cat.startsWith("overdue")) {
-    if (state !== "overdue") return false;
-    if (cat === "overdue_very") return daysSince >= OVERDUE_VERY_DAYS;
-    if (cat === "overdue_late") return daysSince >= OVERDUE_LATE_DAYS && daysSince < OVERDUE_VERY_DAYS;
-    return true; // overdue_all
-  }
+  if (cat === "overdue_all") return state === "overdue";
+  if (cat.startsWith("age_")) return state === "overdue" && overdueAgeBucket(daysSince) === cat;
   if (state !== "pending") return false;
   if (cat === "pending_0") return fu === 0;
   if (cat === "pending_1") return fu === 1;

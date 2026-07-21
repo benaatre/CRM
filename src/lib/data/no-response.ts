@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import {
   getNoResponseConfig, noResponseBaseline, noResponseState, escalationCategory,
-  CATEGORY_ORDER, warnMessage, noAnswerStats, type EscalationCategory, type NoAnswerStats,
+  CATEGORY_ORDER, warnMessage, noAnswerStats, overdueAgeBucket, OVERDUE_AGE_ORDER,
+  type EscalationCategory, type NoAnswerStats, type OverdueAgeBucket,
 } from "@/lib/no-response-escalation";
 
 // سقف إعادة التوجيه — بعده يُعتبر العميل «مستنفدًا» (يُعطَّل زر التوزيع). موحّد مع auto-distribute.
@@ -57,15 +58,11 @@ export type PendingPullEmployee = {
   id: string;
   name: string;
   byCategory: Record<EscalationCategory, CategoryStat>;
-  overdueVery: number;  // يُسحب الآن ومتأخّر جدًا (+٥ أيام بلا متابعة)
-  overdueLate: number;  // يُسحب الآن ومتأخّر (٣–٥ أيام بلا متابعة)
+  byAge: Record<OverdueAgeBucket, number>; // «يُسحب الآن» موزّعًا على فترات العمر (٣–٧ · ٨–١٤ · ١٥–٣٠ · ٣٠+)
+  oldestOverdueDays: number;               // أقدم تأخير عند الموظف (أقصى daysSince) — لحجم المشكلة بنظرة
   totalPending: number; // مجموع بانتظار الإنذار عبر الفئات
   totalOverdue: number; // مجموع يُسحب الآن عبر الفئات
 };
-
-// عتبات أيام «يُسحب الآن» (مطلقة، مستقلة عن الفئة).
-export const OVERDUE_VERY_DAYS = 5;
-export const OVERDUE_LATE_DAYS = 3;
 
 export type PendingPullSummary = {
   employees: PendingPullEmployee[];
@@ -78,6 +75,10 @@ export type PendingPullSummary = {
 
 function emptyByCategory(): Record<EscalationCategory, CategoryStat> {
   return Object.fromEntries(CATEGORY_ORDER.map((c) => [c, { total: 0, pending: 0, overdue: 0 }])) as Record<EscalationCategory, CategoryStat>;
+}
+
+function emptyByAge(): Record<OverdueAgeBucket, number> {
+  return Object.fromEntries(OVERDUE_AGE_ORDER.map((a) => [a, 0])) as Record<OverdueAgeBucket, number>;
 }
 
 /** إحصاء «لم يرد» لكل عميل من متابعاته (نتيجة + وقت) — مصدر واحد يشاركه كل تجميع لم يتم الرد. */
@@ -130,11 +131,14 @@ export async function getPendingPullByEmployee(now: Date = new Date()): Promise<
     const { state, daysSince } = noResponseState(fu, baseline, now, config);
     const cat = escalationCategory(fu, config);
     const id = l.assignedToId as string;
-    const row = byEmp.get(id) ?? { id, name: l.assignedTo?.name ?? "—", byCategory: emptyByCategory(), overdueVery: 0, overdueLate: 0, totalPending: 0, totalOverdue: 0 };
+    const row = byEmp.get(id) ?? { id, name: l.assignedTo?.name ?? "—", byCategory: emptyByCategory(), byAge: emptyByAge(), oldestOverdueDays: 0, totalPending: 0, totalOverdue: 0 };
     row.byCategory[cat].total++;
     if (state === "overdue") {
       row.byCategory[cat].overdue++; row.totalOverdue++; totalOverdue++;
-      if (daysSince >= OVERDUE_VERY_DAYS) row.overdueVery++; else row.overdueLate++;
+      // فترة العمر (نفس daysSince من الـbaseline — بلا حساب جديد) + تتبّع أقدم تأخير.
+      row.byAge[overdueAgeBucket(daysSince)]++;
+      const d = Math.floor(daysSince);
+      if (d > row.oldestOverdueDays) row.oldestOverdueDays = d;
     } else if (state === "pending") {
       row.byCategory[cat].pending++; row.totalPending++; totalPending++;
     }
