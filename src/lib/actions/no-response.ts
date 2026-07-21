@@ -198,7 +198,8 @@ export async function distributeNoResponseBatch(leadIds: string[], opts: Distrib
       if (b) b.count++;
       else buckets.set(p.toUserId, { userId: p.toUserId, count: 1, sampleLeadId: p.leadId, sampleName: p.name });
     }
-    await emitTransferredLeadsBatch([...buckets.values()]);
+    // نوع التحويل من حالة التوزيع: fresh = «كعملاء جدد»، asis = «بمحتواهم» (withHistory).
+    await emitTransferredLeadsBatch([...buckets.values()], opts.leadState === "fresh" ? "fresh" : "withHistory");
     await logAudit(prisma, {
       userId: actor.id, action: "lead.no_response.distributed", entity: "lead",
       summary: `وزّع ${donePlan.length} عميل من «لم يتم الرد» (${opts.mode === "single" ? `إلى ${nameById.get(order[0])}` : `بالتساوي على ${buckets.size} موظف`}${opts.leadState === "fresh" ? " — كعميل جديد" : ""}${opts.override ? " — توزيع استثنائي (تجاوز السقف)" : ""}) · العملاء=${donePlan.map((p) => p.leadId).slice(0, 50).join(",")}`,
@@ -266,7 +267,8 @@ export async function autoDistributeNoResponse(): Promise<ActionResult> {
     const doneBuckets = [...buckets.values()]
       .map((b) => ({ ...b, count: assignments.filter((a) => a.toUserId === b.userId && succeeded.has(a.leadId)).length }))
       .filter((b) => b.count > 0);
-    await emitTransferredLeadsBatch(doneBuckets);
+    // التوزيع التلقائي للحوض دائمًا «asis» (بمحتواهم) → withHistory.
+    await emitTransferredLeadsBatch(doneBuckets, "withHistory");
     await logAudit(prisma, {
       userId: actor.id, action: "lead.no_response.autoDistributed", entity: "lead",
       summary: `وزّع تلقائيًا ${doneCount} عميل من «لم يتم الرد» على ${doneBuckets.length} موظف`,

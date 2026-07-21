@@ -75,22 +75,42 @@ export async function emitLeadAssignedBatch(buckets: LeadAssignedBucket[], db: D
   }
 }
 
+// نوع التحويل يحدّد صياغة الإشعار: fresh = «كعملاء جدد» (ابدأ من جديد)، withHistory = «بمحتواهم» (راجع التاريخ).
+export type TransferKind = "fresh" | "withHistory";
+
 /**
  * إطلاق «وصلك عملاء محوّلون» مجمّعًا لكل موظف — لتوزيع عملاء «لم يتم الرد» (عملاء سبق سحبهم).
- * صياغة تميّزهم عن العملاء الجدد وتحثّ على المتابعة السريعة. إشعار واحد لكل موظف.
+ * النص يتفرّق حسب نوع التحويل (fresh / withHistory). إشعار واحد لكل موظف.
+ * kind الافتراضي withHistory (الأأمن — لا يوحي بأن التاريخ صُفّر إن لم يكن كذلك).
  */
-export async function emitTransferredLeadsBatch(buckets: LeadAssignedBucket[], db: Db = prisma): Promise<void> {
+export async function emitTransferredLeadsBatch(
+  buckets: LeadAssignedBucket[],
+  kind: TransferKind = "withHistory",
+  db: Db = prisma,
+): Promise<void> {
   for (const b of buckets) {
     if (!b.userId || b.count <= 0) continue;
     const single = b.count === 1;
+    const text = transferNotifyText(kind, single, b.count, b.sampleName);
     await emitNotification({
       eventKey: "lead_assigned",
       assignedUserId: b.userId,
-      title: single ? "وصلك عميل محوّل" : "وصلوك عملاء محوّلون",
-      body: single
-        ? (b.sampleName ? `${b.sampleName} — عميل محوّل يحتاج متابعة سريعة` : "عميل محوّل يحتاج متابعة سريعة")
-        : `وصلك ${b.count} عملاء محوّلين، يحتاجون متابعة سريعة`,
+      title: text.title,
+      body: text.body,
       link: single && b.sampleLeadId ? `/leads/${b.sampleLeadId}` : "/leads",
     }, db);
   }
+}
+
+/** نص إشعار التحويل حسب النوع/العدد (سعودي). */
+function transferNotifyText(kind: TransferKind, single: boolean, count: number, sampleName?: string): { title: string; body: string } {
+  if (kind === "fresh") {
+    return single
+      ? { title: "وصلك عميل جديد للمتابعة", body: sampleName ? `${sampleName} — وصلك عميل جديد للمتابعة، ابدأ معه من جديد` : "وصلك عميل جديد للمتابعة — ابدأ معه من جديد" }
+      : { title: "وصلوك عملاء جدد للمتابعة", body: `وصلك ${count} عملاء جدد للمتابعة — ابدأ معهم من جديد` };
+  }
+  // withHistory
+  return single
+    ? { title: "وصلك عميل محوّل بتاريخه", body: sampleName ? `${sampleName} — عميل محوّل بتاريخه، راجع متابعاته السابقة` : "وصلك عميل محوّل بتاريخه — راجع متابعاته السابقة" }
+    : { title: "وصلوك عملاء محوّلون بتاريخهم", body: `وصلك ${count} عملاء محوّلين بتاريخهم — راجع متابعاتهم السابقة` };
 }
