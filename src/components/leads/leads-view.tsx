@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   purchaseMethodLabels, purchaseGoalLabels,
-  firstContactStageLabels, firstContactStageColor,
+  stageLabels, stageColor,
 } from "@/lib/labels";
 import { formatDate, toArabicDigits } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
@@ -189,11 +189,7 @@ export function LeadsView({
                 <Link href={`/leads/${l.id}`} className="flex min-h-11 shrink-0 items-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground hover:opacity-90">فتح</Link>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                {l.firstContactStage ? (
-                  <span className={`rounded-full border px-2 py-0.5 ${firstContactStageColor[l.firstContactStage]}`}>{firstContactStageLabels[l.firstContactStage]}</span>
-                ) : (
-                  <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground">بلا مرحلة</span>
-                )}
+                <span className={`rounded-full border px-2 py-0.5 ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
                 <span className="text-muted-foreground">الموظف: {l.assignedTo?.name ?? "غير موزّع"}</span>
                 {l.followUpsCount > 0 && (
                   <button onClick={() => setFuLead(l)} className="rounded-full border border-border px-2 py-0.5 text-gold">{toArabicDigits(l.followUpsCount)} متابعة</button>
@@ -217,7 +213,7 @@ export function LeadsView({
               <th className="px-4 py-3 font-medium">الموظف</th>
               <th className="px-4 py-3 font-medium">طريقة الشراء</th>
               <th className="px-4 py-3 font-medium">هدف الشراء</th>
-              <th className="px-4 py-3 font-medium">المرحلة الأولى</th>
+              <th className="px-4 py-3 font-medium">المرحلة الحالية</th>
               <th className="px-4 py-3 font-medium">المتابعات</th>
               <th className="px-4 py-3 font-medium">أول تواصل</th>
               <th className="px-3 py-3 font-medium">خيارات</th>
@@ -239,11 +235,7 @@ export function LeadsView({
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"}</td>
                   <td className="px-4 py-3">
-                    {l.firstContactStage ? (
-                      <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${firstContactStageColor[l.firstContactStage]}`}>{firstContactStageLabels[l.firstContactStage]}</span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
                   </td>
                   <td className="px-4 py-3">
                     {l.followUpsCount > 0 ? (
