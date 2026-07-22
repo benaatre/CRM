@@ -20,6 +20,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
+import { daysWaiting } from "@/lib/assignment";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
@@ -37,7 +38,12 @@ export type LeadRow = {
   attempts: number;
   budget: number | null;
   unitType: UnitType | null;
-  createdAt: Date;
+  // تاريخ دخول العميل النظام — للمالك/المدير فقط؛ يُحجب (null) عن الموظف (server-side).
+  createdAt: Date | null;
+  // لحظة استلام الموظف الحالي للعميل — يبدأ منها عدّاد الانتظار.
+  assignedAt: Date | null;
+  // أيام الانتظار منذ الاستلام/آخر تواصل (محسوبة على الخادم — تجنّبًا لتسريب createdAt للموظف).
+  daysWaiting: number;
   lastContact: Date | null;
   nextFollowup: Date | null;
   assignedTo: { id: string; name: string } | null;
@@ -153,7 +159,11 @@ function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): Lead
     attempts: l.attempts,
     budget: l.budget ? l.budget.toNumber() : null,
     unitType: l.unitType,
-    createdAt: l.createdAt,
+    // حجب تاريخ دخول النظام عن الموظف (يراه OWNER/ADMIN فقط) — نفس نمط حجب مبالغ الحجوزات.
+    createdAt: ctx.manager ? l.createdAt : null,
+    assignedAt: l.assignedAt,
+    // يُحسب على الخادم بالتواريخ الحقيقية، فلا يحتاج الموظف createdAt إطلاقًا.
+    daysWaiting: daysWaiting({ assignedAt: l.assignedAt, createdAt: l.createdAt, lastContact: l.lastContact }),
     lastContact: l.lastContact,
     nextFollowup: l.nextFollowup,
     // المُسند لمالك يُعرض «غير موزّع» (المالك ليس موظف مبيعات).

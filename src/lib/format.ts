@@ -117,6 +117,15 @@ export function timeAgo(date: Date | string | null | undefined): string {
   return `قبل ${toArabicDigits(Math.abs(days))} يوم`;
 }
 
+/** مدة الانتظار بلهجة سعودية: «اليوم» / «منذ يوم» / «منذ يومين» / «منذ ٣ أيام» / «منذ ١٥ يوم». */
+export function daysAgoLabel(days: number): string {
+  if (days <= 0) return "اليوم";
+  if (days === 1) return "منذ يوم";
+  if (days === 2) return "منذ يومين";
+  if (days <= 10) return `منذ ${toArabicDigits(days)} أيام`;
+  return `منذ ${toArabicDigits(days)} يوم`;
+}
+
 /** هل المتابعة مستحقّة (اليوم أو فات موعدها)؟ */
 export function isFollowupDue(date: Date | string | null | undefined): boolean {
   if (!date) return false;

@@ -13,7 +13,7 @@ import { updateLeadIntake, updateLeadChannel } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
 import { cancelBooking } from "@/lib/actions/bookings";
-import { formatDate, formatCurrencyFull, toArabicDigits } from "@/lib/format";
+import { formatDate, formatCurrencyFull, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import type { LeadDetail, LeadTransferHistory } from "@/lib/data/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { FollowUpsForm } from "./followups-form";
@@ -29,7 +29,7 @@ const tempColor: Record<string, string> = {
   "بارد": "bg-info/15 text-info",
 };
 
-export function LeadProfile({ detail, projects, transferHistory }: { detail: LeadDetail; projects: { id: string; name: string }[]; transferHistory: LeadTransferHistory | null }) {
+export function LeadProfile({ detail, projects, transferHistory, isManager }: { detail: LeadDetail; projects: { id: string; name: string }[]; transferHistory: LeadTransferHistory | null; isManager: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("data");
@@ -66,6 +66,10 @@ export function LeadProfile({ detail, projects, transferHistory }: { detail: Lea
                 <span dir="ltr">{detail.phone}</span>
                 <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[detail.stage]}`}>{stageLabels[detail.stage]}</span>
               </div>
+              {/* كتلة الاستلام للموظف فقط — المالك/المدير كما كانت الشاشة سابقًا (فحص دور صريح). */}
+              {!isManager && (
+                <div className="mt-1.5 text-xs text-muted-foreground">استلمته: <span className="font-medium text-gold">{daysAgoLabel(detail.daysWaiting)}</span></div>
+              )}
             </div>
             <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xl font-bold text-gold">{detail.name.charAt(0)}</div>
           </div>
