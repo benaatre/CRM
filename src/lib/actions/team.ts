@@ -228,7 +228,8 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
     const emps = await loadEmployees();
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
     const dupIds = await duplicateLeadIds(); // المكررون يُوزّعون من «العملاء المكررون»، لا من هنا
-    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+    // م-٣: التعريف الموحّد لـ«غير موزّعين» (يطابق الداشبورد والمحرك): جديد + غير مؤرشف.
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null, stage: "NEW", isArchived: false, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
 
     const n = perEmployee && perEmployee > 0 ? perEmployee : 0;
@@ -303,7 +304,8 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
     }
 
     const dupIds = await duplicateLeadIds(); // المكررون يُوزّعون من «العملاء المكررون»، لا من هنا
-    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+    // م-٣: التعريف الموحّد لـ«غير موزّعين» (يطابق الداشبورد والمحرك): جديد + غير مؤرشف.
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null, stage: "NEW", isArchived: false, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
     if (totalWanted > unassigned.length) return { ok: false, error: `المجموع ${totalWanted} أكبر من المتاح ${unassigned.length}` };
 
@@ -340,7 +342,8 @@ export async function distributeLeastLoaded(): Promise<ActionResult> {
     const emps = await loadEmployees();
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفين مفعّلين للتوزيع" };
     const dupIds = await duplicateLeadIds(); // المكررون يُوزّعون من «العملاء المكررون»، لا من هنا
-    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+    // م-٣: التعريف الموحّد لـ«غير موزّعين» (يطابق الداشبورد والمحرك): جديد + غير مؤرشف.
+    const unassigned = await prisma.lead.findMany({ where: { assignedToId: null, stage: "NEW", isArchived: false, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
     if (unassigned.length === 0) return { ok: true, message: "ما فيه عملاء غير موزّعين" };
 
     const load = new Map(emps.map((e) => [e.id, e.count]));

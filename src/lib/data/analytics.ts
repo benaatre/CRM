@@ -56,20 +56,24 @@ export type AnalyticsData = {
     visits: number;     // الزيارات
     bookings: number;   // الحجوزات
     closed: number;     // صفقات مقفولة
-    conversion: number; // معدل التحويل % (مقفول/معيّن)
+    conversion: number; // معدل التحويل % — الصيغة الموحّدة: الحجوزات ÷ الزيارات (م-٣)
     target: number;     // الهدف الشهري
     progress: number | null; // % نحو الهدف
   }[];
 };
 
+// م-٣: كل المراحل التسع (كان ٧ بلا FOLLOW_UP_LATER وCLOSED_LOST — عميل «موعد لاحق»
+// كان يختفي من القمع كليًا ومجموعه لا يساوي إجمالي العملاء). نفس ترتيب قمع الداشبورد.
 const FUNNEL: LeadStage[] = [
   "NEW",
   "ATTEMPTED",
   "INTERESTED",
+  "FOLLOW_UP_LATER",
   "VIEWING",
   "NEGOTIATION",
   "RESERVED",
   "CLOSED_WON",
+  "CLOSED_LOST",
 ];
 
 export async function getAnalytics(): Promise<AnalyticsData> {
@@ -185,15 +189,18 @@ export async function getAnalytics(): Promise<AnalyticsData> {
   const team = employees.map((e) => {
     const assigned = assignedMap.get(e.id) ?? 0;
     const closed = closedMap.get(e.id) ?? 0;
+    const visits = visitsMap.get(e.id) ?? 0;
+    const empBookings = bookMap.get(e.id) ?? 0;
     return {
       id: e.id,
       name: e.name,
       assigned,
       followups: followUpsMap.get(e.id) ?? 0,
-      visits: visitsMap.get(e.id) ?? 0,
-      bookings: bookMap.get(e.id) ?? 0,
+      visits,
+      bookings: empBookings,
       closed,
-      conversion: assigned > 0 ? Math.round((closed / assigned) * 100) : 0,
+      // م-٣: الصيغة الموحّدة (حجوزات ÷ زيارات) — كانت مقفول÷معيّن هنا وحجوزات÷زيارات بالداشبورد.
+      conversion: visits > 0 ? Math.round((empBookings / visits) * 100) : 0,
       target: e.targetDeals,
       progress: e.targetDeals > 0 ? Math.round((closed / e.targetDeals) * 100) : null,
     };
@@ -510,7 +517,8 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
   // النتائج
   const closed = myLeads.filter((l) => l.stage === "CLOSED_WON").length;
   const sales = myBookings.filter((b) => b.stage === "SOLD" || b.stage === "DELIVERED").length;
-  const conversion = total > 0 ? Math.round((closed / total) * 100) : 0;
+  // م-٣: الصيغة الموحّدة لمعدل التحويل في النظام كله = الحجوزات ÷ الزيارات.
+  const conversion = visits > 0 ? Math.round((myBookings.length / visits) * 100) : 0;
   const target = me.targetDeals;
   const targetPct = target > 0 ? Math.round((closed / target) * 100) : null;
 
@@ -528,12 +536,12 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
     .filter((x): x is StuckLead => x !== null)
     .slice(0, 50);
 
-  // متوسطات الفريق — بلا جلب الجدول كاملًا: groupBy للمراحل + حقلا وقت للمُتواصَل معهم فقط.
+  // متوسطات الفريق — بلا جلب الجدول كاملًا. م-٣: التحويل بالصيغة الموحّدة (حجوزات ÷ زيارات).
   const empIdList = employees.map((e) => e.id);
-  const [teamStageCounts, teamContacted] = await Promise.all([
-    prisma.lead.groupBy({
-      by: ["assignedToId", "stage"],
-      where: { assignedToId: { in: empIdList } },
+  const [teamBookings, teamContacted] = await Promise.all([
+    prisma.booking.groupBy({
+      by: ["sellerId"],
+      where: { sellerId: { in: empIdList } },
       _count: { _all: true },
     }),
     prisma.lead.findMany({
@@ -541,15 +549,20 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
       select: { createdAt: true, firstContactAt: true },
     }),
   ]);
-  const teamTotals = new Map<string, { total: number; closed: number }>();
-  for (const g of teamStageCounts) {
-    const id = g.assignedToId as string;
-    const t = teamTotals.get(id) ?? { total: 0, closed: 0 };
-    t.total += g._count._all;
-    if (g.stage === "CLOSED_WON") t.closed += g._count._all;
-    teamTotals.set(id, t);
+  const teamBookingsByEmp = new Map(teamBookings.map((b) => [b.sellerId, b._count._all]));
+  // زيارات كل موظف من fuByType (مجموعة مجلوبة أعلاه) — بلا استعلام إضافي.
+  const teamVisitsByEmp = new Map<string, number>();
+  for (const f of fuByType) {
+    if (f.type === "VISIT_PROJECT" || f.type === "VISIT_OFFICE") {
+      teamVisitsByEmp.set(f.createdBy, (teamVisitsByEmp.get(f.createdBy) ?? 0) + f._count._all);
+    }
   }
-  const convs = [...teamTotals.values()].filter((t) => t.total > 0).map((t) => (t.closed / t.total) * 100);
+  const convs = empIdList
+    .map((id) => {
+      const v = teamVisitsByEmp.get(id) ?? 0;
+      return v > 0 ? ((teamBookingsByEmp.get(id) ?? 0) / v) * 100 : null;
+    })
+    .filter((x): x is number => x !== null);
   const teamAvgConversion = convs.length ? Math.round(convs.reduce((a, b) => a + b, 0) / convs.length) : 0;
   const teamResp = teamContacted.map((l) => (l.firstContactAt!.getTime() - l.createdAt.getTime()) / HOUR).filter((h) => h >= 0);
   const teamAvgResponseHours = avg(teamResp);

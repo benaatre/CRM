@@ -17,6 +17,7 @@ import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
 import { assignLead, assignLeadsToEmployee, assignmentData } from "@/lib/assignment";
+import { applyStageChange } from "@/lib/stage-change";
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
@@ -151,7 +152,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
   }
 }
 
-/** تغيير مرحلة العميل (السحب في الكانبان أو من الدرج) + تسجيل في السجل. */
+/** تغيير مرحلة العميل من الدرج — م-٢: نفس مسار الكانبان بالضبط (applyStageChange). */
 export async function updateLeadStage(
   leadId: string,
   stage: LeadStage,
@@ -164,20 +165,13 @@ export async function updateLeadStage(
       return { ok: false, error: "تحويل «غير مهتم» لازم يكون مع سبب — سجّله من نتيجة المتابعة." };
     }
 
-    await prisma.$transaction([
-      prisma.lead.update({
-        where: { id: leadId },
-        data: { stage, lastContact: new Date() },
-      }),
-      prisma.activity.create({
-        data: {
-          leadId,
-          userId: user.id,
-          type: ActivityType.STAGE_CHANGE,
-          note: `نُقل إلى مرحلة جديدة`,
-        },
-      }),
-    ]);
+    const full = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, stage: true, firstContactStage: true, firstContactDate: true, firstContactAt: true },
+    });
+    if (!full) return { ok: false, error: "العميل غير موجود" };
+
+    await prisma.$transaction((tx) => applyStageChange(tx, full, stage, user.id, "من الدرج"));
 
     revalidateLeads();
     return { ok: true };
@@ -197,6 +191,10 @@ export async function addActivity(
 
     const bumpsAttempt =
       type === ActivityType.CALL || type === ActivityType.WHATSAPP;
+    // م-٢: «تواصل فعلي» = مكالمة/واتساب/زيارة/موعد فقط — ملاحظة داخلية (NOTE) أو تغيير
+    // مرحلة لا يضبطان firstContactAt (كانا ينفخان «نسبة الرد» في التحليلات).
+    const isContact =
+      bumpsAttempt || type === ActivityType.VISIT || type === ActivityType.APPOINTMENT;
 
     await prisma.$transaction(async (tx) => {
       await tx.activity.create({
@@ -210,7 +208,7 @@ export async function addActivity(
         where: { id: leadId },
         data: {
           lastContact: new Date(),
-          firstContactAt: lead?.firstContactAt ?? new Date(),
+          ...(isContact ? { firstContactAt: lead?.firstContactAt ?? new Date() } : {}),
           ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
         },
       });

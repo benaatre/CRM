@@ -284,9 +284,12 @@ export const resultToStage: Record<FollowUpResult, LeadStage> = {
   NEGOTIATING: "NEGOTIATION",
   NOT_ANSWERED_SCHEDULED: "ATTEMPTED",
   NOT_ANSWERED_WHATSAPP: "ATTEMPTED",
-  NOT_INTERESTED_LOCATION: "NEGOTIATION",
-  NOT_INTERESTED_SPACE: "NEGOTIATION",
-  NOT_INTERESTED_PRICE: "NEGOTIATION",
+  // م-٣ (تدقيق 2026-07): «غير مهتم — موقع/مساحة/سعر» = خسارة بسبب مسجّل، لا «تفاوض».
+  // الربط القديم بـ NEGOTIATION كان يمنع وصول هؤلاء لـ CLOSED_LOST نهائيًا،
+  // فتفصيل أسباب الرفض في الداشبورد يطلع شبه صفري دائمًا. (للمستقبل فقط — بلا تصحيح بيانات قديمة)
+  NOT_INTERESTED_LOCATION: "CLOSED_LOST",
+  NOT_INTERESTED_SPACE: "CLOSED_LOST",
+  NOT_INTERESTED_PRICE: "CLOSED_LOST",
   NOT_INTERESTED_FINAL: "CLOSED_LOST",
   FOLLOW_UP_SCHEDULED: "FOLLOW_UP_LATER",
   BOOKED: "RESERVED",

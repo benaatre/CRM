@@ -127,7 +127,9 @@ export async function getPendingPullByEmployee(now: Date = new Date()): Promise<
       isArchived: false,
       stage: { in: [...NO_RESPONSE_STAGES] },
       reassignCount: { lt: MAX_REASSIGNS },
-      assignedTo: { role: "EMPLOYEE" },
+      // م-٣: active:true — يطابق المحرّك (runNoResponsePullback)؛ عملاء الموظف المعطَّل
+      // كانوا يُعدّون «يُسحب الآن» في اللوحة والمحرك لا يسحبهم — رقم لا ينزل أبدًا.
+      assignedTo: { role: "EMPLOYEE", active: true },
       manualAssignedAt: null,
     },
     select: { id: true, assignedToId: true, assignedAt: true, assignedTo: { select: { name: true } } },
@@ -210,7 +212,8 @@ export async function getPullbackPreview(filters: NoResponseFilters = {}, now: D
       isArchived: false,
       stage: { in: [...NO_RESPONSE_STAGES] },
       reassignCount: { lt: MAX_REASSIGNS },
-      assignedTo: { role: "EMPLOYEE" },
+      // م-٣: active:true — يطابق المحرّك (انظر getPendingPullByEmployee).
+      assignedTo: { role: "EMPLOYEE", active: true },
       manualAssignedAt: null,
       ...(q ? { OR: [{ name: { contains: q } }, { phone: { contains: q } }] } : {}),
     },
