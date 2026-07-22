@@ -615,8 +615,17 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     if (candidates.length === 0) return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, capped: 0 };
 
     // متابعات كل عميل (نتيجة + وقت) لحساب «لم يرد» فقط (دفعة واحدة، بلا N+1).
+    // م-٥: العدّاد يحتسب ما بعد آخر إسناد فقط (§١أ) — فنحصر الجلب بما بعد أقدم assignedAt
+    // بين المرشّحين بدل كامل تاريخ المتابعات (جدول FollowUp ينمو بلا حذف).
     const ids = candidates.map((c) => c.id);
-    const fus = await prisma.followUp.findMany({ where: { leadId: { in: ids } }, select: { leadId: true, result: true, createdAt: true } });
+    const minAssignedAt = candidates.reduce<Date | null>(
+      (min, c) => (c.assignedAt && (!min || c.assignedAt < min) ? c.assignedAt : min),
+      null,
+    );
+    const fus = await prisma.followUp.findMany({
+      where: { leadId: { in: ids }, ...(minAssignedAt ? { createdAt: { gte: minAssignedAt } } : {}) },
+      select: { leadId: true, result: true, createdAt: true },
+    });
     const fuByLead = new Map<string, { result: string; createdAt: Date }[]>();
     for (const f of fus) {
       const arr = fuByLead.get(f.leadId);

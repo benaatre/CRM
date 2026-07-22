@@ -463,7 +463,17 @@ export async function pullGroup(employeeId: string, category: PullGroupCategory)
       select: { id: true, assignedAt: true },
     });
     const ids = leads.map((l) => l.id);
-    const fus = ids.length ? await prisma.followUp.findMany({ where: { leadId: { in: ids } }, select: { leadId: true, result: true, createdAt: true } }) : [];
+    // م-٥: حصر الجلب بما بعد أقدم assignedAt — العدّاد يحتسب ما بعد آخر إسناد فقط.
+    const minAssignedAt = leads.reduce<Date | null>(
+      (min, l) => (l.assignedAt && (!min || l.assignedAt < min) ? l.assignedAt : min),
+      null,
+    );
+    const fus = ids.length
+      ? await prisma.followUp.findMany({
+          where: { leadId: { in: ids }, ...(minAssignedAt ? { createdAt: { gte: minAssignedAt } } : {}) },
+          select: { leadId: true, result: true, createdAt: true },
+        })
+      : [];
     const fuByLead = new Map<string, { result: string; createdAt: Date }[]>();
     for (const f of fus) {
       const arr = fuByLead.get(f.leadId);

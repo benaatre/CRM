@@ -474,16 +474,17 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
   const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, targetDeals: true } });
   if (!me) return null;
 
-  const [allLeads, fuByType, employees, myBookings] = await Promise.all([
+  // م-٥: كان يجلب جدول Lead كاملًا (بأسماء وجوالات كل العملاء) لكل موظف يفتح «أدائي».
+  // الآن: عملاء الموظف فقط، ومتوسطات الفريق عبر groupBy + جلب حقلَي وقتٍ للمُتواصَل معهم فقط.
+  const [myLeads, fuByType, employees, myBookings] = await Promise.all([
     prisma.lead.findMany({
-      select: { assignedToId: true, stage: true, isArchived: true, purchaseGoal: true, purchaseMethod: true, createdAt: true, firstContactAt: true, nextFollowup: true, lastContact: true, name: true, phone: true },
+      where: { assignedToId: userId },
+      select: { stage: true, isArchived: true, purchaseGoal: true, purchaseMethod: true, createdAt: true, firstContactAt: true, nextFollowup: true, lastContact: true, name: true, phone: true },
     }),
     prisma.followUp.groupBy({ by: ["createdBy", "type"], _count: { _all: true } }),
     prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true } }),
     prisma.booking.findMany({ where: { sellerId: userId }, select: { stage: true } }),
   ]);
-
-  const myLeads = allLeads.filter((l) => l.assignedToId === userId);
   const total = myLeads.length;
   const archived = myLeads.filter((l) => l.isArchived).length;
 
@@ -527,15 +528,30 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
     .filter((x): x is StuckLead => x !== null)
     .slice(0, 50);
 
-  // متوسطات الفريق
-  const empIds = new Set(employees.map((e) => e.id));
-  const convs: number[] = [];
-  for (const e of employees) {
-    const eLeads = allLeads.filter((l) => l.assignedToId === e.id);
-    if (eLeads.length > 0) convs.push((eLeads.filter((l) => l.stage === "CLOSED_WON").length / eLeads.length) * 100);
+  // متوسطات الفريق — بلا جلب الجدول كاملًا: groupBy للمراحل + حقلا وقت للمُتواصَل معهم فقط.
+  const empIdList = employees.map((e) => e.id);
+  const [teamStageCounts, teamContacted] = await Promise.all([
+    prisma.lead.groupBy({
+      by: ["assignedToId", "stage"],
+      where: { assignedToId: { in: empIdList } },
+      _count: { _all: true },
+    }),
+    prisma.lead.findMany({
+      where: { assignedToId: { in: empIdList }, firstContactAt: { not: null } },
+      select: { createdAt: true, firstContactAt: true },
+    }),
+  ]);
+  const teamTotals = new Map<string, { total: number; closed: number }>();
+  for (const g of teamStageCounts) {
+    const id = g.assignedToId as string;
+    const t = teamTotals.get(id) ?? { total: 0, closed: 0 };
+    t.total += g._count._all;
+    if (g.stage === "CLOSED_WON") t.closed += g._count._all;
+    teamTotals.set(id, t);
   }
+  const convs = [...teamTotals.values()].filter((t) => t.total > 0).map((t) => (t.closed / t.total) * 100);
   const teamAvgConversion = convs.length ? Math.round(convs.reduce((a, b) => a + b, 0) / convs.length) : 0;
-  const teamResp = allLeads.filter((l) => l.assignedToId && empIds.has(l.assignedToId) && l.firstContactAt).map((l) => (l.firstContactAt!.getTime() - l.createdAt.getTime()) / HOUR).filter((h) => h >= 0);
+  const teamResp = teamContacted.map((l) => (l.firstContactAt!.getTime() - l.createdAt.getTime()) / HOUR).filter((h) => h >= 0);
   const teamAvgResponseHours = avg(teamResp);
 
   return {

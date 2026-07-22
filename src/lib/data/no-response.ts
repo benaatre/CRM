@@ -93,7 +93,15 @@ async function noAnswerStatsByLead(leads: { id: string; assignedAt: Date | null 
   const out = new Map<string, NoAnswerStats>();
   if (leads.length === 0) return out;
   const assignedAtById = new Map(leads.map((l) => [l.id, l.assignedAt]));
-  const fus = await prisma.followUp.findMany({ where: { leadId: { in: leads.map((l) => l.id) } }, select: { leadId: true, result: true, createdAt: true } });
+  // م-٥: العدّاد يحتسب ما بعد آخر إسناد فقط — نحصر الجلب بما بعد أقدم assignedAt في المجموعة.
+  const minAssignedAt = leads.reduce<Date | null>(
+    (min, l) => (l.assignedAt && (!min || l.assignedAt < min) ? l.assignedAt : min),
+    null,
+  );
+  const fus = await prisma.followUp.findMany({
+    where: { leadId: { in: leads.map((l) => l.id) }, ...(minAssignedAt ? { createdAt: { gte: minAssignedAt } } : {}) },
+    select: { leadId: true, result: true, createdAt: true },
+  });
   const byLead = new Map<string, { result: string; createdAt: Date }[]>();
   for (const f of fus) {
     const arr = byLead.get(f.leadId);

@@ -4,27 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { timeAgo } from "@/lib/format";
-import { getNotifications, markAllRead, type NotificationDTO } from "@/lib/actions/notifications";
+import { markAllRead, type NotificationDTO } from "@/lib/actions/notifications";
+import { subscribeNotifications, markSnapshotRead } from "@/components/layout/notifications-store";
 import { eventColor } from "@/lib/notifications/event-styles";
 
 // ملاحظة: الصوت والتوست يتولّاهما NotificationCenter (مركّب مرة واحدة في الـ layout)
 // تفاديًا لتكرار الصوت — الجرس للقائمة والعدّاد فقط.
+// البيانات من المخزن المشترك (notifications-store) — بولينق واحد للجلسة كلها (م-٥).
 export function NotificationBell() {
   const [items, setItems] = useState<NotificationDTO[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  async function load() {
-    const res = await getNotifications();
-    setItems(res.items);
-    setUnread(res.unread);
-  }
-
   useEffect(() => {
-    load();
-    const t = setInterval(load, 15000);
-    return () => clearInterval(t);
+    return subscribeNotifications((s) => {
+      setItems(s.items);
+      setUnread(s.unread);
+    });
   }, []);
 
   // إغلاق القائمة عند الضغط خارجها.
@@ -46,8 +43,7 @@ export function NotificationBell() {
     const next = !open;
     setOpen(next);
     if (next && unread > 0) {
-      setUnread(0);
-      setItems((xs) => xs.map((x) => ({ ...x, read: true })));
+      markSnapshotRead(); // تحديث اللقطة المشتركة (الجرس + المركز) فورًا
       markAllRead().catch(() => {});
     }
   }
