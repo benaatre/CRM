@@ -329,6 +329,8 @@ const REASON_LABELS: Record<string, string> = {
   initial: "إسناد أولي",
   timeout: "سحب بعد تأخّر التواصل",
   no_response: "سحب — لم يتم الرد",
+  no_response_neglect: "سحب — تقصير (انتهت المهلة)",
+  no_response_exhausted: "سحب — استنفاد محاولات (تابع وما رد)",
   manual_pull: "سحب يدوي (الإدارة)",
   manual_redistribute: "توزيع يدوي",
 };

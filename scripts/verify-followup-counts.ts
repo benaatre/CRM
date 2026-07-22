@@ -31,7 +31,7 @@ async function main() {
 
   for (const l of sample) {
     const fus = await prisma.followUp.findMany({ where: { leadId: l.id }, select: { result: true, createdAt: true } });
-    const stats = noAnswerStats(fus.map((f) => ({ result: f.result, createdAt: f.createdAt })));
+    const stats = noAnswerStats(fus.map((f) => ({ result: f.result, createdAt: f.createdAt })), l.assignedAt);
     const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
     const { state, daysSince } = noResponseState(stats.noAnswerCount, baseline, now, config);
     const cat = escalationCategory(stats.noAnswerCount, config);

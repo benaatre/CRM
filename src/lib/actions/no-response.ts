@@ -10,7 +10,7 @@ import { requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notify";
 import { emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
-import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
+import { NO_RESPONSE_STAGES, unreachableLeadIds } from "@/lib/auto-distribute";
 import {
   warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, overdueAgeBucket,
   type EscalationCategory, type OverdueAgeBucket,
@@ -32,7 +32,7 @@ async function sendGraduatedWarnings(emp: PendingPullEmployee): Promise<number> 
   let sent = 0;
   for (const { cat, fu } of WARN_CATS) {
     const stat = emp.byCategory[cat];
-    const n = stat.pending + stat.overdue;
+    const n = stat.warning + stat.overdue; // ننذر عن «تحذير ٢٤س» + «يُسحب الآن» (المستعجلين)
     if (n === 0) continue;
     await notify(prisma, [emp.id], "no_response.warn", "متابعة مطلوبة", warnMessage(fu, n), WARN_LINK);
     sent += n;
@@ -228,8 +228,13 @@ export async function autoDistributeNoResponse(): Promise<ActionResult> {
     const emps = await activeEmployees(now);
     if (emps.length === 0) return { ok: false, error: "ما فيه موظفون نشطون للتوزيع" };
 
+    // §٤: نستبعد «تعذّر الوصول» من التوزيع التلقائي للحوض (يبقون في قسمهم عند المالك).
+    const unreachable = await unreachableLeadIds();
     const queue = await prisma.lead.findMany({
-      where: { assignedToId: null, reassignCount: { gt: 0, lt: MAX_REASSIGNS }, isArchived: false, stage: { in: [...NO_RESPONSE_STAGES] } },
+      where: {
+        assignedToId: null, reassignCount: { gt: 0, lt: MAX_REASSIGNS }, isArchived: false, stage: { in: [...NO_RESPONSE_STAGES] },
+        ...(unreachable.size ? { id: { notIn: [...unreachable] } } : {}),
+      },
       select: { id: true, name: true },
       orderBy: { updatedAt: "asc" },
     });
@@ -290,7 +295,7 @@ export async function warnEmployee(employeeId: string): Promise<ActionResult> {
     const actor = await requireOwner();
     const summary = await getPendingPullByEmployee();
     const row = summary.employees.find((e) => e.id === employeeId);
-    const n = row ? row.totalPending + row.totalOverdue : 0;
+    const n = row ? row.totalWarning + row.totalOverdue : 0;
     if (!row || n === 0) return { ok: true, message: "الموظف ما عنده عملاء متأخرون" };
 
     const sent = await sendGraduatedWarnings(row);
@@ -308,7 +313,7 @@ export async function warnAllEmployees(): Promise<ActionResult> {
   try {
     const actor = await requireOwner();
     const summary = await getPendingPullByEmployee();
-    const targets = summary.employees.filter((e) => e.totalPending + e.totalOverdue > 0);
+    const targets = summary.employees.filter((e) => e.totalWarning + e.totalOverdue > 0);
     if (targets.length === 0) return { ok: true, message: "ما فيه موظفون عندهم عملاء متأخرون" };
 
     for (const e of targets) await sendGraduatedWarnings(e);
@@ -340,7 +345,6 @@ export async function manualPullBatch(leadIds: string[], ctx?: { note?: string }
     const targets = leads.filter((l) => l.assignedTo?.role === "EMPLOYEE");
     if (targets.length === 0) return { ok: false, error: "ما فيه عملاء صالحون للسحب (غير مُسندين لموظف)" };
 
-    const now = new Date();
     const batchId = randomUUID();
     const CHUNK = 100;
     // من نجح سحبه فعليًا — للإشعارات المجمّعة والتدقيق الدقيق.
@@ -430,7 +434,8 @@ export type PullGroupCategory =
 function matchPullCategory(cat: PullGroupCategory, state: string, daysSince: number, fu: number): boolean {
   if (cat === "overdue_all") return state === "overdue";
   if (cat.startsWith("age_")) return state === "overdue" && overdueAgeBucket(daysSince) === cat;
-  if (state !== "pending") return false;
+  // فئات «بانتظار السحب» = حالة warning (آخر ٢٤س قبل السحب) — الرقم الرئيسي في اللوحة.
+  if (state !== "warning") return false;
   if (cat === "pending_0") return fu === 0;
   if (cat === "pending_1") return fu === 1;
   if (cat === "pending_2") return fu === 2;
@@ -467,7 +472,7 @@ export async function pullGroup(employeeId: string, category: PullGroupCategory)
 
     const picked: string[] = [];
     for (const l of leads) {
-      const stats = noAnswerStats(fuByLead.get(l.id) ?? []);
+      const stats = noAnswerStats(fuByLead.get(l.id) ?? [], l.assignedAt); // §١أ: عدّاد ما بعد آخر إسناد
       if (!stats.included) continue; // رد العميل → خارج النظام
       const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
       const { state, daysSince } = noResponseState(stats.noAnswerCount, baseline, now, config);
@@ -560,7 +565,7 @@ export async function undoPull(batchId: string): Promise<ActionResult> {
         if (res.count !== 1) return null;
         // احذف سطر السحب الأصلي (يبقى الأثر الدائم في AuditLog).
         await tx.reassignment.deleteMany({
-          where: { leadId: p.leadId, fromUserId: p.from, toUserId: null, reason: { in: ["no_response", "manual_pull"] }, createdAt: { gte: winStart, lte: winEnd } },
+          where: { leadId: p.leadId, fromUserId: p.from, toUserId: null, OR: [{ reason: { startsWith: "no_response" } }, { reason: "manual_pull" }], createdAt: { gte: winStart, lte: winEnd } },
         });
         await tx.activity.create({ data: { leadId: p.leadId, userId: actor.id, type: ActivityType.ASSIGNMENT, note: "تراجع عن السحب — رجع للموظف الأصلي" } });
         await logAudit(tx, { userId: actor.id, action: "lead.no_response.undoPull", entity: "lead", entityId: p.leadId, summary: `[batch=${id}] تراجع عن السحب · أُرجع إلى ${p.from}` });

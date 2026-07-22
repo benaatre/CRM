@@ -1,14 +1,11 @@
-// منطق التصعيد المتدرّج لـ«لم يتم الرد» — مصدر الحقيقة الوحيد (نقي: بلا server-only / prisma).
-// كل قرارات المهلة/الإنذار/السحب/الحصانة حسب عدد المتابعات هنا. يستخدمه المحرّك واللوحات معًا،
-// فما يفترق السلوك عن العرض.
+// منطق «لم يتم الرد» — مصدر الحقيقة الوحيد (نقي: بلا server-only / prisma). يستخدمه المحرّك واللوحات معًا،
+// فما يفترق السلوك عن العرض. كل الأرقام تُشتق من دالتين: baseline (المرجع الزمني) + noAnswerCount.
 //
-// الجدول (مهلة بالأيام حسب عدد المتابعات؛ الإنذار يوم = المهلة، السحب يوم = المهلة + ١):
-//   0 متابعة  → مهلة يومان  → إنذار يوم ٢ → سحب يوم ٣
-//   1 متابعة  → مهلة يومان  → إنذار يوم ٢ → سحب يوم ٣
-//   2 متابعة  → مهلة ٣ أيام → إنذار يوم ٣ → سحب يوم ٤
-//   3 متابعات → مهلة ٤ أيام → إنذار يوم ٤ → سحب يوم ٥
-//   4 متابعات → مهلة ٥ أيام → إنذار يوم ٥ → سحب يوم ٦
-//   5+ متابعات → محصّن نهائيًا، لا يُسحب أبدًا
+// §١ الجدول الجديد (noAnswerCount = متابعات «لم يرد» بعد آخر إسناد فقط — يتصفّر عند النقل):
+//   count = 0  → خارج نظام «لم يتم الرد» إطلاقًا
+//   count = 1  → مهلة ٣ أيام  ثم «يُسحب الآن»
+//   count = 2  → مهلة يومان   ثم «يُسحب الآن»
+//   count ≥ ٣  → «يُسحب الآن» فورًا (بلا مهلة)
 
 export type NoResponseConfig = {
   enabled: boolean;      // النظام مفعّل (سحب حقيقي) أم معاينة فقط (dry-run)
@@ -17,8 +14,10 @@ export type NoResponseConfig = {
   activationDate: Date | null; // حاجز التفعيل الاختياري (max مع المرجع الزمني) — مستقلّ عن sweepCutoffAt
 };
 
-export const DEFAULT_TIMEOUT_DAYS = [2, 2, 3, 4, 5];
-export const DEFAULT_IMMUNITY_CAP = 5;
+// §١ب: خريطة صريحة بعدد متابعات «لم يرد» (لا فهرسة count): [0]→count=1 (٣ أيام) · [1]→count=2 (يومان).
+export const DEFAULT_TIMEOUT_DAYS = [3, 2];
+// §١ج: صار «حد السحب الفوري» لا حد الحصانة — count >= هذا الرقم ⟵ overdue فورًا (بلا مهلة).
+export const DEFAULT_IMMUNITY_CAP = 3;
 
 export const DEFAULT_NO_RESPONSE_CONFIG: NoResponseConfig = {
   enabled: false,
@@ -51,12 +50,17 @@ export type NoAnswerStats = {
  *  - included = false لو آخر متابعة (أحدثها) نتيجتها ليست «لم يرد» (رد العميل → يخرج فورًا).
  *    بلا متابعات → included=true (يعتمد على وقت الإسناد).
  */
-export function noAnswerStats(followups: { result: string; createdAt: Date }[]): NoAnswerStats {
-  if (followups.length === 0) return { included: true, noAnswerCount: 0, lastNoAnswerAt: null, lastResult: null };
-  let last = followups[0];
+export function noAnswerStats(followups: { result: string; createdAt: Date }[], assignedAt: Date | null): NoAnswerStats {
+  // §١أ: نعتمد فقط متابعات «لم يرد» بعد آخر إسناد (createdAt > assignedAt) — فالعدّاد يتصفّر عند النقل.
+  // §١ (إصلاح التسريب): assignedAt=null → لا نعرف متى أُسند → count=0 → out (يذهب لقسم «بحاجة لمراجعة»
+  //   عند المالك، لا يُحتسب في السحب). سابقًا كان يعدّ كل المتابعات التاريخية فيتسرّب كـ overdue.
+  if (assignedAt === null) return { included: true, noAnswerCount: 0, lastNoAnswerAt: null, lastResult: null };
+  const scoped = followups.filter((f) => f.createdAt > assignedAt);
+  if (scoped.length === 0) return { included: true, noAnswerCount: 0, lastNoAnswerAt: null, lastResult: null };
+  let last = scoped[0];
   let lastNoAnswerAt: Date | null = null;
   let noAnswerCount = 0;
-  for (const f of followups) {
+  for (const f of scoped) {
     if (f.createdAt > last.createdAt) last = f;
     if (isNoAnswer(f.result)) {
       noAnswerCount++;
@@ -84,41 +88,44 @@ export function noResponseBaseline(assignedAt: Date | null, lastFollowUpAt: Date
   return t > 0 ? new Date(t) : null;
 }
 
-export type EscalationTier = {
-  followUps: number;
-  immune: boolean;
-  warnDays: number; // يوم الإنذار (بالأيام)
-  pullDays: number; // يوم السحب = warnDays + ١
-};
-
-/** طبقة التصعيد لعدد متابعات معيّن حسب الإعداد. */
-export function escalationTier(followUpCount: number, config: NoResponseConfig = DEFAULT_NO_RESPONSE_CONFIG): EscalationTier {
+/**
+ * §١ب: عتبة السحب بالأيام حسب عدد متابعات «لم يرد» — خريطة صريحة بالعدد (لا فهرسة count، تفاديًا للـoff-by-one):
+ *   count = 0             → null  (خارج نظام «لم يتم الرد» إطلاقًا)
+ *   count = 1             → timeoutDays[0] (٣ أيام افتراضيًا)
+ *   count = 2             → timeoutDays[1] (يومان افتراضيًا)
+ *   count >= immunityCap  → 0     (سحب فوري — immunityCap صار «حد السحب» لا الحصانة، افتراضي ٣)
+ */
+export function noResponsePullDay(noAnswerCount: number, config: NoResponseConfig = DEFAULT_NO_RESPONSE_CONFIG): number | null {
   const days = config.timeoutDays.length ? config.timeoutDays : DEFAULT_TIMEOUT_DAYS;
-  if (followUpCount >= config.immunityCap) {
-    return { followUps: followUpCount, immune: true, warnDays: Infinity, pullDays: Infinity };
-  }
-  const warnDays = days[Math.min(followUpCount, days.length - 1)];
-  return { followUps: followUpCount, immune: false, warnDays, pullDays: warnDays + 1 };
+  if (noAnswerCount <= 0) return null;                 // خارج النظام
+  if (noAnswerCount >= config.immunityCap) return 0;   // سحب فوري
+  if (noAnswerCount === 1) return days[0] ?? 3;
+  return days[1] ?? 2;                                 // count === 2 (وأي عدد دون حد السحب)
 }
 
-export type NoResponseState = "safe" | "pending" | "overdue" | "immune";
+// حالات العرض الأربع:
+//   out     → count=0 (خارج نظام «لم يتم الرد» إطلاقًا)
+//   grace   → ضمن المهلة، قبل يوم التحذير (daysSince < warnDay)
+//   warning → آخر ٢٤ ساعة قبل السحب (warnDay ≤ daysSince < pullDay) — مصدر بانر الموظف (§٥)
+//   overdue → تجاوز المهلة (daysSince ≥ pullDay) — «يُسحب الآن»
+export type NoResponseState = "out" | "grace" | "warning" | "overdue";
 
 /**
- * حالة العميل حسب عدد متابعاته وآخر «لمسة» (آخر متابعة، أو الإسناد لو صفر متابعات):
- *  immune (محصّن ٥+) · overdue (بلغ يوم السحب) · pending (بلغ يوم الإنذار) · safe (لسه).
+ * حالة العميل حسب عدد متابعات «لم يرد» و daysSince منذ baseline. warnDay = pullDay − ١:
+ *  count=1 → pull يوم ٣ · warn يوم ٢ · count=2 → pull يوم ٢ · warn يوم ١ · count≥٣ → overdue فورًا (بلا warning).
  */
 export function noResponseState(
-  followUpCount: number,
+  noAnswerCount: number,
   baseline: Date | null,
   now: Date,
   config: NoResponseConfig = DEFAULT_NO_RESPONSE_CONFIG,
-): { state: NoResponseState; tier: EscalationTier; daysSince: number } {
-  const tier = escalationTier(followUpCount, config);
-  if (tier.immune) return { state: "immune", tier, daysSince: 0 };
-  if (!baseline) return { state: "safe", tier, daysSince: 0 };
-  const daysSince = (now.getTime() - baseline.getTime()) / DAY_MS;
-  const state: NoResponseState = daysSince >= tier.pullDays ? "overdue" : daysSince >= tier.warnDays ? "pending" : "safe";
-  return { state, tier, daysSince };
+): { state: NoResponseState; daysSince: number; pullDay: number | null; warnDay: number | null } {
+  const pullDay = noResponsePullDay(noAnswerCount, config);
+  if (pullDay === null) return { state: "out", daysSince: 0, pullDay: null, warnDay: null };
+  const warnDay = Math.max(0, pullDay - 1); // آخر ٢٤ ساعة قبل السحب (count≥٣: pullDay=warnDay=0 → overdue فورًا)
+  const daysSince = baseline ? (now.getTime() - baseline.getTime()) / DAY_MS : 0;
+  const state: NoResponseState = daysSince >= pullDay ? "overdue" : daysSince >= warnDay ? "warning" : "grace";
+  return { state, daysSince, pullDay, warnDay };
 }
 
 // ===================== فئات العرض (البانر + لوحة الأرقام) =====================
@@ -133,7 +140,7 @@ export const CATEGORY_LABEL: Record<EscalationCategory, string> = {
   one: "تابع مرة",
   two: "تابع مرتين",
   threePlus: "تابع ٣+",
-  immune: "محصّن (٥+)",
+  immune: "استنفاد (٣+)", // §٣: كان «محصّن (٥+)» — count≥حد السحب صار استنفاد محاولات لا حصانة
 };
 
 export function escalationCategory(followUpCount: number, config: NoResponseConfig = DEFAULT_NO_RESPONSE_CONFIG): EscalationCategory {
@@ -217,6 +224,8 @@ export function getNoResponseConfig(): NoResponseConfig {
   return {
     enabled: process.env.NO_RESPONSE_PULL === "on",
     timeoutDays: parseDays(process.env.NO_RESPONSE_DAYS),
+    // §١ج: NO_RESPONSE_IMMUNITY_CAP احتفظ باسمه لكن دلالته تبدّلت: صار «حد السحب الفوري» لا حد الحصانة —
+    //      أي عميل noAnswerCount >= هذا الرقم يصير overdue فورًا (بلا مهلة). الافتراضي ٣.
     immunityCap: Number.isFinite(capRaw) && capRaw > 0 ? capRaw : DEFAULT_IMMUNITY_CAP,
     activationDate: parseActivation(process.env.NO_RESPONSE_ACTIVATION_DATE),
   };

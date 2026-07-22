@@ -53,6 +53,8 @@ export type LeadRow = {
   booking: { collected: number; remaining: number } | null;
   // عميل محوّل يحتاج اهتمام: أُعيد توجيهه (reassignCount>0) وما فيه متابعة بعد آخر إسناد (نجمة ⭐).
   isTransferred: boolean;
+  // §٦: محوّل بسبب استنفاد المحاولات (آخر سحب reason=no_response_exhausted) → أيقونة حمراء بدل النجمة.
+  transferredExhausted: boolean;
 };
 
 export type LeadActivity = {
@@ -139,10 +141,14 @@ type LeadWithRels = {
   reassignCount: number;
   assignedAt: Date | null;
   followUps?: { createdAt: Date }[];
+  reassignments?: { reason: string }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
 };
 
 function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): LeadRow {
+  // محوّل: أُعيد توجيهه (reassignCount>0) ولم تُسجَّل متابعة بعد آخر إسناد (تختفي العلامة أول متابعة).
+  const latestFuAt = l.followUps?.[0]?.createdAt ?? null;
+  const transferred = l.reassignCount > 0 && l.assignedAt != null && (latestFuAt == null || latestFuAt <= l.assignedAt);
   return {
     id: l.id,
     name: l.name,
@@ -174,11 +180,9 @@ function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): Lead
       return mine ? bookingCollection(bk.stage, bk.finalPrice.toNumber(), bk.collectedAmount.toNumber()) : null;
     })(),
     // نجمة العميل المحوّل: أُعيد توجيهه ولم يُسجّل أي متابعة بعد آخر إسناد (تختفي أول متابعة).
-    isTransferred: (() => {
-      if (l.reassignCount <= 0 || l.assignedAt == null) return false;
-      const latestFu = l.followUps?.[0]?.createdAt ?? null;
-      return latestFu == null || latestFu <= l.assignedAt;
-    })(),
+    isTransferred: transferred,
+    // §٦: أيقونة حمراء لو آخر سحب كان بسبب استنفاد المحاولات (وإلا نجمة ذهبية للتقصير).
+    transferredExhausted: transferred && (l.reassignments?.[0]?.reason ?? "").startsWith("no_response_exhausted"),
   };
 }
 
@@ -188,6 +192,8 @@ const rowInclude = {
   _count: { select: { activities: true, followUps: true } },
   // آخر متابعة فقط (تاريخها) — لحساب نجمة العميل المحوّل بلا جلب كل المتابعات.
   followUps: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+  // آخر سحب (Reassignment→null) وسببه — للتمييز بين محوّل تقصير (نجمة) واستنفاد (أيقونة حمراء §٦).
+  reassignments: { where: { toUserId: null }, orderBy: { createdAt: "desc" }, take: 1, select: { reason: true } },
   bookings: { select: { stage: true, finalPrice: true, collectedAmount: true, sellerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
 } as const;
 

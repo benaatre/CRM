@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X, Undo2, Archive } from "lucide-react";
 import { formatCount, toArabicDigits } from "@/lib/format";
-import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, CategoryStat, EmployeeLoad, ExhaustedRow, UndoableBatch } from "@/lib/data/no-response";
+import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, EmployeeLoad, ExhaustedRow, UndoableBatch, NeedsReview, UnreachableRow } from "@/lib/data/no-response";
 import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseConfig, type EscalationCategory, type OverdueAgeBucket } from "@/lib/no-response-escalation";
 import {
   warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch, undoPull,
@@ -35,13 +35,15 @@ type PullAsk = { employeeId: string; employeeName: string; category: PullGroupCa
 type DistAsk = { count: number; sourceEmpIds: string[]; sourceEmployeeId: string | null; leadIds: string[]; who: string; override?: boolean };
 
 export function NoResponseView({
-  summary, pool, employeeLoads, exhausted, undoBatches, filters, config,
+  summary, pool, employeeLoads, exhausted, undoBatches, needsReview, unreachable, filters, config,
 }: {
   summary: PendingPullSummary;
   pool: PoolSourceGroup[];
   employeeLoads: EmployeeLoad[];
   exhausted: ExhaustedRow[];
   undoBatches: UndoableBatch[];
+  needsReview: NeedsReview;
+  unreachable: UnreachableRow[];
   filters: Filters;
   config: NoResponseConfig;
 }) {
@@ -77,7 +79,7 @@ export function NoResponseView({
   const matchEmp = (id: string, name: string) => (!filters.emp || id === filters.emp) && (!q || name.includes(q));
 
   const overdueEmps = summary.employees.filter((e) => e.totalOverdue > 0 && matchEmp(e.id, e.name));
-  const pendingEmps = summary.employees.filter((e) => e.totalPending > 0 && matchEmp(e.id, e.name));
+  const pendingEmps = summary.employees.filter((e) => e.totalWarning > 0 && matchEmp(e.id, e.name));
   const poolGroups = pool.filter((g) => matchEmp(g.employeeId, g.employee));
   const poolTotal = poolGroups.reduce((s, g) => s + g.count, 0);
 
@@ -97,9 +99,10 @@ export function NoResponseView({
         </button>
       </header>
 
-      {/* بطاقات الإجمالي */}
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="بانتظار السحب" value={summary.totalPending} tone="gold" />
+      {/* بطاقات الإجمالي — ثلاث حالات عرض منفصلة (grace/warning/overdue) + الحوض + السقف */}
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+        <StatCard label="في المهلة" value={summary.totalGrace} tone="plain" />
+        <StatCard label="تحذير (٢٤س)" value={summary.totalWarning} tone="gold" />
         <StatCard label="يُسحبون الآن" value={summary.totalOverdue} tone="danger" />
         <StatCard label="في الحوض" value={summary.inQueue} tone="plain" />
         <StatCard label="بلغوا السقف" value={summary.capped} tone="plain" />
@@ -121,6 +124,35 @@ export function NoResponseView({
         onDistribute={(r) => setDist({ count: 1, sourceEmpIds: r.lastEmployeeId ? [r.lastEmployeeId] : [], sourceEmployeeId: null, leadIds: [r.id], who: r.name, override: true })}
         onArchive={(id) => run(() => bulkArchive([id]))}
       />
+
+      {/* تعذّر الوصول (§٤) — للمالك فقط، عرض بلا توزيع */}
+      {unreachable.length > 0 && (
+        <section className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/[0.05] p-4">
+          <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-destructive">
+            <AlertTriangle className="size-4" /> تعذّر الوصول ({toArabicDigits(unreachable.length)})
+          </h2>
+          <p className="mb-3 text-xs text-muted-foreground">سُحبوا بسبب استنفاد المحاولات من موظفَين متعاقبَين أو أكثر — مستبعدون من كل توزيع تلقائي.</p>
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <table className="w-full min-w-[420px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+              <thead className="bg-secondary/40 text-xs text-muted-foreground">
+                <tr><th className="px-4 py-3 font-medium">العميل</th><th className="px-3 py-3 font-medium">آخر موظف</th><th className="px-3 py-3 text-center font-medium">موظفون متعاقبون</th></tr>
+              </thead>
+              <tbody>
+                {unreachable.map((u) => (
+                  <tr key={u.id} className="border-t border-border">
+                    <td className="px-4 py-3 font-medium text-foreground">{u.name}</td>
+                    <td className="px-3 py-3 text-muted-foreground">{u.lastEmployee ?? "—"}</td>
+                    <td className="px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(u.exhaustedEmployees)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* بحاجة لمراجعة — للمالك فقط، عرض بلا سحب */}
+      <NeedsReviewPanel data={needsReview} />
 
       {/* لوحة الأرقام العلوية (per-category) — كما هي */}
       <NumbersPanel summary={summary} />
@@ -193,12 +225,12 @@ export function NoResponseView({
                 <tr key={e.id} className="border-t border-border">
                   <td className="px-4 py-3 font-medium text-foreground">{e.name}</td>
                   {PENDING_COLS.map((c) => (
-                    <NumPullCell key={c.cat} value={e.byCategory[c.cat].pending} tone="gold"
-                      onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: c.pull, count: e.byCategory[c.cat].pending })} pending={pending} />
+                    <NumPullCell key={c.cat} value={e.byCategory[c.cat].warning} tone="gold"
+                      onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: c.pull, count: e.byCategory[c.cat].warning })} pending={pending} />
                   ))}
-                  <td className="px-3 py-3 text-center font-bold text-gold">{formatCount(e.totalPending)}</td>
+                  <td className="px-3 py-3 text-center font-bold text-gold">{formatCount(e.totalWarning)}</td>
                   <td className="px-3 py-3">
-                    <PullBtn label="اسحب الكل" disabled={pending} onClick={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "pending_all", count: e.totalPending })} />
+                    <PullBtn label="اسحب الكل" disabled={pending} onClick={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "pending_all", count: e.totalWarning })} />
                   </td>
                 </tr>
               ))}
@@ -344,32 +376,36 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone: 
   );
 }
 
-// لوحة الأرقام العلوية (per-category) — كما هي: لكل موظف/فئة بانتظار/يُسحب.
+// §٣: الأرقام حسب الموظف — «تحذير» و«تقصير» و«استنفاد محاولات» منفصلة (بلا رقم مخلوط، بلا «محصّن»).
 function NumbersPanel({ summary }: { summary: PendingPullSummary }) {
   return (
     <section className="mb-6 rounded-2xl border border-border bg-card p-4">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-foreground">
-        <AlertTriangle className="size-4 text-gold" /> الأرقام حسب الموظف والفئة
+        <AlertTriangle className="size-4 text-gold" /> الأرقام حسب الموظف والسبب
       </h2>
       <p className="mb-3 text-xs text-muted-foreground">
-        كل خانة: <span className="text-gold">بانتظار الإنذار</span> · <span className="text-destructive">يُسحب الآن</span> — «محصّن» = عدد المحصّنين (٥+ متابعات).
+        <span className="text-gold">تحذير</span> = آخر ٢٤س قبل السحب · <span className="text-destructive">تقصير</span> = انتهت المهلة · <span className="text-destructive">استنفاد</span> = تابع والعميل ما رد (٣+).
       </p>
       {summary.employees.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">كل شي تحت السيطرة.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <table className="w-full min-w-[520px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">الموظف</th>
-                {CATEGORY_ORDER.map((c) => <th key={c} className="px-3 py-2 text-center font-medium">{CATEGORY_LABEL[c]}</th>)}
+                <th className="px-3 py-2 text-center font-medium">تحذير (٢٤س)</th>
+                <th className="px-3 py-2 text-center font-medium">تقصير</th>
+                <th className="px-3 py-2 text-center font-medium">استنفاد محاولات</th>
               </tr>
             </thead>
             <tbody>
               {summary.employees.map((e) => (
                 <tr key={e.id} className="border-t border-border">
                   <td className="px-3 py-2.5 font-medium text-foreground">{e.name}</td>
-                  {CATEGORY_ORDER.map((c) => <CatCell key={c} cat={c} stat={e.byCategory[c]} />)}
+                  <td className="px-3 py-2.5 text-center text-gold">{e.totalWarning > 0 ? toArabicDigits(e.totalWarning) : "—"}</td>
+                  <td className="px-3 py-2.5 text-center text-destructive">{e.overdueNeglect > 0 ? toArabicDigits(e.overdueNeglect) : "—"}</td>
+                  <td className="px-3 py-2.5 text-center font-bold text-destructive">{e.overdueExhausted > 0 ? toArabicDigits(e.overdueExhausted) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -380,24 +416,45 @@ function NumbersPanel({ summary }: { summary: PendingPullSummary }) {
   );
 }
 
-function CatCell({ cat, stat }: { cat: EscalationCategory; stat: CategoryStat }) {
-  if (cat === "immune") {
-    return <td className="px-3 py-2.5 text-center text-muted-foreground">{stat.total > 0 ? toArabicDigits(stat.total) : "—"}</td>;
-  }
-  const empty = stat.pending === 0 && stat.overdue === 0;
-  return (
-    <td className="px-3 py-2.5 text-center">
-      {empty ? <span className="text-muted-foreground">—</span> : (
-        <span className="inline-flex items-center justify-center gap-1" title={`بانتظار ${stat.pending} · يُسحب ${stat.overdue}`}>
-          {stat.pending > 0 && <span className="rounded bg-gold/15 px-1.5 py-0.5 text-[11px] font-medium text-gold">{toArabicDigits(stat.pending)}</span>}
-          {stat.overdue > 0 && <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-[11px] font-medium text-destructive">{toArabicDigits(stat.overdue)}</span>}
-        </span>
+// لوحة التراجع عن السحب — دفعات آخر ٢٤ ساعة فيها عملاء لا يزالون في الحوض.
+// لوحة «بحاجة لمراجعة» — للمالك فقط (الصفحة نفسها OWNER-only)، عرض تشخيصي بلا أزرار سحب.
+function NeedsReviewPanel({ data }: { data: NeedsReview }) {
+  if (data.totalNoAssign === 0 && data.totalNeverContacted === 0) return null;
+  const Sub = ({ title, hint, total, rows }: { title: string; hint: string; total: number; rows: { employeeId: string; employeeName: string; count: number }[] }) => (
+    <div className="rounded-xl border border-border bg-background/40 p-3">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-bold text-foreground">{toArabicDigits(total)}</span>
+      </div>
+      <p className="mb-2 text-[11px] text-muted-foreground">{hint}</p>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">—</p>
+      ) : (
+        <ul className="space-y-1">
+          {rows.map((r) => (
+            <li key={r.employeeId} className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-foreground">{r.employeeName}</span>
+              <span className="text-muted-foreground">{toArabicDigits(r.count)}</span>
+            </li>
+          ))}
+        </ul>
       )}
-    </td>
+    </div>
+  );
+  return (
+    <section className="mb-6 rounded-2xl border border-info/30 bg-info/[0.05] p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-info">
+        <AlertTriangle className="size-4" /> بحاجة لمراجعة (خارج السحب التلقائي)
+      </h2>
+      <p className="mb-3 text-xs text-muted-foreground">عملاء لا يمسكهم نظام «لم يتم الرد» — للاطّلاع فقط، بلا سحب.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Sub title="بلا تاريخ إسناد" hint="مُسند لموظف لكن بلا تاريخ إسناد — خارج السحب التلقائي." total={data.totalNoAssign} rows={data.noAssignDate} />
+        <Sub title="لم يُتواصل إطلاقًا" hint="أُسند ومضى أكثر من ٣ أيام بلا أي متابعة." total={data.totalNeverContacted} rows={data.neverContacted} />
+      </div>
+    </section>
   );
 }
 
-// لوحة التراجع عن السحب — دفعات آخر ٢٤ ساعة فيها عملاء لا يزالون في الحوض.
 function UndoPanel({ batches, pending, onUndo }: { batches: UndoableBatch[]; pending: boolean; onUndo: (batchId: string) => void }) {
   const undoable = batches.filter((b) => b.undoable > 0);
   if (undoable.length === 0) return null;
