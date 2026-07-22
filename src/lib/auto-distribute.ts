@@ -8,6 +8,7 @@ import { notify, ownerIds } from "@/lib/notify";
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
+import { assignLead } from "@/lib/assignment";
 import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
 import { getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats } from "./no-response-escalation";
 
@@ -300,9 +301,9 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
     }
     if (!pick) break;
     const toUserId = pick;
+    // م-١: الإسناد التلقائي عبر الدالة الموحّدة (manual=false — بلا حصانة يدوية).
     await prisma.$transaction(async (tx) => {
-      await tx.lead.update({ where: { id: lead.id }, data: { assignedToId: toUserId, assignedAt: now } });
-      await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: null, toUserId, reason: "initial" } });
+      await assignLead(tx, lead.id, toUserId, { manual: false, reason: "initial", now });
     });
     const b = buckets.get(toUserId);
     if (b) b.count++;
@@ -448,8 +449,11 @@ export async function executeSweepPull(leadId: string, now: Date = new Date()): 
 
   console.info(`[sweep] pull(approved) lead=${lead.id} from=${from} to=${target}`);
   await prisma.$transaction(async (tx) => {
-    await tx.lead.update({ where: { id: lead.id }, data: { assignedToId: target, assignedAt: now, reassignCount: { increment: 1 } } });
-    await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: from, toUserId: target, reason: "timeout" } });
+    // م-١: النقل عبر الدالة الموحّدة (manual=false — الموظف الجديد يدخل الدورة عاديًا).
+    await assignLead(tx, lead.id, target, {
+      manual: false, reason: "timeout", fromUserId: from, now,
+      extraData: { reassignCount: { increment: 1 } },
+    });
     await tx.activity.create({ data: { leadId: lead.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سحب بموافقة المالك (تقصير في التواصل)" } });
     await emitNotification({
       eventKey: "lead_reassigned", assignedUserId: target, title: "إعادة توزيع عميل",

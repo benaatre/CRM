@@ -11,6 +11,7 @@ import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notify";
 import { emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { NO_RESPONSE_STAGES, unreachableLeadIds } from "@/lib/auto-distribute";
+import { assignLead } from "@/lib/assignment";
 import {
   warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, overdueAgeBucket,
   type EscalationCategory, type OverdueAgeBucket,
@@ -57,22 +58,22 @@ async function requireOwner() {
 export type LeadState = "asis" | "fresh";
 
 /**
- * يُسند عميل الحوض لموظف بنافذة مهلة جديدة (assignedAt=now، contactedAt=null) داخل معاملة.
+ * يُسند عميل الحوض لموظف عبر assignLead الموحّدة (م-١): assignedAt=now + contactedAt=null
+ * + manualAssignedAt (توزيع الحوض قرار بشري من المالك) + سجل Reassignment.
  * لا يلمس reassignCount: العدّاد ملك السحب التلقائي وحده (زيادته هنا تُضاعف العدّ وتكسر سقف «٣ دورات»).
  * fresh = يرجّع المرحلة «جديد» ويصفّر nextFollowup — المتابعات محفوظة (سجل تاريخي، لا تُحذف).
  */
 async function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toUserId: string, actorId: string, now: Date, state: LeadState): Promise<boolean> {
   const fresh = state === "fresh";
-  // حارس تزامن: لا نُسند إلا إذا كان لا يزال في الحوض (assignedToId=null). count!==1 → أُسند بالتزامن → تخطٍّ صامت.
-  const res = await tx.lead.updateMany({
-    where: { id: leadId, assignedToId: null },
-    data: {
-      assignedToId: toUserId, assignedAt: now, contactedAt: null,
-      ...(fresh ? { stage: LeadStage.NEW, nextFollowup: null } : {}),
-    },
+  // حارس تزامن: لا نُسند إلا إذا كان لا يزال في الحوض (assignedToId=null) — تخطٍّ صامت عند التسابق.
+  const ok = await assignLead(tx, leadId, toUserId, {
+    manual: true,
+    reason: "manual_redistribute",
+    now,
+    guardWhere: { assignedToId: null },
+    extraData: fresh ? { stage: LeadStage.NEW, nextFollowup: null } : {},
   });
-  if (res.count !== 1) return false;
-  await tx.reassignment.create({ data: { leadId, fromUserId: null, toUserId, reason: "manual_redistribute" } });
+  if (!ok) return false;
   await tx.activity.create({ data: { leadId, userId: actorId, type: ActivityType.ASSIGNMENT, note: fresh ? "توزيع يدوي من «لم يتم الرد» (كعميل جديد)" : "توزيع يدوي من «لم يتم الرد»" } });
   return true;
 }
