@@ -1,14 +1,43 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+
+/**
+ * يحلّ المستخدم الحالي مرّة واحدة لكل طلب (cache) ويفرض إبطال الجلسات:
+ * - مستخدم محذوف أو موقوف (active=false) → الجلسة غير صالحة.
+ * - «الخروج من كل الأجهزة»: التوكن أُصدر قبل sessionsValidFrom → غير صالح.
+ * يرجّع: null (غير مسجّل) | { invalid } (يجب مسح الكوكي) | { user }.
+ */
+const resolveSession = cache(async () => {
+  const session = await auth();
+  if (!session?.user) return null;
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { active: true, sessionsValidFrom: true },
+  });
+  if (!dbUser || !dbUser.active) return { invalid: true } as const;
+
+  const loginAt = session.user.loginAt;
+  if (
+    dbUser.sessionsValidFrom &&
+    (loginAt === undefined || loginAt < dbUser.sessionsValidFrom.getTime())
+  ) {
+    return { invalid: true } as const;
+  }
+
+  return { user: session.user } as const;
+});
 
 /** يرجّع المستخدم الحالي أو يحوّل لصفحة الدخول. استخدمه في كل صفحة/أكشن محمي. */
 export async function requireUser() {
-  const session = await auth();
-  if (!session?.user) {
-    redirect("/login");
-  }
-  return session.user;
+  const r = await resolveSession();
+  if (!r) redirect("/login");
+  // جلسة مُبطَلة (خروج من كل الأجهزة / موقوف) → مسار يمسح الكوكي ثم يحوّل للدخول
+  if ("invalid" in r) redirect("/api/logout");
+  return r.user;
 }
 
 /** يتطلب دورًا معيّنًا — يحوّل غير المصرّح لهم للوحة. الصلاحية تُطبّق على الخادم. */

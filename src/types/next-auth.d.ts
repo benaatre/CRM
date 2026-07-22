@@ -7,6 +7,8 @@ declare module "next-auth" {
     user: {
       id: string;
       role: Role;
+      /// وقت إنشاء الجلسة (ms) — لإبطال «الخروج من كل الأجهزة»
+      loginAt?: number;
     } & DefaultSession["user"];
   }
 
@@ -19,5 +21,7 @@ declare module "next-auth/jwt" {
   interface JWT {
     id?: string;
     role?: Role;
+    /// وقت إنشاء الجلسة (ms) — يُقارَن بـ sessionsValidFrom للإبطال
+    loginAt?: number;
   }
 }
