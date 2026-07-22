@@ -490,7 +490,10 @@ export async function runDistributionPasses(now: Date = new Date()): Promise<Dis
     // شرط القاعدة + النافذة فوق السويتشين (لا يُكسَر autoDistribute).
     const gateSkip = !settings.autoDistribute ? "التوزيع التلقائي متوقّف (القاعدة)" : !within ? "خارج نافذة العمل" : null;
 
-    const dupIds = (initialOn || sweepOn) && !gateSkip ? await duplicateLeadIds() : new Set<string>();
+    // استبعاد المكررين + «تعذّر الوصول» (§٤) من كل توزيع تلقائي — مجموعة واحدة مدمجة.
+    const dupIds = (initialOn || sweepOn) && !gateSkip
+      ? new Set<string>([...(await duplicateLeadIds()), ...(await unreachableLeadIds())])
+      : new Set<string>();
 
     // pass ١: توزيع أولي (مفعّل افتراضيًا).
     let initial: PassResult;
@@ -549,6 +552,26 @@ export type PullbackResult = {
  * و٥+ متابعات = محصّن نهائيًا. يحترم الحصانات: manualAssignedAt · sweepCutoffAt · سقف الدورات.
  * الإنذارات مجمّعة لكل موظف منفصلة لكل فئة (dedup يومي). محمي بـ enabled؛ بدونه DRY_RUN.
  */
+/**
+ * §٤: عملاء «تعذّر الوصول» — سُحبوا بسبب EXHAUSTED من موظفَين متعاقبَين مختلفَين (≥٢) بلا جدوى.
+ * يُستبعدون من كل توزيع تلقائي (نفس نمط استبعاد المكررين). يُحسب من سجل التحويلات (reason=exhausted).
+ */
+export async function unreachableLeadIds(): Promise<Set<string>> {
+  const rows = await prisma.reassignment.groupBy({
+    by: ["leadId", "fromUserId"],
+    where: { reason: "no_response_exhausted", toUserId: null, fromUserId: { not: null } },
+  });
+  const byLead = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!r.fromUserId) continue;
+    const s = byLead.get(r.leadId) ?? new Set<string>();
+    s.add(r.fromUserId); byLead.set(r.leadId, s);
+  }
+  const out = new Set<string>();
+  for (const [leadId, emps] of byLead) if (emps.size >= 2) out.add(leadId);
+  return out;
+}
+
 export async function runNoResponsePullback(now: Date = new Date()): Promise<PullbackResult> {
   const config = getNoResponseConfig();
   const wantLive = config.enabled;
@@ -570,7 +593,10 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     // ملاحظة: لا حاجز sweepCutoffAt هنا — نظام «لم يتم الرد» مستقلّ، حاجزه الاختياري ACTIVATION في الـbaseline.
     const candidates = await prisma.lead.findMany({
       where: {
-        assignedToId: { not: null, ...(owners.length ? { notIn: owners } : {}) },
+        assignedToId: { not: null },
+        // §١د: وحّد شرط الموظف مع اللوحة (getPendingPullByEmployee) — موظف مبيعات فعّال غير معطّل.
+        // يُضيّق نطاق السحب (يستثني المُسندين لمالك/مدير أو موظف معطّل) — لا يوسّعه.
+        assignedTo: { role: "EMPLOYEE", active: true },
         isArchived: false,
         stage: { in: [...NO_RESPONSE_STAGES] },
         reassignCount: { lt: MAX_REASSIGNS },
@@ -594,7 +620,7 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       else fuByLead.set(f.leadId, [{ result: f.result, createdAt: f.createdAt }]);
     }
 
-    let capped = 0;
+    const capped = 0; // §١: لم يعد هناك مفهوم «محصّن» — count≥حد السحب صار overdue فورًا لا immune.
     // إنذارات مجمّعة: مفتاح = `${userId}|${noAnswerCount}` → عدد العملاء في هذي الفئة.
     const warnBuckets = new Map<string, number>();
     // مرشّحو السحب (overdue): نجمعهم أولًا، ثم نرتّب بالأقدم تأخّرًا، ثم نطبّق السقف.
@@ -602,15 +628,15 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     const overdue: OverdueTarget[] = [];
 
     for (const l of candidates) {
-      const stats = noAnswerStats(fuByLead.get(l.id) ?? []);
+      const stats = noAnswerStats(fuByLead.get(l.id) ?? [], l.assignedAt); // §١أ: عدّاد ما بعد آخر إسناد
       if (!stats.included) continue; // آخر متابعة نتيجتها ليست «لم يرد» → رد العميل → خارج النظام
       const fu = stats.noAnswerCount;
       const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
       const { state, daysSince } = noResponseState(fu, baseline, now, config);
 
-      if (state === "immune") { capped++; continue; }
+      if (state === "out" || state === "grace") continue; // count=0 خارج النظام · grace ضمن المهلة (لا إنذار بعد)
       if (state === "overdue") overdue.push({ id: l.id, name: l.name, from: l.assignedToId as string, fu, daysSince });
-      else if (state === "pending") {
+      else { // warning (آخر ٢٤س قبل السحب) → إنذار مجمّع
         const key = `${l.assignedToId}|${fu}`;
         warnBuckets.set(key, (warnBuckets.get(key) ?? 0) + 1);
       }
@@ -641,7 +667,9 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
           data: { assignedToId: null, assignedAt: null, contactedAt: null, reassignCount: { increment: 1 } },
         });
         if (res.count !== 1) return false;
-        await tx.reassignment.create({ data: { leadId: t.id, fromUserId: t.from, toUserId: null, reason: "no_response" } });
+        // §٣: سبب السحب — EXHAUSTED (count≥حد السحب: تابع والعميل ما رد) أو NEGLECT (انتهت المهلة بلا متابعة كافية).
+        const reason = t.fu >= config.immunityCap ? "no_response_exhausted" : "no_response_neglect";
+        await tx.reassignment.create({ data: { leadId: t.id, fromUserId: t.from, toUserId: null, reason } });
         await tx.activity.create({
           data: { leadId: t.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سُحب تلقائيًا — لم يتم الرد على العميل" },
         });
@@ -650,7 +678,7 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         // سجل تدقيق لكل سحب: batchId · leadId · fromUserId · المتابعات · أيام التأخير · السبب.
         await logAudit(tx, {
           userId: null, action: "lead.no_response.autoPulled", entity: "lead", entityId: t.id,
-          summary: `[batch=${batchId}] سحب تلقائي · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=no_response`,
+          summary: `[batch=${batchId}] سحب تلقائي · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=${reason}`,
         });
         return true;
       });

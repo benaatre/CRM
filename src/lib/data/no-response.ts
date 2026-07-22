@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Prisma, LeadStage, Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
+import { NO_RESPONSE_STAGES, unreachableLeadIds } from "@/lib/auto-distribute";
 import {
   getNoResponseConfig, noResponseBaseline, noResponseState, escalationCategory,
   CATEGORY_ORDER, warnMessage, noAnswerStats, overdueAgeBucket, OVERDUE_AGE_ORDER,
@@ -51,8 +51,8 @@ export async function getActiveEmployeeLoads(now: Date = new Date()): Promise<Em
 
 // ===================== لوحة «بانتظار السحب» (رأس الصفحة) =====================
 
-// خانة لكل فئة تصعيد: إجمالي العملاء + كم بانتظار الإنذار + كم يُسحب الآن.
-export type CategoryStat = { total: number; pending: number; overdue: number };
+// خانة لكل فئة تصعيد: الإجمالي + في المهلة (grace) + تحذير (٢٤س) + يُسحب الآن (overdue).
+export type CategoryStat = { total: number; grace: number; warning: number; overdue: number };
 
 export type PendingPullEmployee = {
   id: string;
@@ -60,13 +60,17 @@ export type PendingPullEmployee = {
   byCategory: Record<EscalationCategory, CategoryStat>;
   byAge: Record<OverdueAgeBucket, number>; // «يُسحب الآن» موزّعًا على فترات العمر (٣–٧ · ٨–١٤ · ١٥–٣٠ · ٣٠+)
   oldestOverdueDays: number;               // أقدم تأخير عند الموظف (أقصى daysSince) — لحجم المشكلة بنظرة
-  totalPending: number; // مجموع بانتظار الإنذار عبر الفئات
-  totalOverdue: number; // مجموع يُسحب الآن عبر الفئات
+  totalGrace: number;   // مجموع «في المهلة» (grace) عبر الفئات
+  totalWarning: number; // مجموع «تحذير ٢٤س» (warning) — الرقم الرئيسي لجدول «بانتظار السحب»
+  totalOverdue: number; // مجموع «يُسحب الآن» (overdue) عبر الفئات
+  overdueNeglect: number;   // §٣: من «يُسحب الآن» بسبب تقصير (count 1–2، انتهت المهلة)
+  overdueExhausted: number; // §٣: من «يُسحب الآن» بسبب استنفاد محاولات (count ≥ حد السحب)
 };
 
 export type PendingPullSummary = {
   employees: PendingPullEmployee[];
-  totalPending: number;
+  totalGrace: number;
+  totalWarning: number;
   totalOverdue: number;
   inQueue: number; // إجمالي في الحوض (انسحبوا فعلًا)
   capped: number; // بلغوا سقف الدورات
@@ -74,25 +78,29 @@ export type PendingPullSummary = {
 };
 
 function emptyByCategory(): Record<EscalationCategory, CategoryStat> {
-  return Object.fromEntries(CATEGORY_ORDER.map((c) => [c, { total: 0, pending: 0, overdue: 0 }])) as Record<EscalationCategory, CategoryStat>;
+  return Object.fromEntries(CATEGORY_ORDER.map((c) => [c, { total: 0, grace: 0, warning: 0, overdue: 0 }])) as Record<EscalationCategory, CategoryStat>;
 }
 
 function emptyByAge(): Record<OverdueAgeBucket, number> {
   return Object.fromEntries(OVERDUE_AGE_ORDER.map((a) => [a, 0])) as Record<OverdueAgeBucket, number>;
 }
 
-/** إحصاء «لم يرد» لكل عميل من متابعاته (نتيجة + وقت) — مصدر واحد يشاركه كل تجميع لم يتم الرد. */
-async function noAnswerStatsByLead(leadIds: string[]): Promise<Map<string, NoAnswerStats>> {
+/**
+ * إحصاء «لم يرد» لكل عميل من متابعاته (نتيجة + وقت) — مصدر واحد يشاركه كل تجميع لم يتم الرد.
+ * §١أ: نمرّر assignedAt لكل عميل فيُحتسب العدّاد من متابعات ما بعد آخر إسناد فقط (يتصفّر عند النقل).
+ */
+async function noAnswerStatsByLead(leads: { id: string; assignedAt: Date | null }[]): Promise<Map<string, NoAnswerStats>> {
   const out = new Map<string, NoAnswerStats>();
-  if (leadIds.length === 0) return out;
-  const fus = await prisma.followUp.findMany({ where: { leadId: { in: leadIds } }, select: { leadId: true, result: true, createdAt: true } });
+  if (leads.length === 0) return out;
+  const assignedAtById = new Map(leads.map((l) => [l.id, l.assignedAt]));
+  const fus = await prisma.followUp.findMany({ where: { leadId: { in: leads.map((l) => l.id) } }, select: { leadId: true, result: true, createdAt: true } });
   const byLead = new Map<string, { result: string; createdAt: Date }[]>();
   for (const f of fus) {
     const arr = byLead.get(f.leadId);
     if (arr) arr.push({ result: f.result, createdAt: f.createdAt });
     else byLead.set(f.leadId, [{ result: f.result, createdAt: f.createdAt }]);
   }
-  for (const [leadId, arr] of byLead) out.set(leadId, noAnswerStats(arr));
+  for (const l of leads) out.set(l.id, noAnswerStats(byLead.get(l.id) ?? [], assignedAtById.get(l.id) ?? null));
   return out;
 }
 
@@ -118,10 +126,11 @@ export async function getPendingPullByEmployee(now: Date = new Date()): Promise<
   });
 
   // إحصاء «لم يرد» لكل عميل (العدّاد المعتمد + المرجع الزمني + الاستبعاد).
-  const statsByLead = await noAnswerStatsByLead(leads.map((l) => l.id));
+  const statsByLead = await noAnswerStatsByLead(leads.map((l) => ({ id: l.id, assignedAt: l.assignedAt })));
 
   const byEmp = new Map<string, PendingPullEmployee>();
-  let totalPending = 0;
+  let totalGrace = 0;
+  let totalWarning = 0;
   let totalOverdue = 0;
   for (const l of leads) {
     const stats = statsByLead.get(l.id) ?? { included: true, noAnswerCount: 0, lastNoAnswerAt: null, lastResult: null };
@@ -129,18 +138,23 @@ export async function getPendingPullByEmployee(now: Date = new Date()): Promise<
     const fu = stats.noAnswerCount;
     const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
     const { state, daysSince } = noResponseState(fu, baseline, now, config);
+    if (state === "out") continue; // §١ب: count=0 → خارج نظام «لم يتم الرد» إطلاقًا (لا يُحتسب في أي رقم)
     const cat = escalationCategory(fu, config);
     const id = l.assignedToId as string;
-    const row = byEmp.get(id) ?? { id, name: l.assignedTo?.name ?? "—", byCategory: emptyByCategory(), byAge: emptyByAge(), oldestOverdueDays: 0, totalPending: 0, totalOverdue: 0 };
+    const row = byEmp.get(id) ?? { id, name: l.assignedTo?.name ?? "—", byCategory: emptyByCategory(), byAge: emptyByAge(), oldestOverdueDays: 0, totalGrace: 0, totalWarning: 0, totalOverdue: 0, overdueNeglect: 0, overdueExhausted: 0 };
     row.byCategory[cat].total++;
     if (state === "overdue") {
       row.byCategory[cat].overdue++; row.totalOverdue++; totalOverdue++;
+      // §٣: سبب السحب — استنفاد (count ≥ حد السحب) أو تقصير (دونه).
+      if (fu >= config.immunityCap) row.overdueExhausted++; else row.overdueNeglect++;
       // فترة العمر (نفس daysSince من الـbaseline — بلا حساب جديد) + تتبّع أقدم تأخير.
       row.byAge[overdueAgeBucket(daysSince)]++;
       const d = Math.floor(daysSince);
       if (d > row.oldestOverdueDays) row.oldestOverdueDays = d;
-    } else if (state === "pending") {
-      row.byCategory[cat].pending++; row.totalPending++; totalPending++;
+    } else if (state === "warning") {
+      row.byCategory[cat].warning++; row.totalWarning++; totalWarning++;
+    } else { // grace
+      row.byCategory[cat].grace++; row.totalGrace++; totalGrace++;
     }
     byEmp.set(id, row);
   }
@@ -152,13 +166,13 @@ export async function getPendingPullByEmployee(now: Date = new Date()): Promise<
     }),
   ]);
 
-  const employees = [...byEmp.values()].sort((a, b) => (b.totalOverdue * 1000 + b.totalPending) - (a.totalOverdue * 1000 + a.totalPending));
-  return { employees, totalPending, totalOverdue, inQueue, capped, live: config.enabled };
+  const employees = [...byEmp.values()].sort((a, b) => (b.totalOverdue * 1000 + b.totalWarning) - (a.totalOverdue * 1000 + a.totalWarning));
+  return { employees, totalGrace, totalWarning, totalOverdue, inQueue, capped, live: config.enabled };
 }
 
 // ===================== المرشّحون للسحب (معاينة per-lead) =====================
 
-export type PullbackClass = "pending" | "overdue";
+export type PullbackClass = "warning" | "overdue";
 
 export type PullbackPreviewRow = {
   id: string;
@@ -196,7 +210,7 @@ export async function getPullbackPreview(filters: NoResponseFilters = {}, now: D
     take: 2000,
   });
 
-  const statsByLead = await noAnswerStatsByLead(leads.map((l) => l.id));
+  const statsByLead = await noAnswerStatsByLead(leads.map((l) => ({ id: l.id, assignedAt: l.assignedAt })));
 
   let rows: PullbackPreviewRow[] = [];
   for (const l of leads) {
@@ -204,12 +218,12 @@ export async function getPullbackPreview(filters: NoResponseFilters = {}, now: D
     if (!stats.included) continue; // رد العميل → خارج النظام
     const fu = stats.noAnswerCount;
     const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
-    const { state, daysSince, tier } = noResponseState(fu, baseline, now, config);
-    if (state !== "pending" && state !== "overdue") continue; // فقط المرشّحون
+    const { state, daysSince, pullDay } = noResponseState(fu, baseline, now, config);
+    if (state !== "warning" && state !== "overdue") continue; // المرشّحون: تحذير أو تجاوز (out/grace مستبعدان)
     rows.push({
       id: l.id, name: l.name, phone: l.phone,
       employeeId: l.assignedToId, employee: l.assignedTo?.name ?? null,
-      followUpCount: fu, daysLate: Math.floor(daysSince), timeoutDays: tier.warnDays,
+      followUpCount: fu, daysLate: Math.floor(daysSince), timeoutDays: pullDay ?? 0,
       category: escalationCategory(fu, config), klass: state,
     });
   }
@@ -344,7 +358,8 @@ export async function getPoolBySourceEmployee(filters: NoResponseFilters = {}): 
     take: 3000,
   });
 
-  const statsByLead = await noAnswerStatsByLead(leads.map((l) => l.id));
+  // الحوض عرض تاريخي: نمرّر epoch (لا null) فيُحتسب كل متابعات «لم يرد» تاريخيًا (assignedAt=null صار out).
+  const statsByLead = await noAnswerStatsByLead(leads.map((l) => ({ id: l.id, assignedAt: new Date(0) })));
 
   const bySource = new Map<string, { leadIds: string[]; byFollowup: Record<EscalationCategory, number>; count: number }>();
   for (const l of leads) {
@@ -380,6 +395,8 @@ export type MyNoResponseAlert = {
   lines: MyAlertLine[]; // سطر لكل فئة فيها عملاء بلغوا الإنذار/السحب (مرتّبة تصاعديًا بعدد المتابعات)
   late: number;         // إجمالي المتأخرين (لتوافق العرض القديم)
   pulled: number;       // كم عميل سُحب مني مؤخّرًا لعدم التواصل (آخر ٧ أيام)
+  warningCount: number; // §٥: عملاء في حالة warning (يُسحبون خلال ٢٤ ساعة) — مصدر بانر الموظف
+  warningMinHoursLeft: number | null; // أقل عدد ساعات متبقّية على السحب بين عملاء warning (للّون)
 };
 
 /**
@@ -400,21 +417,29 @@ export async function getMyNoResponseAlert(userId: string, now: Date = new Date(
       select: { id: true, assignedAt: true },
     }),
     prisma.reassignment.count({
-      where: { fromUserId: userId, toUserId: null, reason: "no_response", createdAt: { gte: recentCutoff } },
+      where: { fromUserId: userId, toUserId: null, reason: { startsWith: "no_response" }, createdAt: { gte: recentCutoff } },
     }),
   ]);
 
-  const statsByLead = await noAnswerStatsByLead(mine.map((l) => l.id));
+  const statsByLead = await noAnswerStatsByLead(mine.map((l) => ({ id: l.id, assignedAt: l.assignedAt })));
 
   // نجمّع المتأخرين (بانتظار الإنذار أو يُسحب الآن) حسب عدد متابعات «لم يرد».
   const byFu = new Map<number, number>();
+  let warningCount = 0;
+  let warningMinHoursLeft: number | null = null;
   for (const l of mine) {
     const stats = statsByLead.get(l.id) ?? { included: true, noAnswerCount: 0, lastNoAnswerAt: null, lastResult: null };
     if (!stats.included) continue; // رد العميل → خارج النظام
     const fu = stats.noAnswerCount;
     const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
-    const { state } = noResponseState(fu, baseline, now, config);
-    if (state === "pending" || state === "overdue") byFu.set(fu, (byFu.get(fu) ?? 0) + 1);
+    const { state, daysSince, pullDay } = noResponseState(fu, baseline, now, config);
+    if (state === "warning" || state === "overdue") byFu.set(fu, (byFu.get(fu) ?? 0) + 1);
+    // §٥: عملاء warning + الساعات المتبقّية على السحب (للبانر واللون).
+    if (state === "warning" && pullDay != null) {
+      warningCount++;
+      const hoursLeft = Math.max(0, (pullDay - daysSince) * 24);
+      if (warningMinHoursLeft === null || hoursLeft < warningMinHoursLeft) warningMinHoursLeft = hoursLeft;
+    }
   }
 
   const lines: MyAlertLine[] = [...byFu.entries()]
@@ -422,7 +447,82 @@ export async function getMyNoResponseAlert(userId: string, now: Date = new Date(
     .map(([followUps, count]) => ({ followUps, count, message: warnMessage(followUps, count) }));
   const late = lines.reduce((s, l) => s + l.count, 0);
 
-  return { lines, late, pulled };
+  return { lines, late, pulled, warningCount, warningMinHoursLeft };
+}
+
+// ===================== بحاجة لمراجعة (للمالك فقط — عرض بلا سحب) =====================
+
+export type ReviewGroup = { employeeId: string; employeeName: string; count: number };
+export type NeedsReview = {
+  noAssignDate: ReviewGroup[];      // (أ) مُسند لموظف لكن assignedAt=null → خارج السحب التلقائي
+  neverContacted: ReviewGroup[];    // (ب) assignedAt مضبوط + صفر متابعات + مضى >٣ أيام
+  totalNoAssign: number;
+  totalNeverContacted: number;
+};
+
+/**
+ * عملاء «بحاجة لمراجعة» لا يمسكهم السحب التلقائي — للمالك فقط (عرض تشخيصي بلا أزرار).
+ *  (أ) بلا تاريخ إسناد: assignedToId مضبوط و assignedAt=null (لا نعرف متى أُسند → out).
+ *  (ب) لم يُتواصل إطلاقًا: assignedAt مضبوط، صفر متابعات، ومضى أكثر من ٣ أيام.
+ * كلاهما ضمن نطاق «لم يتم الرد» (NEW/ATTEMPTED، موظف مبيعات فعّال، دون سقف الدورات، غير يدوي).
+ */
+export async function getNeedsReview(now: Date = new Date()): Promise<NeedsReview> {
+  const cutoff = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+  const base = {
+    isArchived: false,
+    stage: { in: [...NO_RESPONSE_STAGES] },
+    manualAssignedAt: null,
+    reassignCount: { lt: MAX_REASSIGNS },
+    assignedTo: { role: "EMPLOYEE" as const, active: true },
+  };
+  const [noAssign, never] = await Promise.all([
+    prisma.lead.findMany({
+      where: { ...base, assignedToId: { not: null }, assignedAt: null },
+      select: { assignedToId: true, assignedTo: { select: { name: true } } },
+    }),
+    prisma.lead.findMany({
+      where: { ...base, assignedToId: { not: null }, assignedAt: { not: null, lt: cutoff }, followUps: { none: {} } },
+      select: { assignedToId: true, assignedTo: { select: { name: true } } },
+    }),
+  ]);
+  const group = (rows: { assignedToId: string | null; assignedTo: { name: string } | null }[]): ReviewGroup[] => {
+    const m = new Map<string, { name: string; count: number }>();
+    for (const r of rows) {
+      if (!r.assignedToId) continue;
+      const e = m.get(r.assignedToId) ?? { name: r.assignedTo?.name ?? "—", count: 0 };
+      e.count++; m.set(r.assignedToId, e);
+    }
+    return [...m.entries()].map(([employeeId, v]) => ({ employeeId, employeeName: v.name, count: v.count })).sort((a, b) => b.count - a.count);
+  };
+  return { noAssignDate: group(noAssign), neverContacted: group(never), totalNoAssign: noAssign.length, totalNeverContacted: never.length };
+}
+
+// ===================== تعذّر الوصول (§٤ — للمالك فقط، عرض) =====================
+
+export type UnreachableRow = { id: string; name: string; lastEmployee: string | null; exhaustedEmployees: number };
+
+/**
+ * §٤: عملاء «تعذّر الوصول» — سُحبوا بسبب EXHAUSTED من ≥٢ موظفين متعاقبين. مستبعدون من كل توزيع تلقائي.
+ * عرض للمالك فقط: الاسم · آخر موظف EXHAUSTED · عدد الموظفين المتعاقبين.
+ */
+export async function getUnreachableLeads(): Promise<UnreachableRow[]> {
+  const ids = [...(await unreachableLeadIds())];
+  if (ids.length === 0) return [];
+  const leads = await prisma.lead.findMany({
+    where: { id: { in: ids }, isArchived: false },
+    select: {
+      id: true, name: true,
+      reassignments: { where: { toUserId: null, reason: "no_response_exhausted" }, orderBy: { createdAt: "desc" }, select: { fromUserId: true } },
+    },
+  });
+  const fromIds = [...new Set(leads.flatMap((l) => l.reassignments.map((r) => r.fromUserId)).filter((x): x is string => !!x))];
+  const users = fromIds.length ? await prisma.user.findMany({ where: { id: { in: fromIds } }, select: { id: true, name: true } }) : [];
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+  return leads.map((l) => ({
+    id: l.id, name: l.name,
+    lastEmployee: l.reassignments[0]?.fromUserId ? (nameById.get(l.reassignments[0].fromUserId) ?? null) : null,
+    exhaustedEmployees: new Set(l.reassignments.map((r) => r.fromUserId).filter(Boolean)).size,
+  }));
 }
 
 // ===================== المستنفدون العالقون في الحوض =====================
