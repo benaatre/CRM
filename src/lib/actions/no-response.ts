@@ -59,7 +59,9 @@ export type LeadState = "asis" | "fresh";
 
 /**
  * يُسند عميل الحوض لموظف عبر assignLead الموحّدة (م-١): assignedAt=now + contactedAt=null
- * + manualAssignedAt (توزيع الحوض قرار بشري من المالك) + سجل Reassignment.
+ * + سجل Reassignment — **بلا manualAssignedAt**: الحصانة الدائمة للإسناد اليدوي المباشر
+ * من المالك (team.ts) فقط؛ عميل الحوض يدخل دورة «لم يتم الرد» من جديد بمهلة كاملة
+ * (تجديد assignedAt يمنحها تلقائيًا عبر baseline)، فيرجع للحوض لو أهمله الموظف الجديد.
  * لا يلمس reassignCount: العدّاد ملك السحب التلقائي وحده (زيادته هنا تُضاعف العدّ وتكسر سقف «٣ دورات»).
  * fresh = يرجّع المرحلة «جديد» ويصفّر nextFollowup — المتابعات محفوظة (سجل تاريخي، لا تُحذف).
  */
@@ -67,7 +69,7 @@ async function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toU
   const fresh = state === "fresh";
   // حارس تزامن: لا نُسند إلا إذا كان لا يزال في الحوض (assignedToId=null) — تخطٍّ صامت عند التسابق.
   const ok = await assignLead(tx, leadId, toUserId, {
-    manual: true,
+    manual: false,
     reason: "manual_redistribute",
     now,
     guardWhere: { assignedToId: null },
