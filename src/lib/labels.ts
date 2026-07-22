@@ -58,17 +58,18 @@ export const stageLabels: Record<LeadStage, string> = {
 };
 export const stageLabel = (s: LeadStage) => stageLabels[s] ?? s;
 
-// أصناف ألوان (نص + خلفية + حدود) لكل مرحلة — للوسوم وأعمدة الكانبان.
+// أصناف ألوان (نص + خلفية شفافة خفيفة + حدّ بنفس اللون) لكل مرحلة — لون مميّز لكل مرحلة بلا تكرار،
+// بتباين واضح على خلفية أوبسيديان (#0A0A0B). المصدر الوحيد للجدول/الكانبان/الدرج/الملف/بطاقة الجوال.
 export const stageColor: Record<LeadStage, string> = {
-  NEW: "text-info bg-info/10 border-info/30",
-  ATTEMPTED: "text-warning bg-warning/10 border-warning/30",
-  INTERESTED: "text-gold bg-gold/10 border-gold/30",
-  FOLLOW_UP_LATER: "text-muted-foreground bg-muted border-border",
-  VIEWING: "text-info bg-info/10 border-info/30",
-  NEGOTIATION: "text-gold-light bg-gold/10 border-gold/40",
-  RESERVED: "text-success bg-success/10 border-success/30",
-  CLOSED_WON: "text-success bg-success/15 border-success/40",
-  CLOSED_LOST: "text-destructive bg-destructive/10 border-destructive/30",
+  NEW: "text-slate-300 bg-slate-400/10 border-slate-400/30",       // رمادي
+  ATTEMPTED: "text-amber-400 bg-amber-400/10 border-amber-400/30", // كهرماني
+  INTERESTED: "text-green-400 bg-green-400/10 border-green-400/30", // أخضر
+  FOLLOW_UP_LATER: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30", // سماوي
+  VIEWING: "text-blue-400 bg-blue-400/10 border-blue-400/30",      // أزرق
+  NEGOTIATION: "text-violet-400 bg-violet-400/10 border-violet-400/30", // بنفسجي
+  RESERVED: "text-gold bg-gold/10 border-gold/30",                 // ذهبي #CBA45E
+  CLOSED_WON: "text-emerald-500 bg-emerald-500/15 border-emerald-500/40", // زمردي غامق
+  CLOSED_LOST: "text-red-400 bg-red-400/10 border-red-400/30",     // أحمر
 };
 
 export const channelLabels: Record<Channel, string> = {
