@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { LeadStage, Priority } from "@prisma/client";
 import { stageOrder, stageLabels, purchaseGoalLabels, purchaseMethodLabels, priorityLabels } from "@/lib/labels";
-import { toArabicDigits, formatCurrency } from "@/lib/format";
+import { toArabicDigits, formatCurrency, daysAgoLabel } from "@/lib/format";
 import type { LeadFilterValues } from "@/lib/lead-filters";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { LeadDrawer } from "./lead-drawer";
@@ -100,6 +100,7 @@ export function KanbanBoard({
                   </div>
                   <Link href={`/leads/${l.id}`} className="flex min-h-11 shrink-0 items-center rounded-lg border border-border px-3 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold">فتح</Link>
                 </div>
+                {!isManager && <div className="mt-1 text-[11px] text-muted-foreground/80">استلمته {daysAgoLabel(l.daysWaiting)}</div>}
                 <div className="mt-1.5 text-xs text-muted-foreground">
                   {l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"} · {l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}
                   {isManager && l.assignedTo && <> · {l.assignedTo.name}</>}
@@ -146,6 +147,7 @@ export function KanbanBoard({
                   >
                     <div className="flex items-center gap-1.5 font-medium text-foreground">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /></div>
                     <div className="mt-0.5 text-xs text-gold" dir="ltr">{l.phone}</div>
+                    {!isManager && <div className="mt-1 text-[11px] text-muted-foreground/80">استلمته {daysAgoLabel(l.daysWaiting)}</div>}
                     <div className="mt-1.5 text-xs text-muted-foreground">
                       {l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"} · {l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}
                     </div>

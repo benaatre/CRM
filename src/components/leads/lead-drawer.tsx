@@ -10,6 +10,7 @@ import {
   stageOrder, stageLabels, stageColor, channelLabels, priorityLabels,
   unitTypeLabels, purchaseMethodLabels, purchaseMethodOptions, purchaseGoalLabels, districtOptions,
 } from "@/lib/labels";
+import { daysAgoLabel } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
 import {
   fetchLeadDetail, updateLeadStage, updateLeadFields,
@@ -156,6 +157,10 @@ export function LeadDrawer({
                       <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[lead.stage]}`}>{stageLabels[lead.stage]}</span>
                       <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{lead.attempts} محاولة</span>
                     </div>
+                    {/* كتلة الاستلام للموظف فقط — المالك/المدير كما كانت الشاشة سابقًا (بلا إضافة). */}
+                    {!isManager && (
+                      <div className="mt-2 text-xs text-muted-foreground">استلمته: <span className="font-medium text-gold">{daysAgoLabel(lead.daysWaiting)}</span></div>
+                    )}
                   </div>
                 </div>
                 <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"><X className="size-5" /></button>

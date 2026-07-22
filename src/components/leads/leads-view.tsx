@@ -7,7 +7,7 @@ import {
   purchaseMethodLabels, purchaseGoalLabels,
   stageLabels, stageColor,
 } from "@/lib/labels";
-import { formatDate, toArabicDigits } from "@/lib/format";
+import { formatDate, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import { TransferStar } from "./transfer-star";
 import {
@@ -191,6 +191,7 @@ export function LeadsView({
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                 <span className={`rounded-full border px-2 py-0.5 ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
                 <span className="text-muted-foreground">الموظف: {l.assignedTo?.name ?? "غير موزّع"}</span>
+                {!isManager && <span className="text-muted-foreground">استلمته {daysAgoLabel(l.daysWaiting)}</span>}
                 {l.followUpsCount > 0 && (
                   <button onClick={() => setFuLead(l)} className="rounded-full border border-border px-2 py-0.5 text-gold">{toArabicDigits(l.followUpsCount)} متابعة</button>
                 )}
@@ -209,7 +210,7 @@ export function LeadsView({
               <th className="px-3 py-3 font-medium">#</th>
               <th className="px-4 py-3 font-medium">الاسم</th>
               <th className="px-4 py-3 font-medium">الجوال</th>
-              <th className="px-4 py-3 font-medium">تاريخ الإضافة</th>
+              <th className="px-4 py-3 font-medium">{isManager ? "تاريخ الإضافة" : "الاستلام"}</th>
               <th className="px-4 py-3 font-medium">الموظف</th>
               <th className="px-4 py-3 font-medium">طريقة الشراء</th>
               <th className="px-4 py-3 font-medium">هدف الشراء</th>
@@ -230,7 +231,8 @@ export function LeadsView({
                   <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
                   <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /></span></td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(l.createdAt)}</td>
+                  {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
+                  <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>
                   <td className="px-4 py-3 text-muted-foreground">{l.assignedTo?.name ?? "غير موزّع"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"}</td>
