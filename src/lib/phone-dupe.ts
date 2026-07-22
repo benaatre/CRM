@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneVariants } from "@/lib/value-normalize";
 
 // نافذة استثناء «نفس الإعلان خلال ٤٨ ساعة» — ضجيج/إعادة إدخال آلي.
-export const DUP_WINDOW_MS = 48 * 60 * 60 * 1000;
+const DUP_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /**
  * مفتاح التطبيع للمقارنة فقط (لا يُخزَّن، لا يمسّ normalizePhone العامة):
@@ -23,7 +23,7 @@ export function dedupeKey(raw: string | null | undefined): string | null {
  * مفتاح «الإعلان/المصدر»: المصدر المهيكل sourceId إن وُجد (الأدقّ لتمييز الحملة)،
  * وإلا القناة channel كـfallback (للاستيراد الذي لا يضبط sourceId).
  */
-export function adKey(l: { sourceId: string | null; channel: Channel }): string {
+function adKey(l: { sourceId: string | null; channel: Channel }): string {
   return l.sourceId ?? `ch:${l.channel}`;
 }
 

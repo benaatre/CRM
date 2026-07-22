@@ -249,28 +249,6 @@ export async function updateLeadFields(
   }
 }
 
-/** نقل جماعي لعدة عملاء لموظف — للمدير فقط. */
-export async function bulkReassign(ids: string[], toUserId: string): Promise<ActionResult> {
-  try {
-    const user = await requireUser();
-    if (!isManager(user.role)) return { ok: false, error: "النقل للمدير فقط" };
-    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
-    const target = await prisma.user.findUnique({ where: { id: toUserId }, select: { id: true } });
-    if (!target) return { ok: false, error: "الموظف غير موجود" };
-
-    // #8: النقل اليدوي يبدأ مهلة الموظف الجديد من جديد (assignedAt=الآن) ويُلغي احتساب تواصل السابق.
-    // manualAssignedAt يمنح حصانة ٧٢س من السحب التلقائي.
-    await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null, manualAssignedAt: new Date() } });
-    await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", summary: `نقل ${ids.length} عميل إلى موظف` });
-    // إشعار مجمّع للموظف المعني.
-    await emitLeadAssignedBatch([{ userId: toUserId, count: ids.length, sampleLeadId: ids[0] }]);
-    revalidateLeads();
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: toUserError(e) };
-  }
-}
-
 /** حذف جماعي — المدير يحذف أي عميل، الموظف يحذف عملاءه فقط. */
 /** حذف جماعي نهائي للعملاء — للمالك/المدير فقط (يُتحقق على الخادم). */
 export async function bulkDelete(ids: string[]): Promise<ActionResult> {
@@ -388,25 +366,6 @@ export async function distributeDuplicateLead(
     await logAudit(prisma, { userId: user.id, action: "lead.distributed", entity: "lead", entityId: leadId, summary: `وزّع مكرر (${mode})` });
     revalidateLeads();
     revalidatePath("/leads/duplicates");
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: toUserError(e) };
-  }
-}
-
-/** إرجاع العميل لمرحلة «جديد» — مع تسجيل في السجل. */
-export async function resetLeadToNew(leadId: string): Promise<ActionResult> {
-  try {
-    const { user, lead } = await assertLeadAccess(leadId);
-    if (lead.stage === LeadStage.NEW) return { ok: true };
-    await prisma.$transaction([
-      prisma.lead.update({ where: { id: leadId }, data: { stage: LeadStage.NEW, lastContact: new Date(), isArchived: false } }),
-      prisma.activity.create({
-        data: { leadId, userId: user.id, type: ActivityType.STAGE_CHANGE, note: "أُرجع لمرحلة جديد" },
-      }),
-    ]);
-    await logAudit(prisma, { userId: user.id, action: "lead.resetToNew", entity: "lead", entityId: leadId, summary: "أرجع العميل لمرحلة جديد" });
-    revalidateLeads();
     return { ok: true };
   } catch (e) {
     return { ok: false, error: toUserError(e) };

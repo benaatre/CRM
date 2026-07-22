@@ -53,7 +53,7 @@ function noResponseCap(): number {
 const KSA_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 /** ساعة اليوم بتوقيت السعودية (٠–٢٣) مهما كان توقيت الخادم. */
-export function ksaHour(now: Date): number {
+function ksaHour(now: Date): number {
   return new Date(now.getTime() + KSA_OFFSET_MS).getUTCHours();
 }
 
@@ -65,7 +65,7 @@ export function ksaTodayStart(now: Date): Date {
 }
 
 /** هل نحن داخل نافذة عمل التوزيع [start, end)؟ */
-export function isWithinWindow(startHour: number, endHour: number, now: Date): boolean {
+function isWithinWindow(startHour: number, endHour: number, now: Date): boolean {
   const h = ksaHour(now);
   if (startHour === endHour) return true; // نافذة على مدار اليوم
   if (startHour < endHour) return h >= startHour && h < endHour;
@@ -95,7 +95,7 @@ const DIST_SELECT = {
 } as const;
 
 /** يجلب إعدادات التوزيع (ينشئ السجل إن لزم). */
-export async function getDistSettings(db: Db = prisma): Promise<DistSettings> {
+async function getDistSettings(db: Db = prisma): Promise<DistSettings> {
   const s = await db.settings.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton" }, select: DIST_SELECT });
   return s;
 }
@@ -104,7 +104,7 @@ export async function getDistSettings(db: Db = prisma): Promise<DistSettings> {
  * الموظفون المشاركون المتواجدون — من distOrder، مفعّلون، وآخر ظهورهم ضمن حد التواجد.
  * يحافظ على ترتيب distOrder. إذا distPresenceMin = 0 يتجاهل شرط التواجد (يكفي active).
  */
-export async function presentParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
+async function presentParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
   if (settings.distOrder.length === 0) return [];
   const since = settings.distPresenceMin > 0 ? new Date(now.getTime() - settings.distPresenceMin * 60_000) : null;
   const users = await db.user.findMany({
@@ -214,7 +214,7 @@ export async function markContacted(db: Db, leadId: string, when: Date = new Dat
 /**
  * يُرجِع تلقائيًا الموظفين الذين انتهت مدة إيقافهم (pauseUntil مرّ) ويرسل إشعارًا لهم وللمالك.
  */
-export async function autoResumeExpiredPauses(now: Date = new Date()): Promise<number> {
+async function autoResumeExpiredPauses(now: Date = new Date()): Promise<number> {
   const expired = await prisma.user.findMany({
     where: { availabilityPaused: true, pauseUntil: { not: null, lte: now } },
     select: { id: true, name: true },
@@ -238,7 +238,7 @@ export async function autoResumeExpiredPauses(now: Date = new Date()): Promise<n
  * الموظفون «المتاحون» للتوزيع الأولي — المشاركون في الدور، نشطون، وغير موقوفين أنفسهم.
  * (يختلف عن presentParticipants: لا يشترط التواجد اللحظي/آخر ظهور — يكفي أنه متاح.)
  */
-export async function availableParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
+async function availableParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
   if (settings.distOrder.length === 0) return [];
   const users = await db.user.findMany({
     where: { id: { in: settings.distOrder }, active: true },

@@ -32,7 +32,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // النظام يعتمد متابعات «لم يرد» حصريًا. أي نتيجة أخرى = رد العميل → يخرج من النظام.
 export const NO_ANSWER_RESULTS = ["NOT_ANSWERED_SCHEDULED", "NOT_ANSWERED_WHATSAPP"] as const;
 
-export function isNoAnswer(result: string | null | undefined): boolean {
+function isNoAnswer(result: string | null | undefined): boolean {
   return !!result && (NO_ANSWER_RESULTS as readonly string[]).includes(result);
 }
 
@@ -95,7 +95,7 @@ export function noResponseBaseline(assignedAt: Date | null, lastFollowUpAt: Date
  *   count = 2             → timeoutDays[1] (يومان افتراضيًا)
  *   count >= immunityCap  → 0     (سحب فوري — immunityCap صار «حد السحب» لا الحصانة، افتراضي ٣)
  */
-export function noResponsePullDay(noAnswerCount: number, config: NoResponseConfig = DEFAULT_NO_RESPONSE_CONFIG): number | null {
+function noResponsePullDay(noAnswerCount: number, config: NoResponseConfig = DEFAULT_NO_RESPONSE_CONFIG): number | null {
   const days = config.timeoutDays.length ? config.timeoutDays : DEFAULT_TIMEOUT_DAYS;
   if (noAnswerCount <= 0) return null;                 // خارج النظام
   if (noAnswerCount >= config.immunityCap) return 0;   // سحب فوري
@@ -159,13 +159,6 @@ export type OverdueAgeBucket = "age_3_7" | "age_8_14" | "age_15_30" | "age_30plu
 
 export const OVERDUE_AGE_ORDER: OverdueAgeBucket[] = ["age_3_7", "age_8_14", "age_15_30", "age_30plus"];
 
-export const OVERDUE_AGE_LABEL: Record<OverdueAgeBucket, string> = {
-  age_3_7: "٣–٧ أيام",
-  age_8_14: "٨–١٤ يوم",
-  age_15_30: "١٥–٣٠ يوم",
-  age_30plus: "أكثر من شهر",
-};
-
 /**
  * فئة عمر التأخير حسب daysSince (أيام منذ المرجع الزمني noResponseBaseline). تُستدعى فقط لمن حالته
  * overdue. حدود شاملة بالأرضية (floor): ٣–٧ · ٨–١٤ · ١٥–٣٠ · ٣١+ — بلا فجوات (أي overdue يقع في واحدة).
@@ -184,7 +177,7 @@ export function overdueAgeBucket(daysSince: number): OverdueAgeBucket {
 
 const ORDINALS: Record<number, string> = { 1: "الثانية", 2: "الثالثة", 3: "الرابعة", 4: "الخامسة" };
 
-export function nextFollowUpOrdinal(followUpCount: number): string {
+function nextFollowUpOrdinal(followUpCount: number): string {
   return ORDINALS[followUpCount] ?? "القادمة";
 }
 

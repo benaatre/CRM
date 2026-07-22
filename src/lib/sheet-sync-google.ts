@@ -32,7 +32,7 @@ type LinkWithSource = {
  * غير موزّعين بمصدر الرابط. لا يوزّعهم — يبقون في «غير الموزّعين».
  * opts.limit يحدّ عدد الصفوف المعالجة هذه الجولة (للسحب على دفعات).
  */
-export async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): Promise<SheetSyncResult> {
+async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): Promise<SheetSyncResult> {
   const base: Omit<SheetSyncResult, "ok"> = {
     linkId: link.id, created: 0, duplicates: 0, skipped: 0, processed: 0, totalDataRows: 0, remaining: 0,
   };
