@@ -3,15 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { getNotifications, fetchPlaybackConfig, type NotificationDTO, type PlaybackConfig } from "@/lib/actions/notifications";
+import { fetchPlaybackConfig, type NotificationDTO, type PlaybackConfig } from "@/lib/actions/notifications";
+import { subscribeNotifications } from "@/components/layout/notifications-store";
 import { eventColor } from "@/lib/notifications/event-styles";
-
-const POLL_MS = 15000;
 
 /**
  * مزوّد مركزي (مركّب مرة واحدة في الـ layout) — يتولّى صوت وتوست الإشعارات الجديدة
  * للمستخدم الحالي، حسب إعداد كل حدث (صوت/توست/نغمة/مستوى/لون) واحترام كتم الكل.
  * الجرس يبقى للقائمة والعدّاد فقط (تفاديًا لتكرار الصوت).
+ * م-٥: البيانات من المخزن المشترك (بولينق واحد/٦٠ث)، وإعدادات التشغيل تُجلب مرة
+ * واحدة عند التركيب (تتغيّر نادرًا) بدل استعلامات upsert كل دورة.
  */
 export function NotificationCenter() {
   const cfg = useRef<PlaybackConfig | null>(null);
@@ -67,13 +68,12 @@ export function NotificationCenter() {
       }
     }
 
-    async function tick() {
-      const [conf, res] = await Promise.all([
-        fetchPlaybackConfig().catch(() => null),
-        getNotifications().catch(() => null),
-      ]);
-      if (!alive || !res) return;
-      if (conf) cfg.current = conf;
+    // إعدادات التشغيل مرة واحدة عند التركيب — تتغير نادرًا، وجلبها كل دورة كان يكلف
+    // ~٩ استعلامات (منها كتابة upsert) كل ١٥ ثانية لكل تبويب.
+    fetchPlaybackConfig().then((conf) => { if (alive) cfg.current = conf; }).catch(() => {});
+
+    const unsubscribe = subscribeNotifications((res) => {
+      if (!alive) return;
       if (first.current) {
         res.items.forEach((n) => seen.current.add(n.id));
         first.current = false;
@@ -83,10 +83,8 @@ export function NotificationCenter() {
       fresh.forEach((n) => seen.current.add(n.id));
       const newest = fresh.filter((n) => !n.read)[0];
       if (newest) handle(newest);
-    }
-    tick();
-    const t = setInterval(tick, POLL_MS);
-    return () => { alive = false; clearInterval(t); clearTimeout(hideTimer); clearTimeout(removeTimer); };
+    });
+    return () => { alive = false; unsubscribe(); clearTimeout(hideTimer); clearTimeout(removeTimer); };
   }, []);
 
   if (!toast) return null;

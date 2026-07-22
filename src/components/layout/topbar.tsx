@@ -8,8 +8,9 @@ import {
   Moon,
   Plus,
   LogOut,
+  MonitorSmartphone,
 } from "lucide-react";
-import { signOutAction } from "@/lib/actions/auth";
+import { signOutAction, signOutAllDevicesAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -82,6 +83,24 @@ export function Topbar({
           >
             <LogOut className="size-4" />
             <span className="hidden md:inline">خروج</span>
+          </button>
+        </form>
+        <form
+          action={signOutAllDevicesAction}
+          className="hidden md:block"
+          onSubmit={(e) => {
+            if (!confirm("تسجيل الخروج من كل الأجهزة؟ ستحتاج تسجيل الدخول من جديد على كل جهاز.")) {
+              e.preventDefault();
+            }
+          }}
+        >
+          <button
+            type="submit"
+            title="خروج من كل الأجهزة"
+            className="flex items-center gap-1.5 rounded-xl border border-border px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive"
+          >
+            <MonitorSmartphone className="size-4" />
+            <span className="hidden lg:inline">كل الأجهزة</span>
           </button>
         </form>
       </div>

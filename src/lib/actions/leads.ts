@@ -16,6 +16,8 @@ import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards"
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
+import { assignLead, assignLeadsToEmployee, assignmentData } from "@/lib/assignment";
+import { applyStageChange } from "@/lib/stage-change";
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
@@ -92,27 +94,13 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
       if (chosen) {
         assignedToId = chosen;
       } else {
-        // ١) التوزيع التلقائي الذكي (إن مُفعّل وداخل النافذة ومع وجود مشاركين متواجدين)
+        // التوزيع التلقائي الذكي (إن مُفعّل وداخل النافذة ومع وجود مشاركين متواجدين).
+        // حُذف الـfallback القديم (autoAssign للأقل حملًا) — كان يتجاهل distOrder
+        // والنافذة الزمنية وmaxClients، فيوزّع بمجمّع مختلف عن نظام التوزيع الرسمي.
         const picked = await pickInitialAssignee(prisma);
         if (picked) {
           assignedToId = picked;
           autoDistributed = true;
-        } else {
-          // ٢) رجوع للإسناد البسيط للأقل حملًا (autoAssign القديم) إن مُفعّل
-          const settings = await prisma.settings.findUnique({
-            where: { id: "singleton" },
-            select: { autoAssign: true },
-          });
-          if (settings?.autoAssign) {
-            const emps = await prisma.user.findMany({
-              where: { role: "EMPLOYEE", active: true },
-              select: { id: true, _count: { select: { assignedLeads: true } } },
-            });
-            if (emps.length > 0) {
-              emps.sort((a, b) => a._count.assignedLeads - b._count.assignedLeads);
-              assignedToId = emps[0].id;
-            }
-          }
         }
       }
     }
@@ -128,17 +116,19 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
         unitType,
         budget,
         notes,
-        assignedToId,
         createdById: user.id,
         sourceId,
         stage: LeadStage.NEW,
         priority: Priority.MEDIUM,
         nextFollowup: tomorrow,
-        ...(autoDistributed ? { assignedAt: new Date() } : {}),
+        // م-١: أختام الإسناد الموحّدة — اختيار بشري (موظف لنفسه/مدير) = يدوي بحصانته.
+        ...(assignedToId ? assignmentData(assignedToId, { manual: !autoDistributed }) : {}),
       },
     });
-    if (autoDistributed) {
-      await prisma.reassignment.create({ data: { leadId: lead.id, fromUserId: null, toUserId: assignedToId, reason: "initial" } });
+    if (assignedToId) {
+      await prisma.reassignment.create({
+        data: { leadId: lead.id, fromUserId: null, toUserId: assignedToId, reason: autoDistributed ? "initial" : "manual" },
+      });
     }
     // آثار جانبية بعد الحفظ — فشلها ما يُفشِل إنشاء العميل (#29).
     await notifyBestEffort("lead.created.audit", () =>
@@ -162,7 +152,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
   }
 }
 
-/** تغيير مرحلة العميل (السحب في الكانبان أو من الدرج) + تسجيل في السجل. */
+/** تغيير مرحلة العميل من الدرج — م-٢: نفس مسار الكانبان بالضبط (applyStageChange). */
 export async function updateLeadStage(
   leadId: string,
   stage: LeadStage,
@@ -175,20 +165,13 @@ export async function updateLeadStage(
       return { ok: false, error: "تحويل «غير مهتم» لازم يكون مع سبب — سجّله من نتيجة المتابعة." };
     }
 
-    await prisma.$transaction([
-      prisma.lead.update({
-        where: { id: leadId },
-        data: { stage, lastContact: new Date() },
-      }),
-      prisma.activity.create({
-        data: {
-          leadId,
-          userId: user.id,
-          type: ActivityType.STAGE_CHANGE,
-          note: `نُقل إلى مرحلة جديدة`,
-        },
-      }),
-    ]);
+    const full = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, stage: true, firstContactStage: true, firstContactDate: true, firstContactAt: true },
+    });
+    if (!full) return { ok: false, error: "العميل غير موجود" };
+
+    await prisma.$transaction((tx) => applyStageChange(tx, full, stage, user.id, "من الدرج"));
 
     revalidateLeads();
     return { ok: true };
@@ -208,6 +191,10 @@ export async function addActivity(
 
     const bumpsAttempt =
       type === ActivityType.CALL || type === ActivityType.WHATSAPP;
+    // م-٢: «تواصل فعلي» = مكالمة/واتساب/زيارة/موعد فقط — ملاحظة داخلية (NOTE) أو تغيير
+    // مرحلة لا يضبطان firstContactAt (كانا ينفخان «نسبة الرد» في التحليلات).
+    const isContact =
+      bumpsAttempt || type === ActivityType.VISIT || type === ActivityType.APPOINTMENT;
 
     await prisma.$transaction(async (tx) => {
       await tx.activity.create({
@@ -221,7 +208,7 @@ export async function addActivity(
         where: { id: leadId },
         data: {
           lastContact: new Date(),
-          firstContactAt: lead?.firstContactAt ?? new Date(),
+          ...(isContact ? { firstContactAt: lead?.firstContactAt ?? new Date() } : {}),
           ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
         },
       });
@@ -255,28 +242,6 @@ export async function updateLeadFields(
     });
     // تحديد موعد متابعة قادم = «تواصل» يوقف عدّاد إعادة التوجيه.
     if (data.nextFollowup) await markContacted(prisma, leadId);
-    revalidateLeads();
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: toUserError(e) };
-  }
-}
-
-/** نقل جماعي لعدة عملاء لموظف — للمدير فقط. */
-export async function bulkReassign(ids: string[], toUserId: string): Promise<ActionResult> {
-  try {
-    const user = await requireUser();
-    if (!isManager(user.role)) return { ok: false, error: "النقل للمدير فقط" };
-    if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
-    const target = await prisma.user.findUnique({ where: { id: toUserId }, select: { id: true } });
-    if (!target) return { ok: false, error: "الموظف غير موجود" };
-
-    // #8: النقل اليدوي يبدأ مهلة الموظف الجديد من جديد (assignedAt=الآن) ويُلغي احتساب تواصل السابق.
-    // manualAssignedAt يمنح حصانة ٧٢س من السحب التلقائي.
-    await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null, manualAssignedAt: new Date() } });
-    await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", summary: `نقل ${ids.length} عميل إلى موظف` });
-    // إشعار مجمّع للموظف المعني.
-    await emitLeadAssignedBatch([{ userId: toUserId, count: ids.length, sampleLeadId: ids[0] }]);
     revalidateLeads();
     return { ok: true };
   } catch (e) {
@@ -346,7 +311,8 @@ export async function unarchiveLeads(ids: string[], mode: UnarchiveMode): Promis
     const scope = isManager(user.role) ? {} : { assignedToId: user.id };
     const data =
       mode === "freshUnassigned"
-        ? { isArchived: false, stage: LeadStage.NEW, assignedToId: null }
+        // رجوع للحوض: تصفير أختام الإسناد كاملة (متسق مع بقية مسارات السحب للحوض).
+        ? { isArchived: false, stage: LeadStage.NEW, assignedToId: null, assignedAt: null, contactedAt: null }
         : mode === "freshKeepEmployee"
           ? { isArchived: false, stage: LeadStage.NEW }
           : { isArchived: false }; // asis (الافتراضي الآمن)
@@ -384,36 +350,22 @@ export async function distributeDuplicateLead(
     }
 
     // نعدّل حقول Lead فقط — المتابعات تبقى محفوظة في الأنماط الثلاثة.
-    const data =
-      mode === "freshUnassigned"
-        ? { stage: LeadStage.NEW, assignedToId: null, assignedAt: null, contactedAt: null }
-        : mode === "freshKeepEmployee"
-          ? { stage: LeadStage.NEW, assignedToId: toUserId, assignedAt: new Date(), contactedAt: null }
-          : { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null }; // asis — يحفظ المرحلة
-
-    await prisma.lead.update({ where: { id: leadId }, data });
+    if (mode === "freshUnassigned") {
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: { stage: LeadStage.NEW, assignedToId: null, assignedAt: null, contactedAt: null },
+      });
+    } else {
+      // م-١: الإسناد عبر الدالة الموحّدة (أختام كاملة + Reassignment). توزيع المكرر قرار بشري = يدوي.
+      await assignLead(prisma, leadId, toUserId as string, {
+        manual: true,
+        reason: "manual_redistribute",
+        extraData: mode === "freshKeepEmployee" ? { stage: LeadStage.NEW } : {},
+      });
+    }
     await logAudit(prisma, { userId: user.id, action: "lead.distributed", entity: "lead", entityId: leadId, summary: `وزّع مكرر (${mode})` });
     revalidateLeads();
     revalidatePath("/leads/duplicates");
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: toUserError(e) };
-  }
-}
-
-/** إرجاع العميل لمرحلة «جديد» — مع تسجيل في السجل. */
-export async function resetLeadToNew(leadId: string): Promise<ActionResult> {
-  try {
-    const { user, lead } = await assertLeadAccess(leadId);
-    if (lead.stage === LeadStage.NEW) return { ok: true };
-    await prisma.$transaction([
-      prisma.lead.update({ where: { id: leadId }, data: { stage: LeadStage.NEW, lastContact: new Date(), isArchived: false } }),
-      prisma.activity.create({
-        data: { leadId, userId: user.id, type: ActivityType.STAGE_CHANGE, note: "أُرجع لمرحلة جديد" },
-      }),
-    ]);
-    await logAudit(prisma, { userId: user.id, action: "lead.resetToNew", entity: "lead", entityId: leadId, summary: "أرجع العميل لمرحلة جديد" });
-    revalidateLeads();
     return { ok: true };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
@@ -545,22 +497,13 @@ export async function transferLeads(
     if (!target) return { ok: false, error: "الموظف غير موجود" };
 
     await prisma.$transaction(async (tx) => {
-      if (mode === "fresh") {
-        await tx.followUp.deleteMany({ where: { leadId: { in: ids } } });
-        await tx.lead.updateMany({
-          where: { id: { in: ids } },
-          data: {
-            assignedToId: toUserId, stage: LeadStage.NEW, attempts: 0,
-            firstContactStage: null, firstContactDate: null, firstContactAt: null,
-            lastContact: null, nextFollowup: null,
-            assignedAt: new Date(), contactedAt: null, // #8
-            manualAssignedAt: new Date(), // حصانة ٧٢س من السحب التلقائي
-          },
-        });
-      } else {
-        // #8: النقل اليدوي يبدأ مهلة الموظف الجديد من جديد ويُلغي احتساب تواصل السابق.
-        await tx.lead.updateMany({ where: { id: { in: ids } }, data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null, manualAssignedAt: new Date() } });
-      }
+      // م-١ + ح-٤: الإسناد عبر الدالة الموحّدة، والمتابعات لا تُحذف أبدًا (سجل تاريخي).
+      // «fresh» = المرحلة «جديد» + تصفير موعد المتابعة القادم فقط.
+      await assignLeadsToEmployee(tx, ids, toUserId, {
+        manual: true,
+        reason: "manual_transfer",
+        extraData: mode === "fresh" ? { stage: LeadStage.NEW, nextFollowup: null } : {},
+      });
       await tx.activity.createMany({
         data: ids.map((leadId) => ({
           leadId, userId: user.id, type: ActivityType.ASSIGNMENT,
@@ -589,13 +532,13 @@ export async function recoverLeads(ids: string[]): Promise<ActionResult> {
     if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
 
     await prisma.$transaction(async (tx) => {
-      await tx.followUp.deleteMany({ where: { leadId: { in: ids } } });
+      // ح-٤: المتابعات لا تُحذف أبدًا. «fresh» = مرحلة «جديد» + تصفير موعد المتابعة فقط،
+      // مع تصفير أختام الإسناد (رجوع للحوض) — متسق مع بقية مسارات السحب.
       await tx.lead.updateMany({
         where: { id: { in: ids } },
         data: {
-          assignedToId: null, stage: LeadStage.NEW, attempts: 0,
-          firstContactStage: null, firstContactDate: null, firstContactAt: null,
-          lastContact: null, nextFollowup: null, isArchived: false,
+          assignedToId: null, assignedAt: null, contactedAt: null,
+          stage: LeadStage.NEW, nextFollowup: null, isArchived: false,
         },
       });
       await tx.activity.createMany({
@@ -631,21 +574,18 @@ export async function reassignLead(
     ]);
     if (!target) return { ok: false, error: "الموظف غير موجود" };
 
-    await prisma.$transaction([
-      prisma.lead.update({
-        where: { id: leadId },
-        // #8: مهلة جديدة للموظف الجديد + إلغاء احتساب تواصل السابق + حصانة يدوية ٧٢س.
-        data: { assignedToId: toUserId, assignedAt: new Date(), contactedAt: null, manualAssignedAt: new Date() },
-      }),
-      prisma.activity.create({
+    await prisma.$transaction(async (tx) => {
+      // م-١: الإسناد عبر الدالة الموحّدة — أختام كاملة + سجل Reassignment.
+      await assignLead(tx, leadId, toUserId, { manual: true, reason: "manual_transfer" });
+      await tx.activity.create({
         data: {
           leadId,
           userId: user.id,
           type: ActivityType.ASSIGNMENT,
           note: `أُسند إلى ${target.name}`,
         },
-      }),
-    ]);
+      });
+    });
     await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", entityId: leadId, summary: `أعاد إسناد عميل إلى ${target.name}` });
     // حدث: توزّع عليك عميل (الجمهور حسب الإعداد — افتراضيًا الموظف المعني).
     await emitNotification({

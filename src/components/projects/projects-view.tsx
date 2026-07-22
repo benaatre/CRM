@@ -47,8 +47,13 @@ export function ProjectsView({ data, canManage }: { data: ProjectsOverview; canM
     { label: "متاحة", value: data.kpis.available, icon: CheckCircle2, accent: "text-success" },
     { label: "محجوزة", value: data.kpis.reserved, icon: Clock, accent: "text-warning" },
     { label: "مباعة", value: data.kpis.sold, icon: BadgeCheck, accent: "text-muted-foreground" },
-    { label: "قيمة المبيعات", value: formatCurrency(data.kpis.salesValue), icon: Wallet, accent: "text-gold", money: true },
-    { label: "إجمالي العرابين", value: formatCurrency(data.kpis.deposits), icon: Coins, accent: "text-info", money: true },
+    // الإجماليات المالية تصل من الخادم للمدير/المالك فقط (null للموظف).
+    ...(canManage && data.kpis.salesValue != null
+      ? [{ label: "قيمة المبيعات", value: formatCurrency(data.kpis.salesValue), icon: Wallet, accent: "text-gold", money: true }]
+      : []),
+    ...(canManage && data.kpis.deposits != null
+      ? [{ label: "إجمالي العرابين", value: formatCurrency(data.kpis.deposits), icon: Coins, accent: "text-info", money: true }]
+      : []),
   ];
 
   return (

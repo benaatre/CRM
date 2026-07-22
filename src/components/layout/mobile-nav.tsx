@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, SunMoon, LogOut } from "lucide-react";
-import { signOutAction } from "@/lib/actions/auth";
+import { Menu, X, SunMoon, LogOut, MonitorSmartphone } from "lucide-react";
+import { signOutAction, signOutAllDevicesAction } from "@/lib/actions/auth";
 import { toArabicDigits } from "@/lib/format";
 import { navForRole } from "./nav-items";
 import { Brand } from "./brand";
@@ -110,6 +110,22 @@ export function MobileNav({
                 >
                   <LogOut className="size-5" />
                   تسجيل الخروج
+                </button>
+              </form>
+              <form
+                action={signOutAllDevicesAction}
+                onSubmit={(e) => {
+                  if (!confirm("تسجيل الخروج من كل الأجهزة؟ ستحتاج تسجيل الدخول من جديد على كل جهاز.")) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                <button
+                  type="submit"
+                  className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-sm text-destructive hover:bg-destructive/10"
+                >
+                  <MonitorSmartphone className="size-5" />
+                  خروج من كل الأجهزة
                 </button>
               </form>
               {falLicense && (

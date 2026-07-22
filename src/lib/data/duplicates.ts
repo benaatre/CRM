@@ -116,11 +116,16 @@ export async function getDuplicateLeads(): Promise<DuplicatesData> {
   };
 }
 
+// م-٥: كاش ٦٠ ثانية — الشارة تُحسب في layout المالك مع كل تنقّل/refresh وكانت تمسح الجدول كاملًا.
+const BADGE_CACHE_MS = 60_000;
+let badgeCache: { at: number; count: number } | null = null;
+
 /**
  * عدّاد خفيف لشارة التنقّل: عدد مجموعات المكررين «النشطة» (count>1 بلا سجل محجوز/مباع).
- * استعلام واحد (phone, stage) + تجميع بالذاكرة. يُستدعى للمدير فقط (التنقّل managerOnly).
+ * استعلام واحد (phone, stage) + تجميع بالذاكرة + كاش ٦٠ث. يُستدعى للمدير فقط (التنقّل managerOnly).
  */
 export async function activeDuplicateGroupCount(): Promise<number> {
+  if (badgeCache && Date.now() - badgeCache.at < BADGE_CACHE_MS) return badgeCache.count;
   const leads = await prisma.lead.findMany({ select: { phone: true, stage: true } });
   const byKey = new Map<string, LeadStage[]>();
   for (const l of leads) {
@@ -134,5 +139,6 @@ export async function activeDuplicateGroupCount(): Promise<number> {
   for (const stages of byKey.values()) {
     if (stages.length > 1 && !stages.some((s) => BOOKED_STAGES.includes(s))) count++;
   }
+  badgeCache = { at: Date.now(), count };
   return count;
 }

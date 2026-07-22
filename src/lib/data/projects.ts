@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ProjectStatus, UnitStatus, UnitType, Floor } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireUser, isManager } from "@/lib/auth-guards";
 import { compareUnitNumbers } from "@/lib/format";
 
 const dec = (v: { toNumber(): number } | null) => (v ? v.toNumber() : null);
@@ -27,21 +28,28 @@ export type ProjectsOverview = {
     available: number;
     reserved: number;
     sold: number;
-    salesValue: number;
-    deposits: number;
+    /// إجماليات مالية على مستوى الشركة — للمدير/المالك فقط (null للموظف).
+    salesValue: number | null;
+    deposits: number | null;
   };
   cards: ProjectCard[];
 };
 
 export async function getProjectsOverview(): Promise<ProjectsOverview> {
+  // الصلاحية تُفرض هنا على الخادم: الإجماليات المالية لا تُحسب ولا تُرسل للموظف.
+  const user = await requireUser();
+  const manager = isManager(user.role);
+
   const [projects, unitsByStatus, soldAgg, depositAgg] = await Promise.all([
     prisma.project.findMany({
       orderBy: { createdAt: "asc" },
       include: { units: { select: { status: true } } },
     }),
     prisma.unit.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.booking.aggregate({ where: { stage: "SOLD" }, _sum: { finalPrice: true } }),
-    prisma.booking.aggregate({ _sum: { deposit: true } }),
+    manager
+      ? prisma.booking.aggregate({ where: { stage: "SOLD" }, _sum: { finalPrice: true } })
+      : null,
+    manager ? prisma.booking.aggregate({ _sum: { deposit: true } }) : null,
   ]);
 
   const statusCount = new Map(unitsByStatus.map((u) => [u.status, u._count._all]));
@@ -75,8 +83,8 @@ export async function getProjectsOverview(): Promise<ProjectsOverview> {
       available: statusCount.get("AVAILABLE") ?? 0,
       reserved: statusCount.get("RESERVED") ?? 0,
       sold: statusCount.get("SOLD") ?? 0,
-      salesValue: dec(soldAgg._sum.finalPrice) ?? 0,
-      deposits: dec(depositAgg._sum.deposit) ?? 0,
+      salesValue: manager ? (dec(soldAgg?._sum.finalPrice ?? null) ?? 0) : null,
+      deposits: manager ? (dec(depositAgg?._sum.deposit ?? null) ?? 0) : null,
     },
     cards,
   };
@@ -103,6 +111,10 @@ export type UnitRow = {
 export type ProjectDetail = ProjectCard & { unitRows: UnitRow[] };
 
 export async function getProject(id: string): Promise<ProjectDetail | null> {
+  // اسم المشتري ومعرّف الحجز بيانات عملاء زملاء — للمدير/المالك فقط.
+  const user = await requireUser();
+  const manager = isManager(user.role);
+
   const p = await prisma.project.findUnique({
     where: { id },
     include: {
@@ -156,8 +168,8 @@ export async function getProject(id: string): Promise<ProjectDetail | null> {
       })(),
       status: u.status,
       notes: u.notes,
-      buyerName: u.booking?.lead.name ?? null,
-      bookingId: u.booking?.id ?? null,
+      buyerName: manager ? (u.booking?.lead.name ?? null) : null,
+      bookingId: manager ? (u.booking?.id ?? null) : null,
     })),
   };
 }

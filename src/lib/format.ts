@@ -116,10 +116,3 @@ export function timeAgo(date: Date | string | null | undefined): string {
   if (days > 1) return `بعد ${toArabicDigits(days)} يوم`;
   return `قبل ${toArabicDigits(Math.abs(days))} يوم`;
 }
-
-/** هل المتابعة مستحقّة (اليوم أو فات موعدها)؟ */
-export function isFollowupDue(date: Date | string | null | undefined): boolean {
-  if (!date) return false;
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.getTime() <= Date.now();
-}

@@ -12,7 +12,9 @@ function isManager(role: string) {
 }
 
 // POST /api/leads/[id]/whatsapp — يُسجّل ضغط زر «إرسال واتساب» كمتابعة WHATSAPP
-// (بدون تغيير مرحلة العميل) ويوقف عدّاد إعادة التوجيه التلقائي.
+// ويوقف عدّاد إعادة التوجيه التلقائي.
+// م-٢: إرسال واتساب لعميل «جديد» يحرّكه لمرحلة «محاولة» — كان يترك العميل في
+// «ينتظر أول تواصل» بالداشبورد بينما لوحة التوزيع تعدّه «تم التواصل» (نفس مرض «لم يتم الرد»).
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const session = await auth();
@@ -34,6 +36,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   });
 
   const now = new Date();
+  // «جديد» → «محاولة» (يطابق resultToStage لنتيجة NOT_ANSWERED_WHATSAPP).
+  const nextStage = lead.stage === "NEW" ? "ATTEMPTED" : lead.stage;
   await prisma.$transaction(async (tx) => {
     if (!recent) {
       await tx.followUp.create({
@@ -41,8 +45,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
           leadId: id,
           type: FollowUpType.WHATSAPP,
           result: FollowUpResult.NOT_ANSWERED_WHATSAPP,
-          // لا نغيّر المرحلة — نحفظ المرحلة الحالية للعرض في السجل فقط.
-          stageAfter: lead.stage,
+          stageAfter: nextStage,
           note: "أُرسل واتساب",
           nextDate: null,
           createdBy: session.user.id,
@@ -55,6 +58,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     await tx.lead.update({
       where: { id },
       data: {
+        ...(nextStage !== lead.stage ? { stage: nextStage } : {}),
         lastContact: now,
         firstContactAt: lead.firstContactAt ?? now,
         firstContactDate: lead.firstContactDate ?? now,
@@ -67,5 +71,6 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   revalidatePath("/leads");
   revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
   return NextResponse.json({ ok: true, logged: !recent });
 }

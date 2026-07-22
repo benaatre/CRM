@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneVariants } from "@/lib/value-normalize";
 
 // نافذة استثناء «نفس الإعلان خلال ٤٨ ساعة» — ضجيج/إعادة إدخال آلي.
-export const DUP_WINDOW_MS = 48 * 60 * 60 * 1000;
+const DUP_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /**
  * مفتاح التطبيع للمقارنة فقط (لا يُخزَّن، لا يمسّ normalizePhone العامة):
@@ -23,7 +23,7 @@ export function dedupeKey(raw: string | null | undefined): string | null {
  * مفتاح «الإعلان/المصدر»: المصدر المهيكل sourceId إن وُجد (الأدقّ لتمييز الحملة)،
  * وإلا القناة channel كـfallback (للاستيراد الذي لا يضبط sourceId).
  */
-export function adKey(l: { sourceId: string | null; channel: Channel }): string {
+function adKey(l: { sourceId: string | null; channel: Channel }): string {
   return l.sourceId ?? `ch:${l.channel}`;
 }
 
@@ -90,11 +90,18 @@ export async function phoneHasExistingLead(phone: string, db: PrismaClient = pri
   return cand.some((c) => dedupeKey(c.phone) === key);
 }
 
+// م-٥: كاش ٦٠ ثانية بالذاكرة — هذه الدالة تمسح جدول Lead كاملًا وتُستدعى من layout
+// المالك (كل تنقّل) وصفحة العملاء والداشبورد والكرون. الكاش لكل عملية تشغيل؛
+// تأخُّر دقيقة في التقاط مكرر جديد مقبول (القوائم تتحدث بالدورة التالية).
+const DUP_CACHE_MS = 60_000;
+let dupIdsCache: { at: number; ids: Set<string> } | null = null;
+
 /**
  * معرّفات كل الليدات التي جوالها (آخر ٩) مكرر (يظهر في أكثر من سجل) — لاستثناء المكررين المعلّقين
- * من عدّاد الداشبورد. استعلام واحد (id, phone) + تجميع بالذاكرة (بلا N+1).
+ * من عدّاد الداشبورد. استعلام واحد (id, phone) + تجميع بالذاكرة (بلا N+1) + كاش ٦٠ث.
  */
 export async function duplicateLeadIds(db: PrismaClient = prisma): Promise<Set<string>> {
+  if (dupIdsCache && Date.now() - dupIdsCache.at < DUP_CACHE_MS) return dupIdsCache.ids;
   const leads = await db.lead.findMany({ select: { id: true, phone: true } });
   const byKey = new Map<string, string[]>();
   for (const l of leads) {
@@ -106,5 +113,6 @@ export async function duplicateLeadIds(db: PrismaClient = prisma): Promise<Set<s
   }
   const dupIds = new Set<string>();
   for (const ids of byKey.values()) if (ids.length > 1) for (const id of ids) dupIds.add(id);
+  dupIdsCache = { at: Date.now(), ids: dupIds };
   return dupIds;
 }

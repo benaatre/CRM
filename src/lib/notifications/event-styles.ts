@@ -1,7 +1,7 @@
 // لون مميز لكل حدث — آمن للعميل والخادم (بدون "server-only").
 // يُستخدم لتمييز نوع الإشعار بصريًا في التوست والجرس (شريط جانبي + أيقونة ملوّنة).
 
-export const EVENT_COLOR: Record<string, string> = {
+const EVENT_COLOR: Record<string, string> = {
   new_lead_from_sheet: "#3B82F6", // أزرق — معلومة (عميل دخل)
   lead_assigned: "#2FBF8F",       // أخضر — إيجابي (شغل جديد)
   lead_reassigned: "#F59E0B",     // برتقالي — تنبيه (تحرّك)

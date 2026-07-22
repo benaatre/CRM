@@ -54,13 +54,16 @@ export type NotificationConfig = {
   globalMute: boolean;
 };
 
-/** كل بيانات قسم الإشعارات (للوحة الإعدادات) — يضمن وجود الافتراضيات. */
+/**
+ * كل بيانات قسم الإشعارات — قراءة فقط (م-٥): لا زرع ولا upsert في مسار القراءة
+ * (كان يكتب على Settings كل ١٥ ثانية لكل تبويب مفتوح). الغائب يُعوَّض بالافتراضيات،
+ * والزرع الفعلي يتم عند الحاجة فقط (لوحة الإعدادات / أول إرسال إشعار).
+ */
 export async function getNotificationConfig(): Promise<NotificationConfig> {
-  await ensureNotificationDefaults();
   const [rows, sounds, settings] = await Promise.all([
     prisma.notificationSetting.findMany(),
     prisma.soundAsset.findMany({ orderBy: [{ isBuiltIn: "desc" }, { createdAt: "asc" }] }),
-    prisma.settings.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton" }, select: { masterVolume: true, globalMute: true } }),
+    prisma.settings.findUnique({ where: { id: "singleton" }, select: { masterVolume: true, globalMute: true } }),
   ]);
   const byKey = new Map(rows.map((r) => [r.eventKey, r]));
   // نرتّب حسب ترتيب القائمة الثابت (NOTIFICATION_EVENTS).
@@ -79,15 +82,20 @@ export async function getNotificationConfig(): Promise<NotificationConfig> {
   return {
     events,
     sounds: sounds.map((s) => ({ id: s.id, name: s.name, fileUrl: s.fileUrl, isBuiltIn: s.isBuiltIn })),
-    masterVolume: settings.masterVolume,
-    globalMute: settings.globalMute,
+    masterVolume: settings?.masterVolume ?? 80,
+    globalMute: settings?.globalMute ?? false,
   };
 }
 
+// تذكُّر لكل عملية تشغيل: بعد أول زرع ناجح لا نعيد فحص العدّ (كان يكلف count×٢ لكل إشعار).
+let defaultsEnsured = false;
+
 /**
  * يزرع النغمات المدمجة + إعدادات الأحداث السبعة بقيمها الافتراضية (idempotent).
+ * يُستدعى عند الحاجة فقط: فتح لوحة الإعدادات أو إرسال إشعار — لا في مسارات القراءة.
  */
 export async function ensureNotificationDefaults(): Promise<void> {
+  if (defaultsEnsured) return;
   // النغمات المدمجة
   if ((await prisma.soundAsset.count({ where: { isBuiltIn: true } })) === 0) {
     await prisma.soundAsset.createMany({
@@ -105,4 +113,5 @@ export async function ensureNotificationDefaults(): Promise<void> {
       skipDuplicates: true,
     });
   }
+  defaultsEnsured = true;
 }

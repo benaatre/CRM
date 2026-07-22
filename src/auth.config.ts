@@ -9,7 +9,8 @@ export const authConfig = {
   pages: {
     signIn: "/login",
   },
-  session: { strategy: "jwt" },
+  // مدة الجلسة ٧ أيام (بدل افتراضي ٣٠ يومًا) — تقليص نافذة أي توكن مسرّب/قديم.
+  session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 },
   trustHost: true,
   providers: [], // يُضاف مزوّد PIN في auth.ts
   callbacks: {
@@ -48,6 +49,8 @@ export const authConfig = {
       if (user) {
         token.id = user.id as string;
         token.role = user.role;
+        // وقت إنشاء هذه الجلسة — يُقارَن لاحقًا بـ sessionsValidFrom لإبطال الجلسات القديمة
+        token.loginAt = Date.now();
       }
       return token;
     },
@@ -57,6 +60,9 @@ export const authConfig = {
         session.user.id = (token.id ?? "") as string;
         if (token.role) {
           session.user.role = token.role as typeof session.user.role;
+        }
+        if (typeof token.loginAt === "number") {
+          session.user.loginAt = token.loginAt;
         }
       }
       return session;

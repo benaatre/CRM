@@ -185,9 +185,11 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   // «لم يتم التواصل»: جديد + مُسند لموظف فعلي (المُسند لمالك = غير موزّع).
   // نستخدم AND بدل مفتاح assignedToId مباشر حتى لا يُلغى نطاق الموظف القادم من `where`
   // (لو كتبناه مباشرة يتجاوز {assignedToId: user.id} فيتسرّب للموظف عملاء زملائه).
+  // م-٢: isArchived:false — يطابق شارة صفحة العملاء (getNotContactedCount) حرفيًا.
   const waitingWhere = {
     ...where,
     stage: "NEW" as const,
+    isArchived: false,
     AND: [
       { assignedToId: { not: null } },
       ...(ownerIds.length ? [{ assignedToId: { notIn: ownerIds } }] : []),
@@ -202,10 +204,13 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   const periodFilter = inPeriod ? { createdAt: inPeriod } : {};
 
   // «غير موزّعين» يستثني المكررين المعلّقين (جوالهم مكرر) — يظهرون في قائمة المكررين لا هنا.
-  // استعلام كشف واحد (id, phone) للمدير فقط؛ لا يمسّ totalClients ولا المراحل (القرار: unassigned فقط).
+  // م-٣: التعريف الموحّد (يطابق محرك التوزيع وأزرار التوزيع اليدوي):
+  // بلا موظف + مرحلة «جديد» + غير مؤرشف + ليس مكررًا معلّقًا.
   const dupIds = manager ? await duplicateLeadIds() : new Set<string>();
   const unassignedWhere = {
     assignedToId: null,
+    stage: "NEW" as const,
+    isArchived: false,
     ...periodFilter,
     ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}),
   };
@@ -221,11 +226,13 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     manager ? prisma.lead.count({ where: unassignedWhere }) : Promise.resolve(0),
     prisma.booking.count({ where: { ...bookingScope, ...periodFilter } }),
     prisma.followUp.count({ where: { type: { in: VISIT_TYPES }, ...fuVisitScope, ...periodFilter } }),
-    prisma.lead.count({ where: { ...where, stage: "CLOSED_WON", ...periodFilter } }),
+    // م-٣: «صفقات مقفولة» تُفلتر بوقت الإقفال (updatedAt كوكيل — نفس عرف دورة البيع
+    // في التحليلات) لا بتاريخ إنشاء العميل — صفقة اليوم لعميل عمره شهر تظهر في «٢٤ ساعة».
+    prisma.lead.count({ where: { ...where, stage: "CLOSED_WON", ...(inPeriod ? { updatedAt: inPeriod } : {}) } }),
   ]);
 
-  // معدل التحويل = (الحجوزات في الفترة ÷ إجمالي العملاء في الفترة) × ١٠٠.
-  const conversion = totalClients > 0 ? Math.round((bookings / totalClients) * 100) : 0;
+  // م-٣: الصيغة الموحّدة الوحيدة لمعدل التحويل في النظام = الحجوزات ÷ الزيارات.
+  const conversion = visits > 0 ? Math.round((bookings / visits) * 100) : 0;
   const newInPeriod = totalClients;
 
   // آخر الصفقات المقفولة (تم البيع)
@@ -280,10 +287,11 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     assignedToName: l.assignedTo && l.assignedTo.role !== "OWNER" ? l.assignedTo.name : null,
   });
 
-  // قمع المبيعات
+  // قمع المبيعات — م-٣: كل المراحل التسع (مجموع الأشرطة = إجمالي العملاء)
+  // ويتبع فلتر الفترة مثل بقية مؤشرات الشاشة (كان all-time بجانب KPIs مفلترة).
   const grouped = await prisma.lead.groupBy({
     by: ["stage"],
-    where,
+    where: { ...where, ...periodFilter },
     _count: { _all: true },
   });
   const countByStage = new Map(grouped.map((g) => [g.stage, g._count._all]));
@@ -291,10 +299,12 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     "NEW",
     "ATTEMPTED",
     "INTERESTED",
+    "FOLLOW_UP_LATER",
     "VIEWING",
     "NEGOTIATION",
     "RESERVED",
     "CLOSED_WON",
+    "CLOSED_LOST",
   ];
   const funnel = funnelStages.map((stage) => ({
     stage,
@@ -304,7 +314,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   // مشاعر الاهتمام — نفس نطاق المستخدم + فلتر الفترة (createdAt) المطبّق على مؤشرات الفترة.
   const sentiment = await computeInterestSentiment({ ...where, ...periodFilter });
 
-  // أداء الموظفين (للمدير فقط)
+  // أداء الموظفين (للمدير فقط) — م-٣: يتبع فلتر الفترة مثل بقية الشاشة (كان all-time).
   let team: TeamRow[] = [];
   if (manager) {
     const [emps, byTotal, byClosed, byFollowUps, byVisits, byBookings] =
@@ -314,11 +324,11 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
           select: { id: true, name: true, targetDeals: true },
           orderBy: { name: "asc" },
         }),
-        prisma.lead.groupBy({ by: ["assignedToId"], _count: { _all: true } }),
-        prisma.lead.groupBy({ by: ["assignedToId"], where: { stage: "CLOSED_WON" }, _count: { _all: true } }),
-        prisma.followUp.groupBy({ by: ["createdBy"], _count: { _all: true } }),
-        prisma.followUp.groupBy({ by: ["createdBy"], where: { type: { in: VISIT_TYPES } }, _count: { _all: true } }),
-        prisma.booking.groupBy({ by: ["sellerId"], _count: { _all: true } }),
+        prisma.lead.groupBy({ by: ["assignedToId"], where: { ...periodFilter }, _count: { _all: true } }),
+        prisma.lead.groupBy({ by: ["assignedToId"], where: { stage: "CLOSED_WON", ...(inPeriod ? { updatedAt: inPeriod } : {}) }, _count: { _all: true } }),
+        prisma.followUp.groupBy({ by: ["createdBy"], where: { ...periodFilter }, _count: { _all: true } }),
+        prisma.followUp.groupBy({ by: ["createdBy"], where: { type: { in: VISIT_TYPES }, ...periodFilter }, _count: { _all: true } }),
+        prisma.booking.groupBy({ by: ["sellerId"], where: { ...periodFilter }, _count: { _all: true } }),
       ]);
 
     const leadMap = (arr: { assignedToId: string | null; _count: { _all: number } }[]) =>

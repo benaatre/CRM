@@ -15,6 +15,7 @@ import {
 } from "@/lib/labels";
 import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
+import { assignmentData } from "@/lib/assignment";
 import { getOwnerIds } from "@/lib/data/leads";
 
 export type ImportResult = { ok: boolean; error?: string; created?: number; updated?: number; skipped?: number };
@@ -332,12 +333,25 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
         preferredDistrict: r.district || null,
         notes: r.notes || null,
         projectId: r.project ? projectByName.get(r.project) ?? null : null,
-        assignedToId,
+        // م-١: أختام الإسناد الموحّدة — الاستيراد اختيار بشري للموظف = يدوي (بحصانته).
+        ...(assignedToId ? assignmentData(assignedToId, { manual: true }) : {}),
         createdById: me.id,
         nextFollowup: new Date(Date.now() + 86_400_000),
       });
     }
-    const created = toCreate.length ? (await prisma.lead.createMany({ data: toCreate })).count : 0;
+    // createManyAndReturn: نحتاج المعرّفات لتسجيل Reassignment للمُسندين (يغذّي «استقبل» بالتقارير).
+    const createdLeads = toCreate.length
+      ? await prisma.lead.createManyAndReturn({ data: toCreate, select: { id: true, assignedToId: true } })
+      : [];
+    const created = createdLeads.length;
+    const assignedCreated = createdLeads.filter((l) => l.assignedToId);
+    if (assignedCreated.length > 0) {
+      await prisma.reassignment.createMany({
+        data: assignedCreated.map((l) => ({
+          leadId: l.id, fromUserId: null, toUserId: l.assignedToId as string, reason: "manual",
+        })),
+      });
+    }
 
     // تحديث الموجودين: تعبئة الفاضي فقط من بيانات الملف.
     let updated = 0;

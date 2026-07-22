@@ -8,6 +8,7 @@ import { notify, ownerIds } from "@/lib/notify";
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
+import { assignLead } from "@/lib/assignment";
 import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
 import { getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats } from "./no-response-escalation";
 
@@ -52,7 +53,7 @@ function noResponseCap(): number {
 const KSA_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 /** ساعة اليوم بتوقيت السعودية (٠–٢٣) مهما كان توقيت الخادم. */
-export function ksaHour(now: Date): number {
+function ksaHour(now: Date): number {
   return new Date(now.getTime() + KSA_OFFSET_MS).getUTCHours();
 }
 
@@ -64,7 +65,7 @@ export function ksaTodayStart(now: Date): Date {
 }
 
 /** هل نحن داخل نافذة عمل التوزيع [start, end)؟ */
-export function isWithinWindow(startHour: number, endHour: number, now: Date): boolean {
+function isWithinWindow(startHour: number, endHour: number, now: Date): boolean {
   const h = ksaHour(now);
   if (startHour === endHour) return true; // نافذة على مدار اليوم
   if (startHour < endHour) return h >= startHour && h < endHour;
@@ -94,7 +95,7 @@ const DIST_SELECT = {
 } as const;
 
 /** يجلب إعدادات التوزيع (ينشئ السجل إن لزم). */
-export async function getDistSettings(db: Db = prisma): Promise<DistSettings> {
+async function getDistSettings(db: Db = prisma): Promise<DistSettings> {
   const s = await db.settings.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton" }, select: DIST_SELECT });
   return s;
 }
@@ -103,7 +104,7 @@ export async function getDistSettings(db: Db = prisma): Promise<DistSettings> {
  * الموظفون المشاركون المتواجدون — من distOrder، مفعّلون، وآخر ظهورهم ضمن حد التواجد.
  * يحافظ على ترتيب distOrder. إذا distPresenceMin = 0 يتجاهل شرط التواجد (يكفي active).
  */
-export async function presentParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
+async function presentParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
   if (settings.distOrder.length === 0) return [];
   const since = settings.distPresenceMin > 0 ? new Date(now.getTime() - settings.distPresenceMin * 60_000) : null;
   const users = await db.user.findMany({
@@ -213,7 +214,7 @@ export async function markContacted(db: Db, leadId: string, when: Date = new Dat
 /**
  * يُرجِع تلقائيًا الموظفين الذين انتهت مدة إيقافهم (pauseUntil مرّ) ويرسل إشعارًا لهم وللمالك.
  */
-export async function autoResumeExpiredPauses(now: Date = new Date()): Promise<number> {
+async function autoResumeExpiredPauses(now: Date = new Date()): Promise<number> {
   const expired = await prisma.user.findMany({
     where: { availabilityPaused: true, pauseUntil: { not: null, lte: now } },
     select: { id: true, name: true },
@@ -237,7 +238,7 @@ export async function autoResumeExpiredPauses(now: Date = new Date()): Promise<n
  * الموظفون «المتاحون» للتوزيع الأولي — المشاركون في الدور، نشطون، وغير موقوفين أنفسهم.
  * (يختلف عن presentParticipants: لا يشترط التواجد اللحظي/آخر ظهور — يكفي أنه متاح.)
  */
-export async function availableParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
+async function availableParticipants(db: Db, settings: DistSettings, now: Date): Promise<string[]> {
   if (settings.distOrder.length === 0) return [];
   const users = await db.user.findMany({
     where: { id: { in: settings.distOrder }, active: true },
@@ -300,9 +301,9 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
     }
     if (!pick) break;
     const toUserId = pick;
+    // م-١: الإسناد التلقائي عبر الدالة الموحّدة (manual=false — بلا حصانة يدوية).
     await prisma.$transaction(async (tx) => {
-      await tx.lead.update({ where: { id: lead.id }, data: { assignedToId: toUserId, assignedAt: now } });
-      await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: null, toUserId, reason: "initial" } });
+      await assignLead(tx, lead.id, toUserId, { manual: false, reason: "initial", now });
     });
     const b = buckets.get(toUserId);
     if (b) b.count++;
@@ -448,8 +449,11 @@ export async function executeSweepPull(leadId: string, now: Date = new Date()): 
 
   console.info(`[sweep] pull(approved) lead=${lead.id} from=${from} to=${target}`);
   await prisma.$transaction(async (tx) => {
-    await tx.lead.update({ where: { id: lead.id }, data: { assignedToId: target, assignedAt: now, reassignCount: { increment: 1 } } });
-    await tx.reassignment.create({ data: { leadId: lead.id, fromUserId: from, toUserId: target, reason: "timeout" } });
+    // م-١: النقل عبر الدالة الموحّدة (manual=false — الموظف الجديد يدخل الدورة عاديًا).
+    await assignLead(tx, lead.id, target, {
+      manual: false, reason: "timeout", fromUserId: from, now,
+      extraData: { reassignCount: { increment: 1 } },
+    });
     await tx.activity.create({ data: { leadId: lead.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سحب بموافقة المالك (تقصير في التواصل)" } });
     await emitNotification({
       eventKey: "lead_reassigned", assignedUserId: target, title: "إعادة توزيع عميل",
@@ -611,8 +615,17 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     if (candidates.length === 0) return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, capped: 0 };
 
     // متابعات كل عميل (نتيجة + وقت) لحساب «لم يرد» فقط (دفعة واحدة، بلا N+1).
+    // م-٥: العدّاد يحتسب ما بعد آخر إسناد فقط (§١أ) — فنحصر الجلب بما بعد أقدم assignedAt
+    // بين المرشّحين بدل كامل تاريخ المتابعات (جدول FollowUp ينمو بلا حذف).
     const ids = candidates.map((c) => c.id);
-    const fus = await prisma.followUp.findMany({ where: { leadId: { in: ids } }, select: { leadId: true, result: true, createdAt: true } });
+    const minAssignedAt = candidates.reduce<Date | null>(
+      (min, c) => (c.assignedAt && (!min || c.assignedAt < min) ? c.assignedAt : min),
+      null,
+    );
+    const fus = await prisma.followUp.findMany({
+      where: { leadId: { in: ids }, ...(minAssignedAt ? { createdAt: { gte: minAssignedAt } } : {}) },
+      select: { leadId: true, result: true, createdAt: true },
+    });
     const fuByLead = new Map<string, { result: string; createdAt: Date }[]>();
     for (const f of fus) {
       const arr = fuByLead.get(f.leadId);

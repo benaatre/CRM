@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
 import { requireUser, requireManager, requireManagerAction } from "@/lib/auth-guards";
-import { getNotificationConfig, type NotificationConfig } from "@/lib/data/notifications-config";
+import { getNotificationConfig, ensureNotificationDefaults, type NotificationConfig } from "@/lib/data/notifications-config";
 
 export type NotificationDTO = {
   id: string;
@@ -41,9 +41,10 @@ export type ActionResult = { ok: boolean; error?: string };
 
 const AUDIENCES = ["OWNER", "MANAGERS", "ASSIGNED", "MANAGERS_AND_ASSIGNED", "ALL"];
 
-/** جلب إعدادات الإشعارات الكاملة (للوحة) — مدير فقط. */
+/** جلب إعدادات الإشعارات الكاملة (للوحة) — مدير فقط. الزرع هنا (نادر) لا في مسار القراءة. */
 export async function fetchNotificationConfig(): Promise<NotificationConfig> {
   await requireManager();
+  await ensureNotificationDefaults();
   return getNotificationConfig();
 }
 
