@@ -36,7 +36,7 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted,
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, unresponsive,
 }: {
   basePath: string;
   isManager: boolean;
@@ -45,6 +45,8 @@ export function LeadsFilterBar({
   preserve?: Record<string, string>;
   hideUnassignedEmp?: boolean;
   notContacted?: number;
+  /** عدد «لم يستجب ×N» — يظهر الفلتر للمالك/المدير فقط عند تمريره. */
+  unresponsive?: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -63,6 +65,8 @@ export function LeadsFilterBar({
     if (emps.length) p.set("emps", emps.join(","));
     const sort = next.sort ?? filters.sort;
     if (sort && sort !== DEFAULT_LEAD_SORT) p.set("sort", sort); // نظافة الرابط
+    const nr = next.nr ?? filters.nr;
+    if (nr) p.set("nr", "1"); // فلتر «لم يستجب»
     const s = p.toString();
     return s ? `${basePath}?${s}` : basePath;
   }
@@ -93,7 +97,7 @@ export function LeadsFilterBar({
     go({ emps: filters.emps.includes(t) ? filters.emps.filter((x) => x !== t) : [...filters.emps, t] });
   }
 
-  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0;
+  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.nr;
   const notContactedActive = filters.stages.length === 1 && filters.stages[0] === "NEW";
 
   return (
@@ -107,6 +111,15 @@ export function LeadsFilterBar({
           >
             لم يتم التواصل <span className="font-bold">({toArabicDigits(notContacted)})</span>
           </button>
+          {/* فلتر «لم يستجب ×N» — مهتمون تراكمت عليهم متابعات «لم يستجب» (مالك/مدير فقط) */}
+          {isManager && unresponsive != null && (
+            <button
+              onClick={() => go({ nr: !filters.nr })}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.nr ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
+            >
+              لم يستجب <span className="font-bold">×{toArabicDigits(unresponsive)}</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -150,7 +163,7 @@ export function LeadsFilterBar({
         </div>
         {hasFilters && (
           <button
-            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [] }))); }}
+            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], nr: false }))); }}
             className="rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
           >مسح الكل</button>
         )}

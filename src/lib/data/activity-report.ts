@@ -10,6 +10,7 @@ const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 // نتائج «غير مهتم» المنظّمة (بعد توحيد الأسباب) — النهائي الفعلي، بلا الانسحاب الناعم.
 const NOT_INTERESTED_RESULTS = [
   "NOT_INTERESTED_LOCATION", "NOT_INTERESTED_PRICE", "NOT_INTERESTED_SPACE", "NOT_INTERESTED_FINAL",
+  "NOT_INTERESTED_VISITED", "NOT_INTERESTED_BANK", "NOT_INTERESTED_MARKETER", "NOT_INTERESTED_OTHER",
 ] as const;
 
 const DAY_MS = 86_400_000;

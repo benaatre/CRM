@@ -65,6 +65,9 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
               <div className="mt-1 flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
                 <span dir="ltr">{detail.phone}</span>
                 <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[detail.stage]}`}>{stageLabels[detail.stage]}</span>
+                {detail.marketer && (
+                  <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-bold text-destructive" title="سُجّل كمسوّق (عقاري/منافس) — يُستثنى من أي إحياء مستقبلي">مسوّق</span>
+                )}
               </div>
               {/* كتلة الاستلام للموظف فقط — المالك/المدير كما كانت الشاشة سابقًا (فحص دور صريح). */}
               {!isManager && (

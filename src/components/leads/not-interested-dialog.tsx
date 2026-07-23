@@ -5,16 +5,42 @@
 import { useState, useTransition } from "react";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
 
-// أسباب «غير مهتم» المعروضة (بترتيب العرض).
-export const NI_REASONS = ["الموقع", "السعر", "المساحة", "غير مهتم نهائيًا"];
+// أسباب «غير مهتم» المعروضة (بترتيب العرض — الترتيب يحدّد السبب الرئيسي المنظّم).
+export const NI_REASONS = [
+  "الموقع ما ناسبه",
+  "السعر",
+  "المساحة",
+  "زار المشروع وما ناسبه",
+  "حسبة البنك ضعيفة",
+  "مسوّق",
+  "أخرى",
+  "غير مهتم بالعقارات نهائيًا",
+];
 
 // سبب «غير مهتم» → نتيجة FollowUpResult منظّمة (لتحليلات الأسباب).
-// أسباب محدّدة فقط؛ «غير مهتم نهائيًا»/بدون سبب = NOT_INTERESTED_FINAL.
+// بدون أي سبب محدّد = NOT_INTERESTED_FINAL.
 export const NI_REASON_RESULT: Record<string, FollowUpResult> = {
-  الموقع: "NOT_INTERESTED_LOCATION",
+  "الموقع ما ناسبه": "NOT_INTERESTED_LOCATION",
   السعر: "NOT_INTERESTED_PRICE",
   المساحة: "NOT_INTERESTED_SPACE",
+  "زار المشروع وما ناسبه": "NOT_INTERESTED_VISITED",
+  "حسبة البنك ضعيفة": "NOT_INTERESTED_BANK",
+  "مسوّق": "NOT_INTERESTED_MARKETER",
+  "أخرى": "NOT_INTERESTED_OTHER",
+  "غير مهتم بالعقارات نهائيًا": "NOT_INTERESTED_FINAL",
 };
+
+// أسباب تتطلب نصًّا إلزاميًا: «أخرى» + «غير مهتم بالعقارات نهائيًا» (اكتب ما قاله العميل بالضبط).
+const NI_TEXT_REQUIRED = new Set(["أخرى", "غير مهتم بالعقارات نهائيًا"]);
+
+/** هل الاختيار الحالي يتطلب نصًّا إلزاميًا؟ (يعطّل الحفظ حتى يُكتب) */
+export function niRequiresText(reasons: Set<string>): boolean {
+  for (const r of reasons) if (NI_TEXT_REQUIRED.has(r)) return true;
+  return false;
+}
+
+/** نص التلميح لخانة النص عند الأسباب الإلزامية. */
+export const NI_TEXT_PLACEHOLDER = "اكتب ما قاله العميل بالضبط (إلزامي)…";
 
 // السبب الرئيسي المنظّم = أول سبب محدّد مختار حسب ترتيب العرض؛ وإلا نهائي.
 export function primaryNiResult(rs: Set<string>): FollowUpResult {
@@ -114,7 +140,8 @@ export function NotInterestedDialog({
   const [error, setError] = useState<string | null>(null);
 
   const toggle = (r: string) => setReasons((s) => { const n = new Set(s); if (n.has(r)) n.delete(r); else n.add(r); return n; });
-  const disabled = pending || (retry === "yes" && !date);
+  const needsText = niRequiresText(reasons);
+  const disabled = pending || (retry === "yes" && !date) || (needsText && !note.trim());
 
   function confirm() {
     setError(null);
@@ -136,7 +163,7 @@ export function NotInterestedDialog({
         <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-5 shadow-2xl">
           <h2 className="font-bold text-foreground">تسجيل «غير مهتم»{leadName ? ` — ${leadName}` : ""}</h2>
           <NotInterestedReasons reasons={reasons} onToggle={toggle} retry={retry} onRetry={setRetry} date={date} onDate={setDate} />
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ملاحظة (اختياري)…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={needsText ? NI_TEXT_PLACEHOLDER : "ملاحظة (اختياري)…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${needsText && !note.trim() ? "border-destructive/60" : "border-border"}`} />
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>

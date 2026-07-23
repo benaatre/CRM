@@ -28,7 +28,7 @@ import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
-import type { LeadSort } from "@/lib/lead-filters";
+import { INTEREST_UMBRELLA, type LeadSort } from "@/lib/lead-filters";
 import type { Prisma } from "@prisma/client";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
@@ -72,6 +72,10 @@ export type LeadRow = {
    * للموظف EMPLOYEE فقط — دائمًا null للمالك/المدير وخارج نظام «لم يتم الرد».
    */
   pull: { state: "grace" | "warning" | "overdue"; baselineMs: number; deadlineMs: number; noAnswerCount: number } | null;
+  /** عدد متابعات «لم يستجب» (NO_ANSWER_INTERESTED) — لشارة «لم يستجب ×N» (مدير/مالك). */
+  unresponsiveCount: number;
+  /** مسوّق (آخر متابعاته NOT_INTERESTED_MARKETER) — وسم واضح ويُستثنى من الإحياء. */
+  marketer: boolean;
 };
 
 export type LeadActivity = {
@@ -244,6 +248,9 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     // §٦: أيقونة حمراء لو آخر سحب كان بسبب استنفاد المحاولات (وإلا نجمة ذهبية للتقصير).
     transferredExhausted: transferred && lastPullReason.startsWith("no_response_exhausted"),
     pull,
+    // من نافذة أحدث ٢٠ متابعة (المجلوبة أصلًا) — كافية عمليًا لكلا العدّادين.
+    unresponsiveCount: (l.followUps ?? []).filter((f) => f.result === "NO_ANSWER_INTERESTED").length,
+    marketer: (l.followUps ?? []).some((f) => f.result === "NOT_INTERESTED_MARKETER"),
   };
 }
 
@@ -276,6 +283,8 @@ export type LeadFilters = {
   stages?: LeadStage[];
   assigneeIds?: string[];
   includeUnassigned?: boolean;
+  /** فلتر «لم يستجب»: مهتمون تراكمت عليهم متابعات NO_ANSWER_INTERESTED — للمالك/المدير فقط. */
+  unresponsive?: boolean;
   q?: string;
   sort?: LeadSort;
 };
@@ -333,7 +342,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { user, where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, q, sort = "activity" } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
@@ -355,6 +364,10 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   if (q && q.trim()) {
     const term = q.trim();
     and.push({ OR: [{ name: { contains: term } }, { phone: { contains: term } }] });
+  }
+  // فلتر «لم يستجب» (مدير/مالك فقط — يُتجاهل للموظف): مهتمون عليهم متابعة NO_ANSWER_INTERESTED واحدة فأكثر.
+  if (manager && unresponsive) {
+    and.push({ stage: { in: INTEREST_UMBRELLA }, followUps: { some: { result: "NO_ANSWER_INTERESTED" } } });
   }
   // «غير موزّعين» يستثني المكررين — يُوزّعون حصريًا من «العملاء المكررون».
   if (tab === "unassigned") {
@@ -555,6 +568,22 @@ export async function getNotContactedCount(assigneeIds?: string[]): Promise<numb
     : { not: null, ...(ownerIds.length ? { notIn: ownerIds } : {}) };
   // دمج تحت AND — يمنع assignedToId من مسح تحجيم الموظف (where) في الـ spread.
   return prisma.lead.count({ where: { AND: [where, { stage: "NEW", isArchived: false, assignedToId: assignee }] } });
+}
+
+/**
+ * عدد المهتمين الذين عليهم متابعات «لم يستجب» (لشارة فلتر «لم يستجب ×N») — للمالك/المدير.
+ * غير المدير يرجّع صفرًا (الفلتر لا يظهر له أصلًا).
+ */
+export async function getUnresponsiveCount(): Promise<number> {
+  const { manager } = await scopeForUser();
+  if (!manager) return 0;
+  return prisma.lead.count({
+    where: {
+      stage: { in: INTEREST_UMBRELLA },
+      isArchived: false,
+      followUps: { some: { result: "NO_ANSWER_INTERESTED" } },
+    },
+  });
 }
 
 /** قائمة الموظفين (لفلتر المدير وإعادة الإسناد). */

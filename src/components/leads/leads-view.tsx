@@ -26,15 +26,16 @@ import { DEFAULT_LEAD_SORT, type LeadSort } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
-type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort };
+type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean };
 const PAGE_SIZE = 12;
 
 export function LeadsView({
-  query, counts, notContacted, tab, isManager, employees, filters,
+  query, counts, notContacted, unresponsive, tab, isManager, employees, filters,
 }: {
   query: string;
   counts: { working: number; archived: number; hidden: number; unassigned: number };
   notContacted: number;
+  unresponsive?: number;
   tab: Tab;
   isManager: boolean;
   employees: Employee[];
@@ -65,6 +66,7 @@ export function LeadsView({
     if (filters.stages.length) p.set("stages", filters.stages.join(","));
     if (filters.emps.length) p.set("emps", filters.emps.join(","));
     if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort); // يحفظ الترتيب عبر التبويبات
+    if (filters.nr) p.set("nr", "1"); // فلتر «لم يستجب» يبقى عبر التبويبات
     const s = p.toString();
     startTransition(() => router.push(s ? `/leads?${s}` : "/leads"));
   }
@@ -135,6 +137,7 @@ export function LeadsView({
             preserve={{ tab: tab === "archived" || tab === "hidden" ? tab : "" }}
             hideUnassignedEmp={tab === "working"}
             notContacted={tab === "working" ? notContacted : undefined}
+            unresponsive={tab === "working" ? unresponsive : undefined}
           />
         </div>
       )}
@@ -185,6 +188,8 @@ export function LeadsView({
                     <span className="font-medium text-foreground">{l.name}</span>
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
                     {!isManager && <PullCountdown pull={l.pull} />}
+                    {isManager && l.unresponsiveCount > 0 && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning">لم يستجب ×{toArabicDigits(l.unresponsiveCount)}</span>}
+                    {l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}
                   </div>
                   <a href={`tel:${l.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{l.phone}</a>
                 </div>
@@ -231,7 +236,7 @@ export function LeadsView({
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
                   <td className="px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
                   <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />{!isManager && <PullCountdown pull={l.pull} />}</span></td>
+                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />{!isManager && <PullCountdown pull={l.pull} />}{isManager && l.unresponsiveCount > 0 && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning">لم يستجب ×{toArabicDigits(l.unresponsiveCount)}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}</span></td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
                   {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
                   <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>
