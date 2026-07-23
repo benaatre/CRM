@@ -280,6 +280,10 @@ export function DashboardView({ data }: { data: DashboardData }) {
               { label: "الموقع", v: data.sentiment.notInterested.reasons.location },
               { label: "السعر", v: data.sentiment.notInterested.reasons.price },
               { label: "المساحة", v: data.sentiment.notInterested.reasons.space },
+              { label: "زار وما ناسبه", v: data.sentiment.notInterested.reasons.visited },
+              { label: "حسبة البنك", v: data.sentiment.notInterested.reasons.bank },
+              { label: "مسوّق", v: data.sentiment.notInterested.reasons.marketer },
+              { label: "أخرى", v: data.sentiment.notInterested.reasons.other },
               { label: "نهائي", v: data.sentiment.notInterested.reasons.final },
               { label: "غير محدّد", v: data.sentiment.notInterested.reasons.unspecified },
             ].filter((r) => r.v > 0);

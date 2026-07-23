@@ -271,10 +271,23 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
   NOT_INTERESTED_LOCATION: "غير مهتم — الموقع",
   NOT_INTERESTED_SPACE: "غير مهتم — المساحة",
   NOT_INTERESTED_PRICE: "غير مهتم — السعر",
-  NOT_INTERESTED_FINAL: "غير مهتم نهائيًا",
+  NOT_INTERESTED_FINAL: "غير مهتم بالعقارات نهائيًا",
   FOLLOW_UP_SCHEDULED: "موعد لاحق — جُدولت متابعة",
   BOOKED: "تم الحجز",
+  NO_ANSWER_INTERESTED: "لم يستجب",
+  BANK_CHECK: "حسبة البنك",
+  ON_HOLD: "في الانتظار",
+  NOT_INTERESTED_VISITED: "غير مهتم — زار المشروع وما ناسبه",
+  NOT_INTERESTED_BANK: "غير مهتم — حسبة البنك ضعيفة",
+  NOT_INTERESTED_MARKETER: "مسوّق — مو عميل",
+  NOT_INTERESTED_OTHER: "غير مهتم — سبب آخر",
 };
+
+/**
+ * نتائج «بلا تغيير مرحلة» (لعميل المظلة المهتمة): المتابعة تُسجَّل والعميل يبقى بمرحلته.
+ * POST /followups يثبّت المرحلة الحالية لهذه النتائج — قيمها في resultToStage لا تُستخدم.
+ */
+export const KEEP_STAGE_RESULTS: FollowUpResult[] = ["NO_ANSWER_INTERESTED", "BANK_CHECK", "ON_HOLD"];
 
 /// تعيين نتيجة المتابعة → مرحلة العميل (تُحدَّث تلقائيًا).
 export const resultToStage: Record<FollowUpResult, LeadStage> = {
@@ -293,6 +306,15 @@ export const resultToStage: Record<FollowUpResult, LeadStage> = {
   NOT_INTERESTED_FINAL: "CLOSED_LOST",
   FOLLOW_UP_SCHEDULED: "FOLLOW_UP_LATER",
   BOOKED: "RESERVED",
+  // نتائج «بلا تغيير مرحلة» — المسار يثبّت المرحلة الحالية (KEEP_STAGE_RESULTS)؛ القيم هنا احتياط نوعي فقط.
+  NO_ANSWER_INTERESTED: "INTERESTED",
+  BANK_CHECK: "INTERESTED",
+  ON_HOLD: "INTERESTED",
+  // أسباب «غير مهتم» الجديدة — كلها توصل CLOSED_LOST عبر المسار الموحّد.
+  NOT_INTERESTED_VISITED: "CLOSED_LOST",
+  NOT_INTERESTED_BANK: "CLOSED_LOST",
+  NOT_INTERESTED_MARKETER: "CLOSED_LOST",
+  NOT_INTERESTED_OTHER: "CLOSED_LOST",
 };
 
 export const deliveryStatusLabels: Record<DeliveryStatus, string> = {

@@ -317,7 +317,9 @@ export async function unarchiveLeads(ids: string[], mode: UnarchiveMode): Promis
         : mode === "freshKeepEmployee"
           ? { isArchived: false, stage: LeadStage.NEW }
           : { isArchived: false }; // asis (الافتراضي الآمن)
-    const res = await prisma.lead.updateMany({ where: { id: { in: ids }, ...scope }, data });
+    // «مسوّق» يُستثنى من أنماط الإحياء «كجديد» (يبقى بإمكان إرجاعه asis كسجل تاريخي).
+    const marketerGuard = mode === "asis" ? {} : { NOT: { followUps: { some: { result: "NOT_INTERESTED_MARKETER" as const } } } };
+    const res = await prisma.lead.updateMany({ where: { id: { in: ids }, ...scope, ...marketerGuard }, data });
     await logAudit(prisma, { userId: user.id, action: "lead.unarchived", entity: "lead", summary: `أرجع ${res.count} عميل من الأرشيف (${mode})` });
     revalidateLeads();
     return { ok: true };
@@ -349,6 +351,12 @@ export async function distributeDuplicateLead(
       const target = await prisma.user.findUnique({ where: { id: toUserId }, select: { role: true, active: true } });
       if (!target || !target.active || target.role === "OWNER") return { ok: false, error: "الموظف غير صالح" };
     }
+    // «مسوّق» لا يُعاد إحياؤه — سُجّل أنه عقاري/منافس وليس عميلًا.
+    const isMarketer = await prisma.followUp.findFirst({
+      where: { leadId, result: "NOT_INTERESTED_MARKETER" },
+      select: { id: true },
+    });
+    if (isMarketer) return { ok: false, error: "هذا مسجّل «مسوّق» (عقاري/منافس) — ما يُعاد توزيعه." };
 
     // نعدّل حقول Lead فقط — المتابعات تبقى محفوظة في الأنماط الثلاثة.
     if (mode === "freshUnassigned") {
@@ -577,8 +585,9 @@ export async function recoverLeads(ids: string[]): Promise<ActionResult> {
     await prisma.$transaction(async (tx) => {
       // ح-٤: المتابعات لا تُحذف أبدًا. «fresh» = مرحلة «جديد» + تصفير موعد المتابعة فقط،
       // مع تصفير أختام الإسناد (رجوع للحوض) — متسق مع بقية مسارات السحب.
+      // «مسوّق» يُستثنى من الاسترداد كعميل جديد (ليس عميلًا — لا إحياء).
       await tx.lead.updateMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids }, NOT: { followUps: { some: { result: "NOT_INTERESTED_MARKETER" } } } },
         data: {
           assignedToId: null, assignedAt: null, contactedAt: null,
           stage: LeadStage.NEW, nextFollowup: null, isArchived: false,

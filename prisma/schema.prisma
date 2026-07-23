@@ -186,9 +186,17 @@ enum FollowUpResult {
   NOT_INTERESTED_LOCATION // غير مهتم - الموقع
   NOT_INTERESTED_SPACE // غير مهتم - المساحة
   NOT_INTERESTED_PRICE // غير مهتم - السعر
-  NOT_INTERESTED_FINAL // غير مهتم نهائيًا
+  NOT_INTERESTED_FINAL // غير مهتم بالعقارات نهائيًا (نص إلزامي: ما قاله العميل)
   FOLLOW_UP_SCHEDULED // موعد لاحق — جُدولت متابعة (سيستخير / نعاوده لاحقًا)
   BOOKED // تم الحجز
+  // ⚠️ القيم التالية تتطلب db push (ALTER TYPE ADD VALUE) قبل أول استخدام في الإنتاج.
+  NO_ANSWER_INTERESTED // لم يستجب (لعميل مهتم) — لا يغيّر المرحلة ولا يدخل نظام السحب
+  BANK_CHECK // حسبة البنك — نتيجة متابعة بلا تغيير مرحلة
+  ON_HOLD // في الانتظار — نتيجة متابعة بلا تغيير مرحلة
+  NOT_INTERESTED_VISITED // زار المشروع ولم يناسبه
+  NOT_INTERESTED_BANK // حسبة البنك ضعيفة
+  NOT_INTERESTED_MARKETER // مسوّق (عقاري/منافس — ليس عميلًا) — يُستثنى من أي إحياء
+  NOT_INTERESTED_OTHER // أخرى (نص إلزامي)
 }
 
 // ===================== الجداول (Models) =====================

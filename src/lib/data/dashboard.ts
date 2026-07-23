@@ -105,7 +105,7 @@ export type InterestSentiment = {
     closedLost: number;  // CLOSED_LOST
     softDecline: number; // FOLLOW_UP_LATER بـ section=NOT_INTERESTED
     // تفصيل الأسباب من آخر متابعة منظّمة (بعد ٥-ب)؛ القديمة/الناعمة = غير محدّد.
-    reasons: { location: number; price: number; space: number; final: number; unspecified: number };
+    reasons: { location: number; price: number; space: number; visited: number; bank: number; marketer: number; other: number; final: number; unspecified: number };
   };
 };
 
@@ -148,12 +148,16 @@ async function computeInterestSentiment(scope: Prisma.LeadWhereInput): Promise<I
   // أسباب «غير مهتم»: تُعدّ من آخر نتيجة منظّمة عبر عملاء CLOSED_LOST + الانسحاب الناعم.
   // مجموع الأسباب = notInterested.total (اتساق). القديم/الناعم بلا سبب منظّم = unspecified.
   const lostLeads = splitLeads.filter((l) => l.stage === "CLOSED_LOST");
-  const reasons = { location: 0, price: 0, space: 0, final: 0, unspecified: 0 };
+  const reasons = { location: 0, price: 0, space: 0, visited: 0, bank: 0, marketer: 0, other: 0, final: 0, unspecified: 0 };
   const tally = (leadId: string) => {
     switch (latest.get(leadId)?.result) {
       case "NOT_INTERESTED_LOCATION": reasons.location++; break;
       case "NOT_INTERESTED_PRICE": reasons.price++; break;
       case "NOT_INTERESTED_SPACE": reasons.space++; break;
+      case "NOT_INTERESTED_VISITED": reasons.visited++; break;
+      case "NOT_INTERESTED_BANK": reasons.bank++; break;
+      case "NOT_INTERESTED_MARKETER": reasons.marketer++; break;
+      case "NOT_INTERESTED_OTHER": reasons.other++; break;
       case "NOT_INTERESTED_FINAL": reasons.final++; break;
       default: reasons.unspecified++;
     }

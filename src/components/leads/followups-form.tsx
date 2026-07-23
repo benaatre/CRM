@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
 import { stageLabels } from "@/lib/labels";
-import { NotInterestedReasons, buildNotInterestedBody } from "./not-interested-dialog";
+import { NotInterestedReasons, buildNotInterestedBody, niRequiresText, NI_TEXT_PLACEHOLDER } from "./not-interested-dialog";
 
 type Project = { id: string; name: string };
 type SaveBody = {
@@ -20,21 +20,23 @@ type SaveBody = {
 function resultsFor(stage: LeadStage): string[] {
   switch (stage) {
     // أول تواصل: لسة ما تأكّد اهتمامه → نتائج الاتصال الأول فقط.
+    // «لم يرد» (noanswer) هنا فقط — هي بوابة نظام السحب ولا تصلح لمن ثبت اهتمامه.
     case "NEW":
     case "ATTEMPTED":
       return ["interested", "noanswer", "appointment", "notInterested"];
-    // مهتم: نحرّكه للأمام (موعد/زيارة/تفاوض) أو لم يرد أو ينسحب.
+    // مظلة «مهتم»: «لم يستجب» بدل «لم يرد» (لا تغيّر المرحلة ولا تدخله نظام السحب)
+    // + «حسبة البنك» و«في الانتظار» (نتيجة بلا تغيير مرحلة).
     case "INTERESTED":
-      return ["appointment", "visit", "negotiation", "noanswer", "notInterested"];
+      return ["appointment", "visit", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // موعد لاحق: نعاود ونحاول نوصله لزيارة.
     case "FOLLOW_UP_LATER":
-      return ["interested", "noanswer", "visit", "notInterested"];
+      return ["interested", "visit", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // زار المشروع: إما تفاوض أو ينسحب.
     case "VIEWING":
-      return ["negotiation", "notInterested"];
+      return ["negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // تفاوض: إما يحجز أو ينسحب.
     case "NEGOTIATION":
-      return ["booked", "notInterested"];
+      return ["booked", "unresponsive", "bankcheck", "onhold", "notInterested"];
     default:
       return [];
   }
@@ -43,6 +45,7 @@ function resultsFor(stage: LeadStage): string[] {
 const LABEL: Record<string, string> = {
   interested: "مهتم", noanswer: "لم يرد", appointment: "موعد لاحق",
   visit: "زيارة", negotiation: "تفاوض", notInterested: "غير مهتم", booked: "تم الحجز",
+  unresponsive: "لم يستجب", bankcheck: "حسبة البنك", onhold: "في الانتظار",
 };
 
 export function FollowUpsForm({
@@ -63,6 +66,7 @@ export function FollowUpsForm({
   const [note, setNote] = useState("");
   const [date, setDate] = useState("");
   const [visitMode, setVisitMode] = useState<"all" | "select">("all");
+  const [visitKind, setVisitKind] = useState<"project" | "office">("project");
   const [selProjects, setSelProjects] = useState<Set<string>>(new Set());
   const [reasons, setReasons] = useState<Set<string>>(new Set());
   const [niRetry, setNiRetry] = useState<"yes" | "no">("no");
@@ -72,10 +76,10 @@ export function FollowUpsForm({
   function pick(key: string) {
     if (key === "booked") { onBook?.(); return; }
     setSel(key); setError(null);
-    setNote(""); setDate(""); setVisitMode("all"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no");
+    setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no");
   }
   function clearAll() {
-    setSel(null); setNote(""); setDate(""); setVisitMode("all"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
+    setSel(null); setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
   }
   function toggle(setS: React.Dispatch<React.SetStateAction<Set<string>>>, v: string) {
     setS((s) => { const n = new Set(s); if (n.has(v)) n.delete(v); else n.add(v); return n; });
@@ -110,11 +114,22 @@ export function FollowUpsForm({
       case "appointment":
         return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("موعد لاحق", [], note), nextDate: date });
       case "visit": {
-        const detail = visitMode === "all" ? "زيارة — جميع المشاريع" : `زيارة — ${[...selProjects].join("، ")}`;
-        return post({ type: "VISIT_PROJECT", result: "INTERESTED_VISITED", section: "INTERESTED", stage: "VIEWING", note: compose(detail, [], note), nextDate: date });
+        // زيارة المشروع أو زيارة للمكتب — VISIT_OFFICE كانت موجودة بالكود بلا خيار واجهة.
+        const detail = visitKind === "office"
+          ? "زيارة للمكتب"
+          : visitMode === "all" ? "زيارة — جميع المشاريع" : `زيارة — ${[...selProjects].join("، ")}`;
+        return post({ type: visitKind === "office" ? "VISIT_OFFICE" : "VISIT_PROJECT", result: "INTERESTED_VISITED", section: "INTERESTED", stage: "VIEWING", note: compose(detail, [], note), nextDate: date });
       }
       case "negotiation":
         return post({ type: "CALL", result: "NEGOTIATING", section: "INTERESTED", stage: "NEGOTIATION", note: compose("تفاوض", [], note) });
+      // نتائج «بلا تغيير مرحلة» للمظلة المهتمة — stage الحالية تُرسل كما هي (والخادم يثبّتها كمان).
+      case "unresponsive":
+        return post({ type: "CALL", result: "NO_ANSWER_INTERESTED", section: "INTERESTED", stage, note: compose("لم يستجب", [], note) });
+      case "bankcheck":
+        return post({ type: "CALL", result: "BANK_CHECK", section: "INTERESTED", stage, note: compose("حسبة البنك", [], note) });
+      case "onhold":
+        // النص إلزامي (سبب الانتظار) — يُخزّن في note ويظهر بشارة «في الانتظار: السبب» بملف العميل.
+        return post({ type: "CALL", result: "ON_HOLD", section: "INTERESTED", stage, note: compose("في الانتظار", [], note) });
       case "notInterested":
         // منطق «غير مهتم» موحّد عبر المكوّن المشترك (نفس النتيجة المنظّمة ونفس الملاحظة).
         return post(buildNotInterestedBody(reasons, niRetry, date, note));
@@ -168,10 +183,10 @@ export function FollowUpsForm({
                 onDate={setDate}
               />
             )}
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ملاحظة (اختياري)…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={fcSel === "notInterested" && niRequiresText(reasons) ? NI_TEXT_PLACEHOLDER : "ملاحظة (اختياري)…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${fcSel === "notInterested" && niRequiresText(reasons) && !note.trim() ? "border-destructive/60" : "border-border"}`} />
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
             <div className="flex justify-end">
-              <button type="button" onClick={submitFirstContact} disabled={pending || (fcSel === "notInterested" && niRetry === "yes" && !date)} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
+              <button type="button" onClick={submitFirstContact} disabled={pending || (fcSel === "notInterested" && ((niRetry === "yes" && !date) || (niRequiresText(reasons) && !note.trim())))} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
             </div>
           </div>
         )}
@@ -180,13 +195,16 @@ export function FollowUpsForm({
     );
   }
 
-  // تعطيل الحفظ لو الحقول الإجبارية ناقصة.
+  // تعطيل الحفظ لو الحقول الإجبارية ناقصة (ومنها النص الإلزامي لأسباب «أخرى/نهائي» و«في الانتظار»).
+  const niNeedsText = sel === "notInterested" && niRequiresText(reasons);
   const saveDisabled = pending || (
     sel === "appointment" ? !date
-      : sel === "visit" ? !date || (visitMode === "select" && selProjects.size === 0)
-        : sel === "notInterested" ? (niRetry === "yes" && !date)
-          : false
+      : sel === "visit" ? !date || (visitKind === "project" && visitMode === "select" && selProjects.size === 0)
+        : sel === "notInterested" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
+          : sel === "onhold" ? !note.trim()
+            : false
   );
+  const ON_HOLD_PLACEHOLDER = "ينتظر إيش؟ (مثال: بيع شقته القديمة، رجوعه من السفر)";
 
   if (buttons.length === 0) {
     return (
@@ -216,6 +234,12 @@ export function FollowUpsForm({
           );
         })}
       </div>
+      {/* تمييز «في الانتظار» عن «موعد لاحق» — وصف صغير تحت الخيارات */}
+      {buttons.includes("onhold") && (
+        <p className="text-[11px] leading-5 text-muted-foreground">
+          «في الانتظار» = ظرف عند العميل بلا تاريخ محدد · «موعد لاحق» = اتفقتوا على وقت يرجع له
+        </p>
+      )}
 
       {sel && sel !== "booked" && (
         <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
@@ -227,14 +251,20 @@ export function FollowUpsForm({
             </label>
           )}
 
-          {/* زيارة: المشاريع + تاريخ */}
+          {/* زيارة: نوعها (مشروع/مكتب) + المشاريع + تاريخ */}
           {sel === "visit" && (
             <div className="space-y-2">
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setVisitKind("project")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitKind === "project" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>زيارة المشروع</button>
+                <button type="button" onClick={() => setVisitKind("office")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitKind === "office" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>زيارة للمكتب</button>
+              </div>
+              {visitKind === "project" && (
               <div className="flex gap-2">
                 <button type="button" onClick={() => setVisitMode("all")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitMode === "all" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>زار جميع المشاريع</button>
                 <button type="button" onClick={() => setVisitMode("select")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitMode === "select" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>حدد المشاريع</button>
               </div>
-              {visitMode === "select" && (
+              )}
+              {visitKind === "project" && visitMode === "select" && (
                 <div className="grid grid-cols-2 gap-2 rounded-lg border border-border p-2">
                   {projects.length === 0 ? <span className="text-xs text-muted-foreground">ما فيه مشاريع</span> : projects.map((p) => (
                     <label key={p.id} className="flex items-center gap-2 text-xs text-foreground">
@@ -263,8 +293,8 @@ export function FollowUpsForm({
             />
           )}
 
-          {/* ملاحظة (اختياري) لكل الأنواع */}
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="اكتب ملاحظة عن العميل…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+          {/* ملاحظة — إلزامية لأسباب «أخرى/نهائي» ولنتيجة «في الانتظار»، اختيارية لغيرها */}
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={niNeedsText ? NI_TEXT_PLACEHOLDER : sel === "onhold" ? ON_HOLD_PLACEHOLDER : "اكتب ملاحظة عن العميل…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${(niNeedsText || sel === "onhold") && !note.trim() ? "border-destructive/60" : "border-border"}`} />
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2">

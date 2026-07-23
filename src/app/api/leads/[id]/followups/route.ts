@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { markContacted } from "@/lib/auto-distribute";
 import { shouldHideHistory } from "@/lib/visibility";
-import { resultToStage, followUpResultLabels, firstContactStageLabels } from "@/lib/labels";
+import { resultToStage, followUpResultLabels, firstContactStageLabels, KEEP_STAGE_RESULTS } from "@/lib/labels";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ function isManager(role: string) {
 async function authorize(leadId: string) {
   const session = await auth();
   if (!session?.user) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, assignedAt: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, assignedAt: true, stage: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
   if (!lead) return { error: NextResponse.json({ error: "العميل غير موجود" }, { status: 404 }) };
   if (!isManager(session.user.role) && lead.assignedToId !== session.user.id) {
     return { error: NextResponse.json({ error: "ما عندك صلاحية على هذا العميل" }, { status: 403 }) };
@@ -89,8 +89,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     nextDate = new Date(body.nextDate);
     if (Number.isNaN(nextDate.getTime())) return NextResponse.json({ error: "تاريخ المتابعة غير صحيح" }, { status: 400 });
   }
-  // المرحلة المرسلة صراحةً تُقدَّم؛ وإلا تُشتق من النتيجة.
-  const newStage = body.stage && body.stage in LeadStage ? (body.stage as LeadStage) : resultToStage[result];
+  // نتائج «بلا تغيير مرحلة» (لم يستجب/حسبة البنك/في الانتظار): المرحلة تثبت على الخادم مهما أُرسل —
+  // فلا تُحرَّك المرحلة ولا يدخل العميل نظام «لم يتم الرد» (نتيجتها ليست NOT_ANSWERED_*).
+  // غير ذلك: المرحلة المرسلة صراحةً تُقدَّم؛ وإلا تُشتق من النتيجة.
+  const newStage = KEEP_STAGE_RESULTS.includes(result)
+    ? lead.stage
+    : body.stage && body.stage in LeadStage ? (body.stage as LeadStage) : resultToStage[result];
   const bumpsAttempt = type === "CALL" || type === "WHATSAPP";
 
   // المرحلة الأولى تُحدَّد مرة واحدة من أول متابعة (حسب قسمها).
@@ -106,10 +110,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       data: { leadId: id, type, result, section, stageAfter: newStage, note: body.note?.trim() || null, nextDate, createdBy: user.id },
       include: { employee: { select: { name: true } } },
     });
+    // أرشفة تلقائية: «غير مهتم بالعقارات نهائيًا» أو «مسوّق» → يُؤرشف مع الإغلاق مباشرة.
+    // ⚠️ الانتساب يبقى (assignedToId لا يُمسح) — نحتاج نعرف عملاء مين في الأرشيف.
+    const autoArchive = newStage === LeadStage.CLOSED_LOST
+      && (result === "NOT_INTERESTED_FINAL" || result === "NOT_INTERESTED_MARKETER");
     await tx.lead.update({
       where: { id },
       data: {
         stage: newStage,
+        ...(autoArchive ? { isArchived: true } : {}),
         lastContact: new Date(),
         // أول تواصل: الوقت والتاريخ يُحفظان مرة واحدة فقط (عند أول متابعة).
         firstContactAt: lead.firstContactAt ?? new Date(),
