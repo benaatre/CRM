@@ -170,7 +170,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
               onBook={() => setReserveMode("reserve")}
             />
           )}
-          <FollowUpsTimeline items={items} loading={loading} />
+          <FollowUpsTimeline items={items} loading={loading} leadId={detail.id} onChanged={() => { reload(); router.refresh(); }} />
         </div>
       )}
 

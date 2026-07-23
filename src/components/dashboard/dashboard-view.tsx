@@ -8,6 +8,7 @@ import { stageLabels, stageColor } from "@/lib/labels";
 import { formatCurrency, formatCount, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
 import { DistributeDialog } from "@/components/leads/distribute-dialog";
+import { TodayMarquee } from "./today-marquee";
 
 type ViewMode = "compact" | "analytical" | "glass";
 
@@ -59,6 +60,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
 
   return (
     <div className="space-y-7">
+      {/* شريط مواعيد اليوم — للموظف فقط (المدير لا يراه إطلاقًا) */}
+      {!data.manager && <TodayMarquee items={data.todayAppointments} />}
+
       {/* أنماط العرض — مخفيّة على الجوال (تظهر md+) */}
       <div className="hidden justify-end md:flex">
         <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
@@ -302,6 +306,44 @@ export function DashboardView({ data }: { data: DashboardData }) {
           })()}
         </Section>
       </div>
+
+      {/* متابعات اليوم للفريق — للمالك/المدير فقط */}
+      {data.manager && data.teamFollowupsToday.length > 0 && (
+        <Section title="متابعات اليوم للفريق" hint="مواعيد اليوم لكل موظف: تمّت · باقية · فائتة">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] text-right text-sm">
+              <thead className="text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">الموظف</th>
+                  <th className="px-3 py-2 text-center font-medium">مواعيد اليوم</th>
+                  <th className="px-3 py-2 text-center font-medium">تمّت</th>
+                  <th className="px-3 py-2 text-center font-medium">باقية</th>
+                  <th className="px-3 py-2 text-center font-medium">فائتة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.teamFollowupsToday.map((r) => (
+                  <tr key={r.id} className="border-t border-border">
+                    <td className="px-3 py-2.5 font-medium text-foreground">{r.name}</td>
+                    <td className="px-3 py-2.5 text-center">
+                      <Link href={`/leads?emps=${r.id}`} className="font-bold text-foreground hover:text-gold">{toArabicDigits(r.total)}</Link>
+                    </td>
+                    <td className="px-3 py-2.5 text-center text-success">{toArabicDigits(r.done)}</td>
+                    <td className="px-3 py-2.5 text-center text-gold">{toArabicDigits(r.remaining)}</td>
+                    <td className="px-3 py-2.5 text-center">
+                      {r.missed > 0 ? (
+                        <Link href={`/leads?emps=${r.id}&sort=oldest`} className="font-bold text-destructive hover:underline">{toArabicDigits(r.missed)}</Link>
+                      ) : (
+                        <span className="text-muted-foreground">٠</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
 
       {/* أداء الموظفين */}
       {data.manager && data.team.length > 0 && (

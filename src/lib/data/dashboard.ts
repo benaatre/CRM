@@ -71,6 +71,12 @@ export type RecentSale = {
   finalPrice: number;
 };
 
+/** موعد اليوم لشريط الموظف: متابعة (من nextFollowup) أو زيارة (متابعة نوع زيارة بموعد اليوم). */
+export type TodayAppointment = { leadId: string; name: string; at: Date; kind: "followup" | "visit" };
+
+/** صف «متابعات اليوم للفريق» (للمالك/المدير): مواعيد اليوم لكل موظف وحالتها. */
+export type TeamFollowupsRow = { id: string; name: string; total: number; done: number; remaining: number; missed: number };
+
 export type DashboardData = {
   manager: boolean;
   kpis: {
@@ -89,6 +95,10 @@ export type DashboardData = {
   funnel: { stage: LeadStage; count: number }[];
   sentiment: InterestSentiment;
   team: TeamRow[];
+  /** مواعيد اليوم للموظف (الشريط المتحرك) — فارغة دائمًا للمدير. */
+  todayAppointments: TodayAppointment[];
+  /** «متابعات اليوم للفريق» — فارغة دائمًا للموظف. */
+  teamFollowupsToday: TeamFollowupsRow[];
 };
 
 // «مشاعر الاهتمام» — كتلة محسوبة منفصلة عن القمع (لا تلمس FUNNEL/funnelStages).
@@ -378,6 +388,61 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     });
   }
 
+  // ===== مواعيد اليوم (بتوقيت الرياض) — الشريط للموظف · جدول الفريق للمدير =====
+  const dayStart = ksaTodayStart(new Date());
+  const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+
+  let todayAppointments: TodayAppointment[] = [];
+  if (!manager) {
+    const [fuLeads, visitFus] = await Promise.all([
+      prisma.lead.findMany({
+        where: { assignedToId: user.id, isArchived: false, stage: { notIn: CLOSED }, nextFollowup: { gte: dayStart, lt: dayEnd } },
+        select: { id: true, name: true, nextFollowup: true },
+      }),
+      prisma.followUp.findMany({
+        where: { type: { in: VISIT_TYPES }, nextDate: { gte: dayStart, lt: dayEnd }, lead: { assignedToId: user.id, isArchived: false } },
+        select: { leadId: true, nextDate: true, lead: { select: { name: true } } },
+      }),
+    ]);
+    todayAppointments = [
+      ...fuLeads.map((l) => ({ leadId: l.id, name: l.name, at: l.nextFollowup as Date, kind: "followup" as const })),
+      ...visitFus.map((f) => ({ leadId: f.leadId, name: f.lead.name, at: f.nextDate as Date, kind: "visit" as const })),
+    ].sort((a, b) => a.at.getTime() - b.at.getTime());
+  }
+
+  let teamFollowupsToday: TeamFollowupsRow[] = [];
+  if (manager) {
+    // استعلامان مجمّعان فقط: مواعيد اليوم + متابعات اليوم على عملائها — الحساب بالذاكرة (لا N+1).
+    const apptLeads = await prisma.lead.findMany({
+      where: {
+        nextFollowup: { gte: dayStart, lt: dayEnd }, isArchived: false, stage: { notIn: CLOSED },
+        assignedTo: { role: "EMPLOYEE", active: true },
+      },
+      select: { id: true, assignedToId: true, nextFollowup: true, assignedTo: { select: { name: true } } },
+    });
+    const fusToday = apptLeads.length
+      ? await prisma.followUp.findMany({
+          where: { leadId: { in: apptLeads.map((l) => l.id) }, createdAt: { gte: dayStart, lt: dayEnd } },
+          select: { leadId: true, createdAt: true },
+        })
+      : [];
+    const nowMs = Date.now();
+    const byEmp = new Map<string, TeamFollowupsRow>();
+    for (const l of apptLeads) {
+      const id = l.assignedToId as string;
+      const row = byEmp.get(id) ?? { id, name: l.assignedTo?.name ?? "—", total: 0, done: 0, remaining: 0, missed: 0 };
+      row.total++;
+      const at = (l.nextFollowup as Date).getTime();
+      // «تمّت» = سُجّلت متابعة جديدة على العميل بعد وقت الموعد · «فائتة» = مضى وقتها بلا متابعة.
+      const done = fusToday.some((f) => f.leadId === l.id && f.createdAt.getTime() >= at);
+      if (done) row.done++;
+      else if (at <= nowMs) row.missed++;
+      else row.remaining++;
+      byEmp.set(id, row);
+    }
+    teamFollowupsToday = [...byEmp.values()].sort((a, b) => b.missed - a.missed || b.total - a.total);
+  }
+
   return {
     manager,
     kpis: { totalClients, newInPeriod, unassigned, bookings, visits, closedWon, conversion },
@@ -388,5 +453,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     funnel,
     sentiment,
     team,
+    todayAppointments,
+    teamFollowupsToday,
   };
 }

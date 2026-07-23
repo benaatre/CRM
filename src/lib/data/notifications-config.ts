@@ -9,6 +9,7 @@ export const NOTIFICATION_EVENTS = [
   { key: "lead_reassigned", label: "إعادة توزيع عميل", audience: "MANAGERS_AND_ASSIGNED" },
   { key: "employee_idle", label: "موظف ركد / ما رد", audience: "MANAGERS" },
   { key: "followup_due", label: "قرب موعد متابعة", audience: "ASSIGNED" },
+  { key: "visit_due", label: "موعد زيارة", audience: "ASSIGNED" },
   { key: "employee_paused", label: "موظف وقف نفسه", audience: "MANAGERS" },
   { key: "unit_booked_sold", label: "تم حجز / بيع وحدة", audience: "ALL" },
   { key: "no_response.warn", label: "إنذار سحب عميل", audience: "ASSIGNED" },

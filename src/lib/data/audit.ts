@@ -46,7 +46,7 @@ const CATEGORY_WHERE: Record<AuditCategory, Prisma.AuditLogWhereInput> = {
       ],
     },
   },
-  fu: { action: { in: ["followup.added", "lead.firstStage", "lead.stage"] } },
+  fu: { action: { in: ["followup.added", "followup.edited", "lead.firstStage", "lead.stage"] } },
   booking: { action: { startsWith: "booking." } },
   archive: { action: { in: ["lead.archived", "lead.unarchived"] } },
   security: { action: { in: ["REVEAL_HISTORY", "HIDE_HISTORY", "user.securityChange", "lead.deleted"] } },

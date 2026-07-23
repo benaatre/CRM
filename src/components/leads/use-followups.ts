@@ -13,6 +13,12 @@ export type FollowUpItem = {
   nextDate: string | null;
   createdAt: string;
   employeeName: string | null;
+  /** عُدّلت بعد تسجيلها (وسم «مُعدَّلة» — من سجل التدقيق). */
+  edited: boolean;
+  /** يحق للمستخدم الحالي تعديلها (الخادم يعيد الفرض عند الحفظ). */
+  canEdit: boolean;
+  /** يحق تعديل النتيجة (مالك/مدير فقط). */
+  canEditResult: boolean;
 };
 
 /** جلب متابعات عميل (تصاعديًا) مع دالة إعادة تحميل. */
