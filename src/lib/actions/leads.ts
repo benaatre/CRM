@@ -18,7 +18,7 @@ import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
 import { assignLead, assignLeadsToEmployee, assignmentData } from "@/lib/assignment";
 import { applyStageChange } from "@/lib/stage-change";
-import { latestRevealAction, REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION } from "@/lib/visibility";
+import { latestRevealAction, shouldHideHistory, REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION } from "@/lib/visibility";
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
@@ -498,7 +498,18 @@ export async function setFirstContactStage(leadId: string, stage: FirstContactSt
   try {
     const { user } = await assertLeadAccess(leadId);
     const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { firstContactStage: true } });
-    if (lead?.firstContactStage) return { ok: false, error: "المرحلة الأولى محدّدة مسبقًا ولا تُعدّل" };
+    if (lead?.firstContactStage) {
+      // عميل موزَّع «كجديد» وسجله مخفي: المرحلة الأولى التاريخية محجوبة عن الموظف أصلًا،
+      // فمحاولته تحديدها تُقبل بصمت (بلا كتابة — القيمة التاريخية محفوظة) بدل خطأ يكشف وجود سجل قديم.
+      const lastAssign = await prisma.reassignment.findFirst({
+        where: { leadId, toUserId: { not: null } },
+        orderBy: { createdAt: "desc" },
+        select: { reason: true },
+      });
+      const hidden = await shouldHideHistory(prisma, user.role, { id: leadId, lastAssignReason: lastAssign?.reason ?? null });
+      if (hidden) return { ok: true };
+      return { ok: false, error: "المرحلة الأولى محدّدة مسبقًا ولا تُعدّل" };
+    }
     await prisma.lead.update({
       where: { id: leadId },
       data: { firstContactStage: stage, firstContactDate: new Date(), firstContactAt: new Date() },
