@@ -22,6 +22,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { daysWaiting } from "@/lib/assignment";
 import { hiddenHistoryIds, isFreshDistributed, latestRevealAction, REVEAL_HISTORY_ACTION } from "@/lib/visibility";
+import { getNoResponseConfig, noAnswerStats, noResponseBaseline, noResponseState, type NoResponseConfig } from "@/lib/no-response-escalation";
+import { MAX_REASSIGNS } from "@/lib/sweep-eligibility";
+import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
@@ -62,6 +65,13 @@ export type LeadRow = {
   isTransferred: boolean;
   // §٦: محوّل بسبب استنفاد المحاولات (آخر سحب reason=no_response_exhausted) → أيقونة حمراء بدل النجمة.
   transferredExhausted: boolean;
+  /**
+   * الخطوة ٤: عدّاد السحب الحي — يُحسب على الخادم من نفس مصدر المحرّك
+   * (noAnswerStats + noResponseBaseline + noResponseState) ويُمرَّر أوقاتًا (ms)
+   * فتحسب الحلقة نسبتها محليًا بلا أي استعلام أو polling إضافي.
+   * للموظف EMPLOYEE فقط — دائمًا null للمالك/المدير وخارج نظام «لم يتم الرد».
+   */
+  pull: { state: "grace" | "warning" | "overdue"; baselineMs: number; deadlineMs: number; noAnswerCount: number } | null;
 };
 
 export type LeadActivity = {
@@ -151,6 +161,7 @@ type LeadWithRels = {
   isArchived: boolean;
   reassignCount: number;
   assignedAt: Date | null;
+  manualAssignedAt: Date | null;
   followUps?: { createdAt: Date; result: FollowUpResult }[];
   reassignments?: { reason: string; toUserId: string | null }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
@@ -161,7 +172,9 @@ export function lastAssignReasonOf(reassignments?: { reason: string; toUserId: s
   return reassignments?.find((r) => r.toUserId !== null)?.reason ?? null;
 }
 
-function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean; hidden: Set<string> }): LeadRow {
+type RowCtx = { userId: string; manager: boolean; hidden: Set<string>; nrConfig: NoResponseConfig; now: Date };
+
+function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
   // محوّل: أُعيد توجيهه (reassignCount>0) ولم تُسجَّل متابعة بعد آخر إسناد (تختفي العلامة أول متابعة).
   const latestFuAt = l.followUps?.[0]?.createdAt ?? null;
   const transferred = l.reassignCount > 0 && l.assignedAt != null && (latestFuAt == null || latestFuAt <= l.assignedAt);
@@ -173,6 +186,25 @@ function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean; hidden:
   const postAssignFuCount = l.assignedAt
     ? (l.followUps ?? []).filter((f) => f.createdAt > l.assignedAt!).length
     : 0;
+  // الخطوة ٤: عدّاد السحب الحي — نفس أهلية محرّك «لم يتم الرد» حرفيًا (مراحل NEW/ATTEMPTED،
+  // بلا حصانة يدوية، دون سقف الدورات) ونفس دواله النقية. للموظف فقط.
+  const pull = ((): LeadRow["pull"] => {
+    if (ctx.manager) return null;
+    if (l.isArchived || l.manualAssignedAt != null || l.assignedAt == null) return null;
+    if (!(NO_RESPONSE_STAGES as readonly string[]).includes(l.stage)) return null;
+    if (l.reassignCount >= MAX_REASSIGNS) return null;
+    const stats = noAnswerStats(l.followUps ?? [], l.assignedAt);
+    if (!stats.included) return null; // رد العميل → خارج النظام
+    const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, ctx.nrConfig.activationDate);
+    const { state, pullDay } = noResponseState(stats.noAnswerCount, baseline, ctx.now, ctx.nrConfig);
+    if (state === "out" || pullDay === null || baseline === null) return null;
+    return {
+      state,
+      baselineMs: baseline.getTime(),
+      deadlineMs: baseline.getTime() + pullDay * 86_400_000,
+      noAnswerCount: stats.noAnswerCount,
+    };
+  })();
   return {
     id: l.id,
     name: l.name,
@@ -211,7 +243,17 @@ function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean; hidden:
     isTransferred: transferred,
     // §٦: أيقونة حمراء لو آخر سحب كان بسبب استنفاد المحاولات (وإلا نجمة ذهبية للتقصير).
     transferredExhausted: transferred && lastPullReason.startsWith("no_response_exhausted"),
+    pull,
   };
+}
+
+/** سياق الصف الكامل (قرار الإخفاء + إعداد «لم يتم الرد») — يُبنى مرة لكل طلب. */
+async function buildRowCtx(userId: string, manager: boolean, role: Role, leads: LeadWithRels[]): Promise<RowCtx> {
+  const hidden = await hiddenHistoryIds(
+    prisma, role,
+    leads.map((l) => ({ id: l.id, lastAssignReason: lastAssignReasonOf(l.reassignments) })),
+  );
+  return { userId, manager, hidden, nrConfig: getNoResponseConfig(), now: new Date() };
 }
 
 const rowInclude = {
@@ -327,11 +369,8 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
     take: 500, // سقف مؤقت لحين الترقيم server-side (#14)
   });
   // الخطوة ٣ب: قرار الإخفاء للدفعة كاملة (استعلام تدقيق واحد) — للموظف فقط.
-  const hidden = await hiddenHistoryIds(
-    prisma, user.role,
-    leads.map((l) => ({ id: l.id, lastAssignReason: lastAssignReasonOf(l.reassignments) })),
-  );
-  return leads.map((l) => toRow(l, { userId: user.id, manager, hidden }));
+  const ctx = await buildRowCtx(user.id, manager, user.role, leads);
+  return leads.map((l) => toRow(l, ctx));
 }
 
 /** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
@@ -365,11 +404,8 @@ export async function getPipeline(): Promise<LeadRow[]> {
     include: rowInclude,
     take: 500, // سقف مؤقت لحين ترقيم الكانبان لكل عمود (#14)
   });
-  const hidden = await hiddenHistoryIds(
-    prisma, user.role,
-    leads.map((l) => ({ id: l.id, lastAssignReason: lastAssignReasonOf(l.reassignments) })),
-  );
-  return leads.map((l) => toRow(l, { userId: user.id, manager, hidden }));
+  const ctx = await buildRowCtx(user.id, manager, user.role, leads);
+  return leads.map((l) => toRow(l, ctx));
 }
 
 /** تفاصيل عميل واحد + سجل المتابعات — مع تحقق الصلاحية. يرجّع null إن لم يُسمح. */
@@ -397,15 +433,15 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
   // الخطوة ٣ب/ج: قرار الإخفاء لهذا العميل + حالة الكشف (لزر المالك).
   const lastAssignReason = lastAssignReasonOf(lead.reassignments);
   const freshDistributed = isFreshDistributed(lastAssignReason);
-  const hidden = await hiddenHistoryIds(prisma, user.role, [{ id: lead.id, lastAssignReason }]);
-  const isHidden = hidden.has(lead.id);
+  const ctx = await buildRowCtx(user.id, manager, user.role, [lead]);
+  const isHidden = ctx.hidden.has(lead.id);
   const revealAction = freshDistributed ? await latestRevealAction(prisma, lead.id) : null;
   // الأنشطة (Timeline): للمخفي تُحذف الأقدم من آخر إسناد — لا تكشف تاريخ ما قبل الاستلام.
   const visibleActivities = isHidden && lead.assignedAt
     ? lead.activities.filter((a) => a.createdAt > lead.assignedAt!)
     : lead.activities;
   return {
-    ...toRow(lead, { userId: user.id, manager, hidden }),
+    ...toRow(lead, ctx),
     freshDistributed,
     historyRevealed: revealAction === REVEAL_HISTORY_ACTION,
     activitiesCount: visibleActivities.length,

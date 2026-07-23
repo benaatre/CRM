@@ -189,3 +189,12 @@
     font-size: 2rem !important; /* رقم أكبر وأوضح */
   }
 }
+
+/* الخطوة ٤: عدّاد سحب «لم يتم الرد» — نبض أسرع لآخر ٦ ساعات قبل السحب */
+@keyframes pull-pulse-fast {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.animate-pull-urgent {
+  animation: pull-pulse-fast 0.7s ease-in-out infinite;
+}
