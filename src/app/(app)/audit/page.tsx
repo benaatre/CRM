@@ -1,13 +1,17 @@
 import { requireManager } from "@/lib/auth-guards";
-import { getAuditLog, getAuditActors } from "@/lib/data/audit";
-import { formatDate, formatDateTime, RIYADH_TZ } from "@/lib/format";
+import {
+  getAuditLog, getAuditActors, getAuditEmployeeStats, resolveAuditNames,
+  AUDIT_CATEGORIES, type AuditCategory,
+} from "@/lib/data/audit";
+import { formatDateTime, RIYADH_TZ } from "@/lib/format";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AuditFilterBar } from "@/components/audit/audit-filter-bar";
+import { AuditLogView } from "@/components/audit/audit-log-view";
 
 export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TYPE_PREFIXES = new Set(["lead", "booking", "user", "availability", "source", "project"]);
+const CATEGORY_VALUES = new Set(AUDIT_CATEGORIES.map((c) => c.value));
 
 // مفتاح اليوم (YYYY-MM-DD) بتوقيت الرياض — لتمييز «اليوم/أمس» بحدود منتصف الليل الرياضي (لا فرق ٢٤ ساعة).
 function riyadhDayKey(date: Date): string {
@@ -36,67 +40,46 @@ function riyadhBoundary(dateStr: string | undefined, endOfDay: boolean): Date | 
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
-const actionColor: Record<string, string> = {
-  "booking.created": "text-success",
-  "booking.cancelled": "text-destructive",
-  "booking.stage": "text-gold",
-  "booking.finance": "text-warning",
-  "lead.created": "text-info",
-  "lead.reassigned": "text-muted-foreground",
-};
-
 export default async function AuditPage({
   searchParams,
 }: {
   searchParams: Promise<{ type?: string; emp?: string; from?: string; to?: string }>;
 }) {
+  // مركز المراقبة للمالك والمدير (requireManager) — بقرار المالك بعد المراجعة.
   await requireManager();
   const sp = await searchParams;
 
-  const actionPrefix = sp.type && TYPE_PREFIXES.has(sp.type) ? sp.type : undefined;
+  const category = sp.type && CATEGORY_VALUES.has(sp.type as AuditCategory) ? (sp.type as AuditCategory) : undefined;
   const userId = sp.emp || undefined;
   const from = riyadhBoundary(sp.from, false);
   const to = riyadhBoundary(sp.to, true);
 
-  const [entries, actors] = await Promise.all([
-    getAuditLog({ actionPrefix, userId, from, to }),
+  const [entries, actors, stats] = await Promise.all([
+    getAuditLog({ category, userId, from, to }),
     getAuditActors(),
+    getAuditEmployeeStats(from, to),
   ]);
+  // حلّ الأسماء لسجلات الصفحة الحالية — استعلامان مجمّعان (لا N+1).
+  const names = await resolveAuditNames(entries);
 
   const todayKey = riyadhDayKey(new Date());
   const yesterdayKey = shiftDayKey(todayKey, -1);
+  const when = Object.fromEntries(entries.map((e) => [e.id, auditWhen(e.createdAt, todayKey, yesterdayKey)]));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-5">
       <AutoRefresh seconds={30} />
       <header>
         <h1 className="text-2xl font-bold text-foreground">سجل التدقيق</h1>
-        <p className="mt-1 text-sm text-muted-foreground">كل عملية: من غيّر + متى + ماذا — يتحدّث تلقائيًا</p>
+        <p className="mt-1 text-sm text-muted-foreground">مركز المراقبة: من سوّى إيش ومتى — بأسماء حقيقية ودفعات مجمّعة</p>
       </header>
 
       <AuditFilterBar
         actors={actors}
-        current={{ type: actionPrefix ?? "", emp: userId ?? "", from: DATE_RE.test(sp.from ?? "") ? sp.from! : "", to: DATE_RE.test(sp.to ?? "") ? sp.to! : "" }}
+        current={{ type: category ?? "", emp: userId ?? "", from: DATE_RE.test(sp.from ?? "") ? sp.from! : "", to: DATE_RE.test(sp.to ?? "") ? sp.to! : "" }}
       />
 
-      {entries.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">ما فيه عمليات مطابقة.</p>
-      ) : (
-        <ol className="space-y-2">
-          {entries.map((e) => (
-            <li key={e.id} className="flex items-start justify-between gap-3 rounded-xl border border-border bg-card p-3">
-              <div className="flex items-start gap-3">
-                <span className={`mt-1.5 size-2 shrink-0 rounded-full ${(actionColor[e.action] ?? "text-muted-foreground").replace("text-", "bg-")}`} />
-                <div>
-                  <p className="text-sm text-foreground">{e.summary}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{e.userName ?? "النظام"}</p>
-                </div>
-              </div>
-              <div className="shrink-0 text-left text-xs text-muted-foreground" title={formatDate(e.createdAt)}>{auditWhen(e.createdAt, todayKey, yesterdayKey)}</div>
-            </li>
-          ))}
-        </ol>
-      )}
+      <AuditLogView entries={entries} names={names} stats={stats} currentEmp={userId ?? ""} when={when} />
     </div>
   );
 }
