@@ -1,5 +1,4 @@
-import { Role } from "@prisma/client";
-import { requireRole } from "@/lib/auth-guards";
+import { requireManager } from "@/lib/auth-guards";
 import {
   getAuditLog, getAuditActors, getAuditEmployeeStats, resolveAuditNames,
   AUDIT_CATEGORIES, type AuditCategory,
@@ -46,8 +45,8 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<{ type?: string; emp?: string; from?: string; to?: string }>;
 }) {
-  // مركز المراقبة للمالك فقط (كان requireManager — شُدّد بطلب المالك).
-  await requireRole(Role.OWNER);
+  // مركز المراقبة للمالك والمدير (requireManager) — بقرار المالك بعد المراجعة.
+  await requireManager();
   const sp = await searchParams;
 
   const category = sp.type && CATEGORY_VALUES.has(sp.type as AuditCategory) ? (sp.type as AuditCategory) : undefined;
