@@ -18,6 +18,7 @@ import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
 import { assignLead, assignLeadsToEmployee, assignmentData } from "@/lib/assignment";
 import { applyStageChange } from "@/lib/stage-change";
+import { latestRevealAction, REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION } from "@/lib/visibility";
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 
@@ -367,6 +368,37 @@ export async function distributeDuplicateLead(
     revalidateLeads();
     revalidatePath("/leads/duplicates");
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * الخطوة ٣ج: تبديل كشف سجل عميل موزَّع «كجديد» — للمالك فقط.
+ * يكتب AuditLog بنوع REVEAL_HISTORY (كشف) أو HIDE_HISTORY (إعادة إخفاء) بالتناوب؛
+ * shouldHideHistory يقرأ الأحدث ويقرّر. يرجّع الحالة الجديدة لعرضها فورًا.
+ */
+export async function toggleRevealHistory(leadId: string): Promise<{ ok: boolean; revealed?: boolean; error?: string }> {
+  try {
+    const user = await requireUser();
+    if (user.role !== "OWNER") return { ok: false, error: "كشف السجل للمالك فقط" };
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true } });
+    if (!lead) return { ok: false, error: "العميل غير موجود" };
+
+    const current = await latestRevealAction(prisma, leadId);
+    const revealing = current !== REVEAL_HISTORY_ACTION; // الافتراضي مخفي → الضغطة الأولى تكشف
+    await logAudit(prisma, {
+      userId: user.id,
+      action: revealing ? REVEAL_HISTORY_ACTION : HIDE_HISTORY_ACTION,
+      entity: "lead",
+      entityId: leadId,
+      summary: revealing
+        ? `كشف سجل المتابعات القديم للموظف — ${lead.name}`
+        : `أعاد إخفاء سجل المتابعات القديم عن الموظف — ${lead.name}`,
+    });
+    revalidatePath(`/leads/${leadId}`);
+    revalidateLeads();
+    return { ok: true, revealed: revealing };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
