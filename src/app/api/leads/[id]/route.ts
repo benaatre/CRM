@@ -55,8 +55,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   await logAudit(prisma, {
     userId: session.user.id, action: "lead.stage", entity: "lead", entityId: id,
     summary: firstContact
-      ? `أول تواصل «${firstContactStageLabels[firstContact]}» (كانبان)`
-      : `نقل عميل إلى مرحلة «${stageLabels[stage]}» (كانبان)`,
+      ? `أول تواصل «${firstContactStageLabels[firstContact]}» (كانبان) · العميل=${id}`
+      : `نقل عميل إلى مرحلة «${stageLabels[stage]}» (كانبان) · العميل=${id}`,
   });
 
   revalidatePath("/leads");

@@ -140,7 +140,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     await markContacted(tx, id);
     await logAudit(tx, {
       userId: user.id, action: "followup.added", entity: "lead", entityId: id,
-      summary: `متابعة: ${followUpResultLabels[result]}`,
+      // معرّف العميل داخل النص — يلتقطه resolveAuditNames فيتحوّل لاسم رابط في سجل التدقيق v2.
+      summary: `متابعة: ${followUpResultLabels[result]} · العميل=${id}`,
     });
     return fu;
   });

@@ -237,7 +237,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
       });
       await logAudit(tx, {
         userId: user.id, action: "booking.created", entity: "booking", entityId: booking.id,
-        summary: `حجز وحدة ${unit.number} في ${unit.project?.name ?? "—"}${lead?.name ? ` للعميل ${lead.name}` : ""}`,
+        summary: `حجز وحدة ${unit.number} في ${unit.project?.name ?? "—"} · العميل=${leadId}`,
       });
     });
 
@@ -283,7 +283,7 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
 
     const existing = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { sellerId: true, unitId: true, collectedAmount: true },
+      select: { sellerId: true, unitId: true, collectedAmount: true, leadId: true },
     });
     if (!existing) return { ok: false, error: "الحجز غير موجود" };
 
@@ -368,7 +368,7 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
     await notifyBestEffort("booking.update", () =>
       logAudit(prisma, {
         userId: user.id, action: "booking.update", entity: "booking", entityId: bookingId,
-        summary: `عدّل بيانات الحجز${unitChanged ? " (تبديل وحدة)" : ""}`,
+        summary: `عدّل بيانات الحجز${unitChanged ? " (تبديل وحدة)" : ""} · العميل=${existing.leadId}`,
       }));
 
     revalidateBookings();
@@ -446,7 +446,7 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
       });
       await logAudit(tx, {
         userId: user.id, action: "booking.created", entity: "lead", entityId: leadId,
-        summary: `شراء ${units.length} وحدة${lead?.name ? ` للعميل ${lead.name}` : ""} (${units.map((u) => u.number).join("، ")})`,
+        summary: `شراء ${units.length} وحدة (${units.map((u) => u.number).join("، ")}) · العميل=${leadId}`,
       });
     });
 
@@ -486,7 +486,7 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
       });
       await logAudit(tx, {
         userId: user.id, action: "booking.cancelled", entity: "unit", entityId: booking.unitId,
-        summary: `ألغى حجز وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}${booking.lead?.name ? ` (${booking.lead.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}`,
+        summary: `ألغى حجز وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}${reason ? ` — السبب: ${reason}` : ""} · العميل=${booking.leadId}`,
       });
       await tx.booking.delete({ where: { id: bookingId } }); // يحذف أحداث الحجز تلقائيًا (cascade)
     });
@@ -533,8 +533,8 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
       await logAudit(tx, {
         userId: user.id, action: "booking.stage", entity: "booking", entityId: bookingId,
         summary: stage === BookingStage.DELIVERED
-          ? `تم تسليم وحدة ${booking.unit.number} للعميل`
-          : `نقل حجز وحدة ${booking.unit.number} إلى مرحلة جديدة${stage === BookingStage.SOLD ? " (تم البيع)" : ""}`,
+          ? `تم تسليم وحدة ${booking.unit.number} · العميل=${booking.leadId}`
+          : `نقل حجز وحدة ${booking.unit.number} إلى مرحلة جديدة${stage === BookingStage.SOLD ? " (تم البيع)" : ""} · العميل=${booking.leadId}`,
       });
     });
 
@@ -567,7 +567,7 @@ export async function setFinanceRejected(
       });
       await logAudit(tx, {
         userId: user.id, action: "booking.finance", entity: "booking", entityId: bookingId,
-        summary: rejected ? `وسم فشل تمويل${reason ? ` — ${reason}` : ""}` : "ألغى وسم فشل التمويل",
+        summary: `${rejected ? `وسم فشل تمويل${reason ? ` — ${reason}` : ""}` : "ألغى وسم فشل التمويل"} · العميل=${booking.leadId}`,
       });
     });
 
@@ -592,7 +592,7 @@ export async function addBookingPayment(bookingId: string, amount: number): Prom
     }
     const b = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { finalPrice: true, collectedAmount: true },
+      select: { finalPrice: true, collectedAmount: true, leadId: true },
     });
     if (!b) return { ok: false, error: "الحجز غير موجود" };
     const finalPrice = b.finalPrice.toNumber();
@@ -617,7 +617,7 @@ export async function addBookingPayment(bookingId: string, amount: number): Prom
     await notifyBestEffort("booking.payment", () =>
       logAudit(prisma, {
         userId: user.id, action: "booking.payment", entity: "booking", entityId: bookingId,
-        summary: `سجّل دفعة ${amount.toLocaleString("en-US")} ر.س (المحصّل ${next.toLocaleString("en-US")} من ${finalPrice.toLocaleString("en-US")})`,
+        summary: `سجّل دفعة ${amount.toLocaleString("en-US")} ر.س (المحصّل ${next.toLocaleString("en-US")} من ${finalPrice.toLocaleString("en-US")}) · العميل=${b.leadId}`,
       }));
     revalidateBookings();
     return { ok: true };

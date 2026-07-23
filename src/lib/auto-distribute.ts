@@ -691,7 +691,7 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         // سجل تدقيق لكل سحب: batchId · leadId · fromUserId · المتابعات · أيام التأخير · السبب.
         await logAudit(tx, {
           userId: null, action: "lead.no_response.autoPulled", entity: "lead", entityId: t.id,
-          summary: `[batch=${batchId}] سحب تلقائي · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=${reason}`,
+          summary: `[batch=${batchId}] سحب تلقائي · العميل=${t.id} · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=${reason}`,
         });
         return true;
       });

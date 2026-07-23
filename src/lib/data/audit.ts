@@ -106,9 +106,10 @@ export type AuditNameMaps = {
 /**
  * يجمع كل الـIDs الظاهرة في سجلات الصفحة الحالية (من نص summary) ويحلّها بأسمائها —
  * استعلامان مجمّعان فقط (عملاء + مستخدمون)، لا N+1. الغائب من الخريطتين = عميل محذوف.
+ * extraLeadIds: معرّفات إضافية تُحل معها (مثل عملاء الاستدلال للسجلات القديمة).
  */
-export async function resolveAuditNames(entries: { summary: string }[]): Promise<AuditNameMaps> {
-  const ids = new Set<string>();
+export async function resolveAuditNames(entries: { summary: string }[], extraLeadIds: string[] = []): Promise<AuditNameMaps> {
+  const ids = new Set<string>(extraLeadIds);
   for (const e of entries) {
     for (const m of e.summary.matchAll(CUID_RE)) ids.add(m[0]);
   }
@@ -122,6 +123,44 @@ export async function resolveAuditNames(entries: { summary: string }[]): Promise
     leadNames: Object.fromEntries(leads.map((l) => [l.id, l.name])),
     userNames: Object.fromEntries(users.map((u) => [u.id, u.name])),
   };
+}
+
+// ===================== استدلال عميل سجلات المتابعة القديمة =====================
+
+// أفعال المتابعة/المرحلة — سجلاتها القديمة كُتبت بلا معرّف عميل في النص.
+export const FU_AUDIT_ACTIONS = new Set(["followup.added", "lead.firstStage", "lead.stage"]);
+// نسخة غير-global للفحص (الـglobal stateful مع .test).
+const CUID_TEST = /\bc[a-z0-9]{24}\b/;
+
+/**
+ * للسجلات القديمة بلا معرّف: نستدل بالعميل من جدول FollowUp — متابعة بنفس الفاعل
+ * وتوقيت ضمن ±٦٠ ثانية من السجل (الأقرب زمنيًا يفوز). استعلام مجمّع واحد للصفحة — لا N+1.
+ * يرجّع: معرّف السجل → معرّف العميل المستدل.
+ */
+export async function inferFollowupLeads(entries: AuditEntry[]): Promise<Record<string, string>> {
+  const targets = entries.filter(
+    (e) => FU_AUDIT_ACTIONS.has(e.action) && e.userId && !CUID_TEST.test(e.summary),
+  );
+  if (targets.length === 0) return {};
+  const times = targets.map((e) => e.createdAt.getTime());
+  const fus = await prisma.followUp.findMany({
+    where: {
+      createdBy: { in: [...new Set(targets.map((e) => e.userId as string))] },
+      createdAt: { gte: new Date(Math.min(...times) - 60_000), lte: new Date(Math.max(...times) + 60_000) },
+    },
+    select: { leadId: true, createdBy: true, createdAt: true },
+  });
+  const out: Record<string, string> = {};
+  for (const e of targets) {
+    let best: { leadId: string; dt: number } | null = null;
+    for (const f of fus) {
+      if (f.createdBy !== e.userId) continue;
+      const dt = Math.abs(f.createdAt.getTime() - e.createdAt.getTime());
+      if (dt <= 60_000 && (!best || dt < best.dt)) best = { leadId: f.leadId, dt };
+    }
+    if (best) out[e.id] = best.leadId;
+  }
+  return out;
 }
 
 // ===================== عدّادات الموظفين ضمن الفترة =====================

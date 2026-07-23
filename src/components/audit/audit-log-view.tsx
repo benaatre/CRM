@@ -128,8 +128,29 @@ function groupEntries(entries: AuditEntry[]): Group[] {
 
 // ===================== المكوّن الرئيسي =====================
 
+// أفعال المتابعة/المرحلة — سجلاتها القديمة بلا معرّف عميل (تُعرض بالاستدلال أو «غير محدد»).
+const FU_ACTIONS = new Set(["followup.added", "lead.firstStage", "lead.stage"]);
+const CUID_TEST = /\bc[a-z0-9]{24}\b/;
+
+/** عميل سجل متابعة قديم: اسم مستدل (رابط + وسم «مستدل») أو «غير محدد» خافت. */
+function InferredLead({ entry, inferred, names }: { entry: AuditEntry; inferred: Record<string, string>; names: AuditNameMaps }) {
+  if (!FU_ACTIONS.has(entry.action) || CUID_TEST.test(entry.summary)) return null;
+  const leadId = inferred[entry.id];
+  const name = leadId ? names.leadNames[leadId] : undefined;
+  if (leadId && name) {
+    return (
+      <span>
+        {" — العميل: "}
+        <Link href={`/leads/${leadId}`} target="_blank" className="font-medium text-gold underline-offset-2 hover:underline">{name}</Link>
+        <span className="mr-1 rounded bg-secondary px-1 py-0.5 text-[10px] text-muted-foreground" title="استُدل من متابعة بنفس الفاعل والتوقيت (±دقيقة)">مستدل</span>
+      </span>
+    );
+  }
+  return <span className="text-muted-foreground/50"> — العميل: غير محدد</span>;
+}
+
 export function AuditLogView({
-  entries, names, stats, currentEmp, when,
+  entries, names, stats, currentEmp, when, inferred,
 }: {
   entries: AuditEntry[];
   names: AuditNameMaps;
@@ -137,6 +158,8 @@ export function AuditLogView({
   currentEmp: string;
   /** دالة عرض الوقت جاهزة من الخادم لكل سجل (اليوم/أمس/تاريخ كامل). */
   when: Record<string, string>;
+  /** استدلال السجلات القديمة: معرّف السجل → معرّف العميل. */
+  inferred: Record<string, string>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<Group | null>(null);
@@ -226,7 +249,7 @@ export function AuditLogView({
                         {meta.label}
                         {count > 1 && <span className="mx-1 rounded-full bg-secondary px-1.5 py-0.5 text-xs font-bold text-gold">×{toArabicDigits(count)}</span>}
                         {count === 1 && (
-                          <span className="text-muted-foreground"> · <Linkified text={shortTarget(first.summary)} names={names} /></span>
+                          <span className="text-muted-foreground"> · <Linkified text={shortTarget(first.summary)} names={names} /><InferredLead entry={first} inferred={inferred} names={names} /></span>
                         )}
                       </>
                     ) : (
@@ -242,7 +265,7 @@ export function AuditLogView({
       )}
 
       {/* ===== درج التفاصيل ===== */}
-      {open && <AuditDrawer group={open} names={names} when={when} onClose={() => setOpen(null)} />}
+      {open && <AuditDrawer group={open} names={names} when={when} inferred={inferred} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -253,8 +276,8 @@ function shortTarget(summary: string): string {
   return s.length > 120 ? `${s.slice(0, 120)}…` : s;
 }
 
-function AuditDrawer({ group, names, when, onClose }: {
-  group: Group; names: AuditNameMaps; when: Record<string, string>; onClose: () => void;
+function AuditDrawer({ group, names, when, inferred, onClose }: {
+  group: Group; names: AuditNameMaps; when: Record<string, string>; inferred: Record<string, string>; onClose: () => void;
 }) {
   const meta = metaFor(group.action);
   const Icon = meta.icon;
@@ -285,6 +308,7 @@ function AuditDrawer({ group, names, when, onClose }: {
             {group.entries.map((e) => (
               <li key={e.id} className="rounded-xl border border-border p-3 text-sm leading-6 text-foreground">
                 <Linkified text={e.summary} names={names} />
+                <InferredLead entry={e} inferred={inferred} names={names} />
                 <div className="mt-1 text-[11px] text-muted-foreground">{when[e.id]}</div>
               </li>
             ))}
