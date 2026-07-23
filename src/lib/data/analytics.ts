@@ -77,7 +77,7 @@ const FUNNEL: LeadStage[] = [
 ];
 
 export async function getAnalytics(): Promise<AnalyticsData> {
-  const [bookings, leads, channelGroups, stageGroups, employees, closedByEmp, bookingsByEmp, methodGroups, goalGroups, assignedByEmp, followUpsByEmp, visitsByEmp] =
+  const [bookings, leads, channelGroups, stageGroups, liveStageGroups, employees, closedByEmp, bookingsByEmp, methodGroups, goalGroups, assignedByEmp, followUpsByEmp, visitsByEmp] =
     await Promise.all([
       prisma.booking.findMany({
         include: { unit: { select: { project: { select: { id: true, name: true } } } } },
@@ -87,6 +87,13 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       }),
       prisma.lead.groupBy({ by: ["channel"], _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["stage"], _count: { _all: true } }),
+      // القمع «الحالة الحية»: المؤرشف مستثنى إلا المحجوز/المباع (مؤرشف بحكم الحجز).
+      // winRate يبقى على العدّ التاريخي (stageGroups) — الخسارة المؤرشفة خسارة مسجّلة.
+      prisma.lead.groupBy({
+        by: ["stage"],
+        where: { OR: [{ isArchived: false }, { stage: { in: ["RESERVED", "CLOSED_WON"] } }] },
+        _count: { _all: true },
+      }),
       prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true, targetDeals: true } }),
       prisma.lead.groupBy({ by: ["assignedToId"], where: { stage: "CLOSED_WON" }, _count: { _all: true } }),
       prisma.booking.groupBy({ by: ["sellerId"], _count: { _all: true } }),
@@ -154,13 +161,15 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     total > 0 ? Math.round((leads.reduce((a, l) => a + l.attempts, 0) / total) * 10) / 10 : 0;
 
   // ===== القمع + نسب التحويل =====
+  // winRate تاريخي (كل المقفولين بما فيهم المؤرشف) · القمع حالة حية (liveStageGroups).
   const stageCount = new Map(stageGroups.map((g) => [g.stage, g._count._all]));
+  const liveStageCount = new Map(liveStageGroups.map((g) => [g.stage, g._count._all]));
   const won = stageCount.get("CLOSED_WON") ?? 0;
   const lost = stageCount.get("CLOSED_LOST") ?? 0;
   const winRate = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
   const funnel = FUNNEL.map((stage, i) => {
-    const count = stageCount.get(stage) ?? 0;
-    const prev = i > 0 ? stageCount.get(FUNNEL[i - 1]) ?? 0 : null;
+    const count = liveStageCount.get(stage) ?? 0;
+    const prev = i > 0 ? liveStageCount.get(FUNNEL[i - 1]) ?? 0 : null;
     const convFromPrev = prev && prev > 0 ? Math.round((count / prev) * 100) : null;
     return { stage, count, convFromPrev };
   });
