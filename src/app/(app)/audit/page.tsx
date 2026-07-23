@@ -1,6 +1,6 @@
 import { requireManager } from "@/lib/auth-guards";
 import {
-  getAuditLog, getAuditActors, getAuditEmployeeStats, resolveAuditNames,
+  getAuditLog, getAuditActors, getAuditEmployeeStats, resolveAuditNames, inferFollowupLeads,
   AUDIT_CATEGORIES, type AuditCategory,
 } from "@/lib/data/audit";
 import { formatDateTime, RIYADH_TZ } from "@/lib/format";
@@ -59,8 +59,10 @@ export default async function AuditPage({
     getAuditActors(),
     getAuditEmployeeStats(from, to),
   ]);
-  // حلّ الأسماء لسجلات الصفحة الحالية — استعلامان مجمّعان (لا N+1).
-  const names = await resolveAuditNames(entries);
+  // سجلات المتابعة القديمة (بلا معرّف بالنص): استدلال العميل من FollowUp (نفس الفاعل ±٦٠ث).
+  const inferred = await inferFollowupLeads(entries);
+  // حلّ الأسماء لسجلات الصفحة الحالية + عملاء الاستدلال — استعلامان مجمّعان (لا N+1).
+  const names = await resolveAuditNames(entries, Object.values(inferred));
 
   const todayKey = riyadhDayKey(new Date());
   const yesterdayKey = shiftDayKey(todayKey, -1);
@@ -79,7 +81,7 @@ export default async function AuditPage({
         current={{ type: category ?? "", emp: userId ?? "", from: DATE_RE.test(sp.from ?? "") ? sp.from! : "", to: DATE_RE.test(sp.to ?? "") ? sp.to! : "" }}
       />
 
-      <AuditLogView entries={entries} names={names} stats={stats} currentEmp={userId ?? ""} when={when} />
+      <AuditLogView entries={entries} names={names} stats={stats} currentEmp={userId ?? ""} when={when} inferred={inferred} />
     </div>
   );
 }

@@ -523,7 +523,7 @@ export async function setFirstContactStage(leadId: string, stage: FirstContactSt
       where: { id: leadId },
       data: { firstContactStage: stage, firstContactDate: new Date(), firstContactAt: new Date() },
     });
-    await logAudit(prisma, { userId: user.id, action: "lead.firstStage", entity: "lead", entityId: leadId, summary: "حدّد المرحلة الأولى" });
+    await logAudit(prisma, { userId: user.id, action: "lead.firstStage", entity: "lead", entityId: leadId, summary: `حدّد المرحلة الأولى · العميل=${leadId}` });
     revalidateLeads();
     return { ok: true };
   } catch (e) {
