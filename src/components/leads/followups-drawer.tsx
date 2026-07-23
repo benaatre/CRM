@@ -47,7 +47,7 @@ function DrawerBody({
         </header>
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} projects={[]} onSaved={() => { reload(); onChanged?.(); }} />
-          <FollowUpsTimeline items={items} loading={loading} />
+          <FollowUpsTimeline items={items} loading={loading} leadId={leadId} onChanged={() => { reload(); onChanged?.(); }} />
         </div>
       </aside>
     </>

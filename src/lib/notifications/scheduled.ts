@@ -1,9 +1,36 @@
 import "server-only";
 
+import { FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { emitNotification } from "@/lib/notifications/emit";
 
 const CLOSED = ["CLOSED_WON", "CLOSED_LOST"] as const;
+const HOUR_MS = 3_600_000;
+const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
+
+// توقيت الرياض (+٣ ثابت) — لصباح يوم الزيارة (٨ص) ومطابقة «نفس اليوم».
+const KSA_OFFSET_MS = 3 * HOUR_MS;
+const ksaHourOf = (d: Date) => new Date(d.getTime() + KSA_OFFSET_MS).getUTCHours();
+const ksaDayKey = (d: Date) => new Date(d.getTime() + KSA_OFFSET_MS).toISOString().slice(0, 10);
+
+/** ساعة الموعد بالعربي (توقيت الرياض) — لنص الإشعار. */
+function ksaTime(d: Date): string {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", hour: "numeric", minute: "2-digit" }).format(d);
+}
+
+/**
+ * dedup مجمّع: الروابط المُرسل إليها سابقًا لنوع إشعار — استعلام واحد للدفعة (لا N+1).
+ * كل تذكير رابطه فريد (r=مرحلة التذكير + t=وقت الموعد ms) — فلا يتكرر لنفس الموعد أبدًا،
+ * وتغيير الموعد (t جديد) يفتح تذكيرًا جديدًا تلقائيًا. المفتاح: userId|link.
+ */
+async function sentKeys(type: string, links: string[]): Promise<Set<string>> {
+  if (links.length === 0) return new Set();
+  const rows = await prisma.notification.findMany({
+    where: { type, link: { in: links } },
+    select: { link: true, userId: true },
+  });
+  return new Set(rows.map((r) => `${r.userId}|${r.link}`));
+}
 
 async function notifyTimings(): Promise<{ followupBeforeHours: number; staleHours: number }> {
   const s = await prisma.settings.findUnique({ where: { id: "singleton" }, select: { notifyConfig: true } });
@@ -12,42 +39,136 @@ async function notifyTimings(): Promise<{ followupBeforeHours: number; staleHour
 }
 
 /**
- * يطلق «قرب موعد متابعة» للعملاء الذين يقترب موعد متابعتهم (ضمن followupBeforeHours)
- * أو فات قليلًا — لمرة واحدة لكل عميل ضمن النافذة (dedup عبر سجل الإشعار).
+ * تذكيرا موعد المتابعة (للموظف صاحب الموعد): قبل الموعد بساعة + عند حلوله —
+ * مرة واحدة لكل مرحلة لكل موعد (dedup برابط فريد r+t)، والنقر يفتح ملف العميل.
  */
 export async function runFollowupDueCheck(now: Date = new Date()): Promise<number> {
-  const { followupBeforeHours } = await notifyTimings();
-  const windowMs = followupBeforeHours * 3_600_000;
-  const from = new Date(now.getTime() - windowMs); // يشمل ما فات قليلًا
-  const to = new Date(now.getTime() + windowMs);   // والقادم القريب
-
   const leads = await prisma.lead.findMany({
     where: {
-      nextFollowup: { gte: from, lte: to },
+      // نافذة تغطي المرحلتين: [فائت قريبًا (دورة الكرون ١٥د) … قادم خلال ساعة]
+      nextFollowup: { gte: new Date(now.getTime() - HOUR_MS), lte: new Date(now.getTime() + HOUR_MS) },
       isArchived: false,
       stage: { notIn: [...CLOSED] },
       assignedToId: { not: null },
     },
-    select: { id: true, name: true, assignedToId: true },
+    select: { id: true, name: true, assignedToId: true, nextFollowup: true },
   });
+  if (leads.length === 0) return 0;
 
-  let emitted = 0;
+  type Plan = { link: string; userId: string; title: string; body: string };
+  const plans: Plan[] = [];
   for (const l of leads) {
-    const link = `/leads/${l.id}`;
-    // تفادي التكرار: لا تُعد التنبيه لنفس العميل خلال آخر نافذة.
-    const recent = await prisma.notification.findFirst({
-      // #44: dedup بالمستخدم + الرابط — الموظف الجديد بعد إعادة التوجيه يصله تنبيهه.
-      where: { type: "followup_due", link, userId: l.assignedToId ?? undefined, createdAt: { gte: new Date(now.getTime() - windowMs - 3_600_000) } },
-      select: { id: true },
-    });
-    if (recent) continue;
+    const at = l.nextFollowup as Date;
+    const t = at.getTime();
+    if (at > now) {
+      // قبل الموعد بساعة (أول دورة كرون تدخل النافذة)
+      plans.push({
+        link: `/leads/${l.id}?r=fu1h&t=${t}`,
+        userId: l.assignedToId as string,
+        title: "موعد متابعة بعد شوي",
+        body: `العميل: ${l.name} — الساعة ${ksaTime(at)}`,
+      });
+    } else {
+      // حلّ الموعد
+      plans.push({
+        link: `/leads/${l.id}?r=fudue&t=${t}`,
+        userId: l.assignedToId as string,
+        title: "حان موعد المتابعة",
+        body: `العميل: ${l.name} — تواصل معه الآن`,
+      });
+    }
+  }
+  const sent = await sentKeys("followup_due", plans.map((p) => p.link));
+  let emitted = 0;
+  for (const p of plans) {
+    if (sent.has(`${p.userId}|${p.link}`)) continue;
+    await emitNotification({ eventKey: "followup_due", assignedUserId: p.userId, title: p.title, body: p.body, link: p.link });
+    emitted++;
+  }
+  return emitted;
+}
+
+/**
+ * التذكير الثاني (مرة واحدة): إشعار «حان موعد المتابعة» ما فُتح (غير مقروء) ومضى عليه ٣ ساعات.
+ */
+export async function runLateFollowupReminder(now: Date = new Date()): Promise<number> {
+  const stale = await prisma.notification.findMany({
+    where: {
+      type: "followup_due",
+      link: { contains: "r=fudue" },
+      read: false,
+      createdAt: { lte: new Date(now.getTime() - 3 * HOUR_MS), gte: new Date(now.getTime() - 24 * HOUR_MS) },
+    },
+    select: { userId: true, link: true, body: true },
+  });
+  if (stale.length === 0) return 0;
+
+  const plans = stale
+    .map((n) => ({
+      userId: n.userId,
+      body: n.body,
+      link: n.link!.replace("r=fudue", "r=fulate"),
+    }))
+    .filter((p): p is { userId: string; body: string | null; link: string } => !!p.link);
+  const sent = await sentKeys("followup_due", plans.map((p) => p.link));
+  let emitted = 0;
+  for (const p of plans) {
+    if (sent.has(`${p.userId}|${p.link}`)) continue;
     await emitNotification({
       eventKey: "followup_due",
-      assignedUserId: l.assignedToId,
-      title: "قرب موعد متابعة",
-      body: `العميل: ${l.name}`,
-      link,
+      assignedUserId: p.userId,
+      title: "تذكير: موعد متابعة فاتك",
+      body: p.body ?? undefined,
+      link: p.link,
     });
+    emitted++;
+  }
+  return emitted;
+}
+
+/**
+ * تذكيرا الزيارة المجدولة (متابعة نوع زيارة بموعد قادم): قبلها بيوم + صباح يومها (٨ص بتوقيت الرياض).
+ * الجمهور: الموظف الحالي المسند له العميل (لا كاتب المتابعة — قد يتغير الإسناد).
+ */
+export async function runVisitReminderCheck(now: Date = new Date()): Promise<number> {
+  const fus = await prisma.followUp.findMany({
+    where: {
+      type: { in: VISIT_TYPES },
+      nextDate: { gt: now, lte: new Date(now.getTime() + 24 * HOUR_MS) },
+      lead: { isArchived: false, stage: { notIn: [...CLOSED] }, assignedToId: { not: null } },
+    },
+    select: { leadId: true, nextDate: true, lead: { select: { name: true, assignedToId: true } } },
+  });
+  if (fus.length === 0) return 0;
+
+  type Plan = { link: string; userId: string; title: string; body: string };
+  const plans: Plan[] = [];
+  for (const f of fus) {
+    const at = f.nextDate as Date;
+    const t = at.getTime();
+    const userId = f.lead.assignedToId as string;
+    // قبلها بيوم (أول دورة تدخل نافذة الـ٢٤ ساعة)
+    plans.push({
+      link: `/leads/${f.leadId}?r=v1d&t=${t}`,
+      userId,
+      title: "زيارة مجدولة بكرة",
+      body: `العميل: ${f.lead.name} — ${ksaTime(at)}`,
+    });
+    // صباح يومها (من ٨ص بتوقيت الرياض)
+    if (ksaHourOf(now) >= 8 && ksaDayKey(at) === ksaDayKey(now)) {
+      plans.push({
+        link: `/leads/${f.leadId}?r=vam&t=${t}`,
+        userId,
+        title: "عندك زيارة اليوم",
+        body: `العميل: ${f.lead.name} — الساعة ${ksaTime(at)}`,
+      });
+    }
+  }
+  const sent = await sentKeys("visit_due", plans.map((p) => p.link));
+  let emitted = 0;
+  for (const p of plans) {
+    if (sent.has(`${p.userId}|${p.link}`)) continue;
+    await emitNotification({ eventKey: "visit_due", assignedUserId: p.userId, title: p.title, body: p.body, link: p.link });
     emitted++;
   }
   return emitted;

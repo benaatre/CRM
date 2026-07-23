@@ -198,3 +198,17 @@
 .animate-pull-urgent {
   animation: pull-pulse-fast 0.7s ease-in-out infinite;
 }
+
+/* شريط مواعيد اليوم (لوحة الموظف): لفّ من اليمين لليسار — يتوقف عند hover */
+@keyframes crm-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track {
+  animation: crm-marquee 30s linear infinite;
+  white-space: nowrap;
+  will-change: transform;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
