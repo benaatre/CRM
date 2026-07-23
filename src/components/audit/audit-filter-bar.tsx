@@ -7,15 +7,15 @@ type Actor = { id: string; name: string };
 
 type AuditFilterState = { type: string; emp: string; from: string; to: string };
 
-// مجموعات نوع العملية — كل زر = بادئة action (startsWith). «عملاء» تغطّي lead.stage (الكانبان) تلقائيًا.
+// فئات نوع العملية الجديدة — كل زر = فئة معرّفة في data/audit.ts (CATEGORY_WHERE).
 const TYPES: { value: string; label: string }[] = [
   { value: "", label: "الكل" },
-  { value: "lead", label: "عملاء" },
+  { value: "dist", label: "توزيع" },
+  { value: "pull", label: "سحب" },
+  { value: "fu", label: "متابعات" },
   { value: "booking", label: "حجوزات" },
-  { value: "user", label: "موظفين" },
-  { value: "availability", label: "التوفر" },
-  { value: "source", label: "المصادر" },
-  { value: "project", label: "المشاريع" },
+  { value: "archive", label: "أرشفة" },
+  { value: "security", label: "أمان" },
 ];
 
 const RIYADH_TZ = "Asia/Riyadh";
