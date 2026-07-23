@@ -709,8 +709,8 @@ function DistributeDialog({ count, who, employeeLoads, sourceEmpIds, exhaustedNo
             <div className="text-xs font-medium text-muted-foreground">حالة العميل</div>
             <div className="space-y-1.5">
               {([
-                ["asis", "ببياناته كما هي", "المرحلة والمتابعات تبقى كما هي (الأأمن)."],
-                ["fresh", "كعميل جديد", "يرجّع المرحلة «جديد» ويصفّر موعد المتابعة — المتابعات محفوظة كسجل."],
+                ["asis", "بسجله الظاهر", "يبدأ «جديد» عند الموظف — ومتابعاته القديمة ظاهرة له في الملف."],
+                ["fresh", "كعميل جديد", "يبدأ «جديد» — ومتابعاته القديمة مخفية عن الموظف (المالك يراها دائمًا)."],
               ] as const).map(([v, label, desc]) => (
                 <label key={v} className={`block cursor-pointer rounded-xl border p-2.5 transition-colors ${leadState === v ? "border-gold bg-gold/10" : "border-border hover:bg-secondary/40"}`}>
                   <div className="flex items-center gap-2">

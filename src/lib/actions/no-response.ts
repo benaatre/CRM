@@ -69,19 +69,23 @@ export type LeadState = "asis" | "fresh";
  * من المالك (team.ts) فقط؛ عميل الحوض يدخل دورة «لم يتم الرد» من جديد بمهلة كاملة
  * (تجديد assignedAt يمنحها تلقائيًا عبر baseline)، فيرجع للحوض لو أهمله الموظف الجديد.
  * لا يلمس reassignCount: العدّاد ملك السحب التلقائي وحده (زيادته هنا تُضاعف العدّ وتكسر سقف «٣ دورات»).
- * fresh = يرجّع المرحلة «جديد» ويصفّر nextFollowup — المتابعات محفوظة (سجل تاريخي، لا تُحذف).
+ *
+ * كل توزيع من الحوض — بغضّ النظر عن fresh/full — يبدأ نظيفًا: stage=NEW + nextFollowup=null
+ * (وإلا يظهر الموزَّع «بمحتواه» عند الموظف الجديد في «محاولة/لم يرد» كأنه متعثر قديم).
+ * الفرق الوحيد بين الخيارين هو **العرض**: _fresh يخفي المتابعات القديمة عن الموظف،
+ * و_full يُبقيها ظاهرة — والسجل التاريخي محفوظ في الحالتين (لا حذف)، والمالك يرى كل شيء.
  */
 async function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toUserId: string, actorId: string, now: Date, state: LeadState): Promise<boolean> {
   const fresh = state === "fresh";
   // حارس تزامن: لا نُسند إلا إذا كان لا يزال في الحوض (assignedToId=null) — تخطٍّ صامت عند التسابق.
-  // الخطوة ٣أ: لاحقة القرار في السبب — _fresh (كجديد: سجله يُخفى عن الموظف) · _full (بسجله كاملًا).
-  // كل مطابقات startsWith("no_response") في النظام على صفوف السحب (toUserId=null) — لا تتأثر.
+  // لاحقة القرار في السبب — _fresh (السجل مخفي) · _full (السجل ظاهر). مطابقات
+  // startsWith("no_response") كلها على صفوف السحب (toUserId=null) — لا تتأثر.
   const ok = await assignLead(tx, leadId, toUserId, {
     manual: false,
     reason: fresh ? "manual_redistribute_fresh" : "manual_redistribute_full",
     now,
     guardWhere: { assignedToId: null },
-    extraData: fresh ? { stage: LeadStage.NEW, nextFollowup: null } : {},
+    extraData: { stage: LeadStage.NEW, nextFollowup: null },
   });
   if (!ok) return false;
   await tx.activity.create({ data: { leadId, userId: actorId, type: ActivityType.ASSIGNMENT, note: fresh ? "توزيع يدوي من «لم يتم الرد» (كعميل جديد)" : "توزيع يدوي من «لم يتم الرد»" } });
