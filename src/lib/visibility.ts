@@ -23,10 +23,19 @@ export function isFreshDistributed(lastAssignReason: string | null | undefined):
   return !!lastAssignReason && lastAssignReason.endsWith("_fresh");
 }
 
-/** آخر قرار كشف/إخفاء مسجّل لعميل — null يعني لا قرار (الافتراضي: مخفي إن كان _fresh). */
-export async function latestRevealAction(db: Db, leadId: string): Promise<string | null> {
+/**
+ * آخر قرار كشف/إخفاء مسجّل لعميل — null يعني لا قرار (الافتراضي: مخفي إن كان _fresh).
+ * since: سجل الكشف يخص التوزيع الحالي فقط — الأقدم من آخر assignedAt لاغٍ
+ * (توزيع جديد يعيد الافتراضي: مخفي، وكشف المرة السابقة لا يتسرب للموظف الجديد).
+ */
+export async function latestRevealAction(db: Db, leadId: string, since?: Date | null): Promise<string | null> {
   const row = await db.auditLog.findFirst({
-    where: { entityId: leadId, entity: "lead", action: { in: [REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION] } },
+    where: {
+      entityId: leadId,
+      entity: "lead",
+      action: { in: [REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION] },
+      ...(since ? { createdAt: { gt: since } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     select: { action: true },
   });
@@ -40,20 +49,26 @@ export async function latestRevealAction(db: Db, leadId: string): Promise<string
 export async function hiddenHistoryIds(
   db: Db,
   role: Role,
-  candidates: { id: string; lastAssignReason: string | null }[],
+  candidates: { id: string; lastAssignReason: string | null; assignedAt: Date | null }[],
 ): Promise<Set<string>> {
   if (role === Role.OWNER || role === Role.ADMIN) return new Set();
-  const freshIds = candidates.filter((c) => isFreshDistributed(c.lastAssignReason)).map((c) => c.id);
-  if (freshIds.length === 0) return new Set();
+  const fresh = candidates.filter((c) => isFreshDistributed(c.lastAssignReason));
+  if (fresh.length === 0) return new Set();
+  const freshIds = fresh.map((c) => c.id);
+  const assignedAtById = new Map(fresh.map((c) => [c.id, c.assignedAt]));
   const audits = await db.auditLog.findMany({
     where: { entityId: { in: freshIds }, entity: "lead", action: { in: [REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION] } },
     orderBy: { createdAt: "desc" },
-    select: { entityId: true, action: true },
+    select: { entityId: true, action: true, createdAt: true },
   });
-  // الأحدث لكل عميل يحسم (القائمة مرتّبة تنازليًا — أول ظهور = الأحدث).
+  // الأحدث لكل عميل يحسم — مع إسقاط السجلات الأقدم من آخر إسناد (كشف توزيعة سابقة لاغٍ:
+  // توزيع جديد يعيد الافتراضي «مخفي» ولا يرث كشفًا مُنح لموظف سابق).
   const latest = new Map<string, string>();
   for (const a of audits) {
-    if (a.entityId && !latest.has(a.entityId)) latest.set(a.entityId, a.action);
+    if (!a.entityId || latest.has(a.entityId)) continue;
+    const assignedAt = assignedAtById.get(a.entityId);
+    if (assignedAt && a.createdAt <= assignedAt) continue; // سجل من توزيعة سابقة — لاغٍ
+    latest.set(a.entityId, a.action);
   }
   return new Set(freshIds.filter((id) => latest.get(id) !== REVEAL_HISTORY_ACTION));
 }
@@ -62,7 +77,7 @@ export async function hiddenHistoryIds(
 export async function shouldHideHistory(
   db: Db,
   role: Role,
-  lead: { id: string; lastAssignReason: string | null },
+  lead: { id: string; lastAssignReason: string | null; assignedAt: Date | null },
 ): Promise<boolean> {
   const hidden = await hiddenHistoryIds(db, role, [lead]);
   return hidden.has(lead.id);

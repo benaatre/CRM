@@ -258,7 +258,7 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
 async function buildRowCtx(userId: string, manager: boolean, role: Role, leads: LeadWithRels[]): Promise<RowCtx> {
   const hidden = await hiddenHistoryIds(
     prisma, role,
-    leads.map((l) => ({ id: l.id, lastAssignReason: lastAssignReasonOf(l.reassignments) })),
+    leads.map((l) => ({ id: l.id, lastAssignReason: lastAssignReasonOf(l.reassignments), assignedAt: l.assignedAt })),
   );
   return { userId, manager, hidden, nrConfig: getNoResponseConfig(), now: new Date() };
 }
@@ -456,7 +456,8 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
   const freshDistributed = isFreshDistributed(lastAssignReason);
   const ctx = await buildRowCtx(user.id, manager, user.role, [lead]);
   const isHidden = ctx.hidden.has(lead.id);
-  const revealAction = freshDistributed ? await latestRevealAction(prisma, lead.id) : null;
+  // سجل الكشف يخص التوزيع الحالي فقط (الأقدم من آخر assignedAt لاغٍ).
+  const revealAction = freshDistributed ? await latestRevealAction(prisma, lead.id, lead.assignedAt) : null;
   // الأنشطة (Timeline): للمخفي تُحذف الأقدم من آخر إسناد — لا تكشف تاريخ ما قبل الاستلام.
   const visibleActivities = isHidden && lead.assignedAt
     ? lead.activities.filter((a) => a.createdAt > lead.assignedAt!)

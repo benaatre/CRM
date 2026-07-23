@@ -38,7 +38,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     orderBy: { createdAt: "desc" },
     select: { reason: true },
   });
-  const hide = await shouldHideHistory(prisma, a.user.role, { id, lastAssignReason: lastAssign?.reason ?? null });
+  const hide = await shouldHideHistory(prisma, a.user.role, { id, lastAssignReason: lastAssign?.reason ?? null, assignedAt: a.lead.assignedAt });
 
   const items = await prisma.followUp.findMany({
     where: {
