@@ -28,7 +28,7 @@ import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
-import { INTEREST_UMBRELLA, type LeadSort } from "@/lib/lead-filters";
+import { INTEREST_UMBRELLA, type LeadSort, type ArchiveReason } from "@/lib/lead-filters";
 import type { Prisma } from "@prisma/client";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
@@ -285,6 +285,8 @@ export type LeadFilters = {
   includeUnassigned?: boolean;
   /** فلتر «لم يستجب»: مهتمون تراكمت عليهم متابعات NO_ANSWER_INTERESTED — للمالك/المدير فقط. */
   unresponsive?: boolean;
+  /** فلتر سبب الأرشفة (تبويب «مؤرشف»): نهائي / مسوّق / يدوي. */
+  archiveReason?: ArchiveReason;
   q?: string;
   sort?: LeadSort;
 };
@@ -342,7 +344,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { user, where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, q, sort = "activity" } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, archiveReason, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
@@ -368,6 +370,12 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   // فلتر «لم يستجب» (مدير/مالك فقط — يُتجاهل للموظف): مهتمون عليهم متابعة NO_ANSWER_INTERESTED واحدة فأكثر.
   if (manager && unresponsive) {
     and.push({ stage: { in: INTEREST_UMBRELLA }, followUps: { some: { result: "NO_ANSWER_INTERESTED" } } });
+  }
+  // فلتر سبب الأرشفة (تبويب «مؤرشف»): نهائي/مسوّق حسب المتابعة المنظّمة، يدوي = بلا أيٍّ منهما.
+  if (tab === "hidden" && archiveReason) {
+    if (archiveReason === "final") and.push({ followUps: { some: { result: "NOT_INTERESTED_FINAL" } } });
+    else if (archiveReason === "marketer") and.push({ followUps: { some: { result: "NOT_INTERESTED_MARKETER" } } });
+    else if (archiveReason === "manual") and.push({ NOT: { followUps: { some: { result: { in: ["NOT_INTERESTED_FINAL", "NOT_INTERESTED_MARKETER"] } } } } });
   }
   // «غير موزّعين» يستثني المكررين — يُوزّعون حصريًا من «العملاء المكررون».
   if (tab === "unassigned") {

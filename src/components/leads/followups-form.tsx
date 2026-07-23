@@ -128,6 +128,7 @@ export function FollowUpsForm({
       case "bankcheck":
         return post({ type: "CALL", result: "BANK_CHECK", section: "INTERESTED", stage, note: compose("حسبة البنك", [], note) });
       case "onhold":
+        // النص إلزامي (سبب الانتظار) — يُخزّن في note ويظهر بشارة «في الانتظار: السبب» بملف العميل.
         return post({ type: "CALL", result: "ON_HOLD", section: "INTERESTED", stage, note: compose("في الانتظار", [], note) });
       case "notInterested":
         // منطق «غير مهتم» موحّد عبر المكوّن المشترك (نفس النتيجة المنظّمة ونفس الملاحظة).
@@ -194,14 +195,16 @@ export function FollowUpsForm({
     );
   }
 
-  // تعطيل الحفظ لو الحقول الإجبارية ناقصة (ومنها النص الإلزامي لأسباب «أخرى/نهائي»).
+  // تعطيل الحفظ لو الحقول الإجبارية ناقصة (ومنها النص الإلزامي لأسباب «أخرى/نهائي» و«في الانتظار»).
   const niNeedsText = sel === "notInterested" && niRequiresText(reasons);
   const saveDisabled = pending || (
     sel === "appointment" ? !date
       : sel === "visit" ? !date || (visitKind === "project" && visitMode === "select" && selProjects.size === 0)
         : sel === "notInterested" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
-          : false
+          : sel === "onhold" ? !note.trim()
+            : false
   );
+  const ON_HOLD_PLACEHOLDER = "ينتظر إيش؟ (مثال: بيع شقته القديمة، رجوعه من السفر)";
 
   if (buttons.length === 0) {
     return (
@@ -231,6 +234,12 @@ export function FollowUpsForm({
           );
         })}
       </div>
+      {/* تمييز «في الانتظار» عن «موعد لاحق» — وصف صغير تحت الخيارات */}
+      {buttons.includes("onhold") && (
+        <p className="text-[11px] leading-5 text-muted-foreground">
+          «في الانتظار» = ظرف عند العميل بلا تاريخ محدد · «موعد لاحق» = اتفقتوا على وقت يرجع له
+        </p>
+      )}
 
       {sel && sel !== "booked" && (
         <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
@@ -284,8 +293,8 @@ export function FollowUpsForm({
             />
           )}
 
-          {/* ملاحظة — إلزامية لأسباب «أخرى/غير مهتم بالعقارات نهائيًا»، اختيارية لغيرها */}
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={niNeedsText ? NI_TEXT_PLACEHOLDER : "اكتب ملاحظة عن العميل…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${niNeedsText && !note.trim() ? "border-destructive/60" : "border-border"}`} />
+          {/* ملاحظة — إلزامية لأسباب «أخرى/نهائي» ولنتيجة «في الانتظار»، اختيارية لغيرها */}
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={niNeedsText ? NI_TEXT_PLACEHOLDER : sel === "onhold" ? ON_HOLD_PLACEHOLDER : "اكتب ملاحظة عن العميل…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${(niNeedsText || sel === "onhold") && !note.trim() ? "border-destructive/60" : "border-border"}`} />
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2">

@@ -26,7 +26,16 @@ import { DEFAULT_LEAD_SORT, type LeadSort } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
-type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean };
+type ArchiveReason = "" | "final" | "marketer" | "manual";
+type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean; ar: ArchiveReason };
+
+// شرائح فلتر «سبب الأرشفة» بتبويب «مؤرشف».
+const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
+  { value: "", label: "الكل" },
+  { value: "final", label: "غير مهتم نهائيًا" },
+  { value: "marketer", label: "مسوّق" },
+  { value: "manual", label: "أرشفة يدوية" },
+];
 const PAGE_SIZE = 12;
 
 export function LeadsView({
@@ -67,8 +76,21 @@ export function LeadsView({
     if (filters.emps.length) p.set("emps", filters.emps.join(","));
     if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort); // يحفظ الترتيب عبر التبويبات
     if (filters.nr) p.set("nr", "1"); // فلتر «لم يستجب» يبقى عبر التبويبات
+    if (v === "hidden" && filters.ar) p.set("ar", filters.ar); // سبب الأرشفة خاص بتبويب «مؤرشف»
     const s = p.toString();
     startTransition(() => router.push(s ? `/leads?${s}` : "/leads"));
+  }
+
+  // تبديل فلتر «سبب الأرشفة» (تبويب «مؤرشف») مع حفظ بقية الفلاتر.
+  function setArchiveReason(v: ArchiveReason) {
+    const p = new URLSearchParams();
+    p.set("tab", "hidden");
+    if (filters.q) p.set("q", filters.q);
+    if (filters.stages.length) p.set("stages", filters.stages.join(","));
+    if (filters.emps.length) p.set("emps", filters.emps.join(","));
+    if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort);
+    if (v) p.set("ar", v);
+    startTransition(() => router.push(`/leads?${p.toString()}`));
   }
 
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -139,6 +161,19 @@ export function LeadsView({
             notContacted={tab === "working" ? notContacted : undefined}
             unresponsive={tab === "working" ? unresponsive : undefined}
           />
+          {/* فلتر «سبب الأرشفة» — تبويب «مؤرشف» فقط */}
+          {tab === "hidden" && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">سبب الأرشفة:</span>
+              {ARCHIVE_REASON_CHIPS.map((c) => (
+                <button
+                  key={c.value}
+                  onClick={() => setArchiveReason(c.value)}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${filters.ar === c.value ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}
+                >{c.label}</button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -218,7 +253,7 @@ export function LeadsView({
               <th className="px-4 py-3 font-medium">الاسم</th>
               <th className="px-4 py-3 font-medium">الجوال</th>
               <th className="px-4 py-3 font-medium">{isManager ? "تاريخ الإضافة" : "الاستلام"}</th>
-              <th className="px-4 py-3 font-medium">الموظف</th>
+              <th className="px-4 py-3 font-medium">{tab === "hidden" ? "آخر موظف مسؤول" : "الموظف"}</th>
               <th className="px-4 py-3 font-medium">طريقة الشراء</th>
               <th className="px-4 py-3 font-medium">هدف الشراء</th>
               <th className="px-4 py-3 font-medium">المرحلة الحالية</th>

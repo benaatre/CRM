@@ -110,10 +110,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       data: { leadId: id, type, result, section, stageAfter: newStage, note: body.note?.trim() || null, nextDate, createdBy: user.id },
       include: { employee: { select: { name: true } } },
     });
+    // أرشفة تلقائية: «غير مهتم بالعقارات نهائيًا» أو «مسوّق» → يُؤرشف مع الإغلاق مباشرة.
+    // ⚠️ الانتساب يبقى (assignedToId لا يُمسح) — نحتاج نعرف عملاء مين في الأرشيف.
+    const autoArchive = newStage === LeadStage.CLOSED_LOST
+      && (result === "NOT_INTERESTED_FINAL" || result === "NOT_INTERESTED_MARKETER");
     await tx.lead.update({
       where: { id },
       data: {
         stage: newStage,
+        ...(autoArchive ? { isArchived: true } : {}),
         lastContact: new Date(),
         // أول تواصل: الوقت والتاريخ يُحفظان مرة واحدة فقط (عند أول متابعة).
         firstContactAt: lead.firstContactAt ?? new Date(),

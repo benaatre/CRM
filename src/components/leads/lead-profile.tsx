@@ -39,6 +39,12 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
   const [reserveMode, setReserveMode] = useState<"reserve" | "instant" | null>(null);
   const { items, loading, reload } = useFollowUps(detail.id);
 
+  // شارة «في الانتظار: السبب» — لو آخر متابعة نتيجتها ON_HOLD (السبب مخزّن في note).
+  const lastFu = items.length ? items[items.length - 1] : null;
+  const onHoldReason = lastFu?.result === "ON_HOLD"
+    ? (lastFu.note ?? "").replace(/^في الانتظار\s*—\s*/, "").trim() || null
+    : null;
+
   const wa = `https://wa.me/966${detail.phone.replace(/^0/, "")}`;
 
   function cancel(bookingId: string) {
@@ -67,6 +73,9 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
                 <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[detail.stage]}`}>{stageLabels[detail.stage]}</span>
                 {detail.marketer && (
                   <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-bold text-destructive" title="سُجّل كمسوّق (عقاري/منافس) — يُستثنى من أي إحياء مستقبلي">مسوّق</span>
+                )}
+                {onHoldReason && (
+                  <span className="rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium text-info" title="آخر متابعة: في الانتظار — ظرف عند العميل بلا تاريخ محدد">في الانتظار: {onHoldReason}</span>
                 )}
               </div>
               {/* كتلة الاستلام للموظف فقط — المالك/المدير كما كانت الشاشة سابقًا (فحص دور صريح). */}

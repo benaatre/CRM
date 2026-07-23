@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string; stages?: string; emps?: string; sort?: string; nr?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; stages?: string; emps?: string; sort?: string; nr?: string; ar?: string }>;
 }) {
   const user = await requireUser();
   const manager = isManager(user.role);
