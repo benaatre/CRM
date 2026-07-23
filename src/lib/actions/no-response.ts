@@ -68,9 +68,11 @@ export type LeadState = "asis" | "fresh";
 async function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toUserId: string, actorId: string, now: Date, state: LeadState): Promise<boolean> {
   const fresh = state === "fresh";
   // حارس تزامن: لا نُسند إلا إذا كان لا يزال في الحوض (assignedToId=null) — تخطٍّ صامت عند التسابق.
+  // الخطوة ٣أ: لاحقة القرار في السبب — _fresh (كجديد: سجله يُخفى عن الموظف) · _full (بسجله كاملًا).
+  // كل مطابقات startsWith("no_response") في النظام على صفوف السحب (toUserId=null) — لا تتأثر.
   const ok = await assignLead(tx, leadId, toUserId, {
     manual: false,
-    reason: "manual_redistribute",
+    reason: fresh ? "manual_redistribute_fresh" : "manual_redistribute_full",
     now,
     guardWhere: { assignedToId: null },
     extraData: fresh ? { stage: LeadStage.NEW, nextFollowup: null } : {},

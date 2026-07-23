@@ -21,6 +21,10 @@ import type {
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { daysWaiting } from "@/lib/assignment";
+import { hiddenHistoryIds, isFreshDistributed, latestRevealAction, REVEAL_HISTORY_ACTION } from "@/lib/visibility";
+import { getNoResponseConfig, noAnswerStats, noResponseBaseline, noResponseState, type NoResponseConfig } from "@/lib/no-response-escalation";
+import { MAX_REASSIGNS } from "@/lib/sweep-eligibility";
+import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
@@ -61,6 +65,13 @@ export type LeadRow = {
   isTransferred: boolean;
   // §٦: محوّل بسبب استنفاد المحاولات (آخر سحب reason=no_response_exhausted) → أيقونة حمراء بدل النجمة.
   transferredExhausted: boolean;
+  /**
+   * الخطوة ٤: عدّاد السحب الحي — يُحسب على الخادم من نفس مصدر المحرّك
+   * (noAnswerStats + noResponseBaseline + noResponseState) ويُمرَّر أوقاتًا (ms)
+   * فتحسب الحلقة نسبتها محليًا بلا أي استعلام أو polling إضافي.
+   * للموظف EMPLOYEE فقط — دائمًا null للمالك/المدير وخارج نظام «لم يتم الرد».
+   */
+  pull: { state: "grace" | "warning" | "overdue"; baselineMs: number; deadlineMs: number; noAnswerCount: number } | null;
 };
 
 export type LeadActivity = {
@@ -72,6 +83,10 @@ export type LeadActivity = {
 };
 
 export type LeadDetail = LeadRow & {
+  // الخطوة ٣ج: وُزّع «كعميل جديد» (آخر إسناد _fresh) — يفعّل زر «كشف السجل» للمالك.
+  freshDistributed: boolean;
+  // حالة الكشف الحالية (آخر قرار REVEAL/HIDE للمالك) — لعرض حالة الزر بوضوح.
+  historyRevealed: boolean;
   nationalId: string | null;
   notes: string | null;
   firstContactAt: Date | null;
@@ -146,15 +161,50 @@ type LeadWithRels = {
   isArchived: boolean;
   reassignCount: number;
   assignedAt: Date | null;
-  followUps?: { createdAt: Date }[];
-  reassignments?: { reason: string }[];
+  manualAssignedAt: Date | null;
+  followUps?: { createdAt: Date; result: FollowUpResult }[];
+  reassignments?: { reason: string; toUserId: string | null }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
 };
 
-function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): LeadRow {
+/** آخر إسناد فعلي (toUserId ≠ null) — سببه يحمل لاحقة قرار التوزيع (_fresh/_full). */
+export function lastAssignReasonOf(reassignments?: { reason: string; toUserId: string | null }[]): string | null {
+  return reassignments?.find((r) => r.toUserId !== null)?.reason ?? null;
+}
+
+type RowCtx = { userId: string; manager: boolean; hidden: Set<string>; nrConfig: NoResponseConfig; now: Date };
+
+function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
   // محوّل: أُعيد توجيهه (reassignCount>0) ولم تُسجَّل متابعة بعد آخر إسناد (تختفي العلامة أول متابعة).
   const latestFuAt = l.followUps?.[0]?.createdAt ?? null;
   const transferred = l.reassignCount > 0 && l.assignedAt != null && (latestFuAt == null || latestFuAt <= l.assignedAt);
+  // آخر سحب (toUserId=null) من آخر ٥ سجلات — يكفي عمليًا (سحب/توزيع يتناوبان).
+  const lastPullReason = l.reassignments?.find((r) => r.toUserId === null)?.reason ?? "";
+  // الخطوة ٣ب: عميل موزَّع «كجديد» ومخفي سجله عن الموظف — العدّاد لما بعد الإسناد فقط،
+  // وأول تواصل/المرحلة الأولى لا يُرسلان. العلامة ⭐/🔴 (isTransferred) تبقى كما هي.
+  const hidden = ctx.hidden.has(l.id);
+  const postAssignFuCount = l.assignedAt
+    ? (l.followUps ?? []).filter((f) => f.createdAt > l.assignedAt!).length
+    : 0;
+  // الخطوة ٤: عدّاد السحب الحي — نفس أهلية محرّك «لم يتم الرد» حرفيًا (مراحل NEW/ATTEMPTED،
+  // بلا حصانة يدوية، دون سقف الدورات) ونفس دواله النقية. للموظف فقط.
+  const pull = ((): LeadRow["pull"] => {
+    if (ctx.manager) return null;
+    if (l.isArchived || l.manualAssignedAt != null || l.assignedAt == null) return null;
+    if (!(NO_RESPONSE_STAGES as readonly string[]).includes(l.stage)) return null;
+    if (l.reassignCount >= MAX_REASSIGNS) return null;
+    const stats = noAnswerStats(l.followUps ?? [], l.assignedAt);
+    if (!stats.included) return null; // رد العميل → خارج النظام
+    const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, ctx.nrConfig.activationDate);
+    const { state, pullDay } = noResponseState(stats.noAnswerCount, baseline, ctx.now, ctx.nrConfig);
+    if (state === "out" || pullDay === null || baseline === null) return null;
+    return {
+      state,
+      baselineMs: baseline.getTime(),
+      deadlineMs: baseline.getTime() + pullDay * 86_400_000,
+      noAnswerCount: stats.noAnswerCount,
+    };
+  })();
   return {
     id: l.id,
     name: l.name,
@@ -176,11 +226,11 @@ function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): Lead
     assignedTo: l.assignedTo && l.assignedTo.role !== "OWNER" ? { id: l.assignedTo.id, name: l.assignedTo.name } : null,
     projectName: l.project?.name ?? null,
     activitiesCount: l._count.activities,
-    followUpsCount: l._count.followUps,
+    followUpsCount: hidden ? postAssignFuCount : l._count.followUps,
     purchaseMethod: l.purchaseMethod,
     purchaseGoal: l.purchaseGoal,
-    firstContactStage: l.firstContactStage,
-    firstContactDate: l.firstContactDate,
+    firstContactStage: hidden ? null : l.firstContactStage,
+    firstContactDate: hidden ? null : l.firstContactDate,
     isArchived: l.isArchived,
     // المحصّل/المتبقّي يظهر فقط للبائع أو المدير — وإلا يُحجب (null).
     booking: (() => {
@@ -192,18 +242,30 @@ function toRow(l: LeadWithRels, ctx: { userId: string; manager: boolean }): Lead
     // نجمة العميل المحوّل: أُعيد توجيهه ولم يُسجّل أي متابعة بعد آخر إسناد (تختفي أول متابعة).
     isTransferred: transferred,
     // §٦: أيقونة حمراء لو آخر سحب كان بسبب استنفاد المحاولات (وإلا نجمة ذهبية للتقصير).
-    transferredExhausted: transferred && (l.reassignments?.[0]?.reason ?? "").startsWith("no_response_exhausted"),
+    transferredExhausted: transferred && lastPullReason.startsWith("no_response_exhausted"),
+    pull,
   };
+}
+
+/** سياق الصف الكامل (قرار الإخفاء + إعداد «لم يتم الرد») — يُبنى مرة لكل طلب. */
+async function buildRowCtx(userId: string, manager: boolean, role: Role, leads: LeadWithRels[]): Promise<RowCtx> {
+  const hidden = await hiddenHistoryIds(
+    prisma, role,
+    leads.map((l) => ({ id: l.id, lastAssignReason: lastAssignReasonOf(l.reassignments) })),
+  );
+  return { userId, manager, hidden, nrConfig: getNoResponseConfig(), now: new Date() };
 }
 
 const rowInclude = {
   assignedTo: { select: { id: true, name: true, role: true } },
   project: { select: { name: true } },
   _count: { select: { activities: true, followUps: true } },
-  // آخر متابعة فقط (تاريخها) — لحساب نجمة العميل المحوّل بلا جلب كل المتابعات.
-  followUps: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
-  // آخر سحب (Reassignment→null) وسببه — للتمييز بين محوّل تقصير (نجمة) واستنفاد (أيقونة حمراء §٦).
-  reassignments: { where: { toUserId: null }, orderBy: { createdAt: "desc" }, take: 1, select: { reason: true } },
+  // أحدث ٢٠ متابعة (وقت + نتيجة) — لعدّاد ما بعد الإسناد (الإخفاء) وإحصاء «لم يرد» (العدّاد الحي).
+  // نفس الاستعلام الواحد (بلا استعلامات إضافية)؛ >٢٠ متابعة بعد إسنادٍ واحد غير واقعي عمليًا.
+  followUps: { orderBy: { createdAt: "desc" }, take: 20, select: { createdAt: true, result: true } },
+  // آخر ٥ سجلات تحويل (بلا فلتر) — منها آخر سحب (toUserId=null → نجمة/أيقونة §٦)
+  // وآخر إسناد فعلي (toUserId≠null → لاحقة _fresh لقرار الإخفاء).
+  reassignments: { orderBy: { createdAt: "desc" }, take: 5, select: { reason: true, toUserId: true } },
   bookings: { select: { stage: true, finalPrice: true, collectedAmount: true, sellerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
 } as const;
 
@@ -306,7 +368,9 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
     include: rowInclude,
     take: 500, // سقف مؤقت لحين الترقيم server-side (#14)
   });
-  return leads.map((l) => toRow(l, { userId: user.id, manager }));
+  // الخطوة ٣ب: قرار الإخفاء للدفعة كاملة (استعلام تدقيق واحد) — للموظف فقط.
+  const ctx = await buildRowCtx(user.id, manager, user.role, leads);
+  return leads.map((l) => toRow(l, ctx));
 }
 
 /** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
@@ -340,7 +404,8 @@ export async function getPipeline(): Promise<LeadRow[]> {
     include: rowInclude,
     take: 500, // سقف مؤقت لحين ترقيم الكانبان لكل عمود (#14)
   });
-  return leads.map((l) => toRow(l, { userId: user.id, manager }));
+  const ctx = await buildRowCtx(user.id, manager, user.role, leads);
+  return leads.map((l) => toRow(l, ctx));
 }
 
 /** تفاصيل عميل واحد + سجل المتابعات — مع تحقق الصلاحية. يرجّع null إن لم يُسمح. */
@@ -365,11 +430,24 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     },
   });
   if (!lead) return null;
+  // الخطوة ٣ب/ج: قرار الإخفاء لهذا العميل + حالة الكشف (لزر المالك).
+  const lastAssignReason = lastAssignReasonOf(lead.reassignments);
+  const freshDistributed = isFreshDistributed(lastAssignReason);
+  const ctx = await buildRowCtx(user.id, manager, user.role, [lead]);
+  const isHidden = ctx.hidden.has(lead.id);
+  const revealAction = freshDistributed ? await latestRevealAction(prisma, lead.id) : null;
+  // الأنشطة (Timeline): للمخفي تُحذف الأقدم من آخر إسناد — لا تكشف تاريخ ما قبل الاستلام.
+  const visibleActivities = isHidden && lead.assignedAt
+    ? lead.activities.filter((a) => a.createdAt > lead.assignedAt!)
+    : lead.activities;
   return {
-    ...toRow(lead, { userId: user.id, manager }),
+    ...toRow(lead, ctx),
+    freshDistributed,
+    historyRevealed: revealAction === REVEAL_HISTORY_ACTION,
+    activitiesCount: visibleActivities.length,
     nationalId: lead.nationalId,
     notes: lead.notes,
-    firstContactAt: lead.firstContactAt,
+    firstContactAt: isHidden ? null : lead.firstContactAt,
     preferredDistrict: lead.preferredDistrict,
     priceMin: lead.priceMin,
     priceMax: lead.priceMax,
@@ -409,7 +487,7 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
         sellerName: b.seller?.name ?? null,
       };
     }),
-    activities: lead.activities.map((a) => ({
+    activities: visibleActivities.map((a) => ({
       id: a.id,
       type: a.type,
       note: a.note,

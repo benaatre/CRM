@@ -9,7 +9,7 @@ import {
   paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels, channelLabels,
   followUpResultLabels, followUpTypeLabels,
 } from "@/lib/labels";
-import { updateLeadIntake, updateLeadChannel } from "@/lib/actions/leads";
+import { updateLeadIntake, updateLeadChannel, toggleRevealHistory } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
 import { cancelBooking } from "@/lib/actions/bookings";
@@ -78,6 +78,31 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
           <a href={`tel:${detail.phone}`} className="flex-1 rounded-lg bg-primary py-2.5 text-center text-sm font-medium text-primary-foreground hover:opacity-90">اتصل</a>
           <a href={wa} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg bg-success/15 py-2.5 text-center text-sm font-medium text-success hover:bg-success/25">واتساب</a>
         </div>
+        {/* الخطوة ٣ج: زر كشف السجل — للمالك فقط (transferHistory ≠ null يعني مالك)، ولعميل وُزّع «كجديد» فقط. */}
+        {transferHistory && detail.freshDistributed && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-secondary/30 px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              {detail.historyRevealed
+                ? "سجل المتابعات القديم مكشوف للموظف حاليًا"
+                : "هذا العميل وُزّع «كعميل جديد» — سجله القديم مخفي عن الموظف"}
+            </span>
+            <button
+              onClick={() => startTransition(async () => {
+                const r = await toggleRevealHistory(detail.id);
+                if (!r.ok && r.error) alert(r.error);
+                router.refresh();
+              })}
+              disabled={pending}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                detail.historyRevealed
+                  ? "border-border text-muted-foreground hover:bg-secondary"
+                  : "border-gold/50 bg-gold/10 text-gold hover:bg-gold/20"
+              }`}
+            >
+              {detail.historyRevealed ? "أخفِ السجل عن الموظف" : "أظهر المتابعات لهذا الموظف"}
+            </button>
+          </div>
+        )}
       </header>
 
       {/* التبويبات — قابلة للتمرير أفقيًا على الجوال */}
@@ -337,6 +362,11 @@ const REASON_LABELS: Record<string, string> = {
   no_response_exhausted: "سحب — استنفاد محاولات (تابع وما رد)",
   manual_pull: "سحب يدوي (الإدارة)",
   manual_redistribute: "توزيع يدوي",
+  manual_redistribute_fresh: "توزيع من الحوض — كعميل جديد (السجل مخفي)",
+  manual_redistribute_full: "توزيع من الحوض — بسجله كاملًا",
+  manual_transfer: "نقل يدوي",
+  manual_distribute: "توزيع يدوي (أزرار التوزيع)",
+  manual: "إسناد يدوي",
 };
 
 function TransferHistorySection({ data }: { data: LeadTransferHistory }) {

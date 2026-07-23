@@ -10,6 +10,7 @@ import {
 import { formatDate, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import { TransferStar } from "./transfer-star";
+import { PullCountdown } from "./pull-countdown";
 import {
   transferLeads, recoverLeads, bulkArchive, bulkDelete, unarchiveLeads,
 } from "@/lib/actions/leads";
@@ -183,6 +184,7 @@ export function LeadsView({
                     <input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} />
                     <span className="font-medium text-foreground">{l.name}</span>
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
+                    {!isManager && <PullCountdown pull={l.pull} />}
                   </div>
                   <a href={`tel:${l.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{l.phone}</a>
                 </div>
@@ -229,7 +231,7 @@ export function LeadsView({
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
                   <td className="px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
                   <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /></span></td>
+                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />{!isManager && <PullCountdown pull={l.pull} />}</span></td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
                   {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
                   <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>

@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { markContacted } from "@/lib/auto-distribute";
+import { shouldHideHistory } from "@/lib/visibility";
 import { resultToStage, followUpResultLabels, firstContactStageLabels } from "@/lib/labels";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ function isManager(role: string) {
 async function authorize(leadId: string) {
   const session = await auth();
   if (!session?.user) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, assignedAt: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
   if (!lead) return { error: NextResponse.json({ error: "العميل غير موجود" }, { status: 404 }) };
   if (!isManager(session.user.role) && lead.assignedToId !== session.user.id) {
     return { error: NextResponse.json({ error: "ما عندك صلاحية على هذا العميل" }, { status: 403 }) };
@@ -25,14 +26,25 @@ async function authorize(leadId: string) {
   return { user: session.user, lead };
 }
 
-// GET /api/leads/[id]/followups — كل متابعات العميل (تصاعدي: الأقدم أولًا).
+// GET /api/leads/[id]/followups — متابعات العميل (تصاعدي: الأقدم أولًا).
+// الخطوة ٣ب: للموظف مع عميل موزَّع «كجديد» (_fresh): ما قبل آخر إسناد يُحذف من الـpayload.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const a = await authorize(id);
   if (a.error) return a.error;
 
+  const lastAssign = await prisma.reassignment.findFirst({
+    where: { leadId: id, toUserId: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { reason: true },
+  });
+  const hide = await shouldHideHistory(prisma, a.user.role, { id, lastAssignReason: lastAssign?.reason ?? null });
+
   const items = await prisma.followUp.findMany({
-    where: { leadId: id },
+    where: {
+      leadId: id,
+      ...(hide && a.lead.assignedAt ? { createdAt: { gt: a.lead.assignedAt } } : {}),
+    },
     orderBy: { createdAt: "asc" },
     include: { employee: { select: { name: true } } },
   });
