@@ -181,6 +181,15 @@ async function computeInterestSentiment(scope: Prisma.LeadWhereInput): Promise<I
 
 const CLOSED: LeadStage[] = ["CLOSED_WON", "CLOSED_LOST"];
 
+/**
+ * عدّادات «الحالة الحية» (الإجمالي/القمع): المؤرشف مستثنى — إلا المحجوز/المباع،
+ * فهو مؤرشف بحكم الحجز (ينتقل لتبويب «تم الحجز/الشراء») وعموداه في القمع تاريخيان.
+ * بدون هذا كان المؤرشفون (١٦٧ «غير مهتم نهائيًا» مثلًا) يظلون محسوبين في القمع والبطاقات.
+ */
+const LIVE_OR_BOOKED: Prisma.LeadWhereInput = {
+  OR: [{ isArchived: false }, { stage: { in: ["RESERVED", "CLOSED_WON"] } }],
+};
+
 export async function getDashboard(period: Period): Promise<DashboardData> {
   const { user, where, manager } = await scopeForUser();
   const ownerIds = await getOwnerIds();
@@ -226,7 +235,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     visits,
     closedWon,
   ] = await Promise.all([
-    prisma.lead.count({ where: { ...where, ...periodFilter } }),
+    prisma.lead.count({ where: { ...where, ...periodFilter, ...LIVE_OR_BOOKED } }),
     manager ? prisma.lead.count({ where: unassignedWhere }) : Promise.resolve(0),
     prisma.booking.count({ where: { ...bookingScope, ...periodFilter } }),
     prisma.followUp.count({ where: { type: { in: VISIT_TYPES }, ...fuVisitScope, ...periodFilter } }),
@@ -295,7 +304,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
   // ويتبع فلتر الفترة مثل بقية مؤشرات الشاشة (كان all-time بجانب KPIs مفلترة).
   const grouped = await prisma.lead.groupBy({
     by: ["stage"],
-    where: { ...where, ...periodFilter },
+    where: { ...where, ...periodFilter, ...LIVE_OR_BOOKED },
     _count: { _all: true },
   });
   const countByStage = new Map(grouped.map((g) => [g.stage, g._count._all]));
@@ -315,8 +324,9 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     count: countByStage.get(stage) ?? 0,
   }));
 
-  // مشاعر الاهتمام — نفس نطاق المستخدم + فلتر الفترة (createdAt) المطبّق على مؤشرات الفترة.
-  const sentiment = await computeInterestSentiment({ ...where, ...periodFilter });
+  // مشاعر الاهتمام — نفس نطاق المستخدم + فلتر الفترة، والمؤرشف مستثنى (مراحلها كلها غير محجوزة،
+  // فيكفي isArchived:false): بطاقتا «مهتمين/غير مهتمين» وتفصيل الأسباب = الحالة الحية فقط.
+  const sentiment = await computeInterestSentiment({ ...where, ...periodFilter, isArchived: false });
 
   // أداء الموظفين (للمدير فقط) — م-٣: يتبع فلتر الفترة مثل بقية الشاشة (كان all-time).
   let team: TeamRow[] = [];
