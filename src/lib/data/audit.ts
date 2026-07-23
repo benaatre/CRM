@@ -67,7 +67,10 @@ export type AuditFilters = {
 export async function getAuditLog(filters: AuditFilters = {}): Promise<AuditEntry[]> {
   const { category, userId, from, to, limit = 150 } = filters;
 
-  const where: Prisma.AuditLogWhereInput = { ...(category ? CATEGORY_WHERE[category] : {}) };
+  // صفوف نبضات الأجهزة (session.device — تُحدَّث كل دقيقتين) ليست «عمليات» — تُستثنى من العرض.
+  const where: Prisma.AuditLogWhereInput = category
+    ? { ...CATEGORY_WHERE[category] }
+    : { action: { not: "session.device" } };
   if (userId) where.userId = userId;
   if (from || to) {
     where.createdAt = {};
