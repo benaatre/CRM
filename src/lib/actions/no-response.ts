@@ -18,7 +18,13 @@ import {
 } from "@/lib/no-response-escalation";
 import { getPendingPullByEmployee, type PendingPullEmployee } from "@/lib/data/no-response";
 
-export type ActionResult = { ok: boolean; error?: string; message?: string };
+export type ActionResult = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  /** كل المحدَّدين مستنفدون (سُحبوا ٣ مرات) — المودال يعرض زر «توزيع استثنائي» يعيد الإرسال بـ override. */
+  exhaustedOnly?: boolean;
+};
 
 const MAX_REASSIGNS = 3;
 
@@ -152,7 +158,15 @@ export async function distributeNoResponseBatch(leadIds: string[], opts: Distrib
     const nameById = new Map(emps.map((e) => [e.id, e.name]));
 
     const eligible = await eligibleQueueLeads(ids, opts.override === true);
-    if (eligible.length === 0) return { ok: false, error: "ما فيه عملاء صالحون للتوزيع (خرجوا من الحوض أو مستنفدون)" };
+    if (eligible.length === 0) {
+      // تمييز السبب: لو المحدَّدون موجودون بالحوض لكنهم مستنفدون (reassignCount ≥ السقف)
+      // نوجّه المالك للتوزيع الاستثنائي بدل رسالة عامة تُقرأ كخلل.
+      const withExhausted = await eligibleQueueLeads(ids, true);
+      if (withExhausted.length > 0) {
+        return { ok: false, exhaustedOnly: true, error: "هؤلاء مستنفدون (سُحبوا ٣ مرات) — وزّعهم بالتوزيع الاستثنائي" };
+      }
+      return { ok: false, error: "ما فيه عملاء صالحون للتوزيع (خرجوا من الحوض)" };
+    }
 
     // فرض على الخادم: لا يُوزَّع عميل لموظف سُحب منه (يطابق تعطيل الواجهة). المصدر = آخر سحب (Reassignment→null).
     const pulls = await prisma.reassignment.findMany({

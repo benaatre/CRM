@@ -347,6 +347,8 @@ export type PoolSourceGroup = {
   count: number;        // عدد العملاء المسحوبين منه
   byFollowup: Record<EscalationCategory, number>; // توزيع حسب عدد المتابعات
   leadIds: string[];    // معرّفات عملاء المجموعة (للتوزيع)
+  /** منهم مستنفدون (reassignCount ≥ السقف) — لا يوزّعهم إلا «التوزيع الاستثنائي» (شارة حمراء). */
+  exhausted: number;
 };
 
 function emptyFuMap(): Record<EscalationCategory, number> {
@@ -364,6 +366,7 @@ export async function getPoolBySourceEmployee(filters: NoResponseFilters = {}): 
     where: { ...QUEUE_WHERE, ...(q ? { OR: [{ name: { contains: q } }, { phone: { contains: q } }] } : {}) },
     select: {
       id: true,
+      reassignCount: true,
       reassignments: { where: { toUserId: null }, orderBy: { createdAt: "desc" }, take: 1, select: { fromUserId: true } },
     },
     take: 3000,
@@ -372,17 +375,18 @@ export async function getPoolBySourceEmployee(filters: NoResponseFilters = {}): 
   // الحوض عرض تاريخي: نمرّر epoch (لا null) فيُحتسب كل متابعات «لم يرد» تاريخيًا (assignedAt=null صار out).
   const statsByLead = await noAnswerStatsByLead(leads.map((l) => ({ id: l.id, assignedAt: new Date(0) })));
 
-  const bySource = new Map<string, { leadIds: string[]; byFollowup: Record<EscalationCategory, number>; count: number }>();
+  const bySource = new Map<string, { leadIds: string[]; byFollowup: Record<EscalationCategory, number>; count: number; exhausted: number }>();
   for (const l of leads) {
     const src = l.reassignments[0]?.fromUserId;
     if (!src) continue; // بلا مصدر معروف
     const stats = statsByLead.get(l.id) ?? { included: true, noAnswerCount: 0, lastNoAnswerAt: null, lastResult: null };
     if (!stats.included) continue; // رد العميل → خارج النظام
     const cat = escalationCategory(stats.noAnswerCount, config);
-    const g = bySource.get(src) ?? { leadIds: [], byFollowup: emptyFuMap(), count: 0 };
+    const g = bySource.get(src) ?? { leadIds: [], byFollowup: emptyFuMap(), count: 0, exhausted: 0 };
     g.leadIds.push(l.id);
     g.count++;
     g.byFollowup[cat]++;
+    if (l.reassignCount >= MAX_REASSIGNS) g.exhausted++;
     bySource.set(src, g);
   }
 
@@ -393,7 +397,7 @@ export async function getPoolBySourceEmployee(filters: NoResponseFilters = {}): 
   const nameById = new Map(names.map((u) => [u.id, u.name]));
 
   return entries
-    .map(([employeeId, g]) => ({ employeeId, employee: nameById.get(employeeId) ?? "—", count: g.count, byFollowup: g.byFollowup, leadIds: g.leadIds }))
+    .map(([employeeId, g]) => ({ employeeId, employee: nameById.get(employeeId) ?? "—", count: g.count, byFollowup: g.byFollowup, leadIds: g.leadIds, exhausted: g.exhausted }))
     .sort((a, b) => b.count - a.count);
 }
 

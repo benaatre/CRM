@@ -53,6 +53,8 @@ export function NoResponseView({
   const [msg, setMsg] = useState<string | null>(null);
   const [pullAsk, setPullAsk] = useState<PullAsk | null>(null);
   const [dist, setDist] = useState<DistAsk | null>(null);
+  // كل المحدَّدين مستنفدون → المودال يبقى مفتوحًا ويعرض زر «توزيع استثنائي».
+  const [exhaustedNotice, setExhaustedNotice] = useState<string | null>(null);
 
   function run(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
     setMsg(null);
@@ -266,7 +268,14 @@ export function NoResponseView({
                 <tr><td colSpan={CATEGORY_ORDER.length + 3} className="px-4 py-8 text-center text-muted-foreground">الحوض فاضي.</td></tr>
               ) : poolGroups.map((g) => (
                 <tr key={g.employeeId} className="border-t border-border">
-                  <td className="px-4 py-3 font-medium text-foreground">{g.employee}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">
+                    {g.employee}
+                    {g.exhausted > 0 && (
+                      <span className="mr-2 rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive" title="سُحبوا ٣ مرات — لا يوزّعهم إلا التوزيع الاستثنائي">
+                        مستنفد ×{toArabicDigits(g.exhausted)}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-center font-bold text-gold">{formatCount(g.count)}</td>
                   {CATEGORY_ORDER.map((c) => (
                     <td key={c} className="px-3 py-3 text-center text-muted-foreground">{g.byFollowup[c] > 0 ? toArabicDigits(g.byFollowup[c]) : "—"}</td>
@@ -305,14 +314,39 @@ export function NoResponseView({
           who={dist.who}
           employeeLoads={employeeLoads}
           sourceEmpIds={dist.sourceEmpIds}
-          onClose={() => setDist(null)}
+          exhaustedNotice={exhaustedNotice}
+          onClose={() => { setDist(null); setExhaustedNotice(null); }}
           onConfirm={(opts) => {
             const d = dist;
-            setDist(null);
             const finalOpts = d.override ? { ...opts, override: true } : opts;
-            run(async () => d.sourceEmployeeId
-              ? distributePoolGroup(d.sourceEmployeeId, finalOpts)
-              : distributeNoResponseBatch(d.leadIds, finalOpts));
+            setMsg(null);
+            startTransition(async () => {
+              const res = await (d.sourceEmployeeId
+                ? distributePoolGroup(d.sourceEmployeeId, finalOpts)
+                : distributeNoResponseBatch(d.leadIds, finalOpts));
+              // كلهم مستنفدون → لا نغلق المودال؛ نعرض الرسالة + زر «توزيع استثنائي».
+              if (!res.ok && res.exhaustedOnly) {
+                setExhaustedNotice(res.error ?? "هؤلاء مستنفدون (سُحبوا ٣ مرات) — وزّعهم بالتوزيع الاستثنائي");
+                return;
+              }
+              setDist(null);
+              setExhaustedNotice(null);
+              setMsg(res.ok ? (res.message ?? "تم") : (res.error ?? "صار خطأ"));
+              router.refresh();
+            });
+          }}
+          onOverride={(opts) => {
+            const d = dist;
+            setMsg(null);
+            startTransition(async () => {
+              const res = await (d.sourceEmployeeId
+                ? distributePoolGroup(d.sourceEmployeeId, { ...opts, override: true })
+                : distributeNoResponseBatch(d.leadIds, { ...opts, override: true }));
+              setDist(null);
+              setExhaustedNotice(null);
+              setMsg(res.ok ? (res.message ?? "تم") : (res.error ?? "صار خطأ"));
+              router.refresh();
+            });
           }}
         />
       )}
@@ -601,8 +635,13 @@ function ConfirmModal({ title, body, confirmLabel, danger, pending, onCancel, on
   );
 }
 
-function DistributeDialog({ count, who, employeeLoads, sourceEmpIds, onClose, onConfirm }: {
-  count: number; who: string; employeeLoads: EmployeeLoad[]; sourceEmpIds: string[]; onClose: () => void; onConfirm: (opts: DistributeOpts) => void;
+function DistributeDialog({ count, who, employeeLoads, sourceEmpIds, exhaustedNotice, onClose, onConfirm, onOverride }: {
+  count: number; who: string; employeeLoads: EmployeeLoad[]; sourceEmpIds: string[];
+  /** رسالة «كلهم مستنفدون» — عند وجودها يظهر زر «توزيع استثنائي». */
+  exhaustedNotice?: string | null;
+  onClose: () => void;
+  onConfirm: (opts: DistributeOpts) => void;
+  onOverride?: (opts: DistributeOpts) => void;
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<"even" | "single">("even");
@@ -683,6 +722,22 @@ function DistributeDialog({ count, who, employeeLoads, sourceEmpIds, onClose, on
               ))}
             </div>
           </div>
+
+          {exhaustedNotice && (
+            <div className="space-y-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+              <p className="text-xs font-medium text-destructive">{exhaustedNotice}</p>
+              <button
+                onClick={() => {
+                  if (!canConfirm) return;
+                  if (confirm("توزيع استثنائي: تجاوز سقف الدورات (٣ سحبات) لهؤلاء العملاء — متأكد؟")) {
+                    onOverride?.({ employeeIds: ids, mode, leadState });
+                  }
+                }}
+                disabled={!canConfirm}
+                className="rounded-lg border border-destructive/50 bg-destructive/15 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/25 disabled:opacity-50"
+              >توزيع استثنائي</button>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground">إلغاء</button>
