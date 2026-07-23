@@ -390,10 +390,11 @@ export async function toggleRevealHistory(leadId: string): Promise<{ ok: boolean
   try {
     const user = await requireUser();
     if (user.role !== "OWNER") return { ok: false, error: "كشف السجل للمالك فقط" };
-    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true } });
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true, assignedAt: true } });
     if (!lead) return { ok: false, error: "العميل غير موجود" };
 
-    const current = await latestRevealAction(prisma, leadId);
+    // الحالة الحالية ضمن التوزيعة الحالية فقط — كشف توزيعة سابقة لاغٍ (الافتراضي رجع «مخفي»).
+    const current = await latestRevealAction(prisma, leadId, lead.assignedAt);
     const revealing = current !== REVEAL_HISTORY_ACTION; // الافتراضي مخفي → الضغطة الأولى تكشف
     await logAudit(prisma, {
       userId: user.id,
@@ -505,7 +506,7 @@ export async function updateLeadIntake(
 export async function setFirstContactStage(leadId: string, stage: FirstContactStage): Promise<ActionResult> {
   try {
     const { user } = await assertLeadAccess(leadId);
-    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { firstContactStage: true } });
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { firstContactStage: true, assignedAt: true } });
     if (lead?.firstContactStage) {
       // عميل موزَّع «كجديد» وسجله مخفي: المرحلة الأولى التاريخية محجوبة عن الموظف أصلًا،
       // فمحاولته تحديدها تُقبل بصمت (بلا كتابة — القيمة التاريخية محفوظة) بدل خطأ يكشف وجود سجل قديم.
@@ -514,7 +515,7 @@ export async function setFirstContactStage(leadId: string, stage: FirstContactSt
         orderBy: { createdAt: "desc" },
         select: { reason: true },
       });
-      const hidden = await shouldHideHistory(prisma, user.role, { id: leadId, lastAssignReason: lastAssign?.reason ?? null });
+      const hidden = await shouldHideHistory(prisma, user.role, { id: leadId, lastAssignReason: lastAssign?.reason ?? null, assignedAt: lead.assignedAt });
       if (hidden) return { ok: true };
       return { ok: false, error: "المرحلة الأولى محدّدة مسبقًا ولا تُعدّل" };
     }
