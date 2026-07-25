@@ -10,6 +10,7 @@ import "server-only";
 import { FollowUpResult } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPendingPullByEmployee } from "@/lib/data/no-response";
+import { KEEP_STAGE_RESULTS } from "@/lib/labels";
 import { DAY_MS, ksaDayKey, weekStartKSA } from "@/lib/ksa-time";
 
 // نافذة الأسبوع من المصدر الموحّد (lib/ksa-time) — لا تعريف محلي، فلا تنحرف شاشة عن أخرى.
@@ -118,7 +119,12 @@ export function computeAchievement(fus: FuRow[], bookings: number): Achievement 
     const dayKey = ksaDayKey(f.createdAt); // سقف المتابعات يومي بتوقيت الرياض
     byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + 1);
     contactedSet.add(f.leadId);
-    if (f.stageAfter === "INTERESTED") interestedSet.add(f.leadId);
+    // «نقله لمهتم» = انتقال فعلي، لا مجرد عمود stageAfter=INTERESTED.
+    // نتائج «بلا تغيير مرحلة» (لم يستجب · حسبة البنك · في الانتظار) يكتب لها المسار
+    // مرحلة العميل كما هي؛ فلو كان مهتمًا أصلًا صارت متابعة معناها «ما استجاب» تكسب
+    // خمس نقاط «تحويل». هذا ما رفع موظفة فوق أخرى أعلى منها في كل مؤشر شغل خام
+    // (تحقيق ٢٥ يوليو ٢٠٢٦ — docs/investigations/week-score-2026-07-25.md).
+    if (f.stageAfter === "INTERESTED" && !KEEP_STAGE_RESULTS.includes(f.result)) interestedSet.add(f.leadId);
     if (f.stageAfter === "CLOSED_WON") winsSet.add(f.leadId);
     if (f.result === FollowUpResult.INTERESTED_VISIT_SCHEDULED) visitAppts++;
     if (VISIT_DONE_RESULTS.includes(f.result)) visitsDone++;
