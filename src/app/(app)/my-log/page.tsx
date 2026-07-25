@@ -53,7 +53,7 @@ export default async function MyLogPage({ searchParams }: { searchParams: Promis
     { label: "أول تواصل بعملاء جدد", value: r.firstContacts, cls: "text-info" },
     { label: "زيارات تمّت", value: r.visitsDone, cls: "text-sky-300" },
     { label: "حجوزات", value: r.bookings, cls: "text-success" },
-    { label: "نقاط الفترة", value: r.points, cls: "text-gold" },
+    { label: "درجة الإنجاز", value: r.points, cls: "text-gold" },
   ];
 
   return (

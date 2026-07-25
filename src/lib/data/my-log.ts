@@ -10,7 +10,7 @@ import "server-only";
 // (toUserId=هو) ويُعرض بعبارة عامة «استلمت عميلًا جديدًا» بلا سبب ولا مصدر.
 import { FollowUpResult, FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { computePoints, type FuRow } from "@/lib/data/leaderboard";
+import { computeAchievement, type FuRow } from "@/lib/data/leaderboard";
 import { followUpResultLabels } from "@/lib/labels";
 
 const KSA_OFFSET_MS = 3 * 3_600_000;
@@ -99,7 +99,7 @@ export async function getMyDailyLog(userId: string, period: MyLogPeriod, page: n
     // متابعاته هو (createdBy = هويته من الجلسة).
     prisma.followUp.findMany({
       where: { createdBy: userId, createdAt: range },
-      select: { leadId: true, type: true, result: true, nextDate: true, createdAt: true },
+      select: { leadId: true, type: true, result: true, nextDate: true, createdAt: true, stageAfter: true },
       orderBy: { createdAt: "desc" },
     }),
     // تغييرات المراحل التي أجراها هو.
@@ -143,8 +143,8 @@ export async function getMyDailyLog(userId: string, period: MyLogPeriod, page: n
   }).length;
   const dueCount = dueList.length;
 
-  const fuRows: FuRow[] = fus.map((f) => ({ createdBy: userId, createdAt: f.createdAt, result: f.result, leadId: f.leadId, nextDate: f.nextDate }));
-  const { points } = computePoints(fuRows, bookings.length);
+  const fuRows: FuRow[] = fus.map((f) => ({ createdBy: userId, createdAt: f.createdAt, result: f.result, leadId: f.leadId, nextDate: f.nextDate, stageAfter: f.stageAfter }));
+  const { achievement: points } = computeAchievement(fuRows, bookings.length);
 
   const report: MyDayReport = {
     followups: fus.length,
