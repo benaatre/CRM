@@ -1,6 +1,8 @@
 import "server-only";
 
+import type { Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { channelForSourceName } from "@/lib/sheet-sync-google";
 
 // المصادر الافتراضية (تُزرع مرة واحدة إذا الجدول فاضي).
 export const DEFAULT_SOURCES = [
@@ -50,6 +52,57 @@ export type SheetLinkRow = {
   lastSyncError: string | null;
   isActive: boolean;
 };
+
+// ===================== شاشة «مصادر العملاء» (الإعدادات — مالك فقط) =====================
+
+export type SheetSourcePanelRow = {
+  id: string;            // معرّف رابط الشيت
+  sourceId: string;
+  sourceName: string;
+  channel: Channel;      // قناة المصدر (مشتقة من اسمه — تُكتب على عملائه)
+  sheetUrl: string;
+  isActive: boolean;
+  lastRowSynced: number; // مؤشر آخر صف مُعالج (القراءة منه فقط — ممنوع المسح الكامل)
+  lastSyncAt: Date | null;
+  lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  todayCount: number;    // عملاء اليوم من هذا المصدر (بتوقيت الرياض)
+};
+
+/** بيانات شاشة «مصادر العملاء»: كل روابط الشيت + قناة كل مصدر + عملاء اليوم + آخر مزامنة/خطأ. */
+export async function getSheetSourcesPanel(): Promise<SheetSourcePanelRow[]> {
+  // بداية اليوم بتوقيت الرياض (+٣ ثابت).
+  const KSA_MS = 3 * 3_600_000;
+  const k = new Date(Date.now() + KSA_MS);
+  const dayStart = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate()) - KSA_MS);
+
+  const [links, todayGrp] = await Promise.all([
+    prisma.sheetLink.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { source: { select: { name: true } } },
+    }),
+    prisma.lead.groupBy({
+      by: ["sourceId"],
+      where: { sourceId: { not: null }, createdAt: { gte: dayStart } },
+      _count: { _all: true },
+    }),
+  ]);
+  const todayBySource = new Map(todayGrp.map((g) => [g.sourceId, g._count._all]));
+
+  return links.map((l) => ({
+    id: l.id,
+    sourceId: l.sourceId,
+    sourceName: l.source?.name ?? "—",
+    channel: channelForSourceName(l.source?.name),
+    sheetUrl: l.sheetUrl,
+    isActive: l.isActive,
+    lastRowSynced: l.lastRowSynced,
+    lastSyncAt: l.lastSyncAt,
+    lastSyncStatus: l.lastSyncStatus,
+    lastSyncError: l.lastSyncError,
+    todayCount: todayBySource.get(l.sourceId) ?? 0,
+  }));
+}
 
 /** بيانات قسم «المصادر وروابط جوجل شيت» — المصادر مع عدد العملاء/الروابط + كل الروابط. */
 export async function getSourcesAndLinks(): Promise<{ sources: SourceRow[]; links: SheetLinkRow[] }> {
