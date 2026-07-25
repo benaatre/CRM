@@ -69,6 +69,7 @@ const FUNNEL: LeadStage[] = [
   "ATTEMPTED",
   "INTERESTED",
   "FOLLOW_UP_LATER",
+  "VISIT_SCHEDULED",
   "VIEWING",
   "NEGOTIATION",
   "RESERVED",

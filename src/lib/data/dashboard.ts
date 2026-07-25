@@ -104,8 +104,9 @@ export type DashboardData = {
 // «مشاعر الاهتمام» — كتلة محسوبة منفصلة عن القمع (لا تلمس FUNNEL/funnelStages).
 export type InterestSentiment = {
   interested: {
-    total: number;      // مجموع الأربعة أدناه
+    total: number;      // مجموع الخمسة أدناه
     interested: number;  // INTERESTED
+    visitScheduled: number; // VISIT_SCHEDULED (موعد زيارة مؤكّد)
     viewed: number;      // VIEWING (زار)
     negotiating: number; // NEGOTIATION (تفاوض)
     followUpLater: number; // FOLLOW_UP_LATER المهتم فقط (section آخر متابعة = INTERESTED)
@@ -152,6 +153,7 @@ async function computeInterestSentiment(scope: Prisma.LeadWhereInput): Promise<I
   const fulInterested = fulLeads.length - fulSoft.length;
 
   const interested = cnt("INTERESTED");
+  const visitScheduled = cnt("VISIT_SCHEDULED");
   const viewed = cnt("VIEWING");
   const negotiating = cnt("NEGOTIATION");
 
@@ -177,8 +179,8 @@ async function computeInterestSentiment(scope: Prisma.LeadWhereInput): Promise<I
 
   return {
     interested: {
-      total: interested + viewed + negotiating + fulInterested,
-      interested, viewed, negotiating, followUpLater: fulInterested,
+      total: interested + visitScheduled + viewed + negotiating + fulInterested,
+      interested, visitScheduled, viewed, negotiating, followUpLater: fulInterested,
     },
     notInterested: {
       total: lostLeads.length + fulSoft.length,
@@ -323,6 +325,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     "ATTEMPTED",
     "INTERESTED",
     "FOLLOW_UP_LATER",
+    "VISIT_SCHEDULED",
     "VIEWING",
     "NEGOTIATION",
     "RESERVED",

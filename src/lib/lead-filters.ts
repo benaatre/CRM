@@ -6,7 +6,7 @@ export const LEAD_SORTS: LeadSort[] = ["activity", "newest", "oldest", "name"];
 export const DEFAULT_LEAD_SORT: LeadSort = "activity";
 
 /** مظلة «مهتم» — كل المتفاعلين (مصدر واحد يشاركه شريط الفلاتر واستعلام «لم يستجب»). */
-export const INTEREST_UMBRELLA: LeadStage[] = ["INTERESTED", "VIEWING", "NEGOTIATION", "FOLLOW_UP_LATER"];
+export const INTEREST_UMBRELLA: LeadStage[] = ["INTERESTED", "VISIT_SCHEDULED", "VIEWING", "NEGOTIATION", "FOLLOW_UP_LATER"];
 
 /** سبب الأرشفة (فلتر تبويب «مؤرشف»): نهائي / مسوّق / يدوي — فارغ = الكل. */
 export type ArchiveReason = "" | "final" | "marketer" | "manual";

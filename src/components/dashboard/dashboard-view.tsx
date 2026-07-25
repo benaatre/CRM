@@ -263,8 +263,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
             </span>
             <span className="text-sm text-muted-foreground">عميل مهتم</span>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-5">
             <S label="مهتم" v={data.sentiment.interested.interested} cls="text-gold" />
+            <S label="موعد زيارة" v={data.sentiment.interested.visitScheduled} cls="text-sky-300" />
             <S label="زار مشروع" v={data.sentiment.interested.viewed} />
             <S label="تفاوض" v={data.sentiment.interested.negotiating} />
             <S label="موعد لاحق" v={data.sentiment.interested.followUpLater} />
