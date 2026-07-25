@@ -9,6 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { assignLead } from "@/lib/assignment";
+import { dayStartKSA, ksaHourOf } from "@/lib/ksa-time";
 import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
 import { getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats } from "./no-response-escalation";
 
@@ -50,18 +51,12 @@ function noResponseCap(): number {
 
 // ===================== أدوات التوقيت (توقيت السعودية UTC+3 بلا تغيير صيفي) =====================
 
-const KSA_OFFSET_MS = 3 * 60 * 60 * 1000;
-
-/** ساعة اليوم بتوقيت السعودية (٠–٢٣) مهما كان توقيت الخادم. */
-function ksaHour(now: Date): number {
-  return new Date(now.getTime() + KSA_OFFSET_MS).getUTCHours();
-}
+// المصدر الموحّد لحدود التوقيت: lib/ksa-time (كانت الإزاحة مكرّرة في ست وحدات).
+const ksaHour = ksaHourOf;
 
 /** لحظة بداية «اليوم» بتوقيت السعودية كـ Date عالمي (لعدّ متابعات اليوم). */
 export function ksaTodayStart(now: Date): Date {
-  const shifted = new Date(now.getTime() + KSA_OFFSET_MS);
-  const midnightShifted = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
-  return new Date(midnightShifted - KSA_OFFSET_MS);
+  return dayStartKSA(now);
 }
 
 /** هل نحن داخل نافذة عمل التوزيع [start, end)؟ */
