@@ -1,7 +1,10 @@
 import { Role } from "@prisma/client";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth-guards";
 import { getDashboard, normalizePeriod } from "@/lib/data/dashboard";
 import { getMyNoResponseAlert } from "@/lib/data/no-response";
+import { getMyRank } from "@/lib/data/leaderboard";
+import { toArabicDigits } from "@/lib/format";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { NoResponseBanner } from "@/components/dashboard/no-response-banner";
@@ -16,9 +19,10 @@ export default async function DashboardPage({
   const user = await requireUser();
   const period = normalizePeriod((await searchParams).period);
   // بانر الإنذار للموظف فقط (المالك/المدير يشوفون لوحة «لم يتم الرد» الكاملة).
-  const [data, alert] = await Promise.all([
+  const [data, alert, myRank] = await Promise.all([
     getDashboard(period),
     user.role === Role.EMPLOYEE ? getMyNoResponseAlert(user.id) : Promise.resolve({ lines: [], late: 0, pulled: 0, warningCount: 0, warningMinHoursLeft: null }),
+    user.role === Role.EMPLOYEE ? getMyRank(user.id) : Promise.resolve(null),
   ]);
 
   return (
@@ -33,6 +37,27 @@ export default async function DashboardPage({
         </div>
         <PeriodFilter current={period} />
       </header>
+
+      {/* بطاقة لوحة الأسبوع المصغّرة — للموظف: ترتيبه + نقاطه + الفارق عن اللي قدامه */}
+      {myRank && (
+        <Link href="/leaderboard" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3 transition-colors hover:bg-gold/10">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{myRank.rank === 1 ? "🥇" : myRank.rank === 2 ? "🥈" : myRank.rank === 3 ? "🥉" : "🏆"}</span>
+            <div>
+              <div className="text-sm font-bold text-foreground">ترتيبك هالأسبوع: {toArabicDigits(myRank.rank)} من {toArabicDigits(myRank.total)}</div>
+              <div className="text-xs text-muted-foreground">
+                {myRank.gapToNext
+                  ? `تحتاج ${toArabicDigits(myRank.gapToNext.points)} نقطة تعدّي ${myRank.gapToNext.name}`
+                  : "أنت الأول — حافظ على الصدارة 🔥"}
+              </div>
+            </div>
+          </div>
+          <div className="text-left">
+            <div className="text-xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.points)}</div>
+            <div className="text-[11px] text-muted-foreground">نقطة</div>
+          </div>
+        </Link>
+      )}
 
       <DashboardView data={data} />
     </div>
