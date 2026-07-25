@@ -8,6 +8,7 @@ import { stageLabels, stageColor } from "@/lib/labels";
 import { formatCurrency, formatCount, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
 import { DistributeDialog } from "@/components/leads/distribute-dialog";
+import { QuickActions } from "@/components/leads/quick-actions";
 import { TodayMarquee } from "./today-marquee";
 
 type ViewMode = "compact" | "analytical" | "glass";
@@ -193,12 +194,16 @@ export function DashboardView({ data }: { data: DashboardData }) {
           ) : (
             <ul className="divide-y divide-border">
               {data.followupsToday.map((l) => (
-                <li key={l.id} className="flex items-center justify-between py-2.5">
-                  <div>
-                    <div className="font-medium text-foreground">{l.name}</div>
-                    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
+                <li key={l.id} className="flex items-center justify-between gap-2 py-2.5">
+                  <div className="min-w-0">
+                    <Link href={`/leads/${l.id}`} className="font-medium text-foreground hover:text-gold">{l.name}</Link>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
+                      {/* التسجيل بضغطة واحدة — قائمة البانر (الموظف فقط) */}
+                      {!data.manager && <QuickActions lead={l} onDone={() => router.refresh()} />}
+                    </div>
                   </div>
-                  <div className="text-left text-xs text-muted-foreground">
+                  <div className="shrink-0 text-left text-xs text-muted-foreground">
                     {timeAgo(l.nextFollowup)}
                     {data.manager && l.assignedToName && <div className="mt-1">{l.assignedToName}</div>}
                   </div>
