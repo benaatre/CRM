@@ -69,7 +69,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
         )}
       </header>
 
-      <LeaderboardView board={board} />
+      <LeaderboardView board={board} isOwner={user.role === Role.OWNER} weights={{ ...WEIGHTS }} />
 
       {/* المعادلة — شفافية كاملة */}
       <div className="space-y-1 text-[11px] leading-5 text-muted-foreground">

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth-guards";
 import { getDashboard, normalizePeriod } from "@/lib/data/dashboard";
 import { getMyNoResponseAlert } from "@/lib/data/no-response";
-import { getMyRank } from "@/lib/data/leaderboard";
+import { getMyRank, getLeaderboard } from "@/lib/data/leaderboard";
 import { toArabicDigits } from "@/lib/format";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
@@ -19,11 +19,14 @@ export default async function DashboardPage({
   const user = await requireUser();
   const period = normalizePeriod((await searchParams).period);
   // بانر الإنذار للموظف فقط (المالك/المدير يشوفون لوحة «لم يتم الرد» الكاملة).
-  const [data, alert, myRank] = await Promise.all([
+  const [data, alert, myRank, board] = await Promise.all([
     getDashboard(period),
     user.role === Role.EMPLOYEE ? getMyNoResponseAlert(user.id) : Promise.resolve({ lines: [], late: 0, pulled: 0, warningCount: 0, warningMinHoursLeft: null }),
     user.role === Role.EMPLOYEE ? getMyRank(user.id) : Promise.resolve(null),
+    // أعلى ثلاثة للوحة المالك/المدير المصغّرة.
+    user.role !== Role.EMPLOYEE ? getLeaderboard() : Promise.resolve(null),
   ]);
+  const top3 = board?.rows.slice(0, 3) ?? [];
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -37,6 +40,22 @@ export default async function DashboardPage({
         </div>
         <PeriodFilter current={period} />
       </header>
+
+      {/* بطاقة لوحة الأسبوع المصغّرة — للمالك/المدير: أعلى ثلاثة بدرجاتهم */}
+      {top3.length > 0 && (
+        <Link href="/leaderboard" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3 transition-colors hover:bg-gold/10">
+          <div className="text-sm font-bold text-foreground">🏆 لوحة الأسبوع — أعلى الثلاثة</div>
+          <div className="flex flex-wrap items-center gap-4">
+            {top3.map((r, i) => (
+              <span key={r.id} className="flex items-center gap-1.5 text-sm">
+                <span>{["🥇", "🥈", "🥉"][i]}</span>
+                <span className="font-medium text-foreground">{r.name.split(" ")[0]}</span>
+                <span className="font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(r.score)}</span>
+              </span>
+            ))}
+          </div>
+        </Link>
+      )}
 
       {/* بطاقة لوحة الأسبوع المصغّرة — للموظف: ترتيبه بالكفاءة + الفارق عن اللي قدامه */}
       {myRank?.ranked && (
