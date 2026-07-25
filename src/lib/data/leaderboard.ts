@@ -72,10 +72,13 @@ export type Leaderboard = {
 
 const VISIT_DONE_RESULTS: FollowUpResult[] = [FollowUpResult.INTERESTED_VISITED, FollowUpResult.NOT_INTERESTED_VISITED];
 
-type FuRow = { createdBy: string; createdAt: Date; result: FollowUpResult; leadId: string; nextDate: Date | null };
+export type FuRow = { createdBy: string; createdAt: Date; result: FollowUpResult; leadId: string; nextDate: Date | null };
 
-/** نقاط أسبوع من صفوف متابعاته + حجوزاته — المتابعات بسقف يومي (توقيت الرياض). */
-function computePoints(fus: FuRow[], bookings: number) {
+/**
+ * نقاط فترة من صفوف متابعات + عدد حجوزات — المتابعات بسقف يومي (توقيت الرياض).
+ * الدالة الوحيدة المعتمدة للنقاط (تستهلكها اللوحة وصفحة «سجلّي» — لا حساب موازٍ).
+ */
+export function computePoints(fus: FuRow[], bookings: number) {
   const byDay = new Map<string, number>();
   let visitAppts = 0, visitsDone = 0;
   for (const f of fus) {

@@ -12,6 +12,7 @@ import {
   Copy,
   PhoneMissed,
   Trophy,
+  History,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -21,6 +22,8 @@ export type NavItem = {
   icon: typeof LayoutDashboard;
   managerOnly: boolean;
   ownerOnly?: boolean;
+  /** يظهر للموظف فقط (المالك/المدير لهم بديلهم الكامل — مثل «سجلّي» مقابل سجل التدقيق). */
+  employeeOnly?: boolean;
 };
 
 // عناصر التنقّل — مشتركة بين الشريط الجانبي (سطح المكتب) ودرج الجوال.
@@ -31,6 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/no-response", label: "لم يتم الرد", icon: PhoneMissed, managerOnly: true, ownerOnly: true },
   { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, managerOnly: false },
   { href: "/leaderboard", label: "لوحة الأسبوع", icon: Trophy, managerOnly: false },
+  { href: "/my-log", label: "سجلّي", icon: History, managerOnly: false, employeeOnly: true },
   { href: "/projects", label: "المشاريع", icon: Building2, managerOnly: false },
   { href: "/bookings", label: "خط المبيعات", icon: Handshake, managerOnly: false },
   { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, managerOnly: false },
@@ -42,4 +46,4 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export const navForRole = (isManager: boolean, isOwner = false): NavItem[] =>
-  NAV_ITEMS.filter((n) => (!n.managerOnly || isManager) && (!n.ownerOnly || isOwner));
+  NAV_ITEMS.filter((n) => (!n.managerOnly || isManager) && (!n.ownerOnly || isOwner) && (!n.employeeOnly || !isManager));
