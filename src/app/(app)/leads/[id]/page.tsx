@@ -6,9 +6,9 @@ import { LeadProfile } from "@/components/leads/lead-profile";
 
 export const dynamic = "force-dynamic";
 
-export default async function LeadProfilePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeadProfilePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ fu?: string }> }) {
   const user = await requireUser();
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
   const detail = await getLeadDetail(id);
   if (!detail) notFound();
   // سجل التحويلات: يرجّع null لغير المالك (الصلاحية على الخادم داخل الدالة).
@@ -16,5 +16,7 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
     prisma.project.findMany({ select: { id: true, name: true }, orderBy: { createdAt: "asc" } }),
     getLeadTransferHistory(id),
   ]);
-  return <LeadProfile detail={detail} projects={projects} transferHistory={transferHistory} isManager={isManager(user.role)} />;
+  // ?fu=interested يفتح تبويب المتابعة بالاختيار المبدئي (سؤال الواتساب من شاشات أخرى).
+  const initialFu = sp.fu === "interested" ? "interested" : null;
+  return <LeadProfile detail={detail} projects={projects} transferHistory={transferHistory} isManager={isManager(user.role)} initialFu={initialFu} />;
 }

@@ -60,7 +60,7 @@ const STEP_LABEL: Record<InterestedStep, string> = {
 };
 
 export function FollowUpsForm({
-  leadId, stage, firstContactStage, projects, onSaved, onBook,
+  leadId, stage, firstContactStage, projects, onSaved, onBook, initialSel,
 }: {
   leadId: string;
   stage: LeadStage;
@@ -68,10 +68,12 @@ export function FollowUpsForm({
   projects: Project[];
   onSaved: () => void;
   onBook?: () => void;
+  /** اختيار مبدئي عند الفتح (مثل «مهتم» من سؤال الواتساب) — يُطبَّق عند التركيب فقط. */
+  initialSel?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(initialSel ?? null);
   const [fcSel, setFcSel] = useState<"interested" | "noanswer" | "notInterested" | null>(null);
   // الخطوة الإلزامية لنتيجة «مهتم» — لا حفظ بدونها (والخادم يرفضها كمان).
   const [step, setStep] = useState<InterestedStep | null>(null);

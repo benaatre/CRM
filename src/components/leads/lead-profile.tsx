@@ -18,6 +18,7 @@ import type { LeadDetail, LeadTransferHistory } from "@/lib/data/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
+import { WaAskLink } from "./wa-ask";
 import { useFollowUps } from "./use-followups";
 
 type Tab = "data" | "followups" | "ai" | "transfers";
@@ -29,10 +30,13 @@ const tempColor: Record<string, string> = {
   "بارد": "bg-info/15 text-info",
 };
 
-export function LeadProfile({ detail, projects, transferHistory, isManager }: { detail: LeadDetail; projects: { id: string; name: string }[]; transferHistory: LeadTransferHistory | null; isManager: boolean }) {
+export function LeadProfile({ detail, projects, transferHistory, isManager, initialFu }: { detail: LeadDetail; projects: { id: string; name: string }[]; transferHistory: LeadTransferHistory | null; isManager: boolean; initialFu?: string | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [tab, setTab] = useState<Tab>("data");
+  const [tab, setTab] = useState<Tab>(initialFu ? "followups" : "data");
+  // اختيار مبدئي لنموذج المتابعة (من سؤال الواتساب أو رابط ?fu=) — المفتاح يعيد تركيب النموذج.
+  const [quickFu, setQuickFu] = useState<string | null>(initialFu ?? null);
+  const [fuSeed, setFuSeed] = useState(0);
   // تبويب «سجل التحويلات» للمالك فقط (transferHistory != null يعني مالك — الصلاحية من الخادم).
   const tabs: [Tab, string][] = [["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]];
   if (transferHistory) tabs.push(["transfers", "سجل التحويلات"]);
@@ -92,7 +96,15 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
         </div>
         <div className="mt-4 flex gap-2">
           <a href={`tel:${detail.phone}`} className="flex-1 rounded-lg bg-primary py-2.5 text-center text-sm font-medium text-primary-foreground hover:opacity-90">اتصل</a>
-          <a href={wa} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg bg-success/15 py-2.5 text-center text-sm font-medium text-success hover:bg-success/25">واتساب</a>
+          {/* سؤال الواتساب: عند العودة للتبويب بعد فتح المحادثة — «رد العميل؟» */}
+          <WaAskLink
+            href={wa}
+            leadId={detail.id}
+            stage={detail.stage}
+            className="flex-1 rounded-lg bg-success/15 py-2.5 text-center text-sm font-medium text-success hover:bg-success/25"
+            onYes={() => { setTab("followups"); setQuickFu("interested"); setFuSeed((s) => s + 1); }}
+            onLogged={() => { reload(); router.refresh(); }}
+          >واتساب</WaAskLink>
         </div>
 
         {/* محرّك الزيارات: زيارة مجدولة قادمة / فات موعدها — البانر يوجّه لتبويب المتابعة */}
@@ -184,12 +196,14 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
             </section>
           ) : (
             <FollowUpsForm
+              key={`fu-${fuSeed}`}
               leadId={detail.id}
               stage={detail.stage}
               firstContactStage={detail.firstContactStage}
               projects={projects}
-              onSaved={() => { reload(); router.refresh(); }}
+              onSaved={() => { setQuickFu(null); reload(); router.refresh(); }}
               onBook={() => setReserveMode("reserve")}
+              initialSel={quickFu}
             />
           )}
           <FollowUpsTimeline items={items} loading={loading} leadId={detail.id} onChanged={() => { reload(); router.refresh(); }} />
