@@ -45,6 +45,22 @@ export function FollowUpsTimeline({ items, loading, leadId, onChanged }: {
                       {followUpSectionLabels[f.section]}
                     </span>
                   )}
+                  {/* كاتب المتابعة ظاهر في الصدر لا في الهامش: المتابعة القادمة مع عميل
+                      منقول «بمحتواه» تخصّ مالكه السابق — الوسم يمنع سؤال «مين سجّل هذي؟» */}
+                  {f.employeeName && (
+                    f.byCurrentOwner ? (
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${f.mine ? "border-gold/30 bg-gold/10 text-gold" : "border-border bg-secondary/60 text-muted-foreground"}`}>
+                        {f.employeeName}
+                      </span>
+                    ) : (
+                      <span
+                        className="rounded-full border border-info/40 bg-info/10 px-2 py-0.5 text-[10px] font-medium text-info"
+                        title="سجّلها قبل نقل العميل إليك — ليست من تسجيلك"
+                      >
+                        {f.employeeName} · قبل نقل العميل
+                      </span>
+                    )
+                  )}
                   <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
                   {f.edited && (
                     <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground" title="عُدّلت بعد تسجيلها — الأصل محفوظ في سجل التدقيق">مُعدَّلة</span>
@@ -60,7 +76,6 @@ export function FollowUpsTimeline({ items, loading, leadId, onChanged }: {
                 <p className="mt-1 text-sm font-medium text-foreground">{f.note || followUpResultLabels[f.result]}</p>
                 {f.nextDate && <p className="mt-0.5 text-xs text-info">المتابعة القادمة: {formatDateTime(f.nextDate)}</p>}
                 {f.stageAfter && <p className="mt-0.5 text-xs text-muted-foreground">انتقل إلى: {stageLabels[f.stageAfter]}</p>}
-                {f.employeeName && <p className="mt-0.5 text-xs text-muted-foreground/70">{f.employeeName}</p>}
               </li>
             );
           })}

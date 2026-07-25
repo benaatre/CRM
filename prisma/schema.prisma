@@ -461,6 +461,11 @@ model SweepCandidate {
 }
 
 /// متابعة عميل — نوع + نتيجة + موعد قادم (سجل ذكي مرتّب).
+/// قاعدة صارمة (تحقيق «المتابعات الشبحية» — ٢٥ يوليو ٢٠٢٦):
+/// صف FollowUp لا يُنشأ إلا من فعل بشري صريح، و`createdBy` هوية المستخدم من الجلسة حصرًا.
+/// أي إجراء تلقائي للنظام (كرون · مزامنة · تنزيل «مهتم راكد» · إعادة توزيع) **ممنوع**
+/// أن ينشئ متابعة منسوبة لموظف — تغييراته تُسجَّل كـ Lead.stage + Activity + AuditLog
+/// باسم «النظام» (userId = null) فقط. للتحقق: scripts/diagnose-phantom-followups.ts
 model FollowUp {
   id        String         @id @default(cuid())
   leadId    String

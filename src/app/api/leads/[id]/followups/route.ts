@@ -73,6 +73,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         nextDate: f.nextDate,
         createdAt: f.createdAt,
         employeeName: f.employee?.name ?? null,
+        // نسبة المتابعة صراحةً: كاتبها هو مالك العميل الآن؟ وهل هي من تسجيل المستخدم نفسه؟
+        // العميل المنقول «بمحتواه» يحمل متابعات مالكه السابق — وهذا مصدر شكوى
+        // «متابعات ما سجّلتها». الوسم في السجل يزيل اللبس بلا حذف أي تاريخ.
+        byCurrentOwner: !!a.lead.assignedToId && f.createdBy === a.lead.assignedToId,
+        mine,
         edited: editedSet.has(f.id),
         // الصلاحية تُعاد حسابها على الخادم عند PATCH — هذه للعرض فقط.
         canEdit: manager || (mine && withinWindow),
