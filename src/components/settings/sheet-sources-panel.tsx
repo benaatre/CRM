@@ -9,7 +9,7 @@ import { Sheet, PlugZap, Trash2 } from "lucide-react";
 import { channelLabels } from "@/lib/labels";
 import { formatDateTime, toArabicDigits } from "@/lib/format";
 import type { SheetSourcePanelRow } from "@/lib/data/sources";
-import { addSheetSource, testSheetConnection, toggleSheetLink, deleteSheetLink, type SheetTestResult } from "@/lib/actions/sources";
+import { addSheetSource, testSheetConnection, toggleSheetLink, deleteSheetLink, approveFullSync, startSyncFromNow, type SheetTestResult } from "@/lib/actions/sources";
 
 // أسماء مقترحة (القناة تُشتق من الاسم تلقائيًا — سناب → سناب شات… إلخ).
 const SUGGESTED = ["سناب شات", "تيك توك", "ميتا", "جوجل", "عقار"];
@@ -19,6 +19,7 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [gid, setGid] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [test, setTest] = useState<{ forUrl: string; res: SheetTestResult } | null>(null);
 
@@ -31,11 +32,11 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
     });
   }
 
-  function doTest(sheetUrl: string) {
+  function doTest(sheetUrl: string, gidInput?: string) {
     setTest(null);
     setMsg(null);
     startTransition(async () => {
-      const res = await testSheetConnection(sheetUrl);
+      const res = await testSheetConnection(sheetUrl, gidInput);
       setTest({ forUrl: sheetUrl, res });
     });
   }
@@ -56,20 +57,27 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="اسم المصدر…" className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold sm:w-40" />
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="رابط جوجل شيت (مع ‎#gid=‎ للتبويب)…" dir="ltr" className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="رابط جوجل شيت…" dir="ltr" className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+          <input value={gid} onChange={(e) => setGid(e.target.value.replace(/\D/g, ""))} placeholder="رقم الورقة (gid)" dir="ltr" inputMode="numeric" className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold sm:w-36" />
           <div className="flex gap-2">
-            <button type="button" disabled={pending || !url.trim()} onClick={() => doTest(url)} className="flex items-center gap-1 rounded-lg border border-info/50 bg-info/10 px-3 py-2 text-xs font-medium text-info hover:bg-info/20 disabled:opacity-40"><PlugZap className="size-3.5" /> جرّب الاتصال</button>
-            <button type="button" disabled={pending || !name.trim() || !url.trim()} onClick={() => run(async () => { const r = await addSheetSource(name, url); if (r.ok) { setName(""); setUrl(""); } return r; })} className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-40">إضافة المصدر</button>
+            <button type="button" disabled={pending || !url.trim()} onClick={() => doTest(url, gid)} className="flex items-center gap-1 rounded-lg border border-info/50 bg-info/10 px-3 py-2 text-xs font-medium text-info hover:bg-info/20 disabled:opacity-40"><PlugZap className="size-3.5" /> جرّب الاتصال</button>
+            <button type="button" disabled={pending || !name.trim() || !url.trim()} onClick={() => run(async () => { const r = await addSheetSource(name, url, gid); if (r.ok) { setName(""); setUrl(""); setGid(""); } return r; })} className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-40">إضافة المصدر</button>
           </div>
         </div>
+        <p className="text-[11px] leading-5 text-muted-foreground">
+          تحديد الورقة إلزامي: افتح الورقة المطلوبة (مثل CRM) في المتصفح وانسخ الرقم بعد ‎gid=‎ من شريط العنوان — أو الصق رابطًا يحويه. بدون تحديد، ما تُضاف المزامنة (حماية من قراءة المستند كله).
+        </p>
       </div>
 
-      {/* نتيجة «جرّب الاتصال» — أول صفّين */}
+      {/* نتيجة «جرّب الاتصال» — اسم الورقة + عدد الصفوف + أول الصفوف (يتأكد المالك أنها الورقة الصح) */}
       {test && (
         <div className={`rounded-xl border p-3 text-xs ${test.res.ok ? "border-success/40 bg-success/5" : "border-destructive/40 bg-destructive/5"}`}>
           {test.res.ok ? (
             <>
-              <div className="mb-2 font-medium text-success">الاتصال شغال — أول صفّين من الشيت:</div>
+              <div className="mb-2 font-medium text-success">
+                الاتصال شغال — الورقة: <span className="rounded bg-success/15 px-1.5 py-0.5 font-bold">«{test.res.tabTitle}»</span>
+                <span className="mr-2 text-muted-foreground">عدد الصفوف الكلي: <span className="font-bold text-foreground">{toArabicDigits(test.res.totalRows ?? 0)}</span> — تأكد أنها الورقة الصح قبل الإضافة</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-right">
                   <tbody>
@@ -113,6 +121,16 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
                     <div className="font-medium text-foreground">{r.sourceName}</div>
                     {r.lastSyncStatus === "error" && r.lastSyncError && (
                       <div className="mt-0.5 max-w-64 truncate text-xs text-destructive" title={r.lastSyncError}>آخر خطأ: {r.lastSyncError}</div>
+                    )}
+                    {/* حد أمان أول مزامنة: شيت مليان — لا إدخال حتى يقرر المالك */}
+                    {r.lastSyncStatus === "pending_choice" && (
+                      <div className="mt-1.5 max-w-md rounded-lg border border-warning/40 bg-warning/10 p-2">
+                        <div className="mb-1.5 text-xs font-medium text-warning">⚠️ {r.lastSyncError ?? "الشيت مليان — ابدأ من آخر صف بدل البداية؟"}</div>
+                        <div className="flex gap-1.5">
+                          <button type="button" disabled={pending} onClick={() => { if (window.confirm("متأكد؟ سيُدخل الشيت كاملًا من أول صف (على دفعات ٥٠ كل دورة).")) run(() => approveFullSync(r.id)); }} className="rounded-lg border border-warning/50 bg-warning/15 px-2.5 py-1 text-[11px] font-medium text-warning hover:bg-warning/25 disabled:opacity-40">زامن الكل</button>
+                          <button type="button" disabled={pending} onClick={() => run(() => startSyncFromNow(r.id))} className="rounded-lg border border-success/50 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success hover:bg-success/20 disabled:opacity-40">ابدأ من الآن فقط</button>
+                        </div>
+                      </div>
                     )}
                   </td>
                   <td className="px-3 py-3"><span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-foreground">{channelLabels[r.channel]}</span></td>

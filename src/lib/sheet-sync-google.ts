@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { readSheetValues, listSheetTabs } from "@/lib/google-sheets";
+import { readSheetValues, resolveTabByGid } from "@/lib/google-sheets";
+import { extractGid } from "@/lib/utils/sheet";
 import { parseRowsByContent } from "@/lib/utils/sheet-parse";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
 import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
@@ -16,8 +17,17 @@ export type SheetSyncResult = {
   processed: number;      // صفوف عولجت هذه الجولة
   totalDataRows: number;  // إجمالي صفوف البيانات في الشيت
   remaining: number;      // متبقٍّ بعد هذه الجولة
+  /** مصدر جديد بشيت مليان — بانتظار قرار المالك (زامن الكل / ابدأ من الآن) قبل أي إدخال. */
+  pendingChoice?: boolean;
   error?: string;
 };
+
+// حد أمان أول مزامنة: مصدر جديد (مؤشر = 0) بأكثر من هذا العدد لا يُدخل شيئًا حتى يقرر المالك.
+// (حادثة 2026-07-25: 465 عميلًا غلط دفعة واحدة من قراءة المستند كله.)
+export const SAFE_FIRST_SYNC_ROWS = 50;
+
+/** قيمة مؤشر خاصة: المالك وافق صراحةً على «زامن الكل» — تتجاوز حد الأمان لمرة البداية. */
+export const FULL_SYNC_APPROVED = -1;
 
 type LinkWithSource = {
   id: string;
@@ -38,25 +48,40 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
     linkId: link.id, created: 0, duplicates: 0, skipped: 0, processed: 0, totalDataRows: 0, remaining: 0,
   };
   try {
-    // gid التبويب من الرابط (#gid=...) — null = التبويب الأول.
-    const gidMatch = link.sheetUrl.match(/[#&]gid=(\d+)/);
-    const gid = gidMatch ? Number(gidMatch[1]) : undefined;
-    // نحلّ التبويب مرة واحدة (عنوان + إجمالي الصفوف الحقيقي) ونقرأ نطاقًا محدودًا فقط
-    // (أسرع بكثير + أقل عرضة لانقطاع اتصال القاعدة أثناء الطلب الطويل).
-    let tabTitle: string | undefined;
-    let realTotal: number | undefined;
-    if (gid != null) {
-      const t = (await listSheetTabs(link.sheetId)).find((x) => x.gid === gid);
-      tabTitle = t?.title;
-      realTotal = t ? Math.max(0, t.rowCount - 1) : undefined;
+    // ⛔ إصلاح حادثة 2026-07-25: الورقة تُحدَّد بالـgid إلزاميًا — رابط بلا gid كان يسقط
+    // بصمت على الورقة الأولى/المستند كله. الآن: بلا gid = خطأ صريح يظهر في شاشة المصادر.
+    const gid = extractGid(link.sheetUrl);
+    if (gid == null) {
+      throw new Error("الرابط لا يحدد الورقة — افتح الورقة المطلوبة وانسخ الرقم بعد gid= من شريط العنوان ثم حدّث المصدر");
     }
-    const endRow = opts?.limit != null ? link.lastRowSynced + opts.limit + 1 : undefined;
-    const values = await readSheetValues(link.sheetId, { tab: tabTitle, endRow });
-    // تصنيف محتوائي (كل خلية بمحتواها) — يحل مشكلة الأعمدة المتبعثرة.
-    const parsed = parseRowsByContent(values, { startDataIndex: link.lastRowSynced, limit: opts?.limit });
-    const leads = parsed.leads;
-    const totalDataRows = realTotal ?? parsed.totalDataRows;
+    // حلّ صارم: الورقة غير الموجودة ترمي خطأً واضحًا (لا سقوط على الأولى).
+    const tab = await resolveTabByGid(link.sheetId, gid);
+
+    // مؤشر فعلي: FULL_SYNC_APPROVED (موافقة «زامن الكل») تُعامل كصفر مع تجاوز حد الأمان.
+    const fullApproved = link.lastRowSynced === FULL_SYNC_APPROVED;
+    const pointer = Math.max(0, link.lastRowSynced);
+
+    // حد أمان أول مزامنة: مصدر جديد وقدّامه شيت مليان → لا إدخال، بانتظار قرار المالك.
+    // نقرأ الورقة كاملة (لعدّ صفوف البيانات الفعلية لا حجم الشبكة) قبل أي كتابة.
+    const fullValues = await readSheetValues(link.sheetId, { tab: tab.title });
+    const fullParsed = parseRowsByContent(fullValues, { startDataIndex: pointer });
+    const totalDataRows = fullParsed.totalDataRows;
     base.totalDataRows = totalDataRows;
+
+    if (!fullApproved && link.lastRowSynced === 0 && totalDataRows > SAFE_FIRST_SYNC_ROWS) {
+      await prisma.sheetLink.update({
+        where: { id: link.id },
+        data: {
+          lastSyncAt: new Date(),
+          lastSyncStatus: "pending_choice",
+          lastSyncError: `الشيت فيه ${totalDataRows} صف — ابدأ المزامنة من آخر صف بدل البداية؟`,
+        },
+      });
+      return { ...base, ok: true, created: 0, duplicates: 0, skipped: 0, remaining: totalDataRows, pendingChoice: true };
+    }
+
+    // تصنيف محتوائي (كل خلية بمحتواها) — يحل مشكلة الأعمدة المتبعثرة. نافذة الدورة فقط.
+    const leads = opts?.limit != null ? fullParsed.leads.slice(0, opts.limit) : fullParsed.leads;
     base.processed = leads.length;
 
     // المكرر يُسمح به ليظهر في القائمة، إلا استثناء «نفس الرقم + نفس الإعلان (المصدر) خلال ٤٨ ساعة».
@@ -124,8 +149,8 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
       );
     }
 
-    // حدّث المؤشّر بعدد ما عولج (صالح أو لا — ما نعيد قراءته).
-    const newLastRow = link.lastRowSynced + leads.length;
+    // حدّث المؤشّر بعدد ما عولج (صالح أو لا — ما نعيد قراءته). pointer يطبّع سالب الموافقة لصفر.
+    const newLastRow = pointer + leads.length;
     await prisma.sheetLink.update({
       where: { id: link.id },
       data: { lastRowSynced: newLastRow, lastSyncAt: new Date(), lastSyncStatus: "success", lastSyncError: null },

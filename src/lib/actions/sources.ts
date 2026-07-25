@@ -7,8 +7,9 @@ import { toUserError } from "@/lib/action-error";
 import { requireManagerAction, requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { getSourcesList, type SourceListItem } from "@/lib/data/sources";
-import { readSheetValues } from "@/lib/google-sheets";
-import { extractSheetId } from "@/lib/utils/sheet";
+import { readSheetValues, resolveTabByGid } from "@/lib/google-sheets";
+import { extractSheetId, extractGid, withGid } from "@/lib/utils/sheet";
+import { FULL_SYNC_APPROVED } from "@/lib/sheet-sync-google";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -106,11 +107,22 @@ async function requireOwnerAction() {
   return user;
 }
 
+/** يحلّ gid الورقة من الرابط أو من حقل «رقم الورقة» — null = ما تحددت ورقة. */
+function resolveGidInput(url: string, gidInput?: string): number | null {
+  const fromUrl = extractGid(url);
+  if (fromUrl != null) return fromUrl;
+  const g = (gidInput ?? "").trim();
+  return /^\d+$/.test(g) ? Number(g) : null;
+}
+
+const GID_HELP = "افتح الورقة المطلوبة في المتصفح وانسخ الرقم بعد gid= من شريط العنوان";
+
 /**
- * إضافة مصدر بشيته دفعة واحدة (المالك فقط): اسم المصدر (سناب/تيك توك/ميتا/جوجل…)
- * + رابط الشيت — يجد المصدر أو ينشئه ثم يربط الشيت به بمؤشر يبدأ من الصفر.
+ * إضافة مصدر بشيته دفعة واحدة (المالك فقط): اسم المصدر + رابط الشيت + الورقة (gid).
+ * ⛔ إصلاح حادثة 2026-07-25: الورقة إلزامية — الرابط يُخزَّن دائمًا بـ#gid= مثبّت،
+ * فلا تسقط المزامنة أبدًا على الورقة الأولى/المستند كله.
  */
-export async function addSheetSource(name: string, sheetUrl: string): Promise<ActionResult> {
+export async function addSheetSource(name: string, sheetUrl: string, gidInput?: string): Promise<ActionResult> {
   try {
     const user = await requireOwnerAction();
     const clean = name.trim();
@@ -119,6 +131,11 @@ export async function addSheetSource(name: string, sheetUrl: string): Promise<Ac
     if (!url) return { ok: false, error: "الصق رابط جوجل شيت" };
     const sheetId = extractSheetId(url);
     if (!sheetId) return { ok: false, error: "رابط جوجل شيت غير صالح" };
+    const gid = resolveGidInput(url, gidInput);
+    if (gid == null) return { ok: false, error: `حدد الورقة: ${GID_HELP} — أو الصق رابطًا يحوي ‎#gid=‎` };
+    // تحقق مبكر أن الورقة موجودة فعلًا (يرمي خطأً عربيًا بأسماء الأوراق المتاحة).
+    await resolveTabByGid(sheetId, gid);
+    const storedUrl = withGid(url, gid);
 
     const source = await prisma.leadSource.upsert({
       where: { name: clean },
@@ -128,33 +145,96 @@ export async function addSheetSource(name: string, sheetUrl: string): Promise<Ac
     const dup = await prisma.sheetLink.findFirst({ where: { sheetId, sourceId: source.id }, select: { id: true } });
     if (dup) return { ok: false, error: "هذا الشيت مضاف مسبقًا لنفس المصدر" };
 
-    await prisma.sheetLink.create({ data: { sheetUrl: url, sheetId, sourceId: source.id } });
-    await logAudit(prisma, { userId: user.id, action: "sheetlink.created", entity: "sheetlink", summary: `أضاف مصدر عملاء «${clean}» بشيت مزامنة` });
+    await prisma.sheetLink.create({ data: { sheetUrl: storedUrl, sheetId, sourceId: source.id } });
+    await logAudit(prisma, { userId: user.id, action: "sheetlink.created", entity: "sheetlink", summary: `أضاف مصدر عملاء «${clean}» بشيت مزامنة (gid=${gid})` });
     revalidateSources();
-    return { ok: true, message: `أُضيف مصدر «${clean}» — المزامنة بتلقطه بالدورة الجاية` };
+    return { ok: true, message: `أُضيف مصدر «${clean}» (الورقة gid=${gid}) — المزامنة بتلقطه بالدورة الجاية` };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
 }
 
-export type SheetTestResult = { ok: boolean; error?: string; rows?: string[][] };
+export type SheetTestResult = {
+  ok: boolean;
+  error?: string;
+  /** اسم الورقة المستهدفة — يتأكد المالك أنها الورقة الصح قبل التفعيل. */
+  tabTitle?: string;
+  /** عدد صفوف البيانات الكلي (بلا صف العناوين). */
+  totalRows?: number;
+  rows?: string[][];
+};
 
 /**
- * «جرّب الاتصال» (المالك فقط): يقرأ أول صفّين من الشيت ويعرضهما — يتحقق من
- * مشاركة الشيت مع حساب الخدمة وصحة الرابط قبل تفعيل المزامنة.
+ * «جرّب الاتصال» (المالك فقط): يقرأ الورقة المحددة بالـgid حصريًا ويعرض اسمها +
+ * أول صفوفها + عدد الصفوف الكلي — يتأكد المالك أنها الورقة الصح قبل التفعيل.
  */
-export async function testSheetConnection(sheetUrl: string): Promise<SheetTestResult> {
+export async function testSheetConnection(sheetUrl: string, gidInput?: string): Promise<SheetTestResult> {
   try {
     await requireOwnerAction();
     const url = sheetUrl.trim();
     const sheetId = extractSheetId(url);
     if (!sheetId) return { ok: false, error: "رابط جوجل شيت غير صالح" };
-    const gidMatch = url.match(/[#&]gid=(\d+)/);
-    const gid = gidMatch ? Number(gidMatch[1]) : undefined;
-    const values = await readSheetValues(sheetId, { gid, endRow: 2 });
-    if (values.length === 0) return { ok: false, error: "الشيت فاضي أو التبويب ما فيه بيانات" };
-    // أول صفّين، وبحد ٨ أعمدة للعرض.
-    return { ok: true, rows: values.slice(0, 2).map((r) => r.slice(0, 8)) };
+    const gid = resolveGidInput(url, gidInput);
+    if (gid == null) return { ok: false, error: `حدد الورقة: ${GID_HELP}` };
+    const tab = await resolveTabByGid(sheetId, gid); // يرمي لو الورقة غير موجودة — لا سقوط على الأولى
+    const values = await readSheetValues(sheetId, { tab: tab.title });
+    if (values.length === 0) return { ok: false, error: `الورقة «${tab.title}» فاضية` };
+    // العناوين + أول صفّين بيانات، وبحد ٨ أعمدة للعرض + العدد الكلي.
+    return {
+      ok: true,
+      tabTitle: tab.title,
+      totalRows: Math.max(0, values.length - 1),
+      rows: values.slice(0, 3).map((r) => r.slice(0, 8)),
+    };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * قرار المالك لمصدر جديد بشيت مليان (حد أمان أول مزامنة):
+ * «زامن الكل» — موافقة صريحة على إدخال الشيت كاملًا (المؤشر = FULL_SYNC_APPROVED).
+ */
+export async function approveFullSync(linkId: string): Promise<ActionResult> {
+  try {
+    const user = await requireOwnerAction();
+    const link = await prisma.sheetLink.findUnique({ where: { id: linkId }, select: { id: true, lastRowSynced: true, source: { select: { name: true } } } });
+    if (!link) return { ok: false, error: "الرابط غير موجود" };
+    if (link.lastRowSynced > 0) return { ok: false, error: "المصدر بدأ المزامنة فعلًا — القرار ما عاد لازمًا" };
+    await prisma.sheetLink.update({
+      where: { id: linkId },
+      data: { lastRowSynced: FULL_SYNC_APPROVED, lastSyncStatus: null, lastSyncError: null },
+    });
+    await logAudit(prisma, { userId: user.id, action: "sheetlink.fullSyncApproved", entity: "sheetlink", entityId: linkId, summary: `وافق على مزامنة شيت «${link.source?.name ?? "؟"}» كاملًا من البداية` });
+    revalidateSources();
+    return { ok: true, message: "تمت الموافقة — الدورة الجاية تبدأ الإدخال من أول الشيت (دفعات ٥٠)" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * «ابدأ من الآن فقط»: المؤشر = آخر صف حالي — القديم يُتجاهل نهائيًا والجديد فقط من هنا وطالع.
+ * (يمنع تكرار حادثة الإغراق نهائيًا للمصادر ذات الأرشيف الكبير.)
+ */
+export async function startSyncFromNow(linkId: string): Promise<ActionResult> {
+  try {
+    const user = await requireOwnerAction();
+    const link = await prisma.sheetLink.findUnique({ where: { id: linkId }, select: { id: true, sheetId: true, sheetUrl: true, lastRowSynced: true, source: { select: { name: true } } } });
+    if (!link) return { ok: false, error: "الرابط غير موجود" };
+    if (link.lastRowSynced > 0) return { ok: false, error: "المصدر بدأ المزامنة فعلًا — القرار ما عاد لازمًا" };
+    const gid = extractGid(link.sheetUrl);
+    if (gid == null) return { ok: false, error: `رابط المصدر بلا gid — ${GID_HELP} ثم حدّث المصدر` };
+    const tab = await resolveTabByGid(link.sheetId, gid);
+    const values = await readSheetValues(link.sheetId, { tab: tab.title });
+    const totalRows = Math.max(0, values.length - 1);
+    await prisma.sheetLink.update({
+      where: { id: linkId },
+      data: { lastRowSynced: totalRows, lastSyncAt: new Date(), lastSyncStatus: "success", lastSyncError: null },
+    });
+    await logAudit(prisma, { userId: user.id, action: "sheetlink.startedFromNow", entity: "sheetlink", entityId: linkId, summary: `بدأ مزامنة «${link.source?.name ?? "؟"}» من الآن فقط (تجاهل ${totalRows} صفًا قديمًا)` });
+    revalidateSources();
+    return { ok: true, message: `تم — المؤشر وقف على ${totalRows}؛ الجديد فقط من هنا وطالع` };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }

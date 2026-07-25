@@ -32,6 +32,20 @@ function client(): sheets_v4.Sheets {
 
 export type SheetTab = { title: string; gid: number; rowCount: number };
 
+/**
+ * يحلّ الورقة المحددة بالـgid حلًّا صارمًا — يرمي خطأً عربيًا واضحًا لو غير موجودة.
+ * لا سقوط صامتًا على الورقة الأولى (سبب حادثة استيراد 2026-07-25).
+ */
+export async function resolveTabByGid(spreadsheetId: string, gid: number): Promise<SheetTab> {
+  const tabs = await listSheetTabs(spreadsheetId);
+  const tab = tabs.find((t) => t.gid === gid);
+  if (!tab) {
+    const avail = tabs.map((t) => `«${t.title}» (gid=${t.gid})`).join(" · ") || "لا أوراق";
+    throw new Error(`الورقة gid=${gid} غير موجودة بالمستند — الأوراق المتاحة: ${avail}`);
+  }
+  return tab;
+}
+
 /** يسرد تبويبات الشيت (العنوان + gid + عدد الصفوف) — لاختيار التبويب الصحيح. */
 export async function listSheetTabs(spreadsheetId: string): Promise<SheetTab[]> {
   const sheets = client();
