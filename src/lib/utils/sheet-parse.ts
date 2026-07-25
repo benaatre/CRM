@@ -213,6 +213,8 @@ export type ColumnRole = {
   excluded: boolean;
   /** رأس اسم صريح (name/الاسم/first/last/الأول/الأخير) — المعتمد للاسم بأولوية قاطعة. */
   nameHeader: boolean;
+  /** رأس سعر صريح (سعر/ميزانية/budget/price/مبلغ) — الوحيد الذي يُقبل منه رقم عارٍ سعرًا. */
+  priceHeader: boolean;
   /** قيمه متكررة (نفس النص في >٥٠٪ من الصفوف) — نص حملة/قالب، لا يصلح اسمًا. */
   repetitive: boolean;
 };
@@ -221,6 +223,23 @@ export type ColumnRole = {
 const EXCLUDED_HEADER_RE = /campaign|حمل[هة]|اعلان|adset|ad ?name|ad_name|squad|form|account|id$|(^|[^a-z])(ad|id)([^a-z]|$)/;
 // رؤوس الاسم المعتمدة.
 const NAME_HEADER_RE = /name|first|last|(^|\s)ال?اسم(\s|$)|الاول|الاخير|العائل/;
+// رؤوس السعر الصريحة — الوحيدة التي يُقبل منها رقم عارٍ بلا سياق سعري.
+const PRICE_HEADER_RE = /سعر|ميزاني|budget|price|مبلغ/;
+
+/**
+ * قفل السعر الجذري (حادثة «7asan S.»: 2000–2026000 التُقطا من نص حملة «شهر 6/2026 - 2»):
+ * قيمة بلا رأس سعر تُقبل سعرًا فقط لو نصّها سعري صريح — كلمة سعرية (سعر/ميزانية/ريال/حتى/
+ * بحدود…) أو وحدة (ألف/مليون ككلمة مستقلة) أو صيغة «من X إلى Y». رقم عارٍ أو نطاق أرقام
+ * بلا سياق (تاريخ/معرّف/نص إعلاني) = لا التقاط قطعًا.
+ */
+export function hasPriceContext(raw: string): boolean {
+  const s = norm(latinDigits(String(raw ?? "")));
+  if (!/\d/.test(s)) return /حتي مليون|بحدود مليون/.test(s); // «حتى مليون» بلا رقم
+  if (/ريال|ر\.س|سعر|ميزانيه|بحدود|حتي|اقل من|لا يتجاوز|ما يتعدي/.test(s)) return true;
+  if (/(^|\s)(الف|مليون|k|م)(\s|$)/.test(s)) return true; // وحدة سعرية ككلمة مستقلة بجانب رقم
+  if (/من\s*[\d.,]+\s*(الف|مليون)?\s*(الي|to)\s*[\d.,]+/.test(s)) return true; // من X إلى Y
+  return false;
+}
 
 /**
  * يحلّل أعمدة الورقة مرة واحدة: دور كل عمود من رأسه + تكرار قيمه.
@@ -234,6 +253,7 @@ export function analyzeColumns(header: string[], data: string[][]): ColumnRole[]
     const h = norm(String(header[c] ?? ""));
     const excluded = !!h && EXCLUDED_HEADER_RE.test(h);
     const nameHeader = !excluded && !!h && NAME_HEADER_RE.test(h);
+    const priceHeader = !excluded && !!h && PRICE_HEADER_RE.test(h);
     // التكرار: عيّنة حتى ١٠٠ صف، ولا حكم بأقل من ٥ قيم غير فارغة (عيّنة «جرّب الاتصال» الصغيرة).
     const vals = data.slice(0, 100).map((r) => String(r[c] ?? "").trim()).filter(Boolean);
     let repetitive = false;
@@ -242,7 +262,7 @@ export function analyzeColumns(header: string[], data: string[][]): ColumnRole[]
       for (const v of vals) counts.set(v, (counts.get(v) ?? 0) + 1);
       repetitive = Math.max(...counts.values()) / vals.length > 0.5;
     }
-    roles.push({ excluded, nameHeader, repetitive });
+    roles.push({ excluded, nameHeader, priceHeader, repetitive });
   }
   return roles;
 }
@@ -353,7 +373,10 @@ function classifyRow(cells: string[], sheetRowNumber: number, roles?: ColumnRole
     // الخلايا المدمجة («قيمة، قيمة») تُقسّم وتُصنّف كل جزء على حدة —
     // إلا خلية الميزانية: تُفحص كاملة أولًا («من ٦٠٠،٠٠٠ إلى ٨٠٠،٠٠٠» فيها فواصل).
     const whole = cleanValue(unwrapped);
-    if (!budget && whole && !UUID_RE.test(whole) && !DATE_RE.test(whole) && !isSaudiMobile(whole)) {
+    // قفل السعر: عمود رأسه سعري، أو نص سعري صريح — رقم عارٍ/نطاق بلا سياق لا يُلتقط قطعًا
+    // (تواريخ ومعرّفات ونصوص الحملات كانت تنتج أسعارًا وهمية مثل 2000–2026000).
+    if (!budget && whole && (role?.priceHeader || hasPriceContext(whole))
+        && !UUID_RE.test(whole) && !DATE_RE.test(whole) && !isSaudiMobile(whole)) {
       const b = parseBudgetValue(whole);
       // قيم فعلية فقط — الملاحظة الخام (note) تمرّ بالتصنيف العادي (بعد فحص الطريقة).
       if (b && (b.min != null || b.max != null)) { budget = b; continue; }
@@ -364,7 +387,8 @@ function classifyRow(cells: string[], sheetRowNumber: number, roles?: ColumnRole
       else if (type === "method") { if (!purchaseMethod) purchaseMethod = value as PurchaseMethod; }
       else if (type === "district") { if (!district) district = value; }
       else if (type === "goal") { if (!purchaseGoal) purchaseGoal = value as PurchaseGoal; }
-      else if (type === "budget") { if (!budget) budget = parseBudgetValue(value); }
+      // نفس قفل السعر على مستوى الجزء: رأس سعري أو سياق سعري صريح — وإلا لا التقاط.
+      else if (type === "budget") { if (!budget && (role?.priceHeader || hasPriceContext(value))) budget = parseBudgetValue(value); }
       // الاسم بالمحتوى: فقط لو ما فيه رؤوس اسم، ومع استبعاد الأعمدة المتكررة القيم
       // (نص الحملة يتكرر في كل الصفوف — ليس اسم عميل).
       else if (type === "name") { if (!namesFromHeaders && !role?.repetitive && nameParts.length < 2) nameParts.push(value); }
