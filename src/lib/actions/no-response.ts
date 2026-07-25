@@ -9,7 +9,7 @@ import { toUserError } from "@/lib/action-error";
 import { requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notify";
-import { emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
+import { emitNotification, emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { NO_RESPONSE_STAGES, unreachableLeadIds } from "@/lib/auto-distribute";
 import { assignLead } from "@/lib/assignment";
 import {
@@ -446,6 +446,45 @@ export async function manualPullBatch(leadIds: string[], ctx?: { note?: string }
 /** سحب يدوي لعميل واحد — للمالك فقط. */
 export async function manualPullLead(leadId: string): Promise<ActionResult> {
   return manualPullBatch([leadId]);
+}
+
+// ===================== نظام «لم يُتواصل» (النقطة العمياء) =====================
+
+/**
+ * تنبيه الموظف عن عميل ما تواصل معه من ٣+ أيام — إشعار بالصوت للموظف المعني (حدث never_contacted).
+ * للمالك فقط. لا سحب — تنبيه وأدوات فقط.
+ */
+export async function nudgeNeverContacted(leadId: string): Promise<ActionResult> {
+  try {
+    const actor = await requireOwner();
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, name: true, assignedToId: true, assignedAt: true, assignedTo: { select: { name: true } } },
+    });
+    if (!lead?.assignedToId) return { ok: false, error: "العميل غير مُسند لموظف" };
+
+    const days = lead.assignedAt ? Math.floor((Date.now() - lead.assignedAt.getTime()) / 86_400_000) : null;
+    await emitNotification({
+      eventKey: "never_contacted",
+      assignedUserId: lead.assignedToId,
+      title: "عميل ما تواصلت معه",
+      body: `${lead.name} — ${days != null ? `استلمته من ${days} أيام` : "من فترة"} وما سجّلت له ولا متابعة. بادر فيه الآن.`,
+      link: `/leads/${lead.id}`,
+    });
+    await logAudit(prisma, {
+      userId: actor.id, action: "lead.neverContacted.nudged", entity: "lead", entityId: lead.id,
+      summary: `نبّه ${lead.assignedTo?.name ?? "الموظف"} عن عميل بلا تواصل · العميل=${lead.id}`,
+    });
+    revalidatePath("/no-response");
+    return { ok: true, message: "وصل التنبيه للموظف" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** سحب فوري للحوض لعميل «لم يُتواصل» — يمر بمسار السحب اليدوي القياسي بوسم NEGLECT. */
+export async function pullNeverContacted(leadId: string): Promise<ActionResult> {
+  return manualPullBatch([leadId], { note: "NEGLECT — لم يُتواصل معه منذ الإسناد" });
 }
 
 // فئة مجموعة السحب: «يُسحب الآن» كلها أو حسب فترة العمر (٣–٧ · ٨–١٤ · ١٥–٣٠ · ٣٠+)،

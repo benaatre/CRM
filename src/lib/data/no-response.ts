@@ -512,6 +512,56 @@ export async function getNeedsReview(now: Date = new Date()): Promise<NeedsRevie
   return { noAssignDate: group(noAssign), neverContacted: group(never), totalNoAssign: noAssign.length, totalNeverContacted: never.length };
 }
 
+// ===================== نظام «لم يُتواصل» (النقطة العمياء) =====================
+
+export type NeverContactedRow = {
+  id: string;
+  name: string;
+  phone: string;
+  employeeId: string;
+  employeeName: string;
+  assignedAt: Date;
+  days: number; // أيام منذ الإسناد
+};
+
+/**
+ * النقطة العمياء الأخيرة: عميل مُسند لموظف فعّال + صفر متابعات **بعد الإسناد** + مضى أكثر
+ * من ٣ أيام — مرتّبين بالأقدم. يشمل المُسندين يدويًا (الحصانة من السحب التلقائي فقط،
+ * لا من نظر المالك) — لا سحب تلقائيًا هنا، تنبيه وأدوات فقط.
+ */
+export async function getNeverContactedLeads(now: Date = new Date()): Promise<NeverContactedRow[]> {
+  const cutoff = new Date(now.getTime() - 3 * 24 * 3_600_000);
+  const leads = await prisma.lead.findMany({
+    where: {
+      isArchived: false,
+      stage: { in: [...NO_RESPONSE_STAGES] },
+      assignedToId: { not: null },
+      assignedAt: { not: null, lt: cutoff },
+      assignedTo: { role: "EMPLOYEE", active: true },
+    },
+    select: {
+      id: true, name: true, phone: true, assignedToId: true, assignedAt: true,
+      assignedTo: { select: { name: true } },
+      followUps: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+    },
+    take: 1000,
+  });
+  return leads
+    // «صفر متابعات بعد الإسناد»: آخر متابعة (إن وُجدت) أقدم من آخر إسناد.
+    .filter((l) => {
+      const lastFu = l.followUps[0]?.createdAt ?? null;
+      return lastFu == null || lastFu <= (l.assignedAt as Date);
+    })
+    .map((l) => ({
+      id: l.id, name: l.name, phone: l.phone,
+      employeeId: l.assignedToId as string,
+      employeeName: l.assignedTo?.name ?? "—",
+      assignedAt: l.assignedAt as Date,
+      days: Math.floor((now.getTime() - (l.assignedAt as Date).getTime()) / 86_400_000),
+    }))
+    .sort((a, b) => a.assignedAt.getTime() - b.assignedAt.getTime()); // الأقدم أولًا
+}
+
 // ===================== تعذّر الوصول (§٤ — للمالك فقط، عرض) =====================
 
 export type UnreachableRow = { id: string; name: string; lastEmployee: string | null; exhaustedEmployees: number };

@@ -180,6 +180,56 @@ export async function runVisitReminderCheck(now: Date = new Date()): Promise<num
 }
 
 /**
+ * نظام «لم يُتواصل»: تنبيه تلقائي للموظف نفسه عند اليوم الثالث — عميل مُسند له،
+ * صفر متابعات بعد الإسناد، ومضى ٣+ أيام. مرة واحدة لكل عميل لكل إسناد
+ * (dedup برابط فريد t=وقت الإسناد — إعادة الإسناد تفتح تنبيهًا جديدًا).
+ * لا سحب تلقائيًا — القرار للمالك من صفحة «لم يتم الرد».
+ */
+export async function runNeverContactedAlert(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - 3 * 24 * HOUR_MS);
+  const leads = await prisma.lead.findMany({
+    where: {
+      isArchived: false,
+      stage: { in: [LeadStage.NEW, LeadStage.ATTEMPTED] },
+      assignedToId: { not: null },
+      assignedAt: { not: null, lt: cutoff },
+      assignedTo: { role: "EMPLOYEE", active: true },
+    },
+    select: {
+      id: true, name: true, assignedToId: true, assignedAt: true,
+      followUps: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+    },
+    take: 500,
+  });
+  const never = leads.filter((l) => {
+    const lastFu = l.followUps[0]?.createdAt ?? null;
+    return lastFu == null || lastFu <= (l.assignedAt as Date);
+  });
+  if (never.length === 0) return 0;
+
+  const plans = never.map((l) => ({
+    link: `/leads/${l.id}?r=nc3&t=${(l.assignedAt as Date).getTime()}`,
+    userId: l.assignedToId as string,
+    days: Math.floor((now.getTime() - (l.assignedAt as Date).getTime()) / 86_400_000),
+    name: l.name,
+  }));
+  const sent = await sentKeys("never_contacted", plans.map((p) => p.link));
+  let emitted = 0;
+  for (const p of plans) {
+    if (sent.has(`${p.userId}|${p.link}`)) continue;
+    await emitNotification({
+      eventKey: "never_contacted",
+      assignedUserId: p.userId,
+      title: "عندك عميل ما تواصلت معه من ٣ أيام",
+      body: `العميل: ${p.name} — استلمته من ${p.days} أيام بلا ولا متابعة`,
+      link: p.link,
+    });
+    emitted++;
+  }
+  return emitted;
+}
+
+/**
  * السقف الزمني على «مهتم» (محرّك الزيارات): عميل INTERESTED بلا أي متابعة ١٤ يومًا
  * (من نقطة صفر الميزة حدًّا أدنى — لا تنزيل جماعيًا للراكدين القدامى) ينزل تلقائيًا
  * إلى «موعد لاحق» بموعد صباح الغد (١٠ص بتوقيت الرياض) — فيدخل دورة متابعات اليوم

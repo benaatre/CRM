@@ -13,6 +13,7 @@ export const NOTIFICATION_EVENTS = [
   { key: "employee_paused", label: "موظف وقف نفسه", audience: "MANAGERS" },
   { key: "unit_booked_sold", label: "تم حجز / بيع وحدة", audience: "ALL" },
   { key: "no_response.warn", label: "إنذار سحب عميل", audience: "ASSIGNED" },
+  { key: "never_contacted", label: "عميل بلا تواصل من ٣ أيام", audience: "ASSIGNED" },
 ] as const;
 
 export type AudienceCode = "OWNER" | "MANAGERS" | "ASSIGNED" | "MANAGERS_AND_ASSIGNED" | "ALL";
