@@ -69,20 +69,37 @@ async function main() {
   }
   console.log(`صفوف بجوال صالح واسم: ${nameByPhone9.size}\n`);
 
-  // ٤) المستهدفون: عملاء اليوم (الرياض) من مصدر سناب باسم حملة («اعلان/إعلان …»).
+  // ٤) نصوص الأعمدة الإعلانية **الفعلية من الورقة نفسها** (campaignName/adName/…) — المرجع،
+  // لا بادئة ثابتة: الورقة فيها عدة حملات بنصوص مختلفة («اعلان جديد…»، «3 - اجراها…»،
+  // «منتصف 2»، «6 - ابو حامد») والمعيار القديم (يبدأ بـ«اعلان») غطّى واحدة فقط.
+  const adTexts = new Set<string>();
+  roles.forEach((r, c) => {
+    if (!r.excluded) return;
+    for (const row of data) {
+      const v = String(row[c] ?? "").replace(/\s+/g, " ").trim();
+      // نصوص فيها حروف وطول معقول (٥+) — المعرّفات الرقمية الصرفة لا تفيد المطابقة.
+      if (v && v.length >= 5 && /[A-Za-z؀-ۿ]/.test(v)) adTexts.add(v);
+    }
+  });
+  const adList = [...adTexts].sort((a, b) => b.length - a.length);
+  console.log(`نصوص إعلانية فريدة من الأعمدة المستبعدة: ${adList.length}`);
+
+  // المستهدفون: عملاء اليوم (الرياض) من مصدر سناب الذين اسمهم يبدأ بنص إعلاني من الورقة
+  // (يشمل النمط الكامل «اسم الحملة وحده» والهجين «نص إعلان + جزء اسم») أو بـ«اعلان/إعلان».
+  // الهجين لا يُجتزأ أبدًا — التصحيح دائمًا بالاستخراج الكامل من الشيت (L+M بمطابقة الجوال).
   const KSA_MS = 3 * 3_600_000;
   const k = new Date(Date.now() + KSA_MS);
   const dayStart = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate()) - KSA_MS);
-  const targets = await prisma.lead.findMany({
-    where: {
-      sourceId: link.sourceId,
-      createdAt: { gte: dayStart },
-      OR: [{ name: { startsWith: "اعلان" } }, { name: { startsWith: "إعلان" } }],
-    },
+  const todays = await prisma.lead.findMany({
+    where: { sourceId: link.sourceId, createdAt: { gte: dayStart } },
     select: { id: true, name: true, phone: true, notes: true },
     orderBy: { createdAt: "asc" },
   });
-  console.log(`المستهدفون (عملاء سناب اليوم باسم الحملة): ${targets.length}`);
+  const targets = todays.filter((t) => {
+    const n = t.name.replace(/\s+/g, " ").trim();
+    return n.startsWith("اعلان") || n.startsWith("إعلان") || adList.some((ad) => n.startsWith(ad));
+  });
+  console.log(`عملاء سناب اليوم: ${todays.length} · المستهدفون (اسم من نص إعلاني): ${targets.length}`);
 
   const FALLBACK = "عميل سناب — يحتاج مراجعة";
   const plan = targets.map((t) => {
