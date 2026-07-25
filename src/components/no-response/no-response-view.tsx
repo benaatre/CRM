@@ -137,7 +137,7 @@ export function NoResponseView({
             <AlertTriangle className="size-4" /> تعذّر الوصول ({toArabicDigits(unreachable.length)})
           </h2>
           <p className="mb-3 text-xs text-muted-foreground">سُحبوا بسبب استنفاد المحاولات من موظفَين متعاقبَين أو أكثر — مستبعدون من كل توزيع تلقائي.</p>
-          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <div className="scroll-x rounded-xl border border-border bg-card">
             <table className="w-full min-w-[420px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
               <thead className="bg-secondary/40 text-xs text-muted-foreground">
                 <tr><th className="px-4 py-3 font-medium">العميل</th><th className="px-3 py-3 font-medium">آخر موظف</th><th className="px-3 py-3 text-center font-medium">موظفون متعاقبون</th></tr>
@@ -183,7 +183,7 @@ export function NoResponseView({
         <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-destructive">
           <AlertTriangle className="size-4" /> يُسحب الآن (تجاوزوا مهلتهم)
         </h2>
-        <div className="overflow-x-auto rounded-2xl border border-destructive/30 bg-card">
+        <div className="scroll-x rounded-2xl border border-destructive/30 bg-card">
           <table className="w-full min-w-[820px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
@@ -221,7 +221,7 @@ export function NoResponseView({
         <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-gold">
           <AlertTriangle className="size-4" /> بانتظار السحب (لم يبلغوا الحد — سحبهم قرار يدوي)
         </h2>
-        <div className="overflow-x-auto rounded-2xl border border-gold/30 bg-card">
+        <div className="scroll-x rounded-2xl border border-gold/30 bg-card">
           <table className="w-full min-w-[720px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
@@ -264,7 +264,7 @@ export function NoResponseView({
             className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40"
           >وزّع الكل ({toArabicDigits(poolTotal)})</button>
         </div>
-        <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+        <div className="scroll-x rounded-2xl border border-border bg-card">
           <table className="w-full min-w-[720px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
@@ -434,7 +434,7 @@ function NumbersPanel({ summary }: { summary: PendingPullSummary }) {
       {summary.employees.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">كل شي تحت السيطرة.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full min-w-[520px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="text-xs text-muted-foreground">
               <tr>
@@ -475,7 +475,7 @@ function NeverContactedPanel({ rows, pending, onNudge, onPull }: {
         <PhoneMissed className="size-4" /> لم يُتواصل معهم إطلاقًا ({toArabicDigits(rows.length)})
       </h2>
       <p className="mb-3 text-xs text-muted-foreground">مُسند + صفر متابعات بعد الإسناد + ٣+ أيام — الموظف يوصله تنبيه تلقائي عند اليوم الثالث، والقرار هنا لك: نبّهه مرة ثانية أو اسحب العميل للحوض.</p>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="scroll-x rounded-xl border border-border bg-card">
         <table className="w-full min-w-[640px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-xs text-muted-foreground">
             <tr>
@@ -590,7 +590,7 @@ function ExhaustedPanel({ rows, pending, onDistribute, onArchive }: {
         <AlertTriangle className="size-4" /> مستنفد — يحتاج قرارك ({toArabicDigits(rows.length)})
       </h2>
       <p className="mb-3 text-xs text-muted-foreground">بلغوا سقف الدورات وعلقوا في الحوض — لا يوزّعهم النظام تلقائيًا. وزّعهم استثنائيًا (تجاوز السقف) أو أرشفهم.</p>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="scroll-x rounded-xl border border-border bg-card">
         <table className="w-full min-w-[560px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-xs text-muted-foreground">
             <tr>

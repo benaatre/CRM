@@ -68,7 +68,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
       {/* الهيدر */}
       <header className="glass rounded-2xl p-5">
         <div className="flex items-start justify-between gap-3">
-          <Link href="/leads" className="rounded-lg border border-border px-2.5 py-1 text-sm text-muted-foreground hover:text-foreground" title="رجوع">×</Link>
+          <Link href="/leads" className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-border text-lg text-muted-foreground hover:text-foreground" title="رجوع" aria-label="رجوع">×</Link>
           <div className="flex items-center gap-3 text-right">
             <div>
               <h1 className="text-xl font-bold text-foreground">{detail.name}</h1>
@@ -95,13 +95,13 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
           </div>
         </div>
         <div className="mt-4 flex gap-2">
-          <a href={`tel:${detail.phone}`} className="flex-1 rounded-lg bg-primary py-2.5 text-center text-sm font-medium text-primary-foreground hover:opacity-90">اتصل</a>
+          <a href={`tel:${detail.phone}`} className="flex min-h-11 flex-1 items-center justify-center rounded-lg bg-primary text-center text-sm font-medium text-primary-foreground hover:opacity-90">اتصل</a>
           {/* سؤال الواتساب: عند العودة للتبويب بعد فتح المحادثة — «رد العميل؟» */}
           <WaAskLink
             href={wa}
             leadId={detail.id}
             stage={detail.stage}
-            className="flex-1 rounded-lg bg-success/15 py-2.5 text-center text-sm font-medium text-success hover:bg-success/25"
+            className="flex min-h-11 flex-1 items-center justify-center rounded-lg bg-success/15 text-center text-sm font-medium text-success hover:bg-success/25"
             onYes={() => { setTab("followups"); setQuickFu("interested"); setFuSeed((s) => s + 1); }}
             onLogged={() => { reload(); router.refresh(); }}
           >واتساب</WaAskLink>
@@ -152,9 +152,9 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
       </header>
 
       {/* التبويبات — قابلة للتمرير أفقيًا على الجوال */}
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
+      <div className="scroll-x flex gap-1 rounded-xl border border-border bg-card p-1">
         {tabs.map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+          <button key={v} onClick={() => setTab(v)} className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors sm:flex-1 sm:shrink ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
         ))}
       </div>
 

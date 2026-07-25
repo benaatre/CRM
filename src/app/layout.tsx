@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans_Arabic, Reem_Kufi } from "next/font/google";
 import "./globals.css";
 
@@ -22,6 +22,16 @@ export const metadata: Metadata = {
   title: "مشاريع السلطان — نظام إدارة المبيعات",
   description:
     "نظام CRM عقاري لشركة مشاريع السلطان — إدارة العملاء والمشاريع والحجوزات والتحليلات.",
+};
+
+// النظام يُفتح من متصفح الجوال: نثبّت العرض على عرض الجهاز (لا 980px افتراضية)،
+// ونسمح بالتكبير حتى ×٥ (إتاحة — لا نقفل التكبير)، ونمدّ الخلفية تحت النَتش.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: "#0a0a0b",
 };
 
 export default function RootLayout({

@@ -172,9 +172,62 @@
   .select-base:focus {
     border-color: var(--gold);
   }
+
+  /*
+   * تمرير أفقي «واعٍ»: ظل على الحافة يوحي بوجود المزيد ويختفي عند الوصول للطرف
+   * (خدعة background-attachment: local — بلا JS). لجداول المالك التي لا تصلح بطاقاتٍ.
+   * المستخدم على الجوال يشوف الظل فيعرف أن الجدول يُسحب — بدل ما يظن أن العمود مقصوص.
+   */
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    background-image:
+      linear-gradient(to left, var(--card), color-mix(in srgb, var(--card) 0%, transparent)),
+      linear-gradient(to right, var(--card), color-mix(in srgb, var(--card) 0%, transparent)),
+      linear-gradient(to left, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0)),
+      linear-gradient(to right, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0));
+    background-position: right center, left center, right center, left center;
+    background-repeat: no-repeat;
+    background-size: 34px 100%, 34px 100%, 16px 100%, 16px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
 }
 
-/* لوحة التحكم: مؤشرات Bento بعمودين على الجوال (أقل من 768px) */
+/*
+ * حارس التمرير الأفقي غير المقصود: أي عنصر يتجاوز عرض الشاشة (جدول/بطاقة/شريط)
+ * ما يجرّ الصفحة كلها يمينًا — التمرير يبقى داخل حاوية العنصر وحدها.
+ */
+html,
+body {
+  overflow-x: clip;
+}
+
+/*
+ * أحجام لمس مريحة على الجوال: أي زر/رابط فعل داخل .touch-44 لا ينزل عن ٤٤ بكسل ارتفاعًا
+ * (إرشاد WCAG 2.5.5). خانات الاختيار مستثناة — لها حجمها الصريح في مكانها.
+ */
+@media (max-width: 767px) {
+  .touch-44 button,
+  .touch-44 a[href],
+  .touch-44 select,
+  .touch-44 input[type="datetime-local"],
+  .touch-44 input[type="date"],
+  .touch-44 input[type="text"],
+  .touch-44 input[type="tel"] {
+    min-height: 44px;
+  }
+}
+
+/* الحركة المخفَّضة (إعداد نظام المستخدم): بلا شريط متحرك ولا نبض */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track,
+  .animate-pull-urgent {
+    animation: none !important;
+  }
+}
+
+/* لوحة التحكم: مؤشرات Bento — بطاقة كاملة العرض على الجوال (<480px) وعمودان حتى 767px */
 @media (max-width: 767px) {
   .kpi-grid {
     grid-template-columns: repeat(2, 1fr) !important;
@@ -187,6 +240,16 @@
   }
   .kpi-grid .kpi-value {
     font-size: 2rem !important; /* رقم أكبر وأوضح */
+  }
+}
+
+/* جوال ضيّق (~380px): عمود واحد — عمودان يقصّان الرقم والوحدة معًا */
+@media (max-width: 479px) {
+  .kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .kpi-grid > * {
+    min-height: 104px !important;
   }
 }
 

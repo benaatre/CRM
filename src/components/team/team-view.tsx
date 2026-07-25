@@ -124,7 +124,7 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
       </div>
 
       {/* الجدول (سطح المكتب) */}
-      <div className="hidden overflow-x-auto rounded-2xl border border-border bg-card md:block">
+      <div className="hidden scroll-x rounded-2xl border border-border bg-card md:block">
         <table className="w-full text-right text-sm">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>

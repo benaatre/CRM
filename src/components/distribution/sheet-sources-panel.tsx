@@ -106,7 +106,7 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
                   <span className="mr-2 text-muted-foreground">· عينة الأسماء: <span className="font-medium text-foreground">{test.res.sampleNames.join(" · ")}</span></span>
                 )}
               </div>
-              <div className="overflow-x-auto">
+              <div className="scroll-x">
                 <table className="w-full text-right">
                   <tbody>
                     {test.res.rows!.map((r, i) => (
@@ -130,7 +130,7 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">ما فيه مصادر بعد — أضف أول شيت فوق.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="scroll-x rounded-xl border border-border">
           <table className="w-full min-w-[760px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>

@@ -78,11 +78,15 @@ function CountUp({ value, suffix = "" }: { value: number; suffix?: string }) {
   return <>{toArabicDigits(n)}{suffix}</>;
 }
 
-/** تلميح التفصيل: إنجاز × معامل الجودة = الدرجة + مكوّنات الجودة الأربعة. */
-function ScoreTip({ r }: { r: LeaderboardRow }) {
+/**
+ * تلميح التفصيل: إنجاز × معامل الجودة = الدرجة + مكوّنات الجودة الأربعة.
+ * على الجوال لا يوجد hover — فالنقر على الدرجة يفتحه (pinned)، والنقر مرة ثانية يغلقه.
+ * العرض محدود بعرض الشاشة (max-w) فلا يخرج التلميح من الإطار على ٣٨٠ بكسل.
+ */
+function ScoreTip({ r, pinned = false }: { r: LeaderboardRow; pinned?: boolean }) {
   const p = r.parts;
   return (
-    <div className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-72 rounded-xl border border-gold/30 bg-card p-3 text-right text-[11px] leading-6 shadow-2xl group-hover:block">
+    <div className={`pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-72 max-w-[min(18rem,calc(100vw-2.5rem))] rounded-xl border border-gold/30 bg-card p-3 text-right text-[11px] leading-6 shadow-2xl ${pinned ? "block" : "hidden"} sm:group-hover:block`}>
       <div className="mb-1 flex justify-between font-bold">
         <span className="text-gold">الدرجة</span>
         <span className="text-foreground">إنجاز {toArabicDigits(r.achievement)} × جودة ×{r.qualityFactor.toFixed(2).replace(".", "٫")} = {toArabicDigits(r.score)}</span>
@@ -126,26 +130,36 @@ function Streak({ days }: { days: number }) {
   );
 }
 
-/** بطاقة منصة التتويج — الأول أعلى وأوسط بتوهج ذهبي، والدرجة رقم كبير. */
+/**
+ * بطاقة منصة التتويج — الأول أعلى وأوسط بتوهج ذهبي، والدرجة رقم كبير.
+ * على الجوال المنصة تتراص عموديًا، فالارتفاع (-mt-4) والخط الضخم يبدآن من sm فقط.
+ */
 function PodiumCard({ r, place, improved }: { r: LeaderboardRow; place: number; improved: boolean }) {
   const first = place === 0;
+  const [tip, setTip] = useState(false);
   return (
     <div
       className={`relative flex flex-col items-center rounded-2xl border p-4 text-center ${
         first
-          ? "z-10 -mt-4 border-gold/60 bg-gold/[0.07] shadow-[0_0_35px_rgba(203,164,94,0.25)]"
+          ? "z-10 border-gold/60 bg-gold/[0.07] shadow-[0_0_35px_rgba(203,164,94,0.25)] sm:-mt-4"
           : "border-gold/25 bg-card/60"
       }`}
     >
-      {first && <div className="absolute -top-3 rounded-full bg-gold px-3 py-0.5 text-[11px] font-bold text-primary-foreground">نجمة الأسبوع ⭐</div>}
+      {first && <div className="absolute -top-3 rounded-full bg-gold px-3 py-0.5 text-[11px] font-bold text-primary-foreground whitespace-nowrap">نجمة الأسبوع ⭐</div>}
       <div className={first ? "text-4xl" : "text-3xl"}>{MEDALS[place]}</div>
       <div className={`mt-1 font-bold text-foreground ${first ? "text-lg" : "text-sm"}`}>{r.name}{improved && <span title="الأكثر تحسنًا عن الأسبوع الماضي"> 📈</span>}</div>
-      <div className="group relative cursor-help">
-        <div className={`mt-2 font-bold text-gold ${first ? "text-5xl" : "text-3xl"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
+      <button
+        type="button"
+        onClick={() => setTip((v) => !v)}
+        aria-expanded={tip}
+        title="تفصيل الدرجة"
+        className="group relative cursor-help"
+      >
+        <div className={`mt-2 font-bold text-gold ${first ? "text-4xl sm:text-5xl" : "text-3xl"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
           <CountUp value={r.score} />
         </div>
-        <ScoreTip r={r} />
-      </div>
+        <ScoreTip r={r} pinned={tip} />
+      </button>
       <div className="text-[11px] text-muted-foreground">درجة</div>
       <div className="mt-2.5">
         <Counters r={r} compact />
@@ -154,12 +168,31 @@ function PodiumCard({ r, place, improved }: { r: LeaderboardRow; place: number; 
   );
 }
 
+/** درجة صف الترتيب — النقر عليها يفتح التلميح (الجوال بلا hover). */
+function ScoreBadge({ r }: { r: LeaderboardRow }) {
+  const [tip, setTip] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => setTip((v) => !v)}
+      aria-expanded={tip}
+      title="تفصيل الدرجة"
+      className="group relative shrink-0 cursor-help text-left"
+    >
+      <div className="text-2xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}><CountUp value={r.score} /></div>
+      <div className="text-[10px] text-muted-foreground">درجة</div>
+      <ScoreTip r={r} pinned={tip} />
+    </button>
+  );
+}
+
 export function LeaderboardView({ board, isOwner = false, weights }: { board: Leaderboard; isOwner?: boolean; weights?: Weights }) {
   const top3 = board.rows.slice(0, 3);
   const rest = board.rows.slice(3);
-  // ترتيب عرض المنصة: الثاني · الأول (مرتفع بالوسط) · الثالث.
-  const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean) as LeaderboardRow[];
-  const placeOf = (r: LeaderboardRow) => top3.indexOf(r);
+  // العرض بترتيب المركز (الأول ثم الثاني ثم الثالث) — وهذا ترتيب الجوال العمودي بالضبط.
+  // من sm فما فوق تُعاد ترتيبتهم بصريًا لمنصة تتويج: الثاني · الأول (مرتفع بالوسط) · الثالث.
+  const PODIUM_ORDER = ["sm:order-2", "sm:order-1", "sm:order-3"];
+  const podiumCols = top3.length === 3 ? "sm:grid-cols-3" : top3.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-1";
   // زر «تفاصيل» (المالك): تفكيك درجة موظف واحد مفتوح في كل مرة.
   const [detailId, setDetailId] = useState<string | null>(null);
   const canDetail = isOwner && !!weights;
@@ -167,7 +200,7 @@ export function LeaderboardView({ board, isOwner = false, weights }: { board: Le
     <button
       type="button"
       onClick={() => setDetailId(detailId === r.id ? null : r.id)}
-      className={`rounded-lg border px-2 py-0.5 text-[10px] transition-colors ${detailId === r.id ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-gold"}`}
+      className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-[11px] transition-colors sm:min-h-0 sm:px-2 sm:py-0.5 sm:text-[10px] ${detailId === r.id ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-gold"}`}
     >تفاصيل</button>
   ) : null;
 
@@ -175,10 +208,10 @@ export function LeaderboardView({ board, isOwner = false, weights }: { board: Le
     <div className="space-y-6">
       {/* منصة التتويج الثلاثية */}
       {top3.length > 0 && (
-        <div className={`grid items-end gap-3 pt-4 ${podiumOrder.length === 3 ? "grid-cols-3" : podiumOrder.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
-          {podiumOrder.map((r) => (
-            <div key={r.id} className="flex flex-col">
-              <PodiumCard r={r} place={placeOf(r)} improved={board.mostImprovedId === r.id} />
+        <div className={`grid grid-cols-1 items-end gap-4 pt-4 sm:gap-3 ${podiumCols}`}>
+          {top3.map((r, i) => (
+            <div key={r.id} className={`flex flex-col ${PODIUM_ORDER[i]}`}>
+              <PodiumCard r={r} place={i} improved={board.mostImprovedId === r.id} />
               {canDetail && <div className="mt-1.5 text-center"><DetailBtn r={r} /></div>}
             </div>
           ))}
@@ -197,18 +230,14 @@ export function LeaderboardView({ board, isOwner = false, weights }: { board: Le
               <div className="flex items-center gap-3">
                 <span className="w-7 shrink-0 text-center text-sm font-bold text-muted-foreground">{toArabicDigits(r.rank)}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center gap-2">
+                  <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="truncate text-sm font-medium text-foreground">{r.name}</span>
                     {board.mostImprovedId === r.id && <span className="rounded-full bg-info/10 px-1.5 py-0.5 text-[10px] font-bold text-info" title="الأكثر تحسنًا عن الأسبوع الماضي">📈 الأكثر تحسنًا</span>}
                     <DetailBtn r={r} />
                   </div>
                   <Counters r={r} />
                 </div>
-                <div className="group relative shrink-0 cursor-help text-left">
-                  <div className="text-2xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}><CountUp value={r.score} /></div>
-                  <div className="text-[10px] text-muted-foreground">درجة</div>
-                  <ScoreTip r={r} />
-                </div>
+                <ScoreBadge r={r} />
               </div>
               {canDetail && detailId === r.id && <ScoreBreakdown r={r} w={weights!} />}
             </div>

@@ -66,7 +66,7 @@ export function EmployeeKpis({ team }: { team: Team }) {
       </div>
 
       {/* جدول سطح المكتب */}
-      <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
+      <div className="hidden scroll-x rounded-xl border border-border md:block">
         <table className="w-full min-w-[760px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>

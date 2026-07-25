@@ -50,7 +50,7 @@ export function ActivityReportView({
       </div>
 
       {/* جدول الموظفين — الأعمدة الأساسية فقط */}
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+      <div className="scroll-x rounded-2xl border border-border bg-card">
         <table className="w-full min-w-[360px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>

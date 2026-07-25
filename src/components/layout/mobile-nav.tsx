@@ -27,6 +27,7 @@ export function MobileNav({
   dupCount?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(false); // إطار واحد بعد الفتح — يشغّل انزلاق الدخول
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const nav = navForRole(isManager, isOwner);
@@ -34,6 +35,21 @@ export function MobileNav({
   // الدرج يُحقن في <body> عبر portal حتى لا يتأثر بـ backdrop-filter في الهيدر
   // (الذي يكسر fixed ويجعل محتوى الدرج يتسرّب فوق الصفحة).
   useEffect(() => setMounted(true), []);
+
+  // انزلاق سلس + قفل تمرير الصفحة خلف الدرج + الإغلاق بمفتاح Esc.
+  useEffect(() => {
+    if (!open) { setShown(false); return; }
+    const raf = requestAnimationFrame(() => setShown(true));
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   function toggleTheme() {
     const isLight = document.documentElement.classList.toggle("light");
@@ -55,18 +71,27 @@ export function MobileNav({
       </button>
 
       {mounted && open && createPortal(
-        <div className="fixed inset-0 z-[80] md:hidden">
-          {/* طبقة معتمة */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
+        <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" aria-label="القائمة">
+          {/* طبقة معتمة — تتلاشى دخولًا مع الدرج */}
+          <div
+            className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${shown ? "opacity-100" : "opacity-0"}`}
+            onClick={() => setOpen(false)}
+          />
 
-          {/* الدرج — يغطّي الشاشة كاملة على الجوال */}
-          <aside className="absolute inset-0 flex w-full flex-col bg-card p-5 shadow-2xl">
+          {/* الدرج — ينزلق من اليمين (RTL)، بعرض ٨٦٪ فيبقى جزء من الصفحة ظاهرًا للإغلاق باللمس */}
+          <aside
+            className="absolute inset-y-0 right-0 flex w-[86%] max-w-[21rem] flex-col bg-card p-5 shadow-2xl transition-transform duration-300 ease-out"
+            style={{
+              transform: shown ? "translateX(0)" : "translateX(100%)",
+              paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))",
+            }}
+          >
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <Brand companyName={companyName} logoUrl={logoUrl} textClassName="text-xl" imgClassName="h-9 w-auto" />
                 <p className="mt-0.5 text-xs text-muted-foreground">إدارة المبيعات العقارية</p>
               </div>
-              <button onClick={() => setOpen(false)} aria-label="إغلاق" className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary">
+              <button onClick={() => setOpen(false)} aria-label="إغلاق" className="-mt-1.5 -ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary">
                 <X className="size-5" />
               </button>
             </div>

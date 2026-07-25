@@ -58,7 +58,7 @@ export function SourcesPanel({ sources }: { sources: SourceRow[] }) {
           </div>
         )}
 
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="scroll-x rounded-xl border border-border">
           <table className="w-full text-right text-sm">
             <thead className="bg-secondary/50 text-xs text-muted-foreground">
               <tr>

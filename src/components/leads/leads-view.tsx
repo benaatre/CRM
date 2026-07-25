@@ -128,14 +128,15 @@ export function LeadsView({
       </header>
 
       {/* التبويبات */}
-      <div className="mb-4 flex gap-1 rounded-xl border border-border bg-card p-1">
+      {/* على الجوال: شريط يُسحب أفقيًا بعناوين كاملة — أربع تبويبات في ٣٨٠ بكسل تتكسّر أسطرًا */}
+      <div className="scroll-x mb-4 flex gap-1 rounded-xl border border-border bg-card p-1">
         {(([
           ...(isManager ? [["unassigned", "عملاء غير موزّعين", counts.unassigned] as const] : []),
           ["working", "جاري العمل", counts.working] as const,
           ["archived", "تم الحجز / الشراء", counts.archived] as const,
           ["hidden", "مؤرشف", counts.hidden] as const,
         ])).map(([v, label, count]) => (
-          <button key={v} onClick={() => goTab(v)} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>
+          <button key={v} onClick={() => goTab(v)} className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition-colors sm:flex-1 sm:shrink ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>
             {label} <span className="text-xs">({toArabicDigits(count)})</span>
           </button>
         ))}
@@ -217,9 +218,10 @@ export function LeadsView({
           pageRows.map((l) => (
             <div key={l.id} className="rounded-2xl border border-border bg-card p-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} />
+                <div className="min-w-0 flex-1">
+                  {/* يلتف بدل ما يقصّ: الاسم + شاراته قد تتعدّى عرض الجوال */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} className="size-5 shrink-0 accent-[var(--gold)]" />
                     <span className="font-medium text-foreground">{l.name}</span>
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
                     {!isManager && <PullCountdown pull={l.pull} />}
@@ -245,7 +247,7 @@ export function LeadsView({
       </div>
 
       {/* الجدول (سطح المكتب) */}
-      <div className="hidden overflow-x-auto rounded-2xl border border-border bg-card md:block">
+      <div className="hidden scroll-x rounded-2xl border border-border bg-card md:block">
         <table className="w-full min-w-[1100px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>

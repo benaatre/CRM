@@ -119,9 +119,10 @@ export default async function MyLogPage({ searchParams }: { searchParams: Promis
               <h2 className="mb-2 text-sm font-bold text-foreground">{d.label}</h2>
               <div className="space-y-1.5">
                 {d.events.map((e, i) => (
-                  <div key={`${d.key}-${i}`} className="flex items-center gap-3 rounded-xl border border-border bg-card/60 px-3 py-2.5 text-sm">
+                  <div key={`${d.key}-${i}`} className="flex items-start gap-3 rounded-xl border border-border bg-card/60 px-3 py-2.5 text-sm sm:items-center">
                     <span className="shrink-0 text-base">{e.icon}</span>
-                    <span className="min-w-0 flex-1 truncate text-foreground">
+                    {/* على الجوال يلتف بدل ما يُقصّ (truncate كان يبلع نصف السطر في ٣٨٠ بكسل) */}
+                    <span className="min-w-0 flex-1 text-foreground sm:truncate">
                       {e.text}
                       {e.leadId && (
                         <> · <Link href={`/leads/${e.leadId}`} className="font-medium text-gold hover:underline">{e.leadName}</Link></>

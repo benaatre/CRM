@@ -76,7 +76,7 @@ function GroupCard({ group, employees, warn }: { group: DupGroup; employees: Emp
       </div>
 
       {/* جدول السجلات المكررة */}
-      <div className="overflow-x-auto">
+      <div className="scroll-x">
         <table className="w-full min-w-[720px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
