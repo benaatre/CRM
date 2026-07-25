@@ -8,7 +8,6 @@ import { stageLabels, stageColor } from "@/lib/labels";
 import { formatCurrency, formatCount, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
 import { DistributeDialog } from "@/components/leads/distribute-dialog";
-import { QuickActions } from "@/components/leads/quick-actions";
 import { TodayMarquee } from "./today-marquee";
 
 type ViewMode = "compact" | "analytical" | "glass";
@@ -199,8 +198,6 @@ export function DashboardView({ data }: { data: DashboardData }) {
                     <Link href={`/leads/${l.id}`} className="font-medium text-foreground hover:text-gold">{l.name}</Link>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                       <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
-                      {/* التسجيل بضغطة واحدة — قائمة البانر (الموظف فقط) */}
-                      {!data.manager && <QuickActions lead={l} onDone={() => router.refresh()} />}
                     </div>
                   </div>
                   <div className="shrink-0 text-left text-xs text-muted-foreground">

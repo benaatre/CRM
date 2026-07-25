@@ -38,8 +38,8 @@ export default async function DashboardPage({
         <PeriodFilter current={period} />
       </header>
 
-      {/* بطاقة لوحة الأسبوع المصغّرة — للموظف: ترتيبه + نقاطه + الفارق عن اللي قدامه */}
-      {myRank && (
+      {/* بطاقة لوحة الأسبوع المصغّرة — للموظف: ترتيبه بالكفاءة + الفارق عن اللي قدامه */}
+      {myRank?.ranked && (
         <Link href="/leaderboard" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3 transition-colors hover:bg-gold/10">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{myRank.rank === 1 ? "🥇" : myRank.rank === 2 ? "🥈" : myRank.rank === 3 ? "🥉" : "🏆"}</span>
@@ -47,14 +47,20 @@ export default async function DashboardPage({
               <div className="text-sm font-bold text-foreground">ترتيبك هالأسبوع: {toArabicDigits(myRank.rank)} من {toArabicDigits(myRank.total)}</div>
               <div className="text-xs text-muted-foreground">
                 {myRank.gapToNext
-                  ? `تحتاج ${toArabicDigits(myRank.gapToNext.points)} نقطة تعدّي ${myRank.gapToNext.name}`
+                  ? `ترفع كفاءتك ${toArabicDigits(myRank.gapToNext.pct)}٪ تعدّي ${myRank.gapToNext.name}`
                   : "أنت الأول — حافظ على الصدارة 🔥"}
               </div>
             </div>
           </div>
-          <div className="text-left">
-            <div className="text-xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.points)}</div>
-            <div className="text-[11px] text-muted-foreground">نقطة</div>
+          <div className="flex items-center gap-4 text-left">
+            <div>
+              <div className="text-xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.efficiency)}٪</div>
+              <div className="text-[11px] text-muted-foreground">كفاءة</div>
+            </div>
+            <div>
+              <div className="text-sm font-bold text-foreground" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.points)}</div>
+              <div className="text-[11px] text-muted-foreground">نقطة</div>
+            </div>
           </div>
         </Link>
       )}
