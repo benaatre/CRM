@@ -195,9 +195,11 @@ export function warnMessage(followUpCount: number, count: number): string {
 
 // ===================== قارئ الإعداد من env (المرحلة الأولى — بلا حقل قاعدة) =====================
 // لا يوجد حقل JSON مخصّص في Settings (notifyConfig محجوز للإشعارات)، فنقرأ من env مؤقتًا.
-//   NO_RESPONSE_PULL=on            → النظام مفعّل (سحب حقيقي)، وإلا معاينة (dry-run).
+//   NO_RESPONSE_PULL=true|on|1|yes → النظام مفعّل (سحب حقيقي)، وأي قيمة أخرى = معاينة (dry-run).
 //   NO_RESPONSE_DAYS=2,2,3,4,5     → جدول المهل بالأيام (اختياري).
-//   NO_RESPONSE_IMMUNITY_CAP=5     → سقف الحصانة (اختياري).
+//   NO_RESPONSE_IMMUNITY_CAP=5     → حد السحب الفوري (اختياري).
+//   NO_RESPONSE_ACTIVATION_DATE=YYYY-MM-DD → حاجز التفعيل (اختياري).
+// القراءة ديناميكية وقت كل طلب (داخل getNoResponseConfig) — لا كاش إقلاع.
 
 function parseDays(raw: string | undefined): number[] {
   if (!raw) return [...DEFAULT_TIMEOUT_DAYS];
@@ -205,17 +207,36 @@ function parseDays(raw: string | undefined): number[] {
   return parts.length ? parts : [...DEFAULT_TIMEOUT_DAYS];
 }
 
-function parseActivation(raw: string | undefined): Date | null {
-  if (!raw) return null;
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d;
+// ⚠️ حادثة 2026-07-26: كانت المقارنة === "on" حصرًا — NO_RESPONSE_PULL=true بقي «معاينة»
+// رغم ضبطه صح. التفسير الآن مرن: true/1/on/yes بأي حالة أحرف + trim، وأي قيمة أخرى = معطّل.
+const TRUTHY = new Set(["true", "1", "on", "yes"]);
+
+/** تفسير مفتاح التفعيل بمرونة — مُصدَّر ليستخدمه فحص البيئة (/api/env-check). */
+export function parsePullEnabled(raw: string | undefined): boolean {
+  return TRUTHY.has((raw ?? "").trim().toLowerCase());
 }
 
-/** يقرأ إعداد النظام من env (يُستدعى على الخادم فقط). */
+/** تاريخ التفعيل: trim + تحقق صيغة YYYY-MM-DD برسالة لوق واضحة — لا فشل صامتًا. */
+export function parseActivation(raw: string | undefined): Date | null {
+  const s = (raw ?? "").trim();
+  if (!s) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    console.error(`[no-response] NO_RESPONSE_ACTIVATION_DATE بصيغة غير صحيحة: «${s}» — المطلوب YYYY-MM-DD (تم تجاهلها، النظام بلا حاجز تفعيل)`);
+    return null;
+  }
+  const d = new Date(`${s}T00:00:00+03:00`); // منتصف ليل الرياض — لا UTC
+  if (Number.isNaN(d.getTime())) {
+    console.error(`[no-response] NO_RESPONSE_ACTIVATION_DATE تاريخ غير صالح: «${s}» (تم تجاهلها)`);
+    return null;
+  }
+  return d;
+}
+
+/** يقرأ إعداد النظام من env وقت الطلب (يُستدعى على الخادم فقط). */
 export function getNoResponseConfig(): NoResponseConfig {
   const capRaw = Number(process.env.NO_RESPONSE_IMMUNITY_CAP);
   return {
-    enabled: process.env.NO_RESPONSE_PULL === "on",
+    enabled: parsePullEnabled(process.env.NO_RESPONSE_PULL),
     timeoutDays: parseDays(process.env.NO_RESPONSE_DAYS),
     // §١ج: NO_RESPONSE_IMMUNITY_CAP احتفظ باسمه لكن دلالته تبدّلت: صار «حد السحب الفوري» لا حد الحصانة —
     //      أي عميل noAnswerCount >= هذا الرقم يصير overdue فورًا (بلا مهلة). الافتراضي ٣.
