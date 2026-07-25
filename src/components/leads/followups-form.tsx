@@ -27,10 +27,13 @@ function resultsFor(stage: LeadStage): string[] {
     // مظلة «مهتم»: «لم يستجب» بدل «لم يرد» (لا تغيّر المرحلة ولا تدخله نظام السحب)
     // + «حسبة البنك» و«في الانتظار» (نتيجة بلا تغيير مرحلة).
     case "INTERESTED":
-      return ["appointment", "visit", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["visitAppt", "appointment", "visit", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // موعد لاحق: نعاود ونحاول نوصله لزيارة.
     case "FOLLOW_UP_LATER":
-      return ["interested", "visit", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["interested", "visitAppt", "visit", "unresponsive", "bankcheck", "onhold", "notInterested"];
+    // موعد زيارة مؤكّد: زار فعلًا أو ما حضر (إعادة جدولة / ما يبي) — قلب تسجيل الزيارة.
+    case "VISIT_SCHEDULED":
+      return ["visit", "noShowReschedule", "noShowDeclined", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // زار المشروع: إما تفاوض أو ينسحب.
     case "VIEWING":
       return ["negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
@@ -46,6 +49,14 @@ const LABEL: Record<string, string> = {
   interested: "مهتم", noanswer: "لم يرد", appointment: "موعد لاحق",
   visit: "زيارة", negotiation: "تفاوض", notInterested: "غير مهتم", booked: "تم الحجز",
   unresponsive: "لم يستجب", bankcheck: "حسبة البنك", onhold: "في الانتظار",
+  visitAppt: "موعد زيارة",
+  noShowReschedule: "ما حضر — إعادة جدولة", noShowDeclined: "ما حضر — ما يبي",
+};
+
+/** الخطوة التالية الإلزامية لنتيجة «مهتم» — أحد ثلاثة لا رابع لها. */
+type InterestedStep = "visit" | "call" | "notsuitable";
+const STEP_LABEL: Record<InterestedStep, string> = {
+  visit: "موعد زيارة", call: "موعد اتصال", notsuitable: "غير مناسب",
 };
 
 export function FollowUpsForm({
@@ -62,6 +73,8 @@ export function FollowUpsForm({
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [fcSel, setFcSel] = useState<"interested" | "noanswer" | "notInterested" | null>(null);
+  // الخطوة الإلزامية لنتيجة «مهتم» — لا حفظ بدونها (والخادم يرفضها كمان).
+  const [step, setStep] = useState<InterestedStep | null>(null);
 
   const [note, setNote] = useState("");
   const [date, setDate] = useState("");
@@ -75,11 +88,11 @@ export function FollowUpsForm({
 
   function pick(key: string) {
     if (key === "booked") { onBook?.(); return; }
-    setSel(key); setError(null);
+    setSel(key); setError(null); setStep(null);
     setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no");
   }
   function clearAll() {
-    setSel(null); setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
+    setSel(null); setStep(null); setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
   }
   function toggle(setS: React.Dispatch<React.SetStateAction<Set<string>>>, v: string) {
     setS((s) => { const n = new Set(s); if (n.has(v)) n.delete(v); else n.add(v); return n; });
@@ -108,7 +121,25 @@ export function FollowUpsForm({
     if (!sel) return;
     switch (sel) {
       case "interested":
-        return post({ type: "CALL", result: "INTERESTED_SENT_INFO", section: "INTERESTED", stage: "INTERESTED", note: compose("مهتم", [], note) });
+        // الإلزام: «مهتم» بلا خطوة تالية ما ينحفظ — أحد ثلاثة (والخادم يرفض INTERESTED_SENT_INFO الخام).
+        if (step === "visit")
+          return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("مهتم — موعد زيارة", [], note), nextDate: date });
+        if (step === "call")
+          return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("مهتم — موعد اتصال", [], note), nextDate: date });
+        if (step === "notsuitable")
+          return post(buildNotInterestedBody(reasons, niRetry, date, note));
+        return;
+      case "visitAppt":
+        // موعد زيارة مباشر لعميل المظلة المهتمة → «موعد زيارة مؤكّد».
+        return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("موعد زيارة", [], note), nextDate: date });
+      case "noShowReschedule":
+        // ما حضر — موعد جديد: يبقى «موعد زيارة مؤكّد» والعدّاد يزيد على الخادم.
+        return post({ type: "CALL", result: "VISIT_NO_SHOW_RESCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("ما حضر — إعادة جدولة", [], note), nextDate: date });
+      case "noShowDeclined": {
+        // ما حضر — ما يبي: المسار الموحّد لغير المهتم، مع وسم «ما حضر» في النص (يغذّي مؤشر الحضور).
+        const b = buildNotInterestedBody(reasons, niRetry, date, note);
+        return post({ ...b, note: `ما حضر — ${b.note}` });
+      }
       case "noanswer":
         return post({ type: "CALL", result: "NOT_ANSWERED_SCHEDULED", section: "NO_ANSWER", stage: "ATTEMPTED", note: compose("لم يرد", [], note) });
       case "appointment":
@@ -137,19 +168,22 @@ export function FollowUpsForm({
   }
 
   // أول تواصل: ٣ خيارات إلزامية تحدّد المرحلة الأولى ومرحلة العميل.
-  const FC_MAP = {
-    interested: { result: "INTERESTED_SENT_INFO", section: "INTERESTED", stage: "INTERESTED", label: "مهتم" },
-    noanswer: { result: "NOT_ANSWERED_SCHEDULED", section: "NO_ANSWER", stage: "ATTEMPTED", label: "لا يرد" },
-    notInterested: { result: "NOT_INTERESTED_FINAL", section: "NOT_INTERESTED", stage: "CLOSED_LOST", label: "غير مهتم" },
-  } as const;
+  const FC_LABEL = { interested: "مهتم", noanswer: "لا يرد", notInterested: "غير مهتم" } as const;
   function submitFirstContact() {
     if (!fcSel) return;
     // «غير مهتم» في أول تواصل = نفس منطق المتابعة العادية (أسباب منظّمة + retry).
     if (fcSel === "notInterested") {
       return post(buildNotInterestedBody(reasons, niRetry, date, note));
     }
-    const m = FC_MAP[fcSel];
-    post({ type: "CALL", result: m.result as FollowUpResult, section: m.section as FollowUpSection, stage: m.stage as LeadStage, note: compose(`تم تسجيل أول تواصل: ${m.label}`, [], note) });
+    // «مهتم» في أول تواصل يخضع لنفس الإلزام: موعد زيارة أو موعد اتصال (غير مناسب له زره الخاص).
+    if (fcSel === "interested") {
+      if (step === "visit")
+        return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("تم تسجيل أول تواصل: مهتم — موعد زيارة", [], note), nextDate: date });
+      if (step === "call")
+        return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("تم تسجيل أول تواصل: مهتم — موعد اتصال", [], note), nextDate: date });
+      return;
+    }
+    post({ type: "CALL", result: "NOT_ANSWERED_SCHEDULED", section: "NO_ANSWER", stage: "ATTEMPTED", note: compose("تم تسجيل أول تواصل: لا يرد", [], note) });
   }
 
   // وضع «أول تواصل»: ما تحدّدت المرحلة الأولى بعد (null صريح) → الأزرار الثلاثة الإلزامية.
@@ -163,15 +197,32 @@ export function FollowUpsForm({
             <button
               key={k}
               type="button"
-              onClick={() => { setFcSel(k); setError(null); setReasons(new Set()); setNiRetry("no"); setDate(""); }}
+              onClick={() => { setFcSel(k); setError(null); setStep(null); setReasons(new Set()); setNiRetry("no"); setDate(""); }}
               className={`rounded-lg border px-4 py-2 text-sm transition-colors ${fcSel === k ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`}
             >
-              {FC_MAP[k].label}
+              {FC_LABEL[k]}
             </button>
           ))}
         </div>
         {fcSel && (
           <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
+            {/* «مهتم» في أول تواصل: الخطوة التالية إلزامية — موعد زيارة أو موعد اتصال */}
+            {fcSel === "interested" && (
+              <div className="space-y-2">
+                <span className="text-xs text-muted-foreground">وش الخطوة الجاية معه؟ (إلزامي)</span>
+                <div className="flex gap-2">
+                  {(["visit", "call"] as const).map((s) => (
+                    <button key={s} type="button" onClick={() => { setStep(s); setDate(""); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${step === s ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>{STEP_LABEL[s]}</button>
+                  ))}
+                </div>
+                {step && (
+                  <label className="block space-y-1">
+                    <span className="text-xs text-muted-foreground">{step === "visit" ? "تاريخ ووقت الزيارة" : "تاريخ ووقت الاتصال"}</span>
+                    <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                  </label>
+                )}
+              </div>
+            )}
             {/* «غير مهتم» في أول تواصل: نفس شرائح الأسباب المنظّمة + «نحاول لاحقًا» */}
             {fcSel === "notInterested" && (
               <NotInterestedReasons
@@ -186,7 +237,7 @@ export function FollowUpsForm({
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={fcSel === "notInterested" && niRequiresText(reasons) ? NI_TEXT_PLACEHOLDER : "ملاحظة (اختياري)…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${fcSel === "notInterested" && niRequiresText(reasons) && !note.trim() ? "border-destructive/60" : "border-border"}`} />
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
             <div className="flex justify-end">
-              <button type="button" onClick={submitFirstContact} disabled={pending || (fcSel === "notInterested" && ((niRetry === "yes" && !date) || (niRequiresText(reasons) && !note.trim())))} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
+              <button type="button" onClick={submitFirstContact} disabled={pending || (fcSel === "notInterested" && ((niRetry === "yes" && !date) || (niRequiresText(reasons) && !note.trim()))) || (fcSel === "interested" && (!step || !date))} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
             </div>
           </div>
         )}
@@ -196,13 +247,16 @@ export function FollowUpsForm({
   }
 
   // تعطيل الحفظ لو الحقول الإجبارية ناقصة (ومنها النص الإلزامي لأسباب «أخرى/نهائي» و«في الانتظار»).
-  const niNeedsText = sel === "notInterested" && niRequiresText(reasons);
+  const niNeedsText = (sel === "notInterested" || sel === "noShowDeclined" || (sel === "interested" && step === "notsuitable")) && niRequiresText(reasons);
   const saveDisabled = pending || (
     sel === "appointment" ? !date
-      : sel === "visit" ? !date || (visitKind === "project" && visitMode === "select" && selProjects.size === 0)
-        : sel === "notInterested" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
-          : sel === "onhold" ? !note.trim()
-            : false
+      : sel === "visitAppt" || sel === "noShowReschedule" ? !date
+        : sel === "interested" ? (!step || ((step === "visit" || step === "call") && !date) || (step === "notsuitable" && ((niRetry === "yes" && !date) || (niNeedsText && !note.trim()))))
+          // تسجيل «زار» من موعد مؤكّد: الزيارة صارت والتاريخ معروف (visitAt) — لا تاريخ إلزامي.
+          : sel === "visit" ? ((stage !== "VISIT_SCHEDULED" && !date) || (visitKind === "project" && visitMode === "select" && selProjects.size === 0))
+            : sel === "notInterested" || sel === "noShowDeclined" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
+              : sel === "onhold" ? !note.trim()
+                : false
   );
   const ON_HOLD_PLACEHOLDER = "ينتظر إيش؟ (مثال: بيع شقته القديمة، رجوعه من السفر)";
 
@@ -243,6 +297,62 @@ export function FollowUpsForm({
 
       {sel && sel !== "booked" && (
         <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
+          {/* مهتم: الخطوة التالية إلزامية — موعد زيارة / موعد اتصال / غير مناسب */}
+          {sel === "interested" && (
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground">وش الخطوة الجاية معه؟ (إلزامي — ما ينحفظ بدونها)</span>
+              <div className="flex gap-2">
+                {(["visit", "call", "notsuitable"] as const).map((s) => (
+                  <button key={s} type="button" onClick={() => { setStep(s); setDate(""); setReasons(new Set()); setNiRetry("no"); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${step === s ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>{STEP_LABEL[s]}</button>
+                ))}
+              </div>
+              {(step === "visit" || step === "call") && (
+                <label className="block space-y-1">
+                  <span className="text-xs text-muted-foreground">{step === "visit" ? "تاريخ ووقت الزيارة" : "تاريخ ووقت الاتصال"}</span>
+                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                </label>
+              )}
+              {step === "notsuitable" && (
+                <NotInterestedReasons
+                  reasons={reasons}
+                  onToggle={(r) => toggle(setReasons, r)}
+                  retry={niRetry}
+                  onRetry={setNiRetry}
+                  date={date}
+                  onDate={setDate}
+                />
+              )}
+            </div>
+          )}
+
+          {/* موعد زيارة مباشر: تاريخ ووقت الزيارة */}
+          {sel === "visitAppt" && (
+            <label className="block space-y-1">
+              <span className="text-xs text-muted-foreground">تاريخ ووقت الزيارة</span>
+              <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+            </label>
+          )}
+
+          {/* ما حضر — إعادة جدولة: الموعد الجديد */}
+          {sel === "noShowReschedule" && (
+            <label className="block space-y-1">
+              <span className="text-xs text-muted-foreground">موعد الزيارة الجديد (تاريخ ووقت)</span>
+              <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+            </label>
+          )}
+
+          {/* ما حضر — ما يبي: نفس أسباب «غير مهتم» المنظّمة */}
+          {sel === "noShowDeclined" && (
+            <NotInterestedReasons
+              reasons={reasons}
+              onToggle={(r) => toggle(setReasons, r)}
+              retry={niRetry}
+              onRetry={setNiRetry}
+              date={date}
+              onDate={setDate}
+            />
+          )}
+
           {/* موعد لاحق: تاريخ */}
           {sel === "appointment" && (
             <label className="block space-y-1">

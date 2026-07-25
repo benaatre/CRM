@@ -232,6 +232,7 @@ export function LeadsView({
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                 <span className={`rounded-full border px-2 py-0.5 ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
+                {l.stale && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning" title="مهتم بلا متابعة من ٧ أيام — بعد ١٤ يومًا ينزل تلقائيًا «موعد لاحق»">راكد</span>}
                 <span className="text-muted-foreground">الموظف: {l.assignedTo?.name ?? "غير موزّع"}</span>
                 {!isManager && <span className="text-muted-foreground">استلمته {daysAgoLabel(l.daysWaiting)}</span>}
                 {l.followUpsCount > 0 && (
@@ -279,7 +280,10 @@ export function LeadsView({
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
+                      {l.stale && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning" title="مهتم بلا متابعة من ٧ أيام — بعد ١٤ يومًا ينزل تلقائيًا «موعد لاحق»">راكد</span>}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     {l.followUpsCount > 0 ? (

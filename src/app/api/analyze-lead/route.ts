@@ -20,10 +20,10 @@ function heuristic(
   name: string,
   project: string | null,
 ): Analysis {
-  const hot: LeadStage[] = ["VIEWING", "NEGOTIATION", "RESERVED"];
+  const hot: LeadStage[] = ["VISIT_SCHEDULED", "VIEWING", "NEGOTIATION", "RESERVED"];
   const warm: LeadStage[] = ["INTERESTED", "FOLLOW_UP_LATER"];
   const interestByStage: Record<LeadStage, number> = {
-    NEW: 40, ATTEMPTED: 30, INTERESTED: 60, FOLLOW_UP_LATER: 55,
+    NEW: 40, ATTEMPTED: 30, INTERESTED: 60, FOLLOW_UP_LATER: 55, VISIT_SCHEDULED: 70,
     VIEWING: 75, NEGOTIATION: 85, RESERVED: 90, CLOSED_WON: 100, CLOSED_LOST: 10,
   };
   const temperature = hot.includes(stage) ? "حار" : warm.includes(stage) ? "دافئ" : "بارد";
@@ -35,6 +35,7 @@ function heuristic(
     ATTEMPTED: "جرّب وقت مختلف أو رسالة واتساب قصيرة.",
     INTERESTED: "ابعث تفاصيل الوحدة واقترح موعد معاينة.",
     FOLLOW_UP_LATER: "ذكّره بالموعد المتفق عليه.",
+    VISIT_SCHEDULED: "ذكّره بموعد الزيارة وجهّز له الوحدات المناسبة.",
     VIEWING: "أكّد موعد المعاينة وجهّز الخيارات المناسبة.",
     NEGOTIATION: "اقفل على السعر النهائي وجهّز أوراق الحجز.",
     RESERVED: "تابع إجراءات التمويل/الإفراغ.",

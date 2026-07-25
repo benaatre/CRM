@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
-import { DEFAULT_LEAD_SORT } from "@/lib/lead-filters";
+import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA } from "@/lib/lead-filters";
 import type { LeadFilterValues, LeadSort } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
@@ -18,8 +18,7 @@ const SORT_OPTIONS: { value: LeadSort; label: string }[] = [
   { value: "name", label: "حسب الاسم" },
 ];
 
-// مظلّة «مهتم»: كل المتفاعلين (مهتم + زار + تفاوض + موعد لاحق) — الاستعلام يدعم stage IN أصلاً.
-const INTEREST_UMBRELLA = ["INTERESTED", "VIEWING", "NEGOTIATION", "FOLLOW_UP_LATER"];
+// مظلّة «مهتم»: المصدر الواحد في lead-filters.ts (type-only على Prisma — آمنة لحزمة العميل).
 
 // عنصر مختار: أخضر #22c55e بخلفية خضراء شفافة. غير مختار: رمادي محايد.
 function chip(active: boolean) {
@@ -89,7 +88,7 @@ export function LeadsFilterBar({
     // نشطة → أزل الأربع؛ غير نشطة → أضفها للمحدّد الحالي (بلا تكرار، يحفظ أي مراحل أخرى).
     go({
       stages: interestUmbrellaActive
-        ? filters.stages.filter((x) => !INTEREST_UMBRELLA.includes(x))
+        ? filters.stages.filter((x) => !(INTEREST_UMBRELLA as string[]).includes(x))
         : [...new Set([...filters.stages, ...INTEREST_UMBRELLA])],
     });
   }

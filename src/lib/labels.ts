@@ -38,6 +38,7 @@ export const stageOrder: LeadStage[] = [
   "ATTEMPTED",
   "INTERESTED",
   "FOLLOW_UP_LATER",
+  "VISIT_SCHEDULED",
   "VIEWING",
   "NEGOTIATION",
   "RESERVED",
@@ -50,6 +51,7 @@ export const stageLabels: Record<LeadStage, string> = {
   ATTEMPTED: "محاولة/لم يرد",
   INTERESTED: "مهتم",
   FOLLOW_UP_LATER: "موعد لاحق",
+  VISIT_SCHEDULED: "موعد زيارة مؤكّد",
   VIEWING: "زار المشروع",
   NEGOTIATION: "تفاوض",
   RESERVED: "محجوز/عربون",
@@ -65,6 +67,7 @@ export const stageColor: Record<LeadStage, string> = {
   ATTEMPTED: "text-amber-400 bg-amber-400/10 border-amber-400/30", // كهرماني
   INTERESTED: "text-green-400 bg-green-400/10 border-green-400/30", // أخضر
   FOLLOW_UP_LATER: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30", // سماوي
+  VISIT_SCHEDULED: "text-sky-300 bg-sky-300/10 border-sky-300/30", // سماوي فاتح
   VIEWING: "text-blue-400 bg-blue-400/10 border-blue-400/30",      // أزرق
   NEGOTIATION: "text-violet-400 bg-violet-400/10 border-violet-400/30", // بنفسجي
   RESERVED: "text-gold bg-gold/10 border-gold/30",                 // ذهبي #CBA45E
@@ -281,6 +284,8 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
   NOT_INTERESTED_BANK: "غير مهتم — حسبة البنك ضعيفة",
   NOT_INTERESTED_MARKETER: "مسوّق — مو عميل",
   NOT_INTERESTED_OTHER: "غير مهتم — سبب آخر",
+  INTERESTED_VISIT_SCHEDULED: "مهتم — موعد زيارة",
+  VISIT_NO_SHOW_RESCHEDULED: "ما حضر — أُعيدت الجدولة",
 };
 
 /**
@@ -288,6 +293,12 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
  * POST /followups يثبّت المرحلة الحالية لهذه النتائج — قيمها في resultToStage لا تُستخدم.
  */
 export const KEEP_STAGE_RESULTS: FollowUpResult[] = ["NO_ANSWER_INTERESTED", "BANK_CHECK", "ON_HOLD"];
+
+/**
+ * نتائج «موعد زيارة» (جديد أو مُعاد جدولته): nextDate = موعد الزيارة —
+ * تضبط Lead.visitAt (لا nextFollowup) وتدخل تذكيرات الزيارة (قبل يوم + صباحها).
+ */
+export const VISIT_APPOINTMENT_RESULTS: FollowUpResult[] = ["INTERESTED_VISIT_SCHEDULED", "VISIT_NO_SHOW_RESCHEDULED"];
 
 /// تعيين نتيجة المتابعة → مرحلة العميل (تُحدَّث تلقائيًا).
 export const resultToStage: Record<FollowUpResult, LeadStage> = {
@@ -315,6 +326,9 @@ export const resultToStage: Record<FollowUpResult, LeadStage> = {
   NOT_INTERESTED_BANK: "CLOSED_LOST",
   NOT_INTERESTED_MARKETER: "CLOSED_LOST",
   NOT_INTERESTED_OTHER: "CLOSED_LOST",
+  // محرّك الزيارات: موعد زيارة (جديد أو مُعاد جدولته) → «موعد زيارة مؤكّد».
+  INTERESTED_VISIT_SCHEDULED: "VISIT_SCHEDULED",
+  VISIT_NO_SHOW_RESCHEDULED: "VISIT_SCHEDULED",
 };
 
 export const deliveryStatusLabels: Record<DeliveryStatus, string> = {

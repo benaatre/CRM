@@ -17,6 +17,8 @@ type Db = PrismaClient | Prisma.TransactionClient;
  */
 export const STAGE_TO_FIRST: Partial<Record<LeadStage, FirstContactStage>> = {
   INTERESTED: FirstContactStage.INTERESTED,
+  // عميل جديد ينط مباشرة لموعد زيارة = أول تواصل «مهتم».
+  VISIT_SCHEDULED: FirstContactStage.INTERESTED,
   ATTEMPTED: FirstContactStage.NO_ANSWER,
   CLOSED_LOST: FirstContactStage.NOT_INTERESTED,
 };

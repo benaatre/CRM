@@ -28,6 +28,7 @@ enum LeadStage {
   ATTEMPTED // محاولة / لم يرد
   INTERESTED // مهتم
   FOLLOW_UP_LATER // موعد لاحق
+  VISIT_SCHEDULED // موعد زيارة مؤكّد — ⚠️ يتطلب db push (ALTER TYPE ADD VALUE) قبل أول استخدام
   VIEWING // زيارة / معاينة
   NEGOTIATION // تفاوض
   RESERVED // محجوز / عربون
@@ -197,6 +198,9 @@ enum FollowUpResult {
   NOT_INTERESTED_BANK // حسبة البنك ضعيفة
   NOT_INTERESTED_MARKETER // مسوّق (عقاري/منافس — ليس عميلًا) — يُستثنى من أي إحياء
   NOT_INTERESTED_OTHER // أخرى (نص إلزامي)
+  // ⚠️ محرّك الزيارات — تتطلب db push قبل أول استخدام في الإنتاج.
+  INTERESTED_VISIT_SCHEDULED // مهتم — موعد زيارة (nextDate = موعد الزيارة) → VISIT_SCHEDULED
+  VISIT_NO_SHOW_RESCHEDULED // ما حضر — أُعيدت الجدولة (nextDate = الموعد الجديد، يبقى VISIT_SCHEDULED)
 }
 
 // ===================== الجداول (Models) =====================
@@ -393,6 +397,12 @@ model Lead {
   reassignCount Int        @default(0)
   /// وقت آخر إسناد يدوي (نقل/توزيع من مدير) — يمنح حصانة ٧٢ ساعة من السحب التلقائي
   manualAssignedAt DateTime?
+
+  // ===== محرّك الزيارات (VISIT_SCHEDULED) =====
+  /// موعد الزيارة القادم — يُضبط من متابعة «موعد زيارة» ويُمسح عند الخروج من المرحلة
+  visitAt DateTime?
+  /// كم مرة أعاد العميل جدولة زيارته (ما حضر → موعد جديد)
+  visitRescheduleCount Int @default(0)
 
   // المصدر المهيكل (من جدول LeadSource) — يتعايش مع source النصّي القديم.
   sourceId   String?

@@ -47,6 +47,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (stage === "CLOSED_LOST") {
     return NextResponse.json({ error: "تحويل «غير مهتم» لازم يكون مع سبب — استخدم نتيجة المتابعة." }, { status: 400 });
   }
+  // «موعد زيارة مؤكّد» لازم له تاريخ زيارة وتذكير — الدخول حصريًا عبر متابعة «موعد زيارة».
+  if (stage === "VISIT_SCHEDULED") {
+    return NextResponse.json({ error: "«موعد زيارة مؤكّد» يُسجَّل من متابعة «موعد زيارة» بتاريخ ووقت — مو بالسحب." }, { status: 400 });
+  }
 
   // م-٢: المسار الموحّد (applyStageChange) — نفس سلوك الدرج بالضبط، وبلا متابعة CALL مصطنعة.
   const { firstContact } = await prisma.$transaction((tx) =>

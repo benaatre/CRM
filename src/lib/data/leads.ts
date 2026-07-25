@@ -29,6 +29,7 @@ import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { INTEREST_UMBRELLA, type LeadSort, type ArchiveReason } from "@/lib/lead-filters";
+import { interestedIdleDays, INTERESTED_STALE_WARN_DAYS } from "@/lib/visit-engine";
 import type { Prisma } from "@prisma/client";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
@@ -76,6 +77,12 @@ export type LeadRow = {
   unresponsiveCount: number;
   /** مسوّق (آخر متابعاته NOT_INTERESTED_MARKETER) — وسم واضح ويُستثنى من الإحياء. */
   marketer: boolean;
+  /** موعد الزيارة القادم (لمرحلة «موعد زيارة مؤكّد») — للبانر والتذكير البصري. */
+  visitAt: Date | null;
+  /** كم مرة أعاد جدولة زيارته — شارة «أعاد الجدولة ×N» (مدير/مالك). */
+  visitRescheduleCount: number;
+  /** «راكد»: مهتم بلا متابعة جديدة ٧+ أيام (من نقطة صفر محرّك الزيارات) — شارة صفراء. */
+  stale: boolean;
 };
 
 export type LeadActivity = {
@@ -166,6 +173,8 @@ type LeadWithRels = {
   reassignCount: number;
   assignedAt: Date | null;
   manualAssignedAt: Date | null;
+  visitAt: Date | null;
+  visitRescheduleCount: number;
   followUps?: { createdAt: Date; result: FollowUpResult }[];
   reassignments?: { reason: string; toUserId: string | null }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
@@ -251,6 +260,11 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     // من نافذة أحدث ٢٠ متابعة (المجلوبة أصلًا) — كافية عمليًا لكلا العدّادين.
     unresponsiveCount: (l.followUps ?? []).filter((f) => f.result === "NO_ANSWER_INTERESTED").length,
     marketer: (l.followUps ?? []).some((f) => f.result === "NOT_INTERESTED_MARKETER"),
+    visitAt: l.visitAt,
+    visitRescheduleCount: l.visitRescheduleCount,
+    // «راكد»: مهتم بلا متابعة ٧+ أيام (آخر متابعة من نافذة العشرين المجلوبة — الأحدث أولًا).
+    stale: l.stage === "INTERESTED" && !l.isArchived
+      && interestedIdleDays(latestFuAt, l.assignedAt ?? l.createdAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
   };
 }
 

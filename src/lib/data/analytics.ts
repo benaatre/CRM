@@ -1,10 +1,10 @@
 import "server-only";
 
 import type {
-  Channel, LeadStage, PurchaseGoal,
+  Channel, LeadStage, PurchaseGoal, Prisma,
   BookingStage, PaymentMethod, SaudiBank, Nationality, Floor, ProjectStatus,
 } from "@prisma/client";
-import { FollowUpType, PurchaseMethod } from "@prisma/client";
+import { FollowUpResult, FollowUpType, PurchaseMethod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { compareUnitNumbers } from "@/lib/format";
 import { bookingCollection, SOLD_STAGES } from "@/lib/booking-finance";
@@ -60,6 +60,24 @@ export type AnalyticsData = {
     target: number;     // الهدف الشهري
     progress: number | null; // % نحو الهدف
   }[];
+  /** مؤشر الحضور (محرّك الزيارات): زار فعلًا ÷ (زار + ما حضر) — من سجل المتابعات. */
+  attendance: {
+    visited: number;
+    noShow: number;
+    ratePct: number | null; // null = ما فيه بيانات بعد
+    totalReschedules: number;
+    perEmployee: { id: string; name: string; visited: number; noShow: number; ratePct: number | null }[];
+  };
+};
+
+// «زار فعلًا» = زار وكمّل (مهتم) أو زار وما ناسبه — الحضور تحقق في الحالتين.
+const VISITED_RESULTS: FollowUpResult[] = [FollowUpResult.INTERESTED_VISITED, FollowUpResult.NOT_INTERESTED_VISITED];
+// «ما حضر» = أعاد الجدولة، أو انسحب من بانر الزيارة (المسار الموحّد يوسم نصّه بـ«ما حضر»).
+const NO_SHOW_WHERE: Prisma.FollowUpWhereInput = {
+  OR: [
+    { result: FollowUpResult.VISIT_NO_SHOW_RESCHEDULED },
+    { section: "NOT_INTERESTED", note: { startsWith: "ما حضر" } },
+  ],
 };
 
 // م-٣: كل المراحل التسع (كان ٧ بلا FOLLOW_UP_LATER وCLOSED_LOST — عميل «موعد لاحق»
@@ -69,6 +87,7 @@ const FUNNEL: LeadStage[] = [
   "ATTEMPTED",
   "INTERESTED",
   "FOLLOW_UP_LATER",
+  "VISIT_SCHEDULED",
   "VIEWING",
   "NEGOTIATION",
   "RESERVED",
@@ -103,6 +122,13 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       prisma.followUp.groupBy({ by: ["createdBy"], _count: { _all: true } }),
       prisma.followUp.groupBy({ by: ["createdBy"], where: { type: { in: VISIT_TYPES } }, _count: { _all: true } }),
     ]);
+
+  // ===== مؤشر الحضور (محرّك الزيارات) — استعلامات مجمّعة، لا N+1 =====
+  const [attVisitedByEmp, attNoShowByEmp, totalReschedules] = await Promise.all([
+    prisma.followUp.groupBy({ by: ["createdBy"], where: { result: { in: VISITED_RESULTS } }, _count: { _all: true } }),
+    prisma.followUp.groupBy({ by: ["createdBy"], where: NO_SHOW_WHERE, _count: { _all: true } }),
+    prisma.followUp.count({ where: { result: FollowUpResult.VISIT_NO_SHOW_RESCHEDULED } }),
+  ]);
 
   // ===== المالية =====
   const perProjectMap = new Map<string, FinanceRow>();
@@ -215,6 +241,24 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     };
   });
 
+  // ===== مؤشر الحضور =====
+  const attVisitedMap = new Map(attVisitedByEmp.map((r) => [r.createdBy, r._count._all]));
+  const attNoShowMap = new Map(attNoShowByEmp.map((r) => [r.createdBy, r._count._all]));
+  const attVisited = attVisitedByEmp.reduce((s, r) => s + r._count._all, 0);
+  const attNoShow = attNoShowByEmp.reduce((s, r) => s + r._count._all, 0);
+  const rate = (v: number, n: number) => (v + n > 0 ? Math.round((v / (v + n)) * 100) : null);
+  const attendance = {
+    visited: attVisited,
+    noShow: attNoShow,
+    ratePct: rate(attVisited, attNoShow),
+    totalReschedules,
+    perEmployee: employees.map((e) => {
+      const v = attVisitedMap.get(e.id) ?? 0;
+      const n = attNoShowMap.get(e.id) ?? 0;
+      return { id: e.id, name: e.name, visited: v, noShow: n, ratePct: rate(v, n) };
+    }),
+  };
+
   return {
     finance: {
       basePrice, discounts, afterDiscount, collected, notCollected, reservedValue,
@@ -234,6 +278,7 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     purchaseMethods,
     purchaseGoals,
     team,
+    attendance,
   };
 }
 
