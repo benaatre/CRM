@@ -28,7 +28,7 @@ enum LeadStage {
   ATTEMPTED // محاولة / لم يرد
   INTERESTED // مهتم
   FOLLOW_UP_LATER // موعد لاحق
-  VISIT_SCHEDULED // موعد زيارة مؤكّد — ⚠️ يتطلب db push (ALTER TYPE ADD VALUE) قبل أول استخدام
+  VISIT_SCHEDULED // موعد زيارة مؤكّد (دُفعت للإنتاج 2026-07-25)
   VIEWING // زيارة / معاينة
   NEGOTIATION // تفاوض
   RESERVED // محجوز / عربون
@@ -198,7 +198,7 @@ enum FollowUpResult {
   NOT_INTERESTED_BANK // حسبة البنك ضعيفة
   NOT_INTERESTED_MARKETER // مسوّق (عقاري/منافس — ليس عميلًا) — يُستثنى من أي إحياء
   NOT_INTERESTED_OTHER // أخرى (نص إلزامي)
-  // ⚠️ محرّك الزيارات — تتطلب db push قبل أول استخدام في الإنتاج.
+  // محرّك الزيارات (دُفعت للإنتاج 2026-07-25).
   INTERESTED_VISIT_SCHEDULED // مهتم — موعد زيارة (nextDate = موعد الزيارة) → VISIT_SCHEDULED
   VISIT_NO_SHOW_RESCHEDULED // ما حضر — أُعيدت الجدولة (nextDate = الموعد الجديد، يبقى VISIT_SCHEDULED)
 }
