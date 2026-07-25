@@ -172,6 +172,56 @@ export default async function AnalyticsPage() {
         </section>
       </div>
 
+      {/* نسبة الحضور (محرّك الزيارات): زار فعلًا ÷ (زار + ما حضر) */}
+      <section className="glass rounded-2xl p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold text-foreground">نسبة الحضور — مواعيد الزيارات</h2>
+          <span className="text-xs text-muted-foreground">زار فعلًا ÷ (زار + ما حضر) · من سجل المتابعات</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-xl border border-border p-3">
+            <div className="text-xl font-bold text-gold">{a.attendance.ratePct != null ? `${toArabicDigits(a.attendance.ratePct)}٪` : "—"}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">نسبة الحضور الإجمالية</div>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <div className="text-xl font-bold text-success">{toArabicDigits(a.attendance.visited)}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">زار فعلًا</div>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <div className="text-xl font-bold text-destructive">{toArabicDigits(a.attendance.noShow)}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">ما حضر</div>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <div className="text-xl font-bold text-warning">{toArabicDigits(a.attendance.totalReschedules)}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">إجمالي إعادات الجدولة</div>
+          </div>
+        </div>
+        {a.attendance.perEmployee.some((e) => e.visited + e.noShow > 0) && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-right text-sm">
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th className="py-2 font-medium">الموظف</th>
+                  <th className="py-2 font-medium">زار</th>
+                  <th className="py-2 font-medium">ما حضر</th>
+                  <th className="py-2 font-medium">النسبة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a.attendance.perEmployee.filter((e) => e.visited + e.noShow > 0).map((e) => (
+                  <tr key={e.id} className="border-t border-border">
+                    <td className="py-2 font-medium text-foreground">{e.name}</td>
+                    <td className="py-2 text-success">{toArabicDigits(e.visited)}</td>
+                    <td className="py-2 text-destructive">{toArabicDigits(e.noShow)}</td>
+                    <td className="py-2 text-gold">{e.ratePct != null ? `${toArabicDigits(e.ratePct)}٪` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {/* طريقة الشراء + هدف الشراء */}
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="glass rounded-2xl p-5">
