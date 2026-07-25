@@ -1,9 +1,11 @@
 import "server-only";
 
-import { FollowUpType } from "@prisma/client";
+import { ActivityType, FollowUpType, LeadStage } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { emitNotification } from "@/lib/notifications/emit";
+import { logAudit } from "@/lib/audit";
 import { VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
+import { VISIT_ENGINE_EPOCH, INTERESTED_STALE_DEMOTE_DAYS } from "@/lib/visit-engine";
 
 const CLOSED = ["CLOSED_WON", "CLOSED_LOST"] as const;
 const HOUR_MS = 3_600_000;
@@ -175,6 +177,61 @@ export async function runVisitReminderCheck(now: Date = new Date()): Promise<num
     emitted++;
   }
   return emitted;
+}
+
+/**
+ * السقف الزمني على «مهتم» (محرّك الزيارات): عميل INTERESTED بلا أي متابعة ١٤ يومًا
+ * (من نقطة صفر الميزة حدًّا أدنى — لا تنزيل جماعيًا للراكدين القدامى) ينزل تلقائيًا
+ * إلى «موعد لاحق» بموعد صباح الغد (١٠ص بتوقيت الرياض) — فيدخل دورة متابعات اليوم
+ * والتذكيرات طبيعيًا. سجل تدقيق + نشاط لكل تنزيل. دفعات ٥٠ لكل دورة (الكرون كل دقائق).
+ */
+export async function runInterestedStaleDemotion(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - INTERESTED_STALE_DEMOTE_DAYS * 86_400_000);
+  // قبل (نقطة الصفر + ١٤ يومًا) ما فيه أي تنزيل إطلاقًا.
+  if (VISIT_ENGINE_EPOCH > cutoff) return 0;
+
+  const stale = await prisma.lead.findMany({
+    where: {
+      stage: LeadStage.INTERESTED,
+      isArchived: false,
+      createdAt: { lte: cutoff },
+      // «بلا أي متابعة جديدة»: ولا متابعة واحدة بعد حدّ الـ١٤ يومًا.
+      followUps: { none: { createdAt: { gt: cutoff } } },
+    },
+    select: { id: true, name: true },
+    orderBy: { updatedAt: "asc" },
+    take: 50,
+  });
+  if (stale.length === 0) return 0;
+
+  // موعد الغد ١٠ص بتوقيت الرياض (٧:٠٠ UTC).
+  const k = new Date(now.getTime() + KSA_OFFSET_MS);
+  const tomorrow10 = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() + 1, 7, 0, 0));
+
+  let demoted = 0;
+  for (const l of stale) {
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({
+        where: { id: l.id },
+        data: { stage: LeadStage.FOLLOW_UP_LATER, nextFollowup: tomorrow10 },
+      });
+      await tx.activity.create({
+        data: {
+          leadId: l.id,
+          type: ActivityType.STAGE_CHANGE,
+          note: "تنزيل تلقائي: مهتم بلا متابعة ١٤ يومًا ← «موعد لاحق» بموعد صباح الغد",
+        },
+      });
+      await logAudit(tx, {
+        action: "lead.autoDemoted",
+        entity: "lead",
+        entityId: l.id,
+        summary: `تنزيل تلقائي (راكد ١٤ يومًا): مهتم ← موعد لاحق · العميل=${l.id}`,
+      });
+    });
+    demoted++;
+  }
+  return demoted;
 }
 
 /**
