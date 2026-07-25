@@ -13,7 +13,7 @@ import { updateLeadIntake, updateLeadChannel, toggleRevealHistory } from "@/lib/
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
 import { cancelBooking } from "@/lib/actions/bookings";
-import { formatDate, formatCurrencyFull, toArabicDigits, daysAgoLabel } from "@/lib/format";
+import { formatDate, formatDateTime, formatCurrencyFull, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import type { LeadDetail, LeadTransferHistory } from "@/lib/data/leads";
 import { BookingForm } from "@/components/bookings/booking-form";
 import { FollowUpsForm } from "./followups-form";
@@ -77,6 +77,10 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
                 {onHoldReason && (
                   <span className="rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium text-info" title="آخر متابعة: في الانتظار — ظرف عند العميل بلا تاريخ محدد">في الانتظار: {onHoldReason}</span>
                 )}
+                {/* عدّاد إعادة الجدولة — للمالك/المدير (مؤشر جدّية العميل) */}
+                {isManager && detail.visitRescheduleCount > 0 && (
+                  <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning" title="كم مرة أكّد موعد زيارة وما حضر ثم أعاد الجدولة">أعاد الجدولة ×{toArabicDigits(detail.visitRescheduleCount)}</span>
+                )}
               </div>
               {/* كتلة الاستلام للموظف فقط — المالك/المدير كما كانت الشاشة سابقًا (فحص دور صريح). */}
               {!isManager && (
@@ -90,6 +94,24 @@ export function LeadProfile({ detail, projects, transferHistory, isManager }: { 
           <a href={`tel:${detail.phone}`} className="flex-1 rounded-lg bg-primary py-2.5 text-center text-sm font-medium text-primary-foreground hover:opacity-90">اتصل</a>
           <a href={wa} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg bg-success/15 py-2.5 text-center text-sm font-medium text-success hover:bg-success/25">واتساب</a>
         </div>
+
+        {/* محرّك الزيارات: زيارة مجدولة قادمة / فات موعدها — البانر يوجّه لتبويب المتابعة */}
+        {detail.stage === "VISIT_SCHEDULED" && detail.visitAt && !detail.isArchived && (
+          new Date(detail.visitAt) < new Date() ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5">
+              <div className="text-sm">
+                <span className="font-semibold text-warning">فات موعد زيارته</span>
+                <span className="text-muted-foreground"> — {formatDateTime(detail.visitAt)} · سجّل وش صار: زار؟ ما حضر؟</span>
+              </div>
+              <button onClick={() => setTab("followups")} className="rounded-lg border border-warning/50 bg-warning/15 px-3 py-1.5 text-xs font-medium text-warning hover:bg-warning/25">سجّل نتيجة الزيارة</button>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-sky-300/30 bg-sky-300/10 px-3 py-2.5 text-sm">
+              <span className="font-medium text-sky-300">زيارة مجدولة:</span>
+              <span className="text-muted-foreground"> {formatDateTime(detail.visitAt)}</span>
+            </div>
+          )
+        )}
         {/* الخطوة ٣ج: زر كشف السجل — للمالك فقط (transferHistory ≠ null يعني مالك)، ولعميل وُزّع «كجديد» فقط. */}
         {transferHistory && detail.freshDistributed && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-secondary/30 px-3 py-2">
