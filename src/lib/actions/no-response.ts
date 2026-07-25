@@ -134,10 +134,12 @@ export type DistributeOpts = {
 };
 
 /**
- * توزيع فردي لعميل من الحوض لموظف — للمالك فقط. (يستخدمه زر الصف — ببياناته كما هي.)
+ * توزيع فردي لعميل من الحوض لموظف — للمالك فقط.
+ * ⚠️ خيار العرض (leadState) إلزامي بلا افتراضي — كل إعادة توزيع يدوية تمر بخياري الحوض
+ * («كعميل جديد» _fresh يخفي السجل عن الموظف · «بمحتواه» _full يظهره) — لا مسار يتخطاهما.
  */
-export async function distributeNoResponseLead(leadId: string, toUserId: string): Promise<ActionResult> {
-  return distributeNoResponseBatch([leadId], { employeeIds: [toUserId], mode: "single", leadState: "asis" });
+export async function distributeNoResponseLead(leadId: string, toUserId: string, leadState: LeadState): Promise<ActionResult> {
+  return distributeNoResponseBatch([leadId], { employeeIds: [toUserId], mode: "single", leadState });
 }
 
 /**
@@ -243,7 +245,8 @@ export async function distributeNoResponseBatch(leadIds: string[], opts: Distrib
  * توزيع تلقائي لكل الحوض على الموظفين النشطين (round-robin بالترتيب) — يحترم السعة القصوى.
  * للمالك فقط. إشعار مجمّع لكل موظف.
  */
-export async function autoDistributeNoResponse(): Promise<ActionResult> {
+// ⚠️ خيار العرض إلزامي هنا أيضًا — كان «asis» مثبتًا داخليًا فيتخطى خياري الحوض.
+export async function autoDistributeNoResponse(leadState: LeadState): Promise<ActionResult> {
   try {
     const actor = await requireOwner();
     const now = new Date();
@@ -287,7 +290,7 @@ export async function autoDistributeNoResponse(): Promise<ActionResult> {
     const succeeded = new Set<string>();
     await prisma.$transaction(async (tx) => {
       for (const a of assignments) {
-        if (await assignQueueLead(tx, a.leadId, a.toUserId, actor.id, now, "asis")) succeeded.add(a.leadId);
+        if (await assignQueueLead(tx, a.leadId, a.toUserId, actor.id, now, leadState)) succeeded.add(a.leadId);
       }
     });
     const doneCount = succeeded.size;
