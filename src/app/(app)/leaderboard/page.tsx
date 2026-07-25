@@ -69,7 +69,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
         )}
       </header>
 
-      <LeaderboardView board={board} />
+      <LeaderboardView board={board} isOwner={user.role === Role.OWNER} weights={{ ...WEIGHTS }} />
 
       {/* المعادلة — شفافية كاملة */}
       <div className="space-y-1 text-[11px] leading-5 text-muted-foreground">
@@ -77,7 +77,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
           <span className="font-medium text-foreground">الدرجة</span> = الإنجاز × معامل الجودة (٠٫٨–١٫٢). <span className="font-medium text-foreground">الإنجاز</span>: عميل تواصلت معه ×{toArabicDigits(WEIGHTS.contacted)} · متابعة ×{toArabicDigits(WEIGHTS.followup)} <span className="text-warning">(بسقف {toArabicDigits(DAILY_FOLLOWUP_CAP)}/يوم)</span> · نقل لمهتم ×{toArabicDigits(WEIGHTS.interested)} · موعد زيارة ×{toArabicDigits(WEIGHTS.visitAppt)} · زيارة تمّت ×{toArabicDigits(WEIGHTS.visitDone)} · حجز ×{toArabicDigits(WEIGHTS.booking)} · بيع ×{toArabicDigits(WEIGHTS.win)}.
         </p>
         <p>
-          <span className="font-medium text-foreground">الجودة</span> (التغطية + الالتزام + السرعة + نظافة «لم يتم الرد») ترفع درجتك حتى +٢٠٪ أو تخصم حتى −٢٠٪ — ومن لم يعمل لا يسبق من عمل: صفر إنجاز = صفر درجة. قف على أي درجة تشوف تفاصيلها.
+          <span className="font-medium text-foreground">الجودة</span> (التغطية ٣٥٪ + الالتزام بالمواعيد ٢٥٪ + سرعة الاستجابة ٢٥٪ + نظافة «لم يتم الرد» ١٥٪) معامل ضرب ٠٫٨–١٫٢: ترفع درجتك حتى +٢٠٪ أو تخصم حتى −٢٠٪ — ومن لم يعمل لا يسبق من عمل: صفر إنجاز = صفر درجة. قف على أي درجة تشوف تفاصيلها.
         </p>
         <p>عرض وترتيب فقط — بلا مكافآت مالية. · رخصة فال {toArabicDigits(1200021029)}</p>
       </div>
