@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { markContacted } from "@/lib/auto-distribute";
 import { shouldHideHistory } from "@/lib/visibility";
-import { resultToStage, followUpResultLabels, firstContactStageLabels, KEEP_STAGE_RESULTS } from "@/lib/labels";
+import { resultToStage, followUpResultLabels, firstContactStageLabels, KEEP_STAGE_RESULTS, VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
 
 export const runtime = "nodejs";
 
@@ -147,10 +147,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       },
     });
     if (nextDate !== undefined || resultChanged) {
+      // متابعة «موعد زيارة»: تعديل تاريخها يعدّل visitAt (لا nextFollowup) — نفس منطق POST.
+      const editIsVisitAppt = VISIT_APPOINTMENT_RESULTS.includes(newResult ?? fu.result);
       await tx.lead.update({
         where: { id },
         data: {
-          ...(nextDate !== undefined ? { nextFollowup: nextDate } : {}),
+          ...(nextDate !== undefined ? (editIsVisitAppt ? { visitAt: nextDate } : { nextFollowup: nextDate }) : {}),
           ...(resultChanged ? { stage: newStage } : {}),
         },
       });
@@ -197,6 +199,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     nextDate = new Date(body.nextDate);
     if (Number.isNaN(nextDate.getTime())) return NextResponse.json({ error: "تاريخ المتابعة غير صحيح" }, { status: 400 });
   }
+
+  // ===== الإلزام على الخادم (محرّك الزيارات) — لا الواجهة فقط =====
+  // «مهتم» الخام بلا خطوة تالية مرفوض: أحد ثلاثة (موعد زيارة / موعد اتصال / غير مناسب).
+  // نتائج «بلا تغيير مرحلة» (لم يستجب/حسبة البنك/في الانتظار) خارج هذا الإلزام.
+  if (result === "INTERESTED_SENT_INFO") {
+    return NextResponse.json({ error: "نتيجة «مهتم» تحتاج خطوة تالية: موعد زيارة أو موعد اتصال أو غير مناسب." }, { status: 400 });
+  }
+  // المواعيد بلا تاريخ ما تنحفظ (موعد الزيارة/إعادة الجدولة/موعد الاتصال).
+  const isVisitAppt = VISIT_APPOINTMENT_RESULTS.includes(result);
+  if ((isVisitAppt || result === "INTERESTED_SCHEDULED") && !nextDate) {
+    return NextResponse.json({ error: "حدّد تاريخ ووقت الموعد." }, { status: 400 });
+  }
   // نتائج «بلا تغيير مرحلة» (لم يستجب/حسبة البنك/في الانتظار): المرحلة تثبت على الخادم مهما أُرسل —
   // فلا تُحرَّك المرحلة ولا يدخل العميل نظام «لم يتم الرد» (نتيجتها ليست NOT_ANSWERED_*).
   // غير ذلك: المرحلة المرسلة صراحةً تُقدَّم؛ وإلا تُشتق من النتيجة.
@@ -233,7 +247,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         firstContactDate: lead.firstContactDate ?? new Date(),
         // المرحلة الأولى تُحدَّد مرة واحدة من قسم أول متابعة.
         ...(firstStage ? { firstContactStage: firstStage } : {}),
-        ...(nextDate ? { nextFollowup: nextDate } : {}),
+        // موعد الزيارة له visitAt ومنظومة تذكيره الخاصة — لا يلمس nextFollowup (دورة الاتصالات).
+        ...(nextDate && !isVisitAppt ? { nextFollowup: nextDate } : {}),
+        ...(isVisitAppt ? { visitAt: nextDate } : {}),
+        // «ما حضر — إعادة جدولة»: العدّاد يزيد (يظهر للمالك في ملف العميل).
+        ...(result === "VISIT_NO_SHOW_RESCHEDULED" ? { visitRescheduleCount: { increment: 1 } } : {}),
+        // الخروج من «موعد زيارة مؤكّد» لأي مرحلة أخرى يمسح موعد الزيارة المعلّق.
+        ...(!isVisitAppt && lead.stage === LeadStage.VISIT_SCHEDULED && newStage !== LeadStage.VISIT_SCHEDULED ? { visitAt: null } : {}),
         ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
       },
     });

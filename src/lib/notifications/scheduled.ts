@@ -3,6 +3,7 @@ import "server-only";
 import { FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { emitNotification } from "@/lib/notifications/emit";
+import { VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
 
 const CLOSED = ["CLOSED_WON", "CLOSED_LOST"] as const;
 const HOUR_MS = 3_600_000;
@@ -133,7 +134,9 @@ export async function runLateFollowupReminder(now: Date = new Date()): Promise<n
 export async function runVisitReminderCheck(now: Date = new Date()): Promise<number> {
   const fus = await prisma.followUp.findMany({
     where: {
-      type: { in: VISIT_TYPES },
+      // متابعة نوع زيارة (النمط القديم) أو نتيجة «موعد زيارة» (محرّك الزيارات:
+      // INTERESTED_VISIT_SCHEDULED / VISIT_NO_SHOW_RESCHEDULED — nextDate = موعد الزيارة).
+      OR: [{ type: { in: VISIT_TYPES } }, { result: { in: VISIT_APPOINTMENT_RESULTS } }],
       nextDate: { gt: now, lte: new Date(now.getTime() + 24 * HOUR_MS) },
       lead: { isArchived: false, stage: { notIn: [...CLOSED] }, assignedToId: { not: null } },
     },

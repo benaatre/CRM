@@ -294,6 +294,12 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
  */
 export const KEEP_STAGE_RESULTS: FollowUpResult[] = ["NO_ANSWER_INTERESTED", "BANK_CHECK", "ON_HOLD"];
 
+/**
+ * نتائج «موعد زيارة» (جديد أو مُعاد جدولته): nextDate = موعد الزيارة —
+ * تضبط Lead.visitAt (لا nextFollowup) وتدخل تذكيرات الزيارة (قبل يوم + صباحها).
+ */
+export const VISIT_APPOINTMENT_RESULTS: FollowUpResult[] = ["INTERESTED_VISIT_SCHEDULED", "VISIT_NO_SHOW_RESCHEDULED"];
+
 /// تعيين نتيجة المتابعة → مرحلة العميل (تُحدَّث تلقائيًا).
 export const resultToStage: Record<FollowUpResult, LeadStage> = {
   INTERESTED_SCHEDULED: "INTERESTED",
