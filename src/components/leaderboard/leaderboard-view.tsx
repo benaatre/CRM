@@ -1,9 +1,9 @@
 "use client";
 
-// لوحة الأسبوع — منصة تتويج ثلاثية + بطاقات صفوف بشريط كفاءة متدرّج + عدادات متحركة
-// + تلميح يفصّل مكوّنات «الكفاءة» الأربعة (الشفافية تمنع الإحساس بالظلم).
+// لوحة الأسبوع — الاجتهاد الفعلي يحكم: الدرجة = الإنجاز المطلق × معامل الجودة (٠٫٨–١٫٢).
+// منصة تتويج ثلاثية + بطاقات صفوف بعدادات الاجتهاد الظاهرة + عدادات متحركة + تلميح
+// يفصّل (إنجاز × جودة = درجة) ومكوّنات الجودة الأربعة — الشفافية تمنع الإحساس بالظلم.
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { toArabicDigits } from "@/lib/format";
 import type { Leaderboard, LeaderboardRow } from "@/lib/data/leaderboard";
 
@@ -30,12 +30,16 @@ function CountUp({ value, suffix = "" }: { value: number; suffix?: string }) {
   return <>{toArabicDigits(n)}{suffix}</>;
 }
 
-/** تلميح مكوّنات الكفاءة الأربعة — يظهر عند الوقوف على الرقم. */
-function EfficiencyTip({ r }: { r: LeaderboardRow }) {
+/** تلميح التفصيل: إنجاز × معامل الجودة = الدرجة + مكوّنات الجودة الأربعة. */
+function ScoreTip({ r }: { r: LeaderboardRow }) {
   const p = r.parts;
   return (
-    <div className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-64 rounded-xl border border-gold/30 bg-card p-3 text-right text-[11px] leading-6 shadow-2xl group-hover:block">
-      <div className="mb-1 font-bold text-gold">مكوّنات الكفاءة</div>
+    <div className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-72 rounded-xl border border-gold/30 bg-card p-3 text-right text-[11px] leading-6 shadow-2xl group-hover:block">
+      <div className="mb-1 flex justify-between font-bold">
+        <span className="text-gold">الدرجة</span>
+        <span className="text-foreground">إنجاز {toArabicDigits(r.achievement)} × جودة ×{r.qualityFactor.toFixed(2).replace(".", "٫")} = {toArabicDigits(r.score)}</span>
+      </div>
+      <div className="mb-1 border-t border-border pt-1 text-muted-foreground">مكوّنات الجودة ({toArabicDigits(r.qualityPct)}٪ → المعامل):</div>
       <div className="flex justify-between"><span className="text-muted-foreground">التغطية (تواصل مع عملائه)</span><span className="font-bold text-foreground">{toArabicDigits(p.coverage)}٪ <span className="font-normal text-muted-foreground">({toArabicDigits(p.covered)}/{toArabicDigits(p.assignedActive)})</span></span></div>
       <div className="flex justify-between"><span className="text-muted-foreground">الالتزام بالمواعيد</span><span className="font-bold text-foreground">{toArabicDigits(p.punctuality)}٪ <span className="font-normal text-muted-foreground">({toArabicDigits(p.fulfilled)}/{toArabicDigits(p.dueCount)})</span></span></div>
       <div className="flex justify-between"><span className="text-muted-foreground">سرعة الاستجابة للجديد</span><span className="font-bold text-foreground">{p.speedScore == null ? "—" : `${toArabicDigits(p.speedScore)}٪`}{p.avgFirstResponseH != null && <span className="font-normal text-muted-foreground"> (~{toArabicDigits(p.avgFirstResponseH)}س)</span>}</span></div>
@@ -44,34 +48,37 @@ function EfficiencyTip({ r }: { r: LeaderboardRow }) {
   );
 }
 
-/** شريط تقدم الكفاءة — تدرّج أحمر←ذهبي←أخضر يُكشف بمقدار النسبة. */
-function EfficiencyBar({ pct }: { pct: number }) {
-  const w = Math.max(2, Math.min(100, pct));
+/** صف عدادات الاجتهاد المطلقة — ظاهرة لا مخفية. */
+function Counters({ r, compact = false }: { r: LeaderboardRow; compact?: boolean }) {
+  const items = [
+    { icon: "📞", label: "تواصل", v: r.contacted },
+    { icon: "💚", label: "مهتمون", v: r.interested },
+    { icon: "🏠", label: "زيارات", v: r.visitsDone },
+    { icon: "📋", label: "حجوزات", v: r.bookings },
+    { icon: "💰", label: "مبيعات", v: r.wins },
+  ];
   return (
-    <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary">
-      <div
-        className="h-full rounded-full transition-all"
-        style={{
-          width: `${w}%`,
-          backgroundImage: "linear-gradient(to left, #22c55e, #CBA45E, #ef4444)",
-          backgroundSize: `${10000 / w}% 100%`,
-          backgroundPosition: "right",
-        }}
-      />
+    <div className={`flex flex-wrap items-center ${compact ? "justify-center gap-x-2.5 gap-y-1" : "gap-x-3 gap-y-1"} text-[11px] text-muted-foreground`}>
+      {items.map((it) => (
+        <span key={it.label} className="whitespace-nowrap">
+          {it.icon} {it.label} <span className={`font-bold ${it.v > 0 ? "text-foreground" : "text-muted-foreground/60"}`}>{toArabicDigits(it.v)}</span>
+        </span>
+      ))}
+      <Streak days={r.streakDays} />
     </div>
   );
 }
 
 function Streak({ days }: { days: number }) {
-  if (days <= 0) return <span className="text-xs text-muted-foreground" title="عنده عملاء متأخرون في «لم يتم الرد»">—</span>;
+  if (days <= 0) return <span className="text-[11px] text-muted-foreground/60" title="عنده عملاء متأخرون في «لم يتم الرد»">🔥 —</span>;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning" title="أيام متتالية بلا عميل متأخر في «لم يتم الرد»">
+    <span className="whitespace-nowrap text-[11px] font-bold text-warning" title="أيام متتالية بلا عميل متأخر في «لم يتم الرد»">
       🔥 {toArabicDigits(days)}
     </span>
   );
 }
 
-/** بطاقة منصة التتويج — الأول أعلى وأوسط بتوهج ذهبي. */
+/** بطاقة منصة التتويج — الأول أعلى وأوسط بتوهج ذهبي، والدرجة رقم كبير. */
 function PodiumCard({ r, place, improved }: { r: LeaderboardRow; place: number; improved: boolean }) {
   const first = place === 0;
   return (
@@ -85,13 +92,15 @@ function PodiumCard({ r, place, improved }: { r: LeaderboardRow; place: number; 
       {first && <div className="absolute -top-3 rounded-full bg-gold px-3 py-0.5 text-[11px] font-bold text-primary-foreground">نجمة الأسبوع ⭐</div>}
       <div className={first ? "text-4xl" : "text-3xl"}>{MEDALS[place]}</div>
       <div className={`mt-1 font-bold text-foreground ${first ? "text-lg" : "text-sm"}`}>{r.name}{improved && <span title="الأكثر تحسنًا عن الأسبوع الماضي"> 📈</span>}</div>
-      <div className={`mt-2 font-bold text-gold ${first ? "text-4xl" : "text-2xl"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
-        <CountUp value={r.efficiency} suffix="٪" />
+      <div className="group relative cursor-help">
+        <div className={`mt-2 font-bold text-gold ${first ? "text-5xl" : "text-3xl"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
+          <CountUp value={r.score} />
+        </div>
+        <ScoreTip r={r} />
       </div>
-      <div className="text-[11px] text-muted-foreground">كفاءة</div>
-      <div className="mt-2 flex items-center gap-2 text-xs">
-        <span className="rounded-full bg-secondary px-2 py-0.5 text-foreground"><CountUp value={r.points} /> نقطة</span>
-        <Streak days={r.streakDays} />
+      <div className="text-[11px] text-muted-foreground">درجة</div>
+      <div className="mt-2.5">
+        <Counters r={r} compact />
       </div>
     </div>
   );
@@ -115,7 +124,7 @@ export function LeaderboardView({ board }: { board: Leaderboard }) {
         </div>
       )}
 
-      {/* بقية المرتَّبين — بطاقات صفوف بشريط الكفاءة */}
+      {/* بقية المرتَّبين — بطاقات صفوف بعدادات الاجتهاد الظاهرة */}
       {rest.length > 0 && (
         <div className="space-y-2">
           {rest.map((r) => (
@@ -125,31 +134,15 @@ export function LeaderboardView({ board }: { board: Leaderboard }) {
                 <div className="mb-1 flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-foreground">{r.name}</span>
                   {board.mostImprovedId === r.id && <span className="rounded-full bg-info/10 px-1.5 py-0.5 text-[10px] font-bold text-info" title="الأكثر تحسنًا عن الأسبوع الماضي">📈 الأكثر تحسنًا</span>}
-                  <Streak days={r.streakDays} />
                 </div>
-                <EfficiencyBar pct={r.efficiency} />
+                <Counters r={r} />
               </div>
               <div className="group relative shrink-0 cursor-help text-left">
-                <div className="text-lg font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}><CountUp value={r.efficiency} suffix="٪" /></div>
-                <EfficiencyTip r={r} />
-              </div>
-              <div className="w-16 shrink-0 text-left">
-                <div className="text-sm font-bold text-foreground" style={{ fontVariantNumeric: "tabular-nums" }}><CountUp value={r.points} /></div>
-                <div className="text-[10px] text-muted-foreground">نقطة</div>
+                <div className="text-2xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}><CountUp value={r.score} /></div>
+                <div className="text-[10px] text-muted-foreground">درجة</div>
+                <ScoreTip r={r} />
               </div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* التلميح للثلاثة الأوائل أيضًا — صف مصغر تحت المنصة */}
-      {top3.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-4 text-[11px] text-muted-foreground">
-          {top3.map((r) => (
-            <span key={r.id} className="group relative cursor-help underline decoration-dotted">
-              تفاصيل كفاءة {r.name.split(" ")[0]}
-              <EfficiencyTip r={r} />
-            </span>
           ))}
         </div>
       )}

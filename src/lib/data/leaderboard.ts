@@ -11,8 +11,21 @@ import { FollowUpResult } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPendingPullByEmployee } from "@/lib/data/no-response";
 
-export const POINTS = { visitAppt: 5, visitDone: 10, booking: 50, followup: 1 } as const;
-/** سقف متابعات تُحتسب نقاطًا في اليوم الواحد — يمنع اكتساح الكم الخام. */
+/**
+ * أوزان «الإنجاز» — أرقام مطلقة من شغله الفعلي (الاجتهاد يحكم، والنسب مكمّل فقط):
+ * درجة الموظف = الإنجاز × معامل الجودة (٠٫٨ – ١٫٢). صفر إنجاز = صفر درجة نهائيًا —
+ * من لم يعمل لا يسبق من عمل مهما كانت نسبه.
+ */
+export const WEIGHTS = {
+  contacted: 2,   // عميل تواصل معه (متابعة/اتصال مسجّل — بالعميل الفريد)
+  followup: 1,    // متابعة مسجّلة (بسقف يومي)
+  interested: 5,  // عميل نقله لمهتم
+  visitAppt: 5,   // موعد زيارة أكّده
+  visitDone: 10,  // زيارة تمّت
+  booking: 50,    // حجز
+  win: 80,        // بيع (CLOSED_WON)
+} as const;
+/** سقف متابعات تُحتسب في اليوم الواحد — يمنع اكتساح الكم الخام. */
 export const DAILY_FOLLOWUP_CAP = 15;
 
 const KSA_OFFSET_MS = 3 * 3_600_000;
@@ -48,16 +61,21 @@ export type LeaderboardRow = {
   name: string;
   rank: number;          // 0 = خارج الترتيب (بلا عملاء مسندين)
   ranked: boolean;
-  efficiency: number;    // المؤشر المركّب — الترتيب الأساسي
+  /** الدرجة النهائية = الإنجاز × معامل الجودة — الترتيب بها. صفر إنجاز = صفر نهائيًا. */
+  score: number;
+  achievement: number;   // الإنجاز المطلق (الحاكم)
+  qualityPct: number;    // الجودة المركّبة ٠–١٠٠ (المكمّل)
+  qualityFactor: number; // معامل الضرب ٠٫٨–١٫٢
   parts: EfficiencyParts;
-  points: number;        // الحجم المطلق (بأوزان معدلة وسقف يومي)
+  contacted: number;     // 📞 عملاء تواصل معهم
+  interested: number;    // 💚 نقلهم لمهتم
   visitAppts: number;
-  visitsDone: number;
-  bookings: number;
-  followups: number;     // الخام (للعرض) — النقاط تحتسب المسقوف
+  visitsDone: number;    // 🏠 زيارات تمّت
+  bookings: number;      // 📋 حجوزات
+  wins: number;          // 💰 مبيعات
+  followups: number;     // الخام (للعرض)
   cappedFollowups: number;
-  prevPoints: number;    // الأسبوع السابق — لوسام «الأكثر تحسنًا»
-  delta: number;
+  delta: number;         // فرق الإنجاز عن الأسبوع السابق — لوسام «الأكثر تحسنًا»
   streakDays: number;    // سلسلة الانضباط 🔥
 };
 
@@ -72,21 +90,56 @@ export type Leaderboard = {
 
 const VISIT_DONE_RESULTS: FollowUpResult[] = [FollowUpResult.INTERESTED_VISITED, FollowUpResult.NOT_INTERESTED_VISITED];
 
-type FuRow = { createdBy: string; createdAt: Date; result: FollowUpResult; leadId: string; nextDate: Date | null };
+export type FuRow = {
+  createdBy: string;
+  createdAt: Date;
+  result: FollowUpResult;
+  leadId: string;
+  nextDate: Date | null;
+  stageAfter: string | null; // التحوّلات (مهتم/بيع) — من عمود stageAfter القائم
+};
 
-/** نقاط أسبوع من صفوف متابعاته + حجوزاته — المتابعات بسقف يومي (توقيت الرياض). */
-function computePoints(fus: FuRow[], bookings: number) {
+export type Achievement = {
+  achievement: number;     // مجموع الإنجاز المطلق
+  contacted: number;       // عملاء تواصل معهم (فريدون)
+  cappedFollowups: number; // متابعات بعد السقف اليومي
+  interested: number;      // عملاء نقلهم لمهتم (فريدون)
+  visitAppts: number;      // مواعيد زيارة أكّدها
+  visitsDone: number;      // زيارات تمّت
+  bookings: number;
+  wins: number;            // مبيعات CLOSED_WON (فريدون)
+};
+
+/**
+ * «الإنجاز» — أرقام مطلقة من صفوف متابعاته + حجوزاته، المتابعات بسقف يومي (الرياض).
+ * الدالة الوحيدة المعتمدة (تستهلكها اللوحة وصفحة «سجلّي» — لا حساب موازٍ).
+ */
+export function computeAchievement(fus: FuRow[], bookings: number): Achievement {
   const byDay = new Map<string, number>();
+  const contactedSet = new Set<string>();
+  const interestedSet = new Set<string>();
+  const winsSet = new Set<string>();
   let visitAppts = 0, visitsDone = 0;
   for (const f of fus) {
     const dayKey = new Date(f.createdAt.getTime() + KSA_OFFSET_MS).toISOString().slice(0, 10);
     byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + 1);
+    contactedSet.add(f.leadId);
+    if (f.stageAfter === "INTERESTED") interestedSet.add(f.leadId);
+    if (f.stageAfter === "CLOSED_WON") winsSet.add(f.leadId);
     if (f.result === FollowUpResult.INTERESTED_VISIT_SCHEDULED) visitAppts++;
     if (VISIT_DONE_RESULTS.includes(f.result)) visitsDone++;
   }
   const cappedFollowups = [...byDay.values()].reduce((s, n) => s + Math.min(n, DAILY_FOLLOWUP_CAP), 0);
-  const points = cappedFollowups * POINTS.followup + visitAppts * POINTS.visitAppt + visitsDone * POINTS.visitDone + bookings * POINTS.booking;
-  return { points, cappedFollowups, visitAppts, visitsDone };
+  const contacted = contactedSet.size, interested = interestedSet.size, wins = winsSet.size;
+  const achievement =
+    contacted * WEIGHTS.contacted +
+    cappedFollowups * WEIGHTS.followup +
+    interested * WEIGHTS.interested +
+    visitAppts * WEIGHTS.visitAppt +
+    visitsDone * WEIGHTS.visitDone +
+    bookings * WEIGHTS.booking +
+    wins * WEIGHTS.win;
+  return { achievement, contacted, cappedFollowups, interested, visitAppts, visitsDone, bookings, wins };
 }
 
 export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboard> {
@@ -102,8 +155,8 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
       select: { id: true, name: true, createdAt: true },
       orderBy: { name: "asc" },
     }),
-    prisma.followUp.findMany({ where: { createdAt: inWeek }, select: { createdBy: true, createdAt: true, result: true, leadId: true, nextDate: true } }),
-    prisma.followUp.findMany({ where: { createdAt: { gte: prevStart, lt: weekStart } }, select: { createdBy: true, createdAt: true, result: true, leadId: true, nextDate: true } }),
+    prisma.followUp.findMany({ where: { createdAt: inWeek }, select: { createdBy: true, createdAt: true, result: true, leadId: true, nextDate: true, stageAfter: true } }),
+    prisma.followUp.findMany({ where: { createdAt: { gte: prevStart, lt: weekStart } }, select: { createdBy: true, createdAt: true, result: true, leadId: true, nextDate: true, stageAfter: true } }),
     prisma.booking.groupBy({ by: ["sellerId"], where: { createdAt: inWeek }, _count: { _all: true } }),
     prisma.booking.groupBy({ by: ["sellerId"], where: { createdAt: { gte: prevStart, lt: weekStart } }, _count: { _all: true } }),
     // العملاء المسندون النشطون (مقام التغطية) — غير مؤرشفين وغير مقفولين.
@@ -163,8 +216,8 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
   const rows: LeaderboardRow[] = emps.map((e) => {
     const fus = fusByEmp.get(e.id) ?? [];
     const bookings = bookMap.get(e.id) ?? 0;
-    const { points, cappedFollowups, visitAppts, visitsDone } = computePoints(fus, bookings);
-    const prev = computePoints(prevByEmp.get(e.id) ?? [], prevBookMap.get(e.id) ?? 0);
+    const ach = computeAchievement(fus, bookings);
+    const prev = computeAchievement(prevByEmp.get(e.id) ?? [], prevBookMap.get(e.id) ?? 0);
 
     // ١) التغطية: عملاء (مسندون له) تواصل معهم هذا الأسبوع ÷ عملاؤه النشطون.
     const assignedActive = assignedActiveMap.get(e.id) ?? 0;
@@ -205,12 +258,16 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
     const overdueCount = overdueByEmp.get(e.id) ?? 0;
     const overdueBonus = clamp(100 - overdueCount * 25);
 
-    // المؤشر المركّب — أوزان: التغطية ٠٫٣٥ · الالتزام ٠٫٢٥ · السرعة ٠٫٢٥ · النظافة ٠٫١٥.
-    // سرعة غير متاحة (ما استلم جددًا) → توزَّع أوزانها على البقية.
+    // «الجودة» المركّبة (المكمّل لا الحاكم) — أوزان: التغطية ٠٫٣٥ · الالتزام ٠٫٢٥ ·
+    // السرعة ٠٫٢٥ · النظافة ٠٫١٥. سرعة غير متاحة (ما استلم جددًا) → توزَّع على البقية.
     const comps: [number, number][] = speedScore == null
       ? [[coverage, 0.47], [punctuality, 0.33], [overdueBonus, 0.2]]
       : [[coverage, 0.35], [punctuality, 0.25], [speedScore, 0.25], [overdueBonus, 0.15]];
-    const efficiency = Math.round(comps.reduce((s, [v, w]) => s + v * w, 0));
+    const qualityPct = Math.round(comps.reduce((s, [v, w]) => s + v * w, 0));
+    // معامل الجودة ٠٫٨–١٫٢: ممتازة ترفع حتى +٢٠٪ ورديئة تخصم حتى −٢٠٪ — لا تقلب
+    // الترتيب لصالح من لم يعمل: صفر إنجاز = صفر درجة نهائيًا مهما كانت النسب.
+    const qualityFactor = Math.round((0.8 + (qualityPct / 100) * 0.4) * 100) / 100;
+    const score = ach.achievement === 0 ? 0 : Math.round(ach.achievement * qualityFactor);
 
     // سلسلة الانضباط 🔥: متأخر الآن → صفر؛ وإلا أيام منذ آخر سحب منه (أو منذ انضمامه).
     const streakBase = overdueCount > 0 ? null : (lastPullByEmp.get(e.id) ?? e.createdAt);
@@ -219,16 +276,19 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
     const ranked = assignedActive > 0 || newLeads.length > 0;
     return {
       id: e.id, name: e.name, rank: 0, ranked,
-      efficiency,
+      score, achievement: ach.achievement, qualityPct, qualityFactor,
       parts: { coverage: Math.round(coverage), covered, assignedActive, punctuality: Math.round(punctuality), dueCount, fulfilled, speedScore: speedScore == null ? null : Math.round(speedScore), avgFirstResponseH, overdueBonus: Math.round(overdueBonus), overdueCount },
-      points, cappedFollowups, visitAppts, visitsDone, bookings,
+      contacted: ach.contacted, interested: ach.interested,
+      visitAppts: ach.visitAppts, visitsDone: ach.visitsDone, bookings, wins: ach.wins,
+      cappedFollowups: ach.cappedFollowups,
       followups: fus.length,
-      prevPoints: prev.points, delta: points - prev.points,
+      delta: ach.achievement - prev.achievement,
       streakDays,
     };
   });
 
-  const ranked = rows.filter((r) => r.ranked).sort((a, b) => b.efficiency - a.efficiency || b.points - a.points || a.name.localeCompare(b.name, "ar"));
+  // الترتيب بالدرجة (الاجتهاد الفعلي يحكم) — التعادل بالإنجاز الخام ثم الاسم.
+  const ranked = rows.filter((r) => r.ranked).sort((a, b) => b.score - a.score || b.achievement - a.achievement || a.name.localeCompare(b.name, "ar"));
   ranked.forEach((r, i) => { r.rank = i + 1; });
   const unranked = rows.filter((r) => !r.ranked);
   const best = ranked.filter((r) => r.delta > 0).sort((a, b) => b.delta - a.delta)[0] ?? null;
@@ -241,14 +301,14 @@ function HOUR(n: number): number { return n * 3_600_000; }
 export type MyRank = {
   rank: number;
   total: number;
-  points: number;
-  efficiency: number;
-  /** الفارق عن اللي قدامه بالكفاءة («ترفع كفاءتك N٪ تعدّي فلان») — null = الأول أو خارج الترتيب. */
-  gapToNext: { pct: number; name: string } | null;
+  score: number;
+  achievement: number;
+  /** الفارق عن اللي قدامه بالدرجة («تحتاج N درجة تعدّي فلان») — null = الأول أو خارج الترتيب. */
+  gapToNext: { pts: number; name: string } | null;
   ranked: boolean;
 };
 
-/** بطاقة الموظف المصغّرة: ترتيبه بالكفاءة + نقاطه + الفارق عن اللي قدامه. */
+/** بطاقة الموظف المصغّرة: ترتيبه بالدرجة + الفارق عن اللي قدامه. */
 export async function getMyRank(userId: string): Promise<MyRank | null> {
   const board = await getLeaderboard();
   const me = board.rows.find((r) => r.id === userId) ?? board.unranked.find((r) => r.id === userId);
@@ -257,9 +317,9 @@ export async function getMyRank(userId: string): Promise<MyRank | null> {
   return {
     rank: me.rank,
     total: board.rows.length,
-    points: me.points,
-    efficiency: me.efficiency,
-    gapToNext: ahead ? { pct: Math.max(1, ahead.efficiency - me.efficiency + 1), name: ahead.name } : null,
+    score: me.score,
+    achievement: me.achievement,
+    gapToNext: ahead ? { pts: Math.max(1, ahead.score - me.score + 1), name: ahead.name } : null,
     ranked: me.ranked,
   };
 }

@@ -47,20 +47,14 @@ export default async function DashboardPage({
               <div className="text-sm font-bold text-foreground">ترتيبك هالأسبوع: {toArabicDigits(myRank.rank)} من {toArabicDigits(myRank.total)}</div>
               <div className="text-xs text-muted-foreground">
                 {myRank.gapToNext
-                  ? `ترفع كفاءتك ${toArabicDigits(myRank.gapToNext.pct)}٪ تعدّي ${myRank.gapToNext.name}`
+                  ? `تحتاج ${toArabicDigits(myRank.gapToNext.pts)} درجة تعدّي ${myRank.gapToNext.name}`
                   : "أنت الأول — حافظ على الصدارة 🔥"}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-left">
-            <div>
-              <div className="text-xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.efficiency)}٪</div>
-              <div className="text-[11px] text-muted-foreground">كفاءة</div>
-            </div>
-            <div>
-              <div className="text-sm font-bold text-foreground" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.points)}</div>
-              <div className="text-[11px] text-muted-foreground">نقطة</div>
-            </div>
+          <div className="text-left">
+            <div className="text-xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.score)}</div>
+            <div className="text-[11px] text-muted-foreground">درجة</div>
           </div>
         </Link>
       )}

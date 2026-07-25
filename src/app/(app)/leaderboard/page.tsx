@@ -2,7 +2,7 @@ import { Role } from "@prisma/client";
 import { Trophy } from "lucide-react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth-guards";
-import { getLeaderboard, weekStartKSA, POINTS, DAILY_FOLLOWUP_CAP } from "@/lib/data/leaderboard";
+import { getLeaderboard, weekStartKSA, WEIGHTS, DAILY_FOLLOWUP_CAP } from "@/lib/data/leaderboard";
 import { toArabicDigits } from "@/lib/format";
 import { LeaderboardView } from "@/components/leaderboard/leaderboard-view";
 
@@ -46,7 +46,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
           <div>
             <h1 className="text-2xl font-bold text-foreground">لوحة الأسبوع</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {fmtDay(board.weekStart)} — {fmtDay(weekEndShown)} · الترتيب بالكفاءة (جودة الشغل لا كمّه)
+              {fmtDay(board.weekStart)} — {fmtDay(weekEndShown)} · الاجتهاد الفعلي يحكم — والجودة تكمّل
             </p>
           </div>
         </div>
@@ -71,13 +71,13 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
 
       <LeaderboardView board={board} />
 
-      {/* المعادلتان — شفافية كاملة */}
+      {/* المعادلة — شفافية كاملة */}
       <div className="space-y-1 text-[11px] leading-5 text-muted-foreground">
         <p>
-          <span className="font-medium text-foreground">الكفاءة ٪</span> = التغطية (تواصل مع عملائه المسندين) + الالتزام بالمواعيد + سرعة الاستجابة للجديد + نظافة «لم يتم الرد» — قف على أي نسبة تشوف تفاصيلها.
+          <span className="font-medium text-foreground">الدرجة</span> = الإنجاز × معامل الجودة (٠٫٨–١٫٢). <span className="font-medium text-foreground">الإنجاز</span>: عميل تواصلت معه ×{toArabicDigits(WEIGHTS.contacted)} · متابعة ×{toArabicDigits(WEIGHTS.followup)} <span className="text-warning">(بسقف {toArabicDigits(DAILY_FOLLOWUP_CAP)}/يوم)</span> · نقل لمهتم ×{toArabicDigits(WEIGHTS.interested)} · موعد زيارة ×{toArabicDigits(WEIGHTS.visitAppt)} · زيارة تمّت ×{toArabicDigits(WEIGHTS.visitDone)} · حجز ×{toArabicDigits(WEIGHTS.booking)} · بيع ×{toArabicDigits(WEIGHTS.win)}.
         </p>
         <p>
-          <span className="font-medium text-foreground">النقاط</span> = موعد زيارة مؤكّد ×{toArabicDigits(POINTS.visitAppt)} · زيارة تمّت ×{toArabicDigits(POINTS.visitDone)} · حجز ×{toArabicDigits(POINTS.booking)} · متابعة ×{toArabicDigits(POINTS.followup)} <span className="text-warning">(بسقف {toArabicDigits(DAILY_FOLLOWUP_CAP)} متابعة/يوم — الجودة قبل الكم)</span>.
+          <span className="font-medium text-foreground">الجودة</span> (التغطية + الالتزام + السرعة + نظافة «لم يتم الرد») ترفع درجتك حتى +٢٠٪ أو تخصم حتى −٢٠٪ — ومن لم يعمل لا يسبق من عمل: صفر إنجاز = صفر درجة. قف على أي درجة تشوف تفاصيلها.
         </p>
         <p>عرض وترتيب فقط — بلا مكافآت مالية. · رخصة فال {toArabicDigits(1200021029)}</p>
       </div>
