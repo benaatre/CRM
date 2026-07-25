@@ -1,8 +1,10 @@
 import { requireManager } from "@/lib/auth-guards";
 import { getSettings } from "@/lib/data/settings";
+import { getSheetSourcesPanel } from "@/lib/data/sources";
 import { getActiveSessions } from "@/lib/session-devices";
 import { SettingsForm } from "@/components/settings/settings-form";
 import { SessionsPanel } from "@/components/settings/sessions-panel";
+import { SheetSourcesPanel } from "@/components/settings/sheet-sources-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +12,9 @@ export default async function SettingsPage() {
   const user = await requireManager();
   const settings = await getSettings();
   const isOwner = user.role === "OWNER";
-  // قسم «الجلسات» للمالك فقط — البيانات لا تُجلب أصلًا لغيره (فرض على الخادم).
+  // قسما «الجلسات» و«مصادر العملاء» للمالك فقط — البيانات لا تُجلب أصلًا لغيره (فرض على الخادم).
   const sessions = isOwner ? await getActiveSessions() : null;
+  const sheetSources = isOwner ? await getSheetSourcesPanel() : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -20,6 +23,7 @@ export default async function SettingsPage() {
         <p className="mt-1 text-sm text-muted-foreground">بيانات الشركة وترخيص فال — تظهر في الواجهة والإعلانات</p>
       </header>
       <SettingsForm settings={settings} isOwner={isOwner} />
+      {sheetSources && <SheetSourcesPanel rows={sheetSources} />}
       {sessions && <SessionsPanel sessions={sessions} />}
     </div>
   );

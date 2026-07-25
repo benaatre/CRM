@@ -4,7 +4,24 @@ import { prisma } from "@/lib/prisma";
 import { readSheetValues, listSheetTabs } from "@/lib/google-sheets";
 import { parseRowsByContent } from "@/lib/utils/sheet-parse";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
+import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
 import type { Channel } from "@prisma/client";
+
+/**
+ * قناة العميل من اسم المصدر (بلا عمود جديد على LeadSource — مطابقة بالكلمات):
+ * «سناب شات» → SNAPCHAT، «تيك توك» → TIKTOK … من لا يُطابق شيئًا → OTHER.
+ */
+export function channelForSourceName(name: string | null | undefined): Channel {
+  const n = (name ?? "").toLowerCase();
+  if (/سناب|snap/.test(n)) return "SNAPCHAT";
+  if (/تيك|tik/.test(n)) return "TIKTOK";
+  if (/ميتا|فيس|انستق|إنستق|meta|insta|face/.test(n)) return "META";
+  if (/جوجل|قوقل|يوتيوب|google|youtube/.test(n)) return "GOOGLE";
+  if (/عقار|aqar/.test(n)) return "AQAR";
+  if (/واتساب|whats/.test(n)) return "WHATSAPP";
+  if (/إحالة|احالة|referr/.test(n)) return "REFERRAL";
+  return "OTHER";
+}
 
 export type SheetSyncResult = {
   linkId: string;
@@ -62,31 +79,58 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
     // آمن هنا: المزامنة تقرأ الصفوف الجديدة فقط (lastRowSynced)، فلا تُعاد قراءة القديمة ولا تُضاف من جديد.
     const now = new Date();
     const recentSet = await recentSameAdKeys(now);
-    const ad = { sourceId: link.sourceId, channel: "OTHER" as Channel };
-    const seen = new Set<string>(); // منع تكرار نفس الرقم داخل نفس الدفعة
     const sourceName = link.source?.name ?? null;
+    // قناة المصدر (سناب/تيك توك/ميتا/جوجل…) تُكتب على كل عملائه — sourceId + channel معًا.
+    const channel = channelForSourceName(sourceName);
+    const ad = { sourceId: link.sourceId, channel };
+    const seen = new Set<string>(); // منع تكرار نفس الرقم داخل نفس الدفعة
 
     let created = 0, duplicates = 0, skipped = 0;
+    const createdLeads: { id: string; name: string }[] = [];
     for (const l of leads) {
       if (!l.valid) { skipped++; continue; }
       const ck = dupeCheckKey(l.phone, ad);
       if (ck && (recentSet.has(ck) || seen.has(ck))) { duplicates++; continue; }
       if (ck) { seen.add(ck); recentSet.add(ck); }
-      await prisma.lead.create({
+      const row = await prisma.lead.create({
         data: {
           name: l.name,
           phone: l.phone,
-          channel: "OTHER",
+          channel,
           stage: "NEW",
-          assignedToId: null,               // غير موزّع — يدخل دورة التوزيع لاحقًا
+          assignedToId: null,               // غير موزّع — التوزيع التلقائي القائم يلتقطه طبيعيًا
           sourceId: link.sourceId,
           source: sourceName,               // نص المصدر (للعرض)
           purchaseMethod: l.purchaseMethod ?? undefined,
           purchaseGoal: l.purchaseGoal ?? undefined,
           preferredDistrict: l.district,
         },
+        select: { id: true, name: true },
       });
+      createdLeads.push(row);
       created++;
+    }
+
+    // سجل تدقيق لكل وصول (دفعة واحدة) + إشعار مجمّع للحدث القائم new_lead_from_sheet.
+    if (createdLeads.length > 0) {
+      await prisma.auditLog.createMany({
+        data: createdLeads.map((c) => ({
+          action: "lead.arrivedFromSheet",
+          entity: "lead",
+          entityId: c.id,
+          summary: `وصل عميل جديد من «${sourceName ?? "شيت"}» · العميل=${c.id}`,
+        })),
+      });
+      await notifyBestEffort("sheet-sync notify", () =>
+        emitNotification({
+          eventKey: "new_lead_from_sheet",
+          title: createdLeads.length === 1 ? "عميل جديد من الشيت" : "عملاء جدد من الشيت",
+          body: createdLeads.length === 1
+            ? `${createdLeads[0].name} — من «${sourceName ?? "شيت"}»`
+            : `وصل ${createdLeads.length} عملاء من «${sourceName ?? "شيت"}»`,
+          link: "/leads?tab=unassigned",
+        }),
+      );
     }
 
     // حدّث المؤشّر بعدد ما عولج (صالح أو لا — ما نعيد قراءته).

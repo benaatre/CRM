@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
 import { requireManagerAction, requireUser } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { getSourcesList, type SourceListItem } from "@/lib/data/sources";
+import { readSheetValues } from "@/lib/google-sheets";
 import { extractSheetId } from "@/lib/utils/sheet";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
@@ -18,6 +20,7 @@ export async function fetchSources(): Promise<SourceListItem[]> {
 
 function revalidateSources() {
   revalidatePath("/distribution");
+  revalidatePath("/settings");
 }
 
 /** إضافة مصدر جديد — للمالك/المدير. */
@@ -89,6 +92,69 @@ export async function toggleSheetLink(id: string, isActive: boolean): Promise<Ac
     await prisma.sheetLink.update({ where: { id }, data: { isActive } });
     revalidateSources();
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+// ===================== شاشة «مصادر العملاء» (الإعدادات — مالك فقط) =====================
+
+/** حارس المالك للأكشنات — يرمي خطأً عربيًا (لا redirect) ليصل toUserError للواجهة. */
+async function requireOwnerAction() {
+  const user = await requireUser();
+  if (user.role !== Role.OWNER) throw new Error("شاشة «مصادر العملاء» للمالك فقط");
+  return user;
+}
+
+/**
+ * إضافة مصدر بشيته دفعة واحدة (المالك فقط): اسم المصدر (سناب/تيك توك/ميتا/جوجل…)
+ * + رابط الشيت — يجد المصدر أو ينشئه ثم يربط الشيت به بمؤشر يبدأ من الصفر.
+ */
+export async function addSheetSource(name: string, sheetUrl: string): Promise<ActionResult> {
+  try {
+    const user = await requireOwnerAction();
+    const clean = name.trim();
+    const url = sheetUrl.trim();
+    if (!clean) return { ok: false, error: "اكتب اسم المصدر" };
+    if (!url) return { ok: false, error: "الصق رابط جوجل شيت" };
+    const sheetId = extractSheetId(url);
+    if (!sheetId) return { ok: false, error: "رابط جوجل شيت غير صالح" };
+
+    const source = await prisma.leadSource.upsert({
+      where: { name: clean },
+      update: {},
+      create: { name: clean },
+    });
+    const dup = await prisma.sheetLink.findFirst({ where: { sheetId, sourceId: source.id }, select: { id: true } });
+    if (dup) return { ok: false, error: "هذا الشيت مضاف مسبقًا لنفس المصدر" };
+
+    await prisma.sheetLink.create({ data: { sheetUrl: url, sheetId, sourceId: source.id } });
+    await logAudit(prisma, { userId: user.id, action: "sheetlink.created", entity: "sheetlink", summary: `أضاف مصدر عملاء «${clean}» بشيت مزامنة` });
+    revalidateSources();
+    return { ok: true, message: `أُضيف مصدر «${clean}» — المزامنة بتلقطه بالدورة الجاية` };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+export type SheetTestResult = { ok: boolean; error?: string; rows?: string[][] };
+
+/**
+ * «جرّب الاتصال» (المالك فقط): يقرأ أول صفّين من الشيت ويعرضهما — يتحقق من
+ * مشاركة الشيت مع حساب الخدمة وصحة الرابط قبل تفعيل المزامنة.
+ */
+export async function testSheetConnection(sheetUrl: string): Promise<SheetTestResult> {
+  try {
+    await requireOwnerAction();
+    const url = sheetUrl.trim();
+    const sheetId = extractSheetId(url);
+    if (!sheetId) return { ok: false, error: "رابط جوجل شيت غير صالح" };
+    const gidMatch = url.match(/[#&]gid=(\d+)/);
+    const gid = gidMatch ? Number(gidMatch[1]) : undefined;
+    const values = await readSheetValues(sheetId, { gid, endRow: 2 });
+    if (values.length === 0) return { ok: false, error: "الشيت فاضي أو التبويب ما فيه بيانات" };
+    // أول صفّين، وبحد ٨ أعمدة للعرض.
+    return { ok: true, rows: values.slice(0, 2).map((r) => r.slice(0, 8)) };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
