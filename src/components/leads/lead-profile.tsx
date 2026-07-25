@@ -3,13 +3,13 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { PurchaseGoal, PurchaseMethod, Channel } from "@prisma/client";
+import type { PurchaseGoal, PurchaseMethod } from "@prisma/client";
 import {
   purchaseGoalLabels, purchaseMethodLabels, purchaseMethodOptions, stageLabels, stageColor,
-  paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels, channelLabels,
+  paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels,
   followUpResultLabels, followUpTypeLabels,
 } from "@/lib/labels";
-import { updateLeadIntake, updateLeadChannel, toggleRevealHistory } from "@/lib/actions/leads";
+import { updateLeadIntake, toggleRevealHistory } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
 import { cancelBooking } from "@/lib/actions/bookings";
@@ -291,21 +291,7 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
         </Field>
         <Field label="السعر من"><input value={priceMin} onChange={(e) => setPriceMin(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
         <Field label="السعر إلى"><input value={priceMax} onChange={(e) => setPriceMax(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
-        <Field label="القناة">
-          {/* تعديل القناة للمالك/المدير فقط — الخادم يرفض الموظف برسالة واضحة. */}
-          <select
-            defaultValue={detail.channel}
-            disabled={pending}
-            onChange={(e) => startTransition(async () => {
-              const res = await updateLeadChannel(detail.id, e.target.value as Channel);
-              setMsg(res.ok ? "تم تغيير القناة" : res.error ?? "صار خطأ");
-              onSaved();
-            })}
-            className="select-base"
-          >
-            {(Object.keys(channelLabels) as Channel[]).map((c) => <option key={c} value={c}>{channelLabels[c]}</option>)}
-          </select>
-        </Field>
+        {/* «المصدر» الموحّد — الحقل الظاهر الوحيد (القناة تُشتق منه وتُكتب تلقائيًا للتوافق). */}
         <Field label="المصدر">
           <select value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} className="select-base">
             {/* fallback: عند غياب مصدر مهيكل، نعرض نص المصدر المخزّن (للمستوردين) بدل «—». */}

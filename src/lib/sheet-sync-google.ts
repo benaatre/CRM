@@ -5,23 +5,7 @@ import { readSheetValues, listSheetTabs } from "@/lib/google-sheets";
 import { parseRowsByContent } from "@/lib/utils/sheet-parse";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
 import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
-import type { Channel } from "@prisma/client";
-
-/**
- * قناة العميل من اسم المصدر (بلا عمود جديد على LeadSource — مطابقة بالكلمات):
- * «سناب شات» → SNAPCHAT، «تيك توك» → TIKTOK … من لا يُطابق شيئًا → OTHER.
- */
-export function channelForSourceName(name: string | null | undefined): Channel {
-  const n = (name ?? "").toLowerCase();
-  if (/سناب|snap/.test(n)) return "SNAPCHAT";
-  if (/تيك|tik/.test(n)) return "TIKTOK";
-  if (/ميتا|فيس|انستق|إنستق|meta|insta|face/.test(n)) return "META";
-  if (/جوجل|قوقل|يوتيوب|google|youtube/.test(n)) return "GOOGLE";
-  if (/عقار|aqar/.test(n)) return "AQAR";
-  if (/واتساب|whats/.test(n)) return "WHATSAPP";
-  if (/إحالة|احالة|referr/.test(n)) return "REFERRAL";
-  return "OTHER";
-}
+import { channelForSourceName } from "@/lib/source-channel";
 
 export type SheetSyncResult = {
   linkId: string;
@@ -104,6 +88,13 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
           purchaseMethod: l.purchaseMethod ?? undefined,
           purchaseGoal: l.purchaseGoal ?? undefined,
           preferredDistrict: l.district,
+          // الحي المطبّع (قاموس الأحياء الثلاثة) — نفس حقل «الأحياء المناسبة» اليدوي، والموظف يعدّله.
+          ...(l.areas.length ? { preferredAreas: l.areas } : {}),
+          // السعر من–إلى بالريال الكامل (من عمود الميزانية إن وُجد).
+          ...(l.priceMin != null ? { priceMin: l.priceMin } : {}),
+          ...(l.priceMax != null ? { priceMax: l.priceMax } : {}),
+          // نص خام غير مفهوم (حي/ميزانية) — يُحفظ ملاحظة بلا تخمين.
+          ...(l.extraNote ? { notes: l.extraNote } : {}),
         },
         select: { id: true, name: true },
       });

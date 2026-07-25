@@ -2,19 +2,19 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Channel, LeadStage, Priority, UnitType, PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/client";
+import type { LeadStage, Priority, UnitType, PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/client";
 import {
   X, Phone, MessageCircle, Loader2, Sparkles, Copy, Check,
 } from "lucide-react";
 import {
-  stageOrder, stageLabels, stageColor, channelLabels, priorityLabels,
+  stageOrder, stageLabels, stageColor, priorityLabels,
   unitTypeLabels, purchaseMethodLabels, purchaseMethodOptions, purchaseGoalLabels, districtOptions,
 } from "@/lib/labels";
 import { daysAgoLabel } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
 import {
   fetchLeadDetail, updateLeadStage, updateLeadFields,
-  reassignLead, updateLead, updateLeadChannel,
+  reassignLead, updateLead,
 } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
@@ -185,21 +185,7 @@ export function LeadDrawer({
                   <DField label="الاسم"><input name="name" defaultValue={lead.name} className="select-base" /></DField>
                   <DField label="الجوال"><input name="phone" defaultValue={lead.phone} dir="ltr" className="select-base" /></DField>
                   <div className="grid grid-cols-2 gap-3">
-                    <DField label="القناة">
-                      {/* تعديل القناة للمالك/المدير فقط — الخادم يرفض الموظف. تُحفظ لحظيًا بمعزل عن الحفظ الدفعي. */}
-                      <select
-                        defaultValue={lead.channel}
-                        disabled={pending}
-                        onChange={(e) => startTransition(async () => {
-                          const res = await updateLeadChannel(lead.id, e.target.value as Channel);
-                          if (!res.ok) alert(res.error ?? "صار خطأ");
-                          refresh();
-                        })}
-                        className="select-base"
-                      >
-                        {(Object.keys(channelLabels) as Channel[]).map((c) => <option key={c} value={c}>{channelLabels[c]}</option>)}
-                      </select>
-                    </DField>
+                    {/* «القناة» أُزيلت — «المصدر» الموحّد أدناه هو الحقل الوحيد (القناة تُشتق منه تلقائيًا). */}
                     <DField label="الأولوية">
                       <select name="priority" defaultValue={lead.priority} className="select-base">
                         {(Object.keys(priorityLabels) as Priority[]).map((p) => <option key={p} value={p}>{priorityLabels[p]}</option>)}

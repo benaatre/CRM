@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { channelForSourceName } from "@/lib/sheet-sync-google";
+import { channelForSourceName } from "@/lib/source-channel";
 
 // المصادر الافتراضية (تُزرع مرة واحدة إذا الجدول فاضي).
 export const DEFAULT_SOURCES = [
