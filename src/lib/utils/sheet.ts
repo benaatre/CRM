@@ -8,12 +8,17 @@ export function extractSheetId(url: string): string | null {
 
 /**
  * يستخرج رقم الورقة (gid) من الرابط — يدعم ‎#gid=‎ و‎&gid=‎ و‎?gid=‎.
+ * ‏#gid= له الأولوية: الرابط الملصوق من المتصفح كثيرًا يحمل ‎?gid=‎ قديمًا (الورقة
+ * السابقة/الافتراضية) بينما ‎#gid=‎ هو الورقة المفتوحة فعلًا — الالتقاط بأول تطابق
+ * كان يعتمد القديم ويطيح على الورقة الغلط.
  * null = الرابط لا يحدد ورقة (⚠️ حادثة 2026-07-25: القراءة بلا gid تسقط على
  * الورقة الأولى/المستند كله — لذلك صار الـgid إلزاميًا في المزامنة).
  */
 export function extractGid(url: string): number | null {
-  const m = url.match(/[#?&]gid=(\d+)/);
-  return m ? Number(m[1]) : null;
+  const frag = url.match(/#gid=(\d+)/);
+  if (frag) return Number(frag[1]);
+  const query = url.match(/[?&]gid=(\d+)/);
+  return query ? Number(query[1]) : null;
 }
 
 /** يثبّت gid على الرابط (يزيل أي gid قديم ويضيف ‎#gid=N‎) — لتخزين رابط محدد الورقة دائمًا. */

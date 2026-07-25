@@ -110,10 +110,12 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
     for (const l of leads) {
       if (!l.valid) { skipped++; continue; }
 
-      // دمج نتيجة الـAI للصف العصي (قيم القواعد لها الأولوية — الـAI يكمل الناقص فقط).
+      // دمج نتيجة الـAI للصف العصي: الحقول المطبّعة (جوال/هدف/طريقة/حي/سعر) قيم القواعد أولًا
+      // (regex صارم دقيق)، أما **الاسم فمن الـAI أولًا** — القواعد في الصف العصي قد تلتقط
+      // جملة حرة اسمًا («ميزانيته ما تطلع…») بينما الـAI شاف الصف كاملًا وميّز الاسم الفعلي.
       const ai = aiByLead.get(l) ?? null;
       const analysis: "rules" | "ai" | "review" = !stubbornSet.has(l) ? "rules" : ai ? "ai" : "review";
-      const name = l.name || ai?.name || "بدون اسم";
+      const name = ai?.name || l.name || "بدون اسم";
       const phone = l.phone || ai?.phone || "";
       const purchaseGoal = l.purchaseGoal ?? ai?.purchaseGoal ?? null;
       const purchaseMethod = l.purchaseMethod ?? ai?.purchaseMethod ?? null;

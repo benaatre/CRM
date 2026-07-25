@@ -107,12 +107,16 @@ async function requireOwnerAction() {
   return user;
 }
 
-/** يحلّ gid الورقة من الرابط أو من حقل «رقم الورقة» — null = ما تحددت ورقة. */
+/**
+ * يحلّ gid الورقة: **حقل «رقم الورقة» أولًا** (ما كتبه المالك صراحةً يفوز دائمًا)،
+ * ثم الرابط ثانيًا — null = ما تحددت ورقة.
+ * ⚠️ كان الترتيب معكوسًا: رابط ملصوق فيه ‎?gid=‎ قديم كان يتقدّم على الحقل الصريح
+ * فيُقرأ من الورقة الغلط أو يفشل بـ«الورقة غير موجودة» رغم أن الحقل صحيح.
+ */
 function resolveGidInput(url: string, gidInput?: string): number | null {
-  const fromUrl = extractGid(url);
-  if (fromUrl != null) return fromUrl;
   const g = (gidInput ?? "").trim();
-  return /^\d+$/.test(g) ? Number(g) : null;
+  if (/^\d+$/.test(g)) return Number(g);
+  return extractGid(url);
 }
 
 const GID_HELP = "افتح الورقة المطلوبة في المتصفح وانسخ الرقم بعد gid= من شريط العنوان";

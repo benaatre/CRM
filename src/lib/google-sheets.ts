@@ -33,12 +33,29 @@ function client(): sheets_v4.Sheets {
 export type SheetTab = { title: string; gid: number; rowCount: number };
 
 /**
+ * يترجم أخطاء Google API لرسالة عربية باسم المشكلة الفعلي — لا error boundary عامة.
+ * (403 = الشيت غير مشارك مع حساب الخدمة · 404 = الرابط/المعرّف غلط · 429 = ضغط).
+ */
+function toArabicSheetsError(e: unknown): Error {
+  const err = e as { code?: number | string; status?: number; message?: string };
+  const code = Number(err?.code ?? err?.status);
+  const email = (() => { try { return loadCredentials().client_email; } catch { return "حساب الخدمة"; } })();
+  if (code === 403) return new Error(`جوجل رفض الوصول (403) — شارك الشيت مع إيميل حساب الخدمة: ${email}`);
+  if (code === 404) return new Error("المستند غير موجود (404) — تأكد من رابط الشيت (معرّف المستند غلط أو المستند انحذف)");
+  if (code === 429) return new Error("جوجل حدّ من الطلبات مؤقتًا (429) — أعد المحاولة بعد دقيقة");
+  if (err instanceof Error && /GOOGLE_SERVICE_ACCOUNT_KEY|حساب الخدمة/.test(err.message)) return err; // رسائلنا العربية تمرّ كما هي
+  return new Error(`خطأ من Google Sheets: ${err?.message?.slice(0, 200) ?? "غير معروف"}`);
+}
+
+/**
  * يحلّ الورقة المحددة بالـgid حلًّا صارمًا — يرمي خطأً عربيًا واضحًا لو غير موجودة.
  * لا سقوط صامتًا على الورقة الأولى (سبب حادثة استيراد 2026-07-25).
+ * المقارنة بعد تحويل موحّد للنوع (الحقل قد يصل نصًا وواجهة جوجل ترجع رقمًا).
  */
-export async function resolveTabByGid(spreadsheetId: string, gid: number): Promise<SheetTab> {
+export async function resolveTabByGid(spreadsheetId: string, gid: number | string): Promise<SheetTab> {
+  const wanted = Number(gid);
   const tabs = await listSheetTabs(spreadsheetId);
-  const tab = tabs.find((t) => t.gid === gid);
+  const tab = tabs.find((t) => Number(t.gid) === wanted);
   if (!tab) {
     const avail = tabs.map((t) => `«${t.title}» (gid=${t.gid})`).join(" · ") || "لا أوراق";
     throw new Error(`الورقة gid=${gid} غير موجودة بالمستند — الأوراق المتاحة: ${avail}`);
@@ -49,15 +66,19 @@ export async function resolveTabByGid(spreadsheetId: string, gid: number): Promi
 /** يسرد تبويبات الشيت (العنوان + gid + عدد الصفوف) — لاختيار التبويب الصحيح. */
 export async function listSheetTabs(spreadsheetId: string): Promise<SheetTab[]> {
   const sheets = client();
-  const res = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets(properties(sheetId,title,gridProperties(rowCount)))",
-  });
-  return (res.data.sheets ?? []).map((s) => ({
-    title: s.properties?.title ?? "",
-    gid: s.properties?.sheetId ?? 0,
-    rowCount: s.properties?.gridProperties?.rowCount ?? 0,
-  }));
+  try {
+    const res = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets(properties(sheetId,title,gridProperties(rowCount)))",
+    });
+    return (res.data.sheets ?? []).map((s) => ({
+      title: s.properties?.title ?? "",
+      gid: s.properties?.sheetId ?? 0,
+      rowCount: s.properties?.gridProperties?.rowCount ?? 0,
+    }));
+  } catch (e) {
+    throw toArabicSheetsError(e);
+  }
 }
 
 /**
@@ -75,6 +96,10 @@ export async function readSheetValues(sheetId: string, opts?: { tab?: string; gi
   const endRow = opts?.endRow && opts.endRow > 0 ? opts.endRow : 10000; // حدّ أعلى للصفوف (يقرأ من الأعلى دائمًا)
   const a1 = `A1:Z${endRow}`;
   const range = tabTitle ? `'${tabTitle.replace(/'/g, "''")}'!${a1}` : a1;
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range });
-  return (res.data.values ?? []).map((r) => r.map((cell) => (cell == null ? "" : String(cell))));
+  try {
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range });
+    return (res.data.values ?? []).map((r) => r.map((cell) => (cell == null ? "" : String(cell))));
+  } catch (e) {
+    throw toArabicSheetsError(e);
+  }
 }
