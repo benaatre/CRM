@@ -21,6 +21,7 @@ import { applyStageChange } from "@/lib/stage-change";
 import { latestRevealAction, shouldHideHistory, REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION } from "@/lib/visibility";
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
+import { channelForSourceName } from "@/lib/source-channel";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -454,21 +455,11 @@ export async function updateLead(
 }
 
 /** تعديل قناة العميل — للمالك/المدير فقط (الفرض على الخادم؛ الموظف يُرفض). */
-export async function updateLeadChannel(leadId: string, channel: Channel): Promise<ActionResult> {
-  try {
-    if (!isManager((await requireUser()).role)) {
-      return { ok: false, error: "تعديل القناة للمالك أو المدير فقط" };
-    }
-    if (!(channel in Channel)) return { ok: false, error: "قناة غير صالحة" };
-    await prisma.lead.update({ where: { id: leadId }, data: { channel } });
-    revalidateLeads();
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: toUserError(e) };
-  }
-}
-
-/** تحديث بيانات الاستقبال (هدف/طريقة الشراء + رينج السعر + الأحياء + المشاريع المفضّلة). */
+/**
+ * تحديث بيانات الاستقبال (هدف/طريقة الشراء + رينج السعر + الأحياء + المشاريع + المصدر).
+ * توحيد المصدر/القناة: «المصدر» هو الحقل الظاهر الوحيد — تغييره يكتب معه source (النص)
+ * وchannel (المشتقة من الاسم) للتوافق الرجعي، فالتحليلات (القنوات) تظل صحيحة بلا حقل ثانٍ.
+ */
 export async function updateLeadIntake(
   leadId: string,
   data: {
@@ -483,6 +474,14 @@ export async function updateLeadIntake(
 ): Promise<ActionResult> {
   try {
     await assertLeadAccess(leadId);
+    // «المصدر» الموحّد: مع sourceId نكتب النص source والقناة المشتقة channel (توافق رجعي —
+    // بلا حذف عمود؛ حذف الفائض مؤجّل لجلسة baseline).
+    let sourceFields: { sourceId: string | null; source?: string | null; channel?: Channel } = { sourceId: null };
+    if (data.sourceId) {
+      const src = await prisma.leadSource.findUnique({ where: { id: data.sourceId }, select: { name: true } });
+      if (!src) return { ok: false, error: "المصدر غير موجود" };
+      sourceFields = { sourceId: data.sourceId, source: src.name, channel: channelForSourceName(src.name) };
+    }
     await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -492,7 +491,7 @@ export async function updateLeadIntake(
         ...(data.priceMax !== undefined ? { priceMax: data.priceMax } : {}),
         ...(data.preferredAreas ? { preferredAreas: data.preferredAreas } : {}),
         ...(data.preferredProjects ? { preferredProjects: data.preferredProjects } : {}),
-        ...(data.sourceId !== undefined ? { sourceId: data.sourceId || null } : {}),
+        ...(data.sourceId !== undefined ? sourceFields : {}),
       },
     });
     revalidateLeads();
