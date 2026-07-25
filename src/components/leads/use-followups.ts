@@ -28,9 +28,21 @@ export type FollowUpItem = {
   canEditResult: boolean;
 };
 
-/** جلب متابعات عميل (تصاعديًا) مع دالة إعادة تحميل. */
+/**
+ * حدث من فعل النظام (لا متابعة): تنزيل «مهتم راكد» وما شابهه — مصدره Activity
+ * بلا مستخدم (userId = null). يُعرض في السجل موسومًا «تلقائي — النظام»، ولا يُنسب لموظف أبدًا.
+ */
+export type SystemEvent = {
+  id: string;
+  note: string;
+  type: string;
+  createdAt: string;
+};
+
+/** جلب متابعات عميل (تصاعديًا) + أحداث النظام، مع دالة إعادة تحميل. */
 export function useFollowUps(leadId: string) {
   const [items, setItems] = useState<FollowUpItem[]>([]);
+  const [systemEvents, setSystemEvents] = useState<SystemEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -38,7 +50,10 @@ export function useFollowUps(leadId: string) {
     try {
       const res = await fetch(`/api/leads/${leadId}/followups`);
       const data = await res.json();
-      if (res.ok) setItems(data.items ?? []);
+      if (res.ok) {
+        setItems(data.items ?? []);
+        setSystemEvents(data.systemEvents ?? []);
+      }
     } finally {
       setLoading(false);
     }
@@ -46,5 +61,5 @@ export function useFollowUps(leadId: string) {
 
   useEffect(() => { reload(); }, [reload]);
 
-  return { items, loading, reload };
+  return { items, systemEvents, loading, reload };
 }

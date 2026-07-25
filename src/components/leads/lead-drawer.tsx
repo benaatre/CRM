@@ -333,11 +333,11 @@ export function LeadDrawer({
 }
 
 function DrawerFollowups({ leadId, stage, firstContactStage, onChanged }: { leadId: string; stage: LeadStage; firstContactStage?: FirstContactStage | null; onChanged: () => void }) {
-  const { items, loading, reload } = useFollowUps(leadId);
+  const { items, systemEvents, loading, reload } = useFollowUps(leadId);
   return (
     <div className="space-y-4">
       <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} projects={[]} onSaved={() => { reload(); onChanged(); }} />
-      <FollowUpsTimeline items={items} loading={loading} />
+      <FollowUpsTimeline items={items} systemEvents={systemEvents} loading={loading} />
     </div>
   );
 }

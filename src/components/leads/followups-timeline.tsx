@@ -4,31 +4,58 @@ import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import { followUpSectionLabels, followUpSectionColor, followUpResultLabels, stageLabels } from "@/lib/labels";
 import { formatDateTime, toArabicDigits } from "@/lib/format";
-import type { FollowUpItem } from "./use-followups";
+import type { FollowUpItem, SystemEvent } from "./use-followups";
 
 /**
  * سجل المتابعات + تعديل ضمن الصلاحية (الجزء ١ — التذكيرات):
  * الموظف يعدّل متابعته خلال ساعة (ملاحظة + موعد فقط)، والمالك/المدير أي وقت شامل النتيجة.
  * زر التعديل يظهر حسب canEdit من الخادم — والخادم يعيد فرض الصلاحية عند الحفظ.
  */
-export function FollowUpsTimeline({ items, loading, leadId, onChanged }: {
+export function FollowUpsTimeline({ items, systemEvents = [], loading, leadId, onChanged }: {
   items: FollowUpItem[];
+  /** أفعال النظام (بلا مستخدم) — تُدمج في السجل موسومةً، ولا تُعدّ متابعات. */
+  systemEvents?: SystemEvent[];
   loading: boolean;
   leadId?: string;
   onChanged?: () => void;
 }) {
   const [editing, setEditing] = useState<FollowUpItem | null>(null);
 
+  // الدمج بالترتيب الزمني — المتابعات (بشرية) وأحداث النظام في خط واحد يقرأه الموظف.
+  const timeline = [
+    ...items.map((f) => ({ kind: "fu" as const, at: f.createdAt, fu: f })),
+    ...systemEvents.map((s) => ({ kind: "sys" as const, at: s.createdAt, sys: s })),
+  ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
   return (
     <div className="glass rounded-2xl p-5">
       <h2 className="mb-4 font-semibold text-foreground">سجل المتابعات ({toArabicDigits(items.length)})</h2>
       {loading ? (
         <p className="py-6 text-center text-sm text-muted-foreground">جارٍ التحميل…</p>
-      ) : items.length === 0 ? (
+      ) : timeline.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted-foreground">ما فيه متابعات بعد.</p>
       ) : (
         <ol className="space-y-4 border-r border-border pr-4">
-          {items.map((f) => {
+          {timeline.map((entry) => {
+            // حدث من النظام: موسوم صراحةً، بلا اسم موظف، وبلا زر تعديل.
+            if (entry.kind === "sys") {
+              const s = entry.sys;
+              return (
+                <li key={`sys-${s.id}`} className="relative">
+                  <span className="absolute -right-[1.30rem] top-1.5 size-2 rounded-full bg-muted-foreground/60" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className="rounded-full border border-muted-foreground/30 bg-secondary/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                      title="إجراء نفّذه النظام تلقائيًا — ما سجّله أي موظف"
+                    >⚙️ تلقائي — النظام</span>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">{s.note}</p>
+                </li>
+              );
+            }
+            const f = entry.fu;
+            return (() => {
             const dotColor = f.section === "NOT_INTERESTED" || f.result.startsWith("NOT_INTERESTED")
               ? "bg-destructive"
               : f.section === "NO_ANSWER"
@@ -78,6 +105,7 @@ export function FollowUpsTimeline({ items, loading, leadId, onChanged }: {
                 {f.stageAfter && <p className="mt-0.5 text-xs text-muted-foreground">انتقل إلى: {stageLabels[f.stageAfter]}</p>}
               </li>
             );
+            })();
           })}
         </ol>
       )}

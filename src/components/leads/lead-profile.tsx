@@ -41,7 +41,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
   const tabs: [Tab, string][] = [["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]];
   if (transferHistory) tabs.push(["transfers", "سجل التحويلات"]);
   const [reserveMode, setReserveMode] = useState<"reserve" | "instant" | null>(null);
-  const { items, loading, reload } = useFollowUps(detail.id);
+  const { items, systemEvents, loading, reload } = useFollowUps(detail.id);
 
   // شارة «في الانتظار: السبب» — لو آخر متابعة نتيجتها ON_HOLD (السبب مخزّن في note).
   const lastFu = items.length ? items[items.length - 1] : null;
@@ -206,7 +206,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
               initialSel={quickFu}
             />
           )}
-          <FollowUpsTimeline items={items} loading={loading} leadId={detail.id} onChanged={() => { reload(); router.refresh(); }} />
+          <FollowUpsTimeline items={items} systemEvents={systemEvents} loading={loading} leadId={detail.id} onChanged={() => { reload(); router.refresh(); }} />
         </div>
       )}
 

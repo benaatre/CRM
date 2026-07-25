@@ -31,7 +31,7 @@ function DrawerBody({
   onClose: () => void;
   onChanged?: () => void;
 }) {
-  const { items, loading, reload } = useFollowUps(leadId);
+  const { items, systemEvents, loading, reload } = useFollowUps(leadId);
 
   // الدرج مفتوح = الصفحة خلفه ما تتمرّر (الجوال كان يمرّر الخلفية تحت الدرج)، وEsc يغلقه.
   useEffect(() => {
@@ -61,7 +61,7 @@ function DrawerBody({
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
         >
           <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} projects={[]} onSaved={() => { reload(); onChanged?.(); }} />
-          <FollowUpsTimeline items={items} loading={loading} leadId={leadId} onChanged={() => { reload(); onChanged?.(); }} />
+          <FollowUpsTimeline items={items} systemEvents={systemEvents} loading={loading} leadId={leadId} onChanged={() => { reload(); onChanged?.(); }} />
         </div>
       </aside>
     </>
