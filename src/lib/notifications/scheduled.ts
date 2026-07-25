@@ -6,15 +6,13 @@ import { emitNotification } from "@/lib/notifications/emit";
 import { logAudit } from "@/lib/audit";
 import { VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
 import { VISIT_ENGINE_EPOCH, INTERESTED_STALE_DEMOTE_DAYS } from "@/lib/visit-engine";
+import { KSA_OFFSET_MS, ksaHourOf, ksaDayKey } from "@/lib/ksa-time";
 
 const CLOSED = ["CLOSED_WON", "CLOSED_LOST"] as const;
 const HOUR_MS = 3_600_000;
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 
-// توقيت الرياض (+٣ ثابت) — لصباح يوم الزيارة (٨ص) ومطابقة «نفس اليوم».
-const KSA_OFFSET_MS = 3 * HOUR_MS;
-const ksaHourOf = (d: Date) => new Date(d.getTime() + KSA_OFFSET_MS).getUTCHours();
-const ksaDayKey = (d: Date) => new Date(d.getTime() + KSA_OFFSET_MS).toISOString().slice(0, 10);
+// توقيت الرياض من المصدر الموحّد lib/ksa-time — لصباح يوم الزيارة (٨ص) ومطابقة «نفس اليوم».
 
 /** ساعة الموعد بالعربي (توقيت الرياض) — لنص الإشعار. */
 function ksaTime(d: Date): string {

@@ -98,7 +98,7 @@ function CandidatesPanel({ candidates }: { candidates: SweepCandidateRow[] }) {
           ما فيه مرشّحون للسحب الآن. 👌
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full text-right text-sm">
             <thead className="bg-secondary/50 text-xs text-muted-foreground">
               <tr>
@@ -451,7 +451,7 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
         {board.todayLeads.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">ما تم توزيع عملاء تلقائيًا اليوم بعد.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full text-right text-sm">
               <thead className="bg-secondary/50 text-xs text-muted-foreground">
                 <tr>
@@ -494,7 +494,7 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
         {board.log.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">ما فيه إعادات توجيه اليوم.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full text-right text-sm">
               <thead className="bg-secondary/50 text-xs text-muted-foreground">
                 <tr>

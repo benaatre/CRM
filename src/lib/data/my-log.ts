@@ -12,9 +12,8 @@ import { FollowUpResult, FollowUpType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { computeAchievement, type FuRow } from "@/lib/data/leaderboard";
 import { followUpResultLabels } from "@/lib/labels";
+import { DAY_MS, dayStartKSA, weekStartKSA } from "@/lib/ksa-time";
 
-const KSA_OFFSET_MS = 3 * 3_600_000;
-const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 const PAGE_SIZE = 40;
 
@@ -49,20 +48,11 @@ export type MyDailyLog = {
   hasMore: boolean;
 };
 
-/** بداية اليوم (٠٠:٠٠ بتوقيت الرياض). */
-function dayStartKSA(ref: Date): Date {
-  const k = new Date(ref.getTime() + KSA_OFFSET_MS);
-  return new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate()) - KSA_OFFSET_MS);
-}
-
 function rangeFor(period: MyLogPeriod, now: Date): { start: Date; end: Date } {
   const today = dayStartKSA(now);
   if (period === "yesterday") return { start: new Date(today.getTime() - DAY_MS), end: today };
-  if (period === "week") {
-    const k = new Date(now.getTime() + KSA_OFFSET_MS);
-    const start = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() - k.getUTCDay()) - KSA_OFFSET_MS);
-    return { start, end: new Date(now.getTime() + 1) };
-  }
+  // «الأسبوع» = الأحد ٠٠:٠٠ الرياض حتى الآن — نفس نافذة لوحة الأسبوع ولوحة التحكم.
+  if (period === "week") return { start: weekStartKSA(now), end: new Date(now.getTime() + 1) };
   return { start: today, end: new Date(now.getTime() + 1) };
 }
 

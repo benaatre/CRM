@@ -111,7 +111,7 @@ function SingleProject({ d }: { d: ProjectFinance }) {
         {d.rows.length === 0 ? (
           <p className="py-6 text-center text-muted-foreground">ما فيه وحدات مباعة أو محجوزة في هذا المشروع.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="scroll-x rounded-xl border border-border">
             <table className="w-full min-w-[1040px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
               <thead className="bg-secondary/40 text-muted-foreground">
                 <tr>
@@ -159,7 +159,7 @@ function StatusChip({ stage }: { stage: ProjectFinanceRow["stage"] }) {
 function AllProjectsComparison({ rows }: { rows: AllProjectsFinanceRow[] }) {
   return (
     <Block title="مقارنة كل المشاريع">
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="scroll-x rounded-xl border border-border">
         <table className="w-full min-w-[920px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>

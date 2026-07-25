@@ -126,7 +126,16 @@ export function Topbar({
           <span>عميل جديد</span>
         </button>
 
-        {/* أدوات الجوال: إشعارات + تبديل ثيم + زر القائمة ☰ */}
+        {/* أدوات الجوال: عميل جديد + إشعارات + تبديل ثيم + زر القائمة ☰
+            (زر «عميل جديد» كان يختفي كليًا على الجوال — والموظف يضيف عملاءه من جواله) */}
+        <button
+          onClick={() => setShowNew(true)}
+          aria-label="عميل جديد"
+          title="عميل جديد"
+          className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 md:hidden"
+        >
+          <Plus className="size-5" />
+        </button>
         <span className="md:hidden"><NotificationBell /></span>
         <button
           onClick={toggleTheme}

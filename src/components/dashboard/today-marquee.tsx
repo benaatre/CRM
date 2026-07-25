@@ -67,8 +67,20 @@ export function TodayMarquee({ items }: { items: TodayAppointment[] }) {
 
   const loop = items.length > 1; // موعد واحد: ثابت بلا لف
 
+  // الجوال بلا hover: اللمس يوقف الشريط تمامًا (٦ ثوانٍ) عشان يُقرأ ويُنقر بلا مطاردة،
+  // ثم يستأنف وحده. واحترام «تقليل الحركة» في إعدادات الجهاز: بلا لف إطلاقًا.
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function holdForTouch() {
+    targetSpeedRef.current = 0;
+    speedRef.current = 0;
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    resumeTimer.current = setTimeout(() => { targetSpeedRef.current = SPEED; }, 6000);
+  }
+  useEffect(() => () => { if (resumeTimer.current) clearTimeout(resumeTimer.current); }, []);
+
   useEffect(() => {
     if (!loop) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     let raf = 0;
     let last = performance.now();
     const tick = (t: number) => {
@@ -98,11 +110,14 @@ export function TodayMarquee({ items }: { items: TodayAppointment[] }) {
       aria-label="مواعيد اليوم"
       onMouseEnter={() => { targetSpeedRef.current = HOVER_SPEED; }}
       onMouseLeave={() => { targetSpeedRef.current = SPEED; }}
+      onTouchStart={holdForTouch}
     >
       <div className="flex items-center">
-        {/* عدّاد ثابت في بداية الشريط */}
-        <div className="z-10 flex shrink-0 items-center gap-1.5 border-l border-gold/20 bg-card/90 px-3 py-1 text-xs font-semibold text-gold">
-          مواعيد اليوم: {toArabicDigits(items.length)}
+        {/* عدّاد ثابت في بداية الشريط — مختصر على الجوال حتى يبقى عرض كافٍ للبطاقات */}
+        <div className="z-10 flex shrink-0 items-center gap-1.5 border-l border-gold/20 bg-card/90 px-2 py-1 text-xs font-semibold text-gold sm:px-3">
+          <span className="hidden sm:inline">مواعيد اليوم:</span>
+          <span className="sm:hidden">📅</span>
+          {toArabicDigits(items.length)}
         </div>
 
         {loop ? (

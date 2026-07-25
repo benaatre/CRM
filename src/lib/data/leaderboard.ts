@@ -10,6 +10,11 @@ import "server-only";
 import { FollowUpResult } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPendingPullByEmployee } from "@/lib/data/no-response";
+import { KEEP_STAGE_RESULTS } from "@/lib/labels";
+import { DAY_MS, ksaDayKey, weekStartKSA } from "@/lib/ksa-time";
+
+// نافذة الأسبوع من المصدر الموحّد (lib/ksa-time) — لا تعريف محلي، فلا تنحرف شاشة عن أخرى.
+export { weekStartKSA };
 
 /**
  * أوزان «الإنجاز» — أرقام مطلقة من شغله الفعلي (الاجتهاد يحكم، والنسب مكمّل فقط):
@@ -27,16 +32,6 @@ export const WEIGHTS = {
 } as const;
 /** سقف متابعات تُحتسب في اليوم الواحد — يمنع اكتساح الكم الخام. */
 export const DAILY_FOLLOWUP_CAP = 15;
-
-const KSA_OFFSET_MS = 3 * 3_600_000;
-const DAY_MS = 86_400_000;
-
-/** بداية الأسبوع (الأحد 00:00 بتوقيت الرياض) للتاريخ المرجعي. */
-export function weekStartKSA(ref: Date): Date {
-  const k = new Date(ref.getTime() + KSA_OFFSET_MS);
-  const startUtcMs = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() - k.getUTCDay(), 0, 0, 0) - KSA_OFFSET_MS;
-  return new Date(startUtcMs);
-}
 
 /** مكوّنات «الكفاءة» — تُعرض في التلميح (الشفافية تمنع الإحساس بالظلم). */
 export type EfficiencyParts = {
@@ -121,10 +116,15 @@ export function computeAchievement(fus: FuRow[], bookings: number): Achievement 
   const winsSet = new Set<string>();
   let visitAppts = 0, visitsDone = 0;
   for (const f of fus) {
-    const dayKey = new Date(f.createdAt.getTime() + KSA_OFFSET_MS).toISOString().slice(0, 10);
+    const dayKey = ksaDayKey(f.createdAt); // سقف المتابعات يومي بتوقيت الرياض
     byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + 1);
     contactedSet.add(f.leadId);
-    if (f.stageAfter === "INTERESTED") interestedSet.add(f.leadId);
+    // «نقله لمهتم» = انتقال فعلي، لا مجرد عمود stageAfter=INTERESTED.
+    // نتائج «بلا تغيير مرحلة» (لم يستجب · حسبة البنك · في الانتظار) يكتب لها المسار
+    // مرحلة العميل كما هي؛ فلو كان مهتمًا أصلًا صارت متابعة معناها «ما استجاب» تكسب
+    // خمس نقاط «تحويل». هذا ما رفع موظفة فوق أخرى أعلى منها في كل مؤشر شغل خام
+    // (تحقيق ٢٥ يوليو ٢٠٢٦ — docs/investigations/week-score-2026-07-25.md).
+    if (f.stageAfter === "INTERESTED" && !KEEP_STAGE_RESULTS.includes(f.result)) interestedSet.add(f.leadId);
     if (f.stageAfter === "CLOSED_WON") winsSet.add(f.leadId);
     if (f.result === FollowUpResult.INTERESTED_VISIT_SCHEDULED) visitAppts++;
     if (VISIT_DONE_RESULTS.includes(f.result)) visitsDone++;

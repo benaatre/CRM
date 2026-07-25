@@ -40,14 +40,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   });
   const hide = await shouldHideHistory(prisma, a.user.role, { id, lastAssignReason: lastAssign?.reason ?? null, assignedAt: a.lead.assignedAt });
 
-  const items = await prisma.followUp.findMany({
-    where: {
-      leadId: id,
-      ...(hide && a.lead.assignedAt ? { createdAt: { gt: a.lead.assignedAt } } : {}),
-    },
-    orderBy: { createdAt: "asc" },
-    include: { employee: { select: { name: true } } },
-  });
+  const window = hide && a.lead.assignedAt ? { createdAt: { gt: a.lead.assignedAt } } : {};
+  const [items, systemActs] = await Promise.all([
+    prisma.followUp.findMany({
+      where: { leadId: id, ...window },
+      orderBy: { createdAt: "asc" },
+      include: { employee: { select: { name: true } } },
+    }),
+    // أفعال النظام (userId = null): تنزيل «مهتم راكد» وما شابهه. كانت لا تظهر في كرت
+    // العميل إطلاقًا — فالعميل ينتقل لـ«موعد لاحق» بموعد متابعة بلا أي تفسير أمام
+    // الموظف. تُعرض الآن في السجل نفسه موسومةً «تلقائي — النظام» لا باسم أحد.
+    prisma.activity.findMany({
+      where: { leadId: id, userId: null, ...window },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, note: true, type: true, createdAt: true },
+    }),
+  ]);
   // وسم «مُعدَّلة»: من سجل التدقيق (followup.edited · entityId=معرّف المتابعة) — استعلام واحد.
   const editedRows = items.length
     ? await prisma.auditLog.findMany({
@@ -60,6 +68,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const manager = isManager(a.user.role);
   const now = Date.now();
   return NextResponse.json({
+    // أفعال النظام منفصلة عن المتابعات عمدًا: صف FollowUp لا يُنشأ إلا من فعل بشري
+    // (القاعدة الصارمة فوق model FollowUp) — فالنظام لا «يسجّل متابعة» بل يُعرض حدثًا.
+    systemEvents: systemActs.map((s) => ({
+      id: s.id,
+      note: s.note ?? "إجراء تلقائي من النظام",
+      type: s.type,
+      createdAt: s.createdAt,
+    })),
     items: items.map((f) => {
       const mine = f.createdBy === a.user.id;
       const withinWindow = now - f.createdAt.getTime() <= EDIT_WINDOW_MS;
@@ -73,6 +89,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         nextDate: f.nextDate,
         createdAt: f.createdAt,
         employeeName: f.employee?.name ?? null,
+        // نسبة المتابعة صراحةً: كاتبها هو مالك العميل الآن؟ وهل هي من تسجيل المستخدم نفسه؟
+        // العميل المنقول «بمحتواه» يحمل متابعات مالكه السابق — وهذا مصدر شكوى
+        // «متابعات ما سجّلتها». الوسم في السجل يزيل اللبس بلا حذف أي تاريخ.
+        byCurrentOwner: !!a.lead.assignedToId && f.createdBy === a.lead.assignedToId,
+        mine,
         edited: editedSet.has(f.id),
         // الصلاحية تُعاد حسابها على الخادم عند PATCH — هذه للعرض فقط.
         canEdit: manager || (mine && withinWindow),

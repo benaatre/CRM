@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { scopeForUser, getOwnerIds } from "@/lib/data/leads";
 import { ksaTodayStart } from "@/lib/auto-distribute";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
+import { weekStartKSA } from "@/lib/ksa-time";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 // المتوقّع من اللمسات (متابعات) لكل عميل عند حساب نسبة النشاط.
@@ -17,7 +18,8 @@ export const periodLabels: Record<Period, string> = {
   "24h": "آخر ٢٤ ساعة",
   "48h": "آخر ٤٨ ساعة",
   "72h": "آخر ٧٢ ساعة",
-  week: "آخر أسبوع",
+  // «هذا الأسبوع» لا «آخر ١٦٨ ساعة» — العنوان صار يطابق ما يُحسب فعلًا.
+  week: "هذا الأسبوع (من الأحد)",
   all: "الكل",
 };
 
@@ -25,16 +27,17 @@ export function normalizePeriod(p: string | undefined): Period {
   return p && p in periodLabels ? (p as Period) : "all";
 }
 
+/**
+ * بداية الفترة. الساعات (٢٤/٤٨/٧٢) متدحرجة بطبيعتها كما يقول عنوانها،
+ * أما «الأسبوع» فأسبوع تقويمي يبدأ الأحد ٠٠:٠٠ بتوقيت الرياض — يطابق لوحة الأسبوع
+ * و«سجلّي» حرفيًا. كان قبلها نافذة متدحرجة (الآن − ١٦٨ ساعة)، فتختلف أرقام الموظف
+ * بين لوحة التحكم ولوحة الأسبوع بلا سبب مفهوم للمالك.
+ */
 function sinceFor(period: Period): Date | null {
-  const hours: Record<Period, number | null> = {
-    "24h": 24,
-    "48h": 48,
-    "72h": 72,
-    week: 168,
-    all: null,
-  };
-  const h = hours[period];
-  return h ? new Date(Date.now() - h * 3_600_000) : null;
+  if (period === "all") return null;
+  if (period === "week") return weekStartKSA();
+  const hours: Record<"24h" | "48h" | "72h", number> = { "24h": 24, "48h": 48, "72h": 72 };
+  return new Date(Date.now() - hours[period] * 3_600_000);
 }
 
 export type MiniLead = {

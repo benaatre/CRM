@@ -163,7 +163,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
           ) : (
             <div className="space-y-2">
               {data.waitingFirstContact.map((l) => (
-                <div key={l.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
+                <div key={l.id} className="flex flex-col gap-2 rounded-xl border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-foreground">{l.name}</span>
@@ -171,14 +171,15 @@ export function DashboardView({ data }: { data: DashboardData }) {
                     </div>
                     {data.manager && l.assignedToName && <div className="mt-0.5 text-xs text-muted-foreground/70">{l.assignedToName}</div>}
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <a href={`tel:${l.phone}`} className="flex min-h-11 items-center gap-1 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90" title="اتصال">
+                  {/* على الجوال الأزرار تنزل سطرًا كاملًا بعرض مريح (٤٤ بكسل ارتفاعًا) */}
+                  <div className="flex shrink-0 items-center gap-1.5 [&>*]:flex-1 sm:[&>*]:flex-none">
+                    <a href={`tel:${l.phone}`} className="flex min-h-11 items-center justify-center gap-1 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90" title="اتصال">
                       <Phone className="size-3.5" /> اتصال
                     </a>
-                    <a href={`https://wa.me/966${l.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-1 rounded-lg bg-success/15 px-2.5 text-xs font-medium text-success hover:bg-success/25" title="واتساب">
+                    <a href={`https://wa.me/966${l.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center justify-center gap-1 rounded-lg bg-success/15 px-2.5 text-xs font-medium text-success hover:bg-success/25" title="واتساب">
                       <MessageCircle className="size-3.5" /> واتساب
                     </a>
-                    <Link href={`/leads/${l.id}`} className="flex min-h-11 items-center rounded-lg border border-border px-2 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold" title="فتح ملف العميل">←</Link>
+                    <Link href={`/leads/${l.id}`} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-border px-2 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold" title="فتح ملف العميل">←</Link>
                   </div>
                 </div>
               ))}
@@ -313,7 +314,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
       {/* متابعات اليوم للفريق — للمالك/المدير فقط */}
       {data.manager && data.teamFollowupsToday.length > 0 && (
         <Section title="متابعات اليوم للفريق" hint="مواعيد اليوم لكل موظف: تمّت · باقية · فائتة">
-          <div className="overflow-x-auto">
+          <div className="scroll-x -mx-1 px-1">
             <table className="w-full min-w-[520px] text-right text-sm">
               <thead className="text-xs text-muted-foreground">
                 <tr>

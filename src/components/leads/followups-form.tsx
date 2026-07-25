@@ -271,7 +271,8 @@ export function FollowUpsForm({
   }
 
   return (
-    <section className="glass space-y-3 rounded-2xl p-5">
+    // touch-44: كل أزرار الخيارات والحفظ ≥ ٤٤ بكسل على الجوال (النموذج يُعبّأ بالإبهام).
+    <section className="touch-44 glass space-y-3 rounded-2xl p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold text-foreground">سجّل نتيجة المتابعة</h2>
         <span className="text-xs text-muted-foreground">الخيارات حسب المرحلة الحالية: <span className="text-gold">{stageLabels[stage]}</span></span>

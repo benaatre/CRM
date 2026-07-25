@@ -3,6 +3,7 @@ import "server-only";
 import type { Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { channelForSourceName } from "@/lib/source-channel";
+import { dayStartKSA } from "@/lib/ksa-time";
 
 // المصادر الافتراضية (تُزرع مرة واحدة إذا الجدول فاضي).
 export const DEFAULT_SOURCES = [
@@ -75,10 +76,8 @@ export type SheetSourcePanelRow = {
 
 /** بيانات شاشة «مصادر العملاء»: كل روابط الشيت + قناة كل مصدر + عملاء اليوم + آخر مزامنة/خطأ. */
 export async function getSheetSourcesPanel(): Promise<SheetSourcePanelRow[]> {
-  // بداية اليوم بتوقيت الرياض (+٣ ثابت).
-  const KSA_MS = 3 * 3_600_000;
-  const k = new Date(Date.now() + KSA_MS);
-  const dayStart = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate()) - KSA_MS);
+  // بداية اليوم بتوقيت الرياض — من المصدر الموحّد lib/ksa-time.
+  const dayStart = dayStartKSA();
 
   const [links, todayGrp] = await Promise.all([
     prisma.sheetLink.findMany({
