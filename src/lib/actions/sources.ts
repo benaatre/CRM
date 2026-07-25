@@ -9,6 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { getSourcesList, type SourceListItem } from "@/lib/data/sources";
 import { readSheetValues, resolveTabByGid } from "@/lib/google-sheets";
 import { extractSheetId, extractGid, withGid } from "@/lib/utils/sheet";
+import { parseRowsByContent } from "@/lib/utils/sheet-parse";
 import { FULL_SYNC_APPROVED } from "@/lib/sheet-sync-google";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
@@ -166,6 +167,10 @@ export type SheetTestResult = {
   /** عدد صفوف البيانات الكلي (بلا صف العناوين). */
   totalRows?: number;
   rows?: string[][];
+  /** أعمدة الاسم المعتمدة (رؤوسها) — إثبات أن الاكتشاف صح قبل التفعيل. */
+  nameColumns?: string[];
+  /** عينة أسماء مركّبة من عمودي الاسم لأول صفين — كما ستدخل النظام. */
+  sampleNames?: string[];
 };
 
 /**
@@ -183,12 +188,21 @@ export async function testSheetConnection(sheetUrl: string, gidInput?: string): 
     const tab = await resolveTabByGid(sheetId, gid); // يرمي لو الورقة غير موجودة — لا سقوط على الأولى
     const values = await readSheetValues(sheetId, { tab: tab.title });
     if (values.length === 0) return { ok: false, error: `الورقة «${tab.title}» فاضية` };
+    // أعمدة الاسم المعتمدة + عينة أسماء كما سيلتقطها المصنّف فعلًا — إثبات قبل التفعيل.
+    const header = (values[0] ?? []).map(String);
+    const parsed = parseRowsByContent(values, { limit: 2 });
+    const colLetter = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : `عمود ${i + 1}`);
+    const nameColumns = parsed.columnRoles
+      .map((r, i) => (r.nameHeader ? `${colLetter(i)} (${header[i] || "بلا رأس"})` : null))
+      .filter((x): x is string => !!x);
     // العناوين + أول صفّين بيانات، وبحد ٨ أعمدة للعرض + العدد الكلي.
     return {
       ok: true,
       tabTitle: tab.title,
       totalRows: Math.max(0, values.length - 1),
       rows: values.slice(0, 3).map((r) => r.slice(0, 8)),
+      nameColumns,
+      sampleNames: parsed.leads.map((l) => l.name).filter(Boolean),
     };
   } catch (e) {
     return { ok: false, error: toUserError(e) };

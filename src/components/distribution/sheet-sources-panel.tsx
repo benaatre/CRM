@@ -96,6 +96,16 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
                 الاتصال شغال — الورقة: <span className="rounded bg-success/15 px-1.5 py-0.5 font-bold">«{test.res.tabTitle}»</span>
                 <span className="mr-2 text-muted-foreground">عدد الصفوف الكلي: <span className="font-bold text-foreground">{toArabicDigits(test.res.totalRows ?? 0)}</span> — تأكد أنها الورقة الصح قبل الإضافة</span>
               </div>
+              {/* إثبات اكتشاف عمود الاسم — يتأكد المالك أن الأسماء بتدخل صح قبل التفعيل */}
+              <div className="mb-2 rounded-lg bg-background/60 px-2 py-1.5">
+                <span className="text-muted-foreground">عمود الاسم المعتمد: </span>
+                {test.res.nameColumns?.length
+                  ? <span className="font-medium text-gold" dir="ltr">{test.res.nameColumns.join(" + ")}</span>
+                  : <span className="text-warning">ما فيه رأس اسم صريح — الالتقاط بالمحتوى (مع استبعاد أعمدة الإعلانات والقيم المتكررة)</span>}
+                {test.res.sampleNames && test.res.sampleNames.length > 0 && (
+                  <span className="mr-2 text-muted-foreground">· عينة الأسماء: <span className="font-medium text-foreground">{test.res.sampleNames.join(" · ")}</span></span>
+                )}
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-right">
                   <tbody>

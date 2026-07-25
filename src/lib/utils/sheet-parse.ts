@@ -206,6 +206,47 @@ export function parseBudgetValue(raw: string): BudgetParse | null {
   return null;
 }
 
+// ===================== تحليل الأعمدة (الرؤوس + تكرار القيم) =====================
+
+export type ColumnRole = {
+  /** رأس إعلاني (campaign/ad/form/squad/account/id/إعلان/حملة) — ليس بيانات عميل أبدًا: يُتجاهل كليًا. */
+  excluded: boolean;
+  /** رأس اسم صريح (name/الاسم/first/last/الأول/الأخير) — المعتمد للاسم بأولوية قاطعة. */
+  nameHeader: boolean;
+  /** قيمه متكررة (نفس النص في >٥٠٪ من الصفوف) — نص حملة/قالب، لا يصلح اسمًا. */
+  repetitive: boolean;
+};
+
+// رؤوس مستبعدة صراحة — أعمدة الإعلانات (تُفحص قبل رؤوس الاسم: campaignName فيه name لكنه حملة).
+const EXCLUDED_HEADER_RE = /campaign|حمل[هة]|اعلان|adset|ad ?name|ad_name|squad|form|account|id$|(^|[^a-z])(ad|id)([^a-z]|$)/;
+// رؤوس الاسم المعتمدة.
+const NAME_HEADER_RE = /name|first|last|(^|\s)ال?اسم(\s|$)|الاول|الاخير|العائل/;
+
+/**
+ * يحلّل أعمدة الورقة مرة واحدة: دور كل عمود من رأسه + تكرار قيمه.
+ * الجذر لخلل «اسم الحملة صار اسم العميل»: الورقة فيها أعمدة نصية كثيرة
+ * (campaignName · adName · formName…) والتصنيف المحتوائي وحده يلقط الغلط.
+ */
+export function analyzeColumns(header: string[], data: string[][]): ColumnRole[] {
+  const width = Math.max(header.length, ...data.map((r) => r.length), 0);
+  const roles: ColumnRole[] = [];
+  for (let c = 0; c < width; c++) {
+    const h = norm(String(header[c] ?? ""));
+    const excluded = !!h && EXCLUDED_HEADER_RE.test(h);
+    const nameHeader = !excluded && !!h && NAME_HEADER_RE.test(h);
+    // التكرار: عيّنة حتى ١٠٠ صف، ولا حكم بأقل من ٥ قيم غير فارغة (عيّنة «جرّب الاتصال» الصغيرة).
+    const vals = data.slice(0, 100).map((r) => String(r[c] ?? "").trim()).filter(Boolean);
+    let repetitive = false;
+    if (vals.length >= 5) {
+      const counts = new Map<string, number>();
+      for (const v of vals) counts.set(v, (counts.get(v) ?? 0) + 1);
+      repetitive = Math.max(...counts.values()) / vals.length > 0.5;
+    }
+    roles.push({ excluded, nameHeader, repetitive });
+  }
+  return roles;
+}
+
 // ===================== التعرّف التلقائي بالمحتوى =====================
 
 /** رقم جوال سعودي صالح بعد التوحيد؟ */
@@ -282,7 +323,7 @@ function classifyCell(raw: string | null | undefined): { type: CellType; value: 
  * يحلّل صفًّا بتصنيف كل خلية بمحتواها (مو بموضعها) — يحلّ مشكلة الأعمدة المتبعثرة.
  * الاسم: أول قيمتين اسم (تُدمجان). طريقة/حي/هدف: أول قيمة صالحة لكل حقل.
  */
-function classifyRow(cells: string[], sheetRowNumber: number): ParsedLead {
+function classifyRow(cells: string[], sheetRowNumber: number, roles?: ColumnRole[]): ParsedLead {
   const nameParts: string[] = [];
   let phone = "";
   let phoneInvalidRaw: string | null = null; // نص يشبه الجوال لكنه غير صالح — يُحفظ خامًا في ملاحظة
@@ -291,7 +332,22 @@ function classifyRow(cells: string[], sheetRowNumber: number): ParsedLead {
   let district: string | null = null;
   let budget: BudgetParse | null = null;
 
-  for (const cell of cells) {
+  // أولوية (أ) — رؤوس الاسم الصريحة: أول عمودين اسم متجاورين (first/last في ورقة سناب L+M)
+  // يُدمجان مباشرة، ولا يُلتقط اسم بالمحتوى إطلاقًا ما دامت رؤوس اسم موجودة.
+  const headerNameCols = (roles ?? []).map((r, c) => (r.nameHeader ? c : -1)).filter((c) => c >= 0);
+  for (const c of headerNameCols) {
+    if (nameParts.length >= 2) break;
+    const v = cleanName(cleanValue(unwrapBooleanMap(String(cells[c] ?? ""))));
+    if (v && !UUID_RE.test(v) && !DATE_RE.test(v) && !isSaudiMobile(v)) nameParts.push(v);
+  }
+  const namesFromHeaders = headerNameCols.length > 0;
+
+  for (let colIdx = 0; colIdx < cells.length; colIdx++) {
+    const cell = cells[colIdx];
+    const role = roles?.[colIdx];
+    // عمود إعلاني مستبعد بالرأس (حملة/إعلان/نموذج/حساب/معرّف) — يُتجاهل كليًا:
+    // لا اسم ولا حي ولا سعر ولا حتى ملاحظة جوال (معرّفات رقمية طويلة كانت ستُلتقط غلطًا).
+    if (role?.excluded) continue;
     // فكّ صيغة {المفتاح:true} أولًا — مفاتيح false تسقط ولا تُصنّف.
     const unwrapped = unwrapBooleanMap(String(cell ?? ""));
     // الخلايا المدمجة («قيمة، قيمة») تُقسّم وتُصنّف كل جزء على حدة —
@@ -309,7 +365,9 @@ function classifyRow(cells: string[], sheetRowNumber: number): ParsedLead {
       else if (type === "district") { if (!district) district = value; }
       else if (type === "goal") { if (!purchaseGoal) purchaseGoal = value as PurchaseGoal; }
       else if (type === "budget") { if (!budget) budget = parseBudgetValue(value); }
-      else if (type === "name") { if (nameParts.length < 2) nameParts.push(value); } // عمودا الاسم المتجاوران يُدمجان
+      // الاسم بالمحتوى: فقط لو ما فيه رؤوس اسم، ومع استبعاد الأعمدة المتكررة القيم
+      // (نص الحملة يتكرر في كل الصفوف — ليس اسم عميل).
+      else if (type === "name") { if (!namesFromHeaders && !role?.repetitive && nameParts.length < 2) nameParts.push(value); }
       else {
         // جوال بصيغة فوضوية غير صالحة — لا يفجّر الدورة أبدًا: يُحفظ خامًا للملاحظة.
         const clean = cleanValue(part);
@@ -362,11 +420,14 @@ export function isStubbornRow(l: ParsedLead): boolean {
 export function parseRowsByContent(
   values: string[][],
   opts?: { startDataIndex?: number; limit?: number },
-): { header: string[]; leads: ParsedLead[]; totalDataRows: number } {
+): { header: string[]; leads: ParsedLead[]; totalDataRows: number; columnRoles: ColumnRole[] } {
   const header = values[0] ?? [];
   const data = values.slice(1);
+  // تحليل الأعمدة مرة واحدة (رؤوس + تكرار) — يُمرَّر لكل صف: رؤوس الاسم أولوية قاطعة،
+  // وأعمدة الإعلانات (campaignName…) تُتجاهل كليًا.
+  const roles = analyzeColumns(header.map(String), data);
   const start = opts?.startDataIndex ?? 0;
   const slice = opts?.limit != null ? data.slice(start, start + opts.limit) : data.slice(start);
-  const leads = slice.map((row, i) => classifyRow(row, start + i + 2));
-  return { header, leads, totalDataRows: data.length };
+  const leads = slice.map((row, i) => classifyRow(row, start + i + 2, roles));
+  return { header, leads, totalDataRows: data.length, columnRoles: roles };
 }
