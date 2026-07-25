@@ -3,7 +3,7 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notify, ownerIds, managerIds, activeUserIds } from "@/lib/notify";
-import { ensureNotificationDefaults } from "@/lib/data/notifications-config";
+import { ensureNotificationDefaults, NOTIFICATION_EVENTS } from "@/lib/data/notifications-config";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -48,7 +48,11 @@ export async function emitNotification(args: EmitArgs, db: Db = prisma): Promise
     where: { eventKey },
     select: { audience: true },
   });
-  const audience = setting?.audience ?? "MANAGERS";
+  // بلا صف محفوظ: الجمهور الافتراضي من تعريف الحدث (لا MANAGERS دائمًا — أحداث ASSIGNED
+  // الجديدة كانت ستذهب للمدراء بدل الموظف المعني قبل أول فتح لشاشة الإعدادات).
+  const audience = setting?.audience
+    ?? NOTIFICATION_EVENTS.find((e) => e.key === eventKey)?.audience
+    ?? "MANAGERS";
   const recipients = await recipientsFor(db, audience, assignedUserId);
   if (recipients.length === 0) return;
   // نُنشئ السجل دائمًا (الجرس يعرضه)؛ العميل يقرّر التوست/الصوت حسب إعداد الحدث وقت الوصول.

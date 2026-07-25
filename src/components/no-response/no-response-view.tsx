@@ -4,10 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X, Undo2, Archive } from "lucide-react";
 import { formatCount, toArabicDigits } from "@/lib/format";
-import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, EmployeeLoad, ExhaustedRow, UndoableBatch, NeedsReview, UnreachableRow } from "@/lib/data/no-response";
+import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, EmployeeLoad, ExhaustedRow, UndoableBatch, NeedsReview, NeverContactedRow, UnreachableRow } from "@/lib/data/no-response";
 import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseConfig, type EscalationCategory, type OverdueAgeBucket } from "@/lib/no-response-escalation";
 import {
   warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch, undoPull,
+  nudgeNeverContacted, pullNeverContacted,
   type DistributeOpts, type PullGroupCategory,
 } from "@/lib/actions/no-response";
 import { bulkArchive } from "@/lib/actions/leads";
@@ -35,7 +36,7 @@ type PullAsk = { employeeId: string; employeeName: string; category: PullGroupCa
 type DistAsk = { count: number; sourceEmpIds: string[]; sourceEmployeeId: string | null; leadIds: string[]; who: string; override?: boolean };
 
 export function NoResponseView({
-  summary, pool, employeeLoads, exhausted, undoBatches, needsReview, unreachable, filters, config,
+  summary, pool, employeeLoads, exhausted, undoBatches, needsReview, neverContacted, unreachable, filters, config,
 }: {
   summary: PendingPullSummary;
   pool: PoolSourceGroup[];
@@ -43,6 +44,7 @@ export function NoResponseView({
   exhausted: ExhaustedRow[];
   undoBatches: UndoableBatch[];
   needsReview: NeedsReview;
+  neverContacted: NeverContactedRow[];
   unreachable: UnreachableRow[];
   filters: Filters;
   config: NoResponseConfig;
@@ -101,13 +103,14 @@ export function NoResponseView({
         </button>
       </header>
 
-      {/* بطاقات الإجمالي — ثلاث حالات عرض منفصلة (grace/warning/overdue) + الحوض + السقف */}
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+      {/* بطاقات الإجمالي — ثلاث حالات عرض منفصلة (grace/warning/overdue) + الحوض + السقف + لم يُتواصل */}
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-6">
         <StatCard label="في المهلة" value={summary.totalGrace} tone="plain" />
         <StatCard label="تحذير (٢٤س)" value={summary.totalWarning} tone="gold" />
         <StatCard label="يُسحبون الآن" value={summary.totalOverdue} tone="danger" />
         <StatCard label="في الحوض" value={summary.inQueue} tone="plain" />
         <StatCard label="بلغوا السقف" value={summary.capped} tone="plain" />
+        <StatCard label="لم يُتواصل (٣+ أيام)" value={neverContacted.length} tone="danger" />
       </div>
 
       {/* حالة النظام */}
@@ -155,6 +158,14 @@ export function NoResponseView({
 
       {/* بحاجة لمراجعة — للمالك فقط، عرض بلا سحب */}
       <NeedsReviewPanel data={needsReview} />
+
+      {/* نظام «لم يُتواصل» — النقطة العمياء: مُسند + صفر متابعات بعد الإسناد + ٣+ أيام */}
+      <NeverContactedPanel
+        rows={neverContacted}
+        pending={pending}
+        onNudge={(id) => run(() => nudgeNeverContacted(id))}
+        onPull={(id) => run(() => pullNeverContacted(id))}
+      />
 
       {/* لوحة الأرقام العلوية (per-category) — كما هي */}
       <NumbersPanel summary={summary} />
@@ -452,8 +463,60 @@ function NumbersPanel({ summary }: { summary: PendingPullSummary }) {
 
 // لوحة التراجع عن السحب — دفعات آخر ٢٤ ساعة فيها عملاء لا يزالون في الحوض.
 // لوحة «بحاجة لمراجعة» — للمالك فقط (الصفحة نفسها OWNER-only)، عرض تشخيصي بلا أزرار سحب.
+// لوحة نظام «لم يُتواصل» — قائمة كاملة (العميل + الموظف + الأيام) بالأقدم أولًا مع أزرار:
+// تنبيه الموظف (إشعار بالصوت) · سحب فوري للحوض (NEGLECT). لا سحب تلقائيًا — القرار للمالك.
+function NeverContactedPanel({ rows, pending, onNudge, onPull }: {
+  rows: NeverContactedRow[]; pending: boolean; onNudge: (id: string) => void; onPull: (id: string) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <section className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/[0.05] p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-destructive">
+        <PhoneMissed className="size-4" /> لم يُتواصل معهم إطلاقًا ({toArabicDigits(rows.length)})
+      </h2>
+      <p className="mb-3 text-xs text-muted-foreground">مُسند + صفر متابعات بعد الإسناد + ٣+ أيام — الموظف يوصله تنبيه تلقائي عند اليوم الثالث، والقرار هنا لك: نبّهه مرة ثانية أو اسحب العميل للحوض.</p>
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <table className="w-full min-w-[640px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <thead className="bg-secondary/40 text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">العميل</th>
+              <th className="px-3 py-3 font-medium">الموظف</th>
+              <th className="px-3 py-3 text-center font-medium">منذ الإسناد</th>
+              <th className="px-3 py-3 font-medium">إجراء</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-t border-border">
+                <td className="px-4 py-3">
+                  <a href={`/leads/${r.id}`} className="font-medium text-foreground hover:text-gold">{r.name}</a>
+                  <div className="text-xs text-muted-foreground" dir="ltr">{r.phone}</div>
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">{r.employeeName}</td>
+                <td className="px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(r.days)} يوم</td>
+                <td className="px-3 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => onNudge(r.id)} disabled={pending}
+                      className="flex items-center gap-1 rounded-lg border border-gold/50 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40">
+                      <BellRing className="size-3.5" /> نبّه الموظف
+                    </button>
+                    <button onClick={() => onPull(r.id)} disabled={pending}
+                      className="flex items-center gap-1 rounded-lg border border-destructive/50 bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 disabled:opacity-40">
+                      <UserMinus className="size-3.5" /> اسحب للحوض
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function NeedsReviewPanel({ data }: { data: NeedsReview }) {
-  if (data.totalNoAssign === 0 && data.totalNeverContacted === 0) return null;
+  if (data.totalNoAssign === 0) return null;
   const Sub = ({ title, hint, total, rows }: { title: string; hint: string; total: number; rows: { employeeId: string; employeeName: string; count: number }[] }) => (
     <div className="rounded-xl border border-border bg-background/40 p-3">
       <div className="mb-1 flex items-center justify-between gap-2">
@@ -483,7 +546,7 @@ function NeedsReviewPanel({ data }: { data: NeedsReview }) {
       <p className="mb-3 text-xs text-muted-foreground">عملاء لا يمسكهم نظام «لم يتم الرد» — للاطّلاع فقط، بلا سحب.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Sub title="بلا تاريخ إسناد" hint="مُسند لموظف لكن بلا تاريخ إسناد — خارج السحب التلقائي." total={data.totalNoAssign} rows={data.noAssignDate} />
-        <Sub title="لم يُتواصل إطلاقًا" hint="أُسند ومضى أكثر من ٣ أيام بلا أي متابعة." total={data.totalNeverContacted} rows={data.neverContacted} />
+        {/* بند «لم يُتواصل» انتقل للوحته الموسّعة أدناه (قائمة كاملة بأزرار تنبيه/سحب). */}
       </div>
     </section>
   );
