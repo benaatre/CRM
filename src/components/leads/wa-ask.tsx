@@ -5,8 +5,37 @@
 // لا: يسجّل «لم يرد» المناسب لمرحلته فورًا · تجاهل: يختفي بعد ١٥ ثانية.
 // مرة واحدة لكل فتح محادثة (العلَم يُستهلك عند أول عودة).
 import { useEffect, useRef, useState } from "react";
-import type { LeadStage } from "@prisma/client";
-import { noAnswerBody, postFollowup } from "./quick-actions";
+import type { FollowUpResult, FollowUpSection, FollowUpType, LeadStage } from "@prisma/client";
+
+type SaveBody = {
+  type: FollowUpType;
+  result: FollowUpResult;
+  section: FollowUpSection;
+  stage: LeadStage;
+  note?: string;
+};
+
+/** مراحل ما قبل ثبوت الاهتمام — «لم يرد» فيها بوابة نظام السحب. */
+const PRE_INTEREST: LeadStage[] = ["NEW", "ATTEMPTED"];
+
+/**
+ * جسم «لم يرد» حسب المرحلة — نفس منطق النموذج بالضبط:
+ * جديد/محاولة → NOT_ANSWERED_SCHEDULED (يحرّك ATTEMPTED ويدخل نظام السحب)،
+ * المظلة المهتمة → NO_ANSWER_INTERESTED (بلا تغيير مرحلة ولا سحب).
+ */
+function noAnswerBody(stage: LeadStage, type: FollowUpType = "CALL"): SaveBody {
+  return PRE_INTEREST.includes(stage)
+    ? { type, result: "NOT_ANSWERED_SCHEDULED", section: "NO_ANSWER", stage: "ATTEMPTED", note: "لم يرد" }
+    : { type, result: "NO_ANSWER_INTERESTED", section: "INTERESTED", stage, note: "لم يستجب" };
+}
+
+async function postFollowup(leadId: string, body: SaveBody): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/leads/${leadId}/followups`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return res.ok ? { ok: true } : { ok: false, error: data?.error ?? "صار خطأ" };
+}
 
 export function WaAskLink({
   href, leadId, stage, onYes, onLogged, className, children,

@@ -19,7 +19,6 @@ import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmplo
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
-import { QuickActions } from "./quick-actions";
 import { ImportDialog } from "@/components/team/import-dialog";
 import { useLeads } from "./use-leads";
 
@@ -240,12 +239,6 @@ export function LeadsView({
                   <button onClick={() => setFuLead(l)} className="rounded-full border border-border px-2 py-0.5 text-gold">{toArabicDigits(l.followUpsCount)} متابعة</button>
                 )}
               </div>
-              {/* التسجيل بضغطة واحدة — بطاقة الجوال (للموظف في «جاري العمل») */}
-              {!isManager && tab === "working" && !l.isArchived && (
-                <div className="mt-2.5 border-t border-border pt-2.5">
-                  <QuickActions lead={l} onDone={() => { reload(); router.refresh(); }} />
-                </div>
-              )}
             </div>
           ))
         )}
@@ -305,9 +298,6 @@ export function LeadsView({
                   <td className="relative px-3 py-3">
                     {isManager ? (
                       <button onClick={() => setMenuFor(menuFor === l.id ? null : l.id)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground">خيارات</button>
-                    ) : tab === "working" && !l.isArchived ? (
-                      // التسجيل بضغطة واحدة — للموظف في «جاري العمل».
-                      <QuickActions lead={l} onDone={() => { reload(); router.refresh(); }} />
                     ) : <span className="text-xs text-muted-foreground/50">—</span>}
                     {menuFor === l.id && (
                       <div className="absolute left-2 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border bg-card shadow-xl">
