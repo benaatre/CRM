@@ -9,7 +9,7 @@ import { Sheet, PlugZap, Trash2 } from "lucide-react";
 import { channelLabels } from "@/lib/labels";
 import { formatDateTime, toArabicDigits } from "@/lib/format";
 import type { SheetSourcePanelRow } from "@/lib/data/sources";
-import { addSheetSource, testSheetConnection, toggleSheetLink, deleteSheetLink, approveFullSync, startSyncFromNow, type SheetTestResult } from "@/lib/actions/sources";
+import { addSheetSource, testSheetConnection, toggleSheetLink, deleteSheetLink, approveFullSync, startSyncFromNow, startSyncLastTwoDays, type SheetTestResult } from "@/lib/actions/sources";
 
 // أسماء مقترحة (القناة تُشتق من الاسم تلقائيًا — سناب → سناب شات… إلخ).
 const SUGGESTED = ["سناب شات", "تيك توك", "ميتا", "جوجل", "عقار"];
@@ -22,6 +22,24 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
   const [gid, setGid] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [test, setTest] = useState<{ forUrl: string; res: SheetTestResult } | null>(null);
+  // «آخر يومين ثم لايف» بلا عمود تاريخ: سؤال «كم صفًا أخيرًا؟» لكل رابط + قيمة الحقل.
+  const [askCountFor, setAskCountFor] = useState<{ linkId: string; totalRows: number } | null>(null);
+  const [lastCount, setLastCount] = useState("");
+
+  function runLastTwoDays(linkId: string, count?: number) {
+    setMsg(null);
+    startTransition(async () => {
+      const r = await startSyncLastTwoDays(linkId, count);
+      if (!r.ok && r.needCount) {
+        setAskCountFor({ linkId, totalRows: r.totalRows ?? 0 });
+        setLastCount("");
+        return;
+      }
+      setAskCountFor(null);
+      setMsg({ ok: r.ok, text: r.ok ? (r.message ?? "تم") : (r.error ?? "صار خطأ") });
+      router.refresh();
+    });
+  }
 
   function run(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
     setMsg(null);
@@ -122,19 +140,36 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
                     {r.lastSyncStatus === "error" && r.lastSyncError && (
                       <div className="mt-0.5 max-w-64 truncate text-xs text-destructive" title={r.lastSyncError}>آخر خطأ: {r.lastSyncError}</div>
                     )}
-                    {/* حد أمان أول مزامنة: شيت مليان — لا إدخال حتى يقرر المالك */}
+                    {/* حد أمان أول مزامنة: شيت مليان — لا إدخال حتى يقرر المالك (ثلاثة خيارات) */}
                     {r.lastSyncStatus === "pending_choice" && (
                       <div className="mt-1.5 max-w-md rounded-lg border border-warning/40 bg-warning/10 p-2">
                         <div className="mb-1.5 text-xs font-medium text-warning">⚠️ {r.lastSyncError ?? "الشيت مليان — ابدأ من آخر صف بدل البداية؟"}</div>
-                        <div className="flex gap-1.5">
+                        <div className="flex flex-wrap gap-1.5">
                           <button type="button" disabled={pending} onClick={() => { if (window.confirm("متأكد؟ سيُدخل الشيت كاملًا من أول صف (على دفعات ٥٠ كل دورة).")) run(() => approveFullSync(r.id)); }} className="rounded-lg border border-warning/50 bg-warning/15 px-2.5 py-1 text-[11px] font-medium text-warning hover:bg-warning/25 disabled:opacity-40">زامن الكل</button>
+                          <button type="button" disabled={pending} onClick={() => runLastTwoDays(r.id)} className="rounded-lg border border-gold/50 bg-gold/10 px-2.5 py-1 text-[11px] font-medium text-gold hover:bg-gold/20 disabled:opacity-40" title="يلتقط صفوف آخر ٤٨ ساعة (بعمود التاريخ) ثم يتحول لايف">آخر يومين ثم لايف</button>
                           <button type="button" disabled={pending} onClick={() => run(() => startSyncFromNow(r.id))} className="rounded-lg border border-success/50 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success hover:bg-success/20 disabled:opacity-40">ابدأ من الآن فقط</button>
                         </div>
+                        {/* بلا عمود تاريخ مكتشَف: كم صفًا أخيرًا؟ */}
+                        {askCountFor?.linkId === r.id && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background/60 p-1.5">
+                            <span className="text-[11px] text-muted-foreground">الورقة بلا عمود تاريخ ({toArabicDigits(askCountFor.totalRows)} صف) — كم صفًا أخيرًا تريد التقاطه؟</span>
+                            <input value={lastCount} onChange={(e) => setLastCount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" placeholder="20" className="w-16 rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-gold" />
+                            <button type="button" disabled={pending || !lastCount} onClick={() => runLastTwoDays(r.id, Number(lastCount))} className="rounded border border-gold/50 bg-gold/10 px-2 py-1 text-[11px] text-gold hover:bg-gold/20 disabled:opacity-40">التقط</button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </td>
                   <td className="px-3 py-3"><span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-foreground">{channelLabels[r.channel]}</span></td>
-                  <td className="px-3 py-3 text-center font-bold text-gold">{toArabicDigits(r.todayCount)}</td>
+                  <td className="px-3 py-3 text-center">
+                    <div className="font-bold text-gold">{toArabicDigits(r.todayCount)}</div>
+                    {/* عدّادات التحليل: قواعد · AI · مراجعة */}
+                    {(r.ruleCount + r.aiCount + r.reviewCount) > 0 && (
+                      <div className="mt-0.5 whitespace-nowrap text-[10px] text-muted-foreground" title="كيف حُلّلت صفوف هذا المصدر">
+                        قواعد <span className="text-foreground">{toArabicDigits(r.ruleCount)}</span> · AI <span className="text-info">{toArabicDigits(r.aiCount)}</span> · مراجعة <span className="text-warning">{toArabicDigits(r.reviewCount)}</span>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-center text-muted-foreground" title="آخر صف مُعالج — القراءة تكمل من بعده">{toArabicDigits(r.lastRowSynced)}</td>
                   <td className="px-3 py-3 text-xs text-muted-foreground">
                     {r.lastSyncAt ? formatDateTime(r.lastSyncAt) : "لسة ما زامن"}

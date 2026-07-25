@@ -24,6 +24,20 @@ function cleanValue(v: string | undefined | null): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * فكّ صيغة الخرائط المنطقية من نماذج الإعلانات: {للسكن:true} / {الاستثمار:false، الاثنين معاً:true}
+ * — تُبقي مفاتيح true فقط (cleanValue القديمة كانت تُبقي مفاتيح false أيضًا فتُحسب غلطًا).
+ * القيم بلا true/false تمرّ كما هي.
+ */
+function unwrapBooleanMap(raw: string): string {
+  if (!/[:=]\s*(true|false)\b/i.test(raw)) return raw;
+  const trueKeys: string[] = [];
+  for (const m of String(raw).matchAll(/([^{}،,:=]+)\s*[:=]\s*(true|false)\b/gi)) {
+    if (m[2].toLowerCase() === "true") trueKeys.push(m[1].trim());
+  }
+  return trueKeys.join("، ");
+}
+
 /** تنظيف الاسم من رموز اليونيكود الزائدة (تشكيل عربي، شطب/علامات دامجة، محارف صفرية). */
 function cleanName(v: string | null | undefined): string {
   return cleanValue(v)
@@ -207,27 +221,39 @@ function hasLetters(v: string): boolean {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}([ T]\d{1,2}:\d{2})?/;
 
-/** قيمة تصلح أن تكون «اسم»: حروف، وليست UUID/تاريخ/رقم/طريقة/هدف. */
+// أعمدة قمامة معروفة في شيتات الإعلانات (More Volume وأخواتها) — ليست أسماء ولا تُكتب في أي مكان.
+const JUNK_VALUE_RE = /^(more\s*volume|volume|whatsapp|instagram|facebook|snap\s?chat|tiktok|meta|google|form|leads?|campaign|ad\s?set|adset|ads?|ig|fb)$/i;
+
+/** قيمة تصلح أن تكون «اسم»: حروف، وليست UUID/تاريخ/رقم/طريقة/هدف/قمامة إعلانات. */
 function isNameLike(v: string): boolean {
   if (!hasLetters(v)) return false;
   if (UUID_RE.test(v) || DATE_RE.test(v)) return false;
+  if (JUNK_VALUE_RE.test(v.trim())) return false;
   if (matchPurchaseMethod(v) || normalizePurchaseGoal(v)) return false;
   return true;
+}
+
+/** يشبه جوالًا لكنه غير صالح (أرقام كثيرة بصيغة فوضوية) — يُحفظ خامًا في ملاحظة «جوال غير صالح». */
+function looksPhoneLike(clean: string): boolean {
+  const digits = clean.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return false;
+  return /^[\d\s()+\-.]+$/.test(clean) || digits.length >= 9;
 }
 
 export type ParsedLead = {
   row: number;                          // رقم الصف في الشيت (1-based، للعرض)
   name: string;
-  phone: string;                        // موحّد 05XXXXXXXX
+  phone: string;                        // موحّد 05XXXXXXXX — أو "" لو غير صالح (يدخل بملاحظة، لا يُسقط الصف)
   purchaseMethod: PurchaseMethod | null;
   purchaseGoal: PurchaseGoal | null;
   district: string | null;              // النص الخام (للتوافق مع preferredDistrict)
   areas: string[];                      // الأحياء المطبّعة (قاموس) — تُكتب في preferredAreas
   priceMin: number | null;              // السعر من (ريال كامل)
   priceMax: number | null;              // السعر إلى (ريال كامل)
-  extraNote: string | null;             // نص خام غير مفهوم (حي/ميزانية) — بلا تخمين
-  valid: boolean;                       // اسم موجود + رقم صالح
+  extraNote: string | null;             // نص خام غير مفهوم (حي/ميزانية/جوال) — بلا تخمين
+  valid: boolean;                       // فيه اسم أو جوال — الصف الفارغ منهما معًا فقط يُتخطى
   skip?: string;                        // سبب التخطّي إن وُجد
+  rawCells: string[];                   // خلايا الصف الخام — لكاشف الصفوف العصية وطبقة الـAI
 };
 
 // ===================== تصنيف كل قيمة بمحتواها (للشيتات المتبعثرة) =====================
@@ -259,40 +285,52 @@ function classifyCell(raw: string | null | undefined): { type: CellType; value: 
 function classifyRow(cells: string[], sheetRowNumber: number): ParsedLead {
   const nameParts: string[] = [];
   let phone = "";
+  let phoneInvalidRaw: string | null = null; // نص يشبه الجوال لكنه غير صالح — يُحفظ خامًا في ملاحظة
   let purchaseMethod: PurchaseMethod | null = null;
   let purchaseGoal: PurchaseGoal | null = null;
   let district: string | null = null;
   let budget: BudgetParse | null = null;
 
   for (const cell of cells) {
+    // فكّ صيغة {المفتاح:true} أولًا — مفاتيح false تسقط ولا تُصنّف.
+    const unwrapped = unwrapBooleanMap(String(cell ?? ""));
     // الخلايا المدمجة («قيمة، قيمة») تُقسّم وتُصنّف كل جزء على حدة —
     // إلا خلية الميزانية: تُفحص كاملة أولًا («من ٦٠٠،٠٠٠ إلى ٨٠٠،٠٠٠» فيها فواصل).
-    const whole = cleanValue(cell);
+    const whole = cleanValue(unwrapped);
     if (!budget && whole && !UUID_RE.test(whole) && !DATE_RE.test(whole) && !isSaudiMobile(whole)) {
       const b = parseBudgetValue(whole);
       // قيم فعلية فقط — الملاحظة الخام (note) تمرّ بالتصنيف العادي (بعد فحص الطريقة).
       if (b && (b.min != null || b.max != null)) { budget = b; continue; }
     }
-    for (const part of String(cell ?? "").split(/[,،]/)) {
+    for (const part of unwrapped.split(/[,،]/)) {
       const { type, value } = classifyCell(part);
       if (type === "phone") { if (!phone) phone = value; }
       else if (type === "method") { if (!purchaseMethod) purchaseMethod = value as PurchaseMethod; }
       else if (type === "district") { if (!district) district = value; }
       else if (type === "goal") { if (!purchaseGoal) purchaseGoal = value as PurchaseGoal; }
       else if (type === "budget") { if (!budget) budget = parseBudgetValue(value); }
-      else if (type === "name") { if (nameParts.length < 2) nameParts.push(value); } // أول قيمتين اسم فقط
+      else if (type === "name") { if (nameParts.length < 2) nameParts.push(value); } // عمودا الاسم المتجاوران يُدمجان
+      else {
+        // جوال بصيغة فوضوية غير صالحة — لا يفجّر الدورة أبدًا: يُحفظ خامًا للملاحظة.
+        const clean = cleanValue(part);
+        if (!phone && !phoneInvalidRaw && clean && looksPhoneLike(clean)) phoneInvalidRaw = clean;
+      }
     }
   }
 
   const name = cleanName(nameParts.join(" "));
+  // القاعدة: الجوال غير الصالح لا يُسقط الصف — يدخل بجوال فارغ + ملاحظة. الصف بلا اسم
+  // وبلا جوال معًا هو الوحيد الذي يُتخطى (صف فارغ/قمامة).
   let valid = true;
   let skip: string | undefined;
-  if (!name) { valid = false; skip = "الاسم فاضي"; }
-  else if (!/^05\d{8}$/.test(phone)) { valid = false; skip = "رقم غير صالح"; }
+  if (!name && !phone) { valid = false; skip = "بلا اسم ولا جوال"; }
 
-  // تطبيع الحي بالقاموس + دمج الملاحظات الخام (حي غير معروف / ميزانية غير مفهومة).
+  // تطبيع الحي بالقاموس + دمج الملاحظات الخام (حي غير معروف / ميزانية غير مفهومة / جوال غير صالح).
   const areasParse: AreasParse = district ? normalizeAreas(district) : { areas: [], note: null };
-  const extraNote = [areasParse.note, budget?.note].filter(Boolean).join(" · ") || null;
+  const phoneNote = valid && !phone
+    ? (phoneInvalidRaw ? `جوال غير صالح: ${phoneInvalidRaw}` : "بلا جوال صالح")
+    : null;
+  const extraNote = [phoneNote, areasParse.note, budget?.note].filter(Boolean).join(" · ") || null;
 
   return {
     row: sheetRowNumber, name, phone, purchaseMethod, purchaseGoal, district,
@@ -301,7 +339,23 @@ function classifyRow(cells: string[], sheetRowNumber: number): ParsedLead {
     priceMax: budget?.max ?? null,
     extraNote,
     valid, skip,
+    rawCells: cells.map((c) => String(c ?? "")),
   };
+}
+
+/**
+ * كاشف الصف العصي (مرشّح طبقة الـAI): القواعد عجزت عن الاسم أو الجوال، أو التقطتهما
+ * وفي الصف نصٌّ يوحي بهدف/طريقة/حي/سعر لم يُفهم. الصفوف الفارغة كليًا ليست عصية — تُتخطى.
+ */
+export function isStubbornRow(l: ParsedLead): boolean {
+  if (!l.valid) return false;
+  if (!l.name || !l.phone) return true;
+  const joined = norm(l.rawCells.join(" "));
+  if (!l.purchaseGoal && /سكن|استثمار/.test(joined)) return true;
+  if (!l.purchaseMethod && /تمويل|كاش|نقد/.test(joined)) return true;
+  if (l.areas.length === 0 && /مهديه|احمديه|ظهره|(^|\s)حي\s/.test(joined)) return true;
+  if (l.priceMin == null && l.priceMax == null && !l.extraNote && /سعر|ميزانيه|مليون|(^|\s)الف(\s|$)/.test(joined)) return true;
+  return false;
 }
 
 /** يحلّل قيم الشيت بالتصنيف المحتوائي (كل خلية) — للشيتات المتبعثرة والمنظّمة معًا. */

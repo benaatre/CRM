@@ -213,6 +213,77 @@ export async function approveFullSync(linkId: string): Promise<ActionResult> {
   }
 }
 
+export type StartLastTwoDaysResult = ActionResult & {
+  /** الورقة بلا عمود تاريخ مكتشَف — الواجهة تسأل «كم صفًا أخيرًا تريد التقاطه؟» وتعيد النداء بـ count. */
+  needCount?: boolean;
+  totalRows?: number;
+};
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}([ T]\d{1,2}:\d{2})?/;
+
+/**
+ * الخيار الثالث «آخر يومين ثم لايف»: يلتقط صفوف آخر ٤٨ ساعة فقط بالفلترة على عمود التاريخ
+ * (ISO timestamps — يُكتشف تلقائيًا)، بضبط المؤشر على أول صف حديث — فتمر الدفعة بكامل المسار
+ * القياسي (الحقول الستة ← المكررات ← التوزيع) بدفعات ٥٠ كل دورة، ثم تكمل المزامنة لايف طبيعيًا.
+ * بلا عمود تاريخ: يرجع needCount والمالك يحدد كم صفًا أخيرًا (count).
+ * حد أمان أول مزامنة لا يعترض هذا الخيار — لو المؤشر المحسوب صفرًا يُضبط على موافقة «زامن الكل».
+ */
+export async function startSyncLastTwoDays(linkId: string, count?: number): Promise<StartLastTwoDaysResult> {
+  try {
+    const user = await requireOwnerAction();
+    const link = await prisma.sheetLink.findUnique({ where: { id: linkId }, select: { id: true, sheetId: true, sheetUrl: true, lastRowSynced: true, source: { select: { name: true } } } });
+    if (!link) return { ok: false, error: "الرابط غير موجود" };
+    if (link.lastRowSynced > 0) return { ok: false, error: "المصدر بدأ المزامنة فعلًا — القرار ما عاد لازمًا" };
+    const gid = extractGid(link.sheetUrl);
+    if (gid == null) return { ok: false, error: `رابط المصدر بلا gid — ${GID_HELP} ثم حدّث المصدر` };
+    const tab = await resolveTabByGid(link.sheetId, gid);
+    const values = await readSheetValues(link.sheetId, { tab: tab.title });
+    const data = values.slice(1); // بلا صف العناوين
+    const totalRows = data.length;
+
+    // اكتشاف عمود التاريخ: العمود الذي أغلب قيمه غير الفارغة ISO timestamps (عينة أول ٥٠ صفًا).
+    let dateCol = -1;
+    const sample = data.slice(0, 50);
+    const width = Math.max(0, ...sample.map((r) => r.length));
+    for (let c = 0; c < width; c++) {
+      const cells = sample.map((r) => String(r[c] ?? "").trim()).filter(Boolean);
+      if (cells.length >= 3 && cells.filter((v) => ISO_DATE_RE.test(v)).length / cells.length >= 0.5) { dateCol = c; break; }
+    }
+
+    let pointer: number;
+    let how: string;
+    if (dateCol >= 0) {
+      // أول صف تاريخه داخل آخر ٤٨ ساعة (الصفوف مضافة زمنيًا) — ما قبله يُتجاهل.
+      const cutoff = Date.now() - 48 * 3_600_000;
+      let firstRecent = totalRows; // لا صفوف حديثة → لايف من الآن
+      for (let i = 0; i < data.length; i++) {
+        const t = Date.parse(String(data[i][dateCol] ?? "").trim());
+        if (!Number.isNaN(t) && t >= cutoff) { firstRecent = i; break; }
+      }
+      pointer = firstRecent;
+      how = `عمود التاريخ (العمود ${dateCol + 1}) — ${totalRows - pointer} صفًا من آخر يومين`;
+    } else if (count != null && Number.isFinite(count) && count >= 0) {
+      pointer = Math.max(0, totalRows - Math.floor(count));
+      how = `آخر ${totalRows - pointer} صفًا (بلا عمود تاريخ — عدد يدوي)`;
+    } else {
+      // بلا عمود تاريخ ولا عدد — الواجهة تعرض سؤال «كم صفًا أخيرًا؟».
+      return { ok: false, needCount: true, totalRows, error: "الورقة بلا عمود تاريخ مكتشَف — حدد كم صفًا أخيرًا تريد التقاطه" };
+    }
+
+    await prisma.sheetLink.update({
+      where: { id: linkId },
+      // مؤشر 0 = كل الشيت حديث → موافقة «زامن الكل» حتى لا يعترضه حد أمان أول مزامنة.
+      data: { lastRowSynced: pointer === 0 ? FULL_SYNC_APPROVED : pointer, lastSyncAt: new Date(), lastSyncStatus: "success", lastSyncError: null },
+    });
+    await logAudit(prisma, { userId: user.id, action: "sheetlink.startedLastTwoDays", entity: "sheetlink", entityId: linkId, summary: `فعّل «آخر يومين ثم لايف» لشيت «${link.source?.name ?? "؟"}» — ${how}` });
+    revalidateSources();
+    const picked = totalRows - pointer;
+    return { ok: true, message: picked > 0 ? `تم — ${picked} صفًا حديثًا سيدخلون بدفعات ٥٠ كل دورة، ثم لايف طبيعيًا` : "تم — ما فيه صفوف حديثة؛ المزامنة لايف من الآن" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
 /**
  * «ابدأ من الآن فقط»: المؤشر = آخر صف حالي — القديم يُتجاهل نهائيًا والجديد فقط من هنا وطالع.
  * (يمنع تكرار حادثة الإغراق نهائيًا للمصادر ذات الأرشيف الكبير.)

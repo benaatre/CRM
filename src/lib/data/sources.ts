@@ -67,6 +67,10 @@ export type SheetSourcePanelRow = {
   lastSyncStatus: string | null;
   lastSyncError: string | null;
   todayCount: number;    // عملاء اليوم من هذا المصدر (بتوقيت الرياض)
+  /** عدّادات التحليل (من وسم تحليل= في سجل التدقيق): حُلّل بالقواعد · بالـAI · يحتاج مراجعة. */
+  ruleCount: number;
+  aiCount: number;
+  reviewCount: number;
 };
 
 /** بيانات شاشة «مصادر العملاء»: كل روابط الشيت + قناة كل مصدر + عملاء اليوم + آخر مزامنة/خطأ. */
@@ -89,7 +93,22 @@ export async function getSheetSourcesPanel(): Promise<SheetSourcePanelRow[]> {
   ]);
   const todayBySource = new Map(todayGrp.map((g) => [g.sourceId, g._count._all]));
 
-  return links.map((l) => ({
+  // عدّادات التحليل لكل مصدر — من وسم «تحليل=» في سجلات lead.arrivedFromSheet (الروابط قليلة).
+  const analysisCounts = await Promise.all(
+    links.map(async (l) => {
+      const name = l.source?.name;
+      if (!name) return { ruleCount: 0, aiCount: 0, reviewCount: 0 };
+      const forSource = { action: "lead.arrivedFromSheet", summary: { contains: `من «${name}»` } };
+      const [ruleCount, aiCount, reviewCount] = await Promise.all([
+        prisma.auditLog.count({ where: { AND: [forSource, { summary: { contains: "تحليل=rules" } }] } }),
+        prisma.auditLog.count({ where: { AND: [forSource, { summary: { contains: "تحليل=ai" } }] } }),
+        prisma.auditLog.count({ where: { AND: [forSource, { summary: { contains: "تحليل=review" } }] } }),
+      ]);
+      return { ruleCount, aiCount, reviewCount };
+    }),
+  );
+
+  return links.map((l, i) => ({
     id: l.id,
     sourceId: l.sourceId,
     sourceName: l.source?.name ?? "—",
@@ -101,6 +120,7 @@ export async function getSheetSourcesPanel(): Promise<SheetSourcePanelRow[]> {
     lastSyncStatus: l.lastSyncStatus,
     lastSyncError: l.lastSyncError,
     todayCount: todayBySource.get(l.sourceId) ?? 0,
+    ...analysisCounts[i],
   }));
 }
 

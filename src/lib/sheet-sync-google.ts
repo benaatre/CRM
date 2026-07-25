@@ -3,7 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { readSheetValues, resolveTabByGid } from "@/lib/google-sheets";
 import { extractGid } from "@/lib/utils/sheet";
-import { parseRowsByContent } from "@/lib/utils/sheet-parse";
+import { parseRowsByContent, isStubbornRow, type ParsedLead } from "@/lib/utils/sheet-parse";
+import { analyzeStubbornRows, type AiRowResult } from "@/lib/sheet-ai";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
 import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
 import { channelForSourceName } from "@/lib/source-channel";
@@ -84,6 +85,16 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
     const leads = opts?.limit != null ? fullParsed.leads.slice(0, opts.limit) : fullParsed.leads;
     base.processed = leads.length;
 
+    // طبقة الـAI للصفوف العصية (fallback لا أساس): تُجمع وتُرسل دفعة واحدة — لا طلب لكل صف.
+    // فشل الدفعة آمن: كل صف عصي يدخل بما التقطته القواعد + ملاحظة «يحتاج مراجعة».
+    const stubborn = leads.filter((l) => l.valid && isStubbornRow(l));
+    const aiByLead = new Map<ParsedLead, AiRowResult>();
+    if (stubborn.length > 0) {
+      const aiRes = await analyzeStubbornRows(stubborn.map((s) => s.rawCells));
+      if (aiRes) stubborn.forEach((s, i) => aiByLead.set(s, aiRes[i]));
+    }
+    const stubbornSet = new Set(stubborn);
+
     // المكرر يُسمح به ليظهر في القائمة، إلا استثناء «نفس الرقم + نفس الإعلان (المصدر) خلال ٤٨ ساعة».
     // آمن هنا: المزامنة تقرأ الصفوف الجديدة فقط (lastRowSynced)، فلا تُعاد قراءة القديمة ولا تُضاف من جديد.
     const now = new Date();
@@ -95,35 +106,53 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
     const seen = new Set<string>(); // منع تكرار نفس الرقم داخل نفس الدفعة
 
     let created = 0, duplicates = 0, skipped = 0;
-    const createdLeads: { id: string; name: string }[] = [];
+    const createdLeads: { id: string; name: string; analysis: "rules" | "ai" | "review" }[] = [];
     for (const l of leads) {
       if (!l.valid) { skipped++; continue; }
-      const ck = dupeCheckKey(l.phone, ad);
+
+      // دمج نتيجة الـAI للصف العصي (قيم القواعد لها الأولوية — الـAI يكمل الناقص فقط).
+      const ai = aiByLead.get(l) ?? null;
+      const analysis: "rules" | "ai" | "review" = !stubbornSet.has(l) ? "rules" : ai ? "ai" : "review";
+      const name = l.name || ai?.name || "بدون اسم";
+      const phone = l.phone || ai?.phone || "";
+      const purchaseGoal = l.purchaseGoal ?? ai?.purchaseGoal ?? null;
+      const purchaseMethod = l.purchaseMethod ?? ai?.purchaseMethod ?? null;
+      const areas = l.areas.length ? l.areas : (ai?.areas ?? []);
+      const priceMin = l.priceMin ?? ai?.priceMin ?? null;
+      const priceMax = l.priceMax ?? ai?.priceMax ?? null;
+      const notes = [
+        l.extraNote,
+        !l.areas.length ? ai?.areaNote : null,
+        analysis === "review" ? "يحتاج مراجعة — الصف ما فُهم كاملًا (راجع بيانات العميل من الشيت)" : null,
+      ].filter(Boolean).join(" · ") || null;
+
+      // حارس المكررات على الجوال الصالح فقط — جوال فارغ لا يدخل المقارنة (وإلا تُحسب الفوارغ مكررات).
+      const ck = phone ? dupeCheckKey(phone, ad) : null;
       if (ck && (recentSet.has(ck) || seen.has(ck))) { duplicates++; continue; }
       if (ck) { seen.add(ck); recentSet.add(ck); }
       const row = await prisma.lead.create({
         data: {
-          name: l.name,
-          phone: l.phone,
+          name,
+          phone,
           channel,
           stage: "NEW",
           assignedToId: null,               // غير موزّع — التوزيع التلقائي القائم يلتقطه طبيعيًا
           sourceId: link.sourceId,
           source: sourceName,               // نص المصدر (للعرض)
-          purchaseMethod: l.purchaseMethod ?? undefined,
-          purchaseGoal: l.purchaseGoal ?? undefined,
+          purchaseMethod: purchaseMethod ?? undefined,
+          purchaseGoal: purchaseGoal ?? undefined,
           preferredDistrict: l.district,
           // الحي المطبّع (قاموس الأحياء الثلاثة) — نفس حقل «الأحياء المناسبة» اليدوي، والموظف يعدّله.
-          ...(l.areas.length ? { preferredAreas: l.areas } : {}),
+          ...(areas.length ? { preferredAreas: areas } : {}),
           // السعر من–إلى بالريال الكامل (من عمود الميزانية إن وُجد).
-          ...(l.priceMin != null ? { priceMin: l.priceMin } : {}),
-          ...(l.priceMax != null ? { priceMax: l.priceMax } : {}),
-          // نص خام غير مفهوم (حي/ميزانية) — يُحفظ ملاحظة بلا تخمين.
-          ...(l.extraNote ? { notes: l.extraNote } : {}),
+          ...(priceMin != null ? { priceMin } : {}),
+          ...(priceMax != null ? { priceMax } : {}),
+          // نص خام غير مفهوم (حي/ميزانية/جوال) — يُحفظ ملاحظة بلا تخمين.
+          ...(notes ? { notes } : {}),
         },
         select: { id: true, name: true },
       });
-      createdLeads.push(row);
+      createdLeads.push({ ...row, analysis });
       created++;
     }
 
@@ -134,7 +163,8 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
           action: "lead.arrivedFromSheet",
           entity: "lead",
           entityId: c.id,
-          summary: `وصل عميل جديد من «${sourceName ?? "شيت"}» · العميل=${c.id}`,
+          // وسم التحليل (rules/ai/review) — تُبنى منه عدّادات شاشة المصادر.
+          summary: `وصل عميل جديد من «${sourceName ?? "شيت"}» · العميل=${c.id} · تحليل=${c.analysis}`,
         })),
       });
       await notifyBestEffort("sheet-sync notify", () =>
