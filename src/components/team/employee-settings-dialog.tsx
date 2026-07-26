@@ -57,7 +57,7 @@ export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; on
           <div className="flex justify-center py-10"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
         ) : (
           <form onSubmit={save} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="الاسم"><input name="name" required defaultValue={detail.name} className="select-base" /></Field>
               <Field label="الجوال"><input name="phone" dir="ltr" defaultValue={detail.phone ?? ""} className="select-base" /></Field>
               <Field label="الإيميل (اختياري)"><input name="email" type="email" dir="ltr" defaultValue={detail.email ?? ""} className="select-base" placeholder="name@example.com" /></Field>

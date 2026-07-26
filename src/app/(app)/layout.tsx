@@ -65,8 +65,13 @@ export default async function AppLayout({
     <div className="flex min-h-dvh">
       <Heartbeat />
       <NotificationCenter />
-      {/* شريط جانبي (RTL — يظهر يمين) */}
-      <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 md:flex">
+      {/*
+        شريط جانبي ثابت (RTL — يظهر يمين) من ١٠٢٤ بكسل فقط.
+        كان يظهر من ٧٦٨ بينما زر ☰ يختفي عند ٧٦٨ أيضًا — فتنشأ منطقة ميتة على التابلت
+        (٧٦٨–١٠٢٣): شريط ٢٥٦ بكسل يلتهم الشاشة ولا سبيل للوصول للقائمة. الآن الحدّ
+        واحد (lg) للاثنين: تحته درج منزلق، وفوقه شريط ثابت.
+      */}
+      <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 lg:flex">
         <div className="mb-8">
           <Brand companyName={settings.companyName} logoUrl={settings.logoUrl} textClassName="text-2xl" imgClassName="h-10 w-auto" />
           <p className="mt-0.5 text-xs text-muted-foreground">إدارة المبيعات العقارية</p>
@@ -98,7 +103,13 @@ export default async function AppLayout({
         )}
       </aside>
 
-      <div className="flex flex-1 flex-col">
+      {/*
+        min-w-0: الإصلاح البنيوي الذي يغني عن قصّ المحتوى عالميًا.
+        عنصر flex-1 قيمته الافتراضية min-width:auto — أي لا ينكمش تحت عرض محتواه،
+        فأي جدول عريض كان يدفع العمود كله فيجرّ الصفحة. مع min-w-0 ينكمش العمود
+        لعرض الشاشة، ويبقى التمرير داخل حاوية الجدول وحدها.
+      */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
           userName={user.name ?? "مستخدم"}
           roleLabel={roleLabel(user.role)}
@@ -111,7 +122,7 @@ export default async function AppLayout({
           availability={manager ? null : availability}
           dupCount={dupCount}
         />
-        <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
+        <main className="w-full min-w-0 flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>
       <FloatingAssistant />
     </div>

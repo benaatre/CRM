@@ -36,7 +36,7 @@ export function ProjectForm({ open, onClose, project }: { open: boolean; onClose
           <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"><X className="size-5" /></button>
         </div>
         <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="اسم المشروع *"><input name="name" required defaultValue={project?.name ?? ""} className="select-base" /></Field>
             <Field label="الحي"><input name="district" defaultValue={project?.district ?? ""} className="select-base" /></Field>
             <Field label="الحالة">

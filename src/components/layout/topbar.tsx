@@ -66,22 +66,22 @@ export function Topbar({
   }
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-3 backdrop-blur-md md:px-6">
+    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-3 backdrop-blur-md lg:px-6">
       {/* يمين: اللوجو فقط (جوال) · المستخدم + خروج (سطح المكتب) */}
       <div className="flex items-center gap-3">
-        <span className="md:hidden"><Brand companyName={companyName} logoUrl={logoUrl} textClassName="text-lg" imgClassName="h-7 w-auto" /></span>
+        <span className="lg:hidden"><Brand companyName={companyName} logoUrl={logoUrl} textClassName="text-lg" imgClassName="h-7 w-auto" /></span>
         <div className="hidden text-left sm:block">
           <div className="text-sm font-medium text-foreground">{userName}</div>
           <div className="text-xs text-gold">{roleLabel}</div>
         </div>
-        <form action={signOutAction} className="hidden md:block">
+        <form action={signOutAction} className="hidden lg:block">
           <button
             type="submit"
             title="خروج"
             className="flex items-center gap-1.5 rounded-xl border border-border px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive"
           >
             <LogOut className="size-4" />
-            <span className="hidden md:inline">خروج</span>
+            <span className="hidden lg:inline">خروج</span>
           </button>
         </form>
         {/* «خروج من كل الأجهزة» انتقل إلى الإعدادات → قسم «الجلسات النشطة». */}
@@ -100,18 +100,18 @@ export function Topbar({
         </form>
 
         {/* EN / ع */}
-        <div className="hidden items-center rounded-xl border border-border p-0.5 text-xs md:flex">
+        <div className="hidden items-center rounded-xl border border-border p-0.5 text-xs lg:flex">
           <button onClick={() => setLang("ar")} className={`rounded-lg px-2 py-1 ${lang === "ar" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>ع</button>
           <button onClick={() => setLang("en")} className={`rounded-lg px-2 py-1 ${lang === "en" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>EN</button>
         </div>
 
-        <span className="hidden md:inline-flex"><NotificationBell /></span>
+        <span className="hidden lg:inline-flex"><NotificationBell /></span>
 
         {/* ليل / نهار */}
         <button
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
-          className="hidden rounded-xl border border-border p-2 text-muted-foreground transition-colors hover:text-gold md:block"
+          className="hidden rounded-xl border border-border p-2 text-muted-foreground transition-colors hover:text-gold lg:block"
         >
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
@@ -120,7 +120,7 @@ export function Topbar({
 
         <button
           onClick={() => setShowNew(true)}
-          className="hidden min-h-11 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 md:flex"
+          className="hidden min-h-11 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 lg:flex"
         >
           <Plus className="size-4" />
           <span>عميل جديد</span>
@@ -132,16 +132,16 @@ export function Topbar({
           onClick={() => setShowNew(true)}
           aria-label="عميل جديد"
           title="عميل جديد"
-          className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 md:hidden"
+          className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 lg:hidden"
         >
           <Plus className="size-5" />
         </button>
-        <span className="md:hidden"><NotificationBell /></span>
+        <span className="lg:hidden"><NotificationBell /></span>
         <button
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
           aria-label="تبديل الثيم"
-          className="flex size-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:text-gold md:hidden"
+          className="flex size-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:text-gold lg:hidden"
         >
           {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
         </button>

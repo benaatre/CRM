@@ -251,7 +251,7 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
     <Modal title="موظف جديد" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="الاسم *"><input name="name" required className="select-base" placeholder="اسم الموظف" /></Field>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="الجوال"><input name="phone" inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" /></Field>
           <Field label="رمز PIN *"><input name="pin" inputMode="numeric" dir="ltr" maxLength={6} className="select-base" placeholder="٤–٦ أرقام" /></Field>
         </div>

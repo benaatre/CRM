@@ -52,7 +52,7 @@ export function LoginForm({
             key={value}
             type="button"
             onClick={() => setTab(value)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-11 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               tab === value
                 ? "bg-card text-gold shadow-sm"
                 : "text-muted-foreground hover:text-foreground"

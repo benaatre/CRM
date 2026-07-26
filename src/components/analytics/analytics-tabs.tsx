@@ -54,7 +54,7 @@ export function EmployeeKpis({ team }: { team: Team }) {
               <span className="font-medium text-foreground">{t.name}</span>
               <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs text-gold">تحويل {toArabicDigits(t.conversion)}٪</span>
             </div>
-            <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
               <Cell label="عملاء" v={t.assigned} />
               <Cell label="متابعات" v={t.followups} />
               <Cell label="زيارات" v={t.visits} />

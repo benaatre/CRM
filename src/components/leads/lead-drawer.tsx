@@ -184,7 +184,7 @@ export function LeadDrawer({
                 <form onSubmit={saveData} className="space-y-3">
                   <DField label="الاسم"><input name="name" defaultValue={lead.name} className="select-base" /></DField>
                   <DField label="الجوال"><input name="phone" defaultValue={lead.phone} dir="ltr" className="select-base" /></DField>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* «القناة» أُزيلت — «المصدر» الموحّد أدناه هو الحقل الوحيد (القناة تُشتق منه تلقائيًا). */}
                     <DField label="الأولوية">
                       <select name="priority" defaultValue={lead.priority} className="select-base">
@@ -224,7 +224,7 @@ export function LeadDrawer({
                     </DField>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border pt-3">
                     <DField label="المرحلة">
                       <select
                         value={lead.stage}

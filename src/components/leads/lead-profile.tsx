@@ -276,7 +276,7 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
 
   return (
     <section className="glass space-y-4 rounded-2xl p-5">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="هدف الشراء">
           <select value={goal} onChange={(e) => setGoal(e.target.value)} className="select-base">
             <option value="">—</option>
