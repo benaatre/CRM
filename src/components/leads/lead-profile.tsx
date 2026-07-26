@@ -10,6 +10,7 @@ import {
   followUpResultLabels, followUpTypeLabels,
 } from "@/lib/labels";
 import { updateLeadIntake, toggleRevealHistory } from "@/lib/actions/leads";
+import { transferToAutoPool, removeFromAutoPool } from "@/lib/actions/distribution";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
 import { cancelBooking } from "@/lib/actions/bookings";
@@ -124,6 +125,49 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
             </div>
           )
         )}
+        {/* باب البركة ٣ — للمالك/المدير: يسحب العميل من صاحبه ويضعه في بركة التوزيع التلقائي. */}
+        {isManager && !detail.isArchived && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-secondary/30 px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              {detail.inAutoPool
+                ? "هذا العميل داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه"
+                : "خارج بركة التوزيع التلقائي — المحرك لا يمسّه إطلاقًا"}
+            </span>
+            {detail.inAutoPool ? (
+              <button
+                onClick={() => {
+                  if (!window.confirm("تأكيد: إخراجه من بركة التوزيع التلقائي؟ المحرك ما راح يلمسه بعدها.")) return;
+                  startTransition(async () => {
+                    const r = await removeFromAutoPool([detail.id]);
+                    if (!r.ok && r.error) alert(r.error);
+                    router.refresh();
+                  });
+                }}
+                disabled={pending}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-50"
+              >أخرجه من البركة</button>
+            ) : (
+              <button
+                onClick={() => {
+                  const owner = detail.assignedTo?.name;
+                  if (!window.confirm(
+                    owner
+                      ? `تأكيد: سحب «${detail.name}» من ${owner} وتحويله لبركة التوزيع التلقائي؟ يُلغى إسناده الحالي ويوزّعه المحرك من جديد.`
+                      : `تأكيد: تحويل «${detail.name}» لبركة التوزيع التلقائي؟`,
+                  )) return;
+                  startTransition(async () => {
+                    const r = await transferToAutoPool([detail.id]);
+                    if (!r.ok && r.error) alert(r.error);
+                    router.refresh();
+                  });
+                }}
+                disabled={pending}
+                className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
+              >حوّله للتوزيع التلقائي</button>
+            )}
+          </div>
+        )}
+
         {/* الخطوة ٣ج: زر كشف السجل — للمالك فقط (transferHistory ≠ null يعني مالك)، ولعميل وُزّع «كجديد» فقط. */}
         {transferHistory && detail.freshDistributed && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-secondary/30 px-3 py-2">

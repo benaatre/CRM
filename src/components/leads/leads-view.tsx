@@ -16,6 +16,7 @@ import {
 } from "@/lib/actions/leads";
 import type { UnarchiveMode } from "@/lib/actions/leads";
 import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmployeeLoads } from "@/lib/actions/team";
+import { admitToAutoPool } from "@/lib/actions/distribution";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
@@ -192,6 +193,15 @@ export function LeadsView({
               {isManager && (
                 <button onClick={() => setTransfer({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">تحويل</button>
               )}
+              {/* باب البركة ٢: غير الموزّعين فقط — لا يمسّ أي عميل مُسند. */}
+              {isManager && tab === "unassigned" && (
+                <button
+                  onClick={() => run(async () => { const r = await admitToAutoPool([...sel]); clearSel(); return r; })}
+                  disabled={pending}
+                  title="يدخلهم بركة التوزيع التلقائي — المحرك يوزّعهم بالدفعات والسقوف المضبوطة"
+                  className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
+                >أدخلهم التوزيع التلقائي</button>
+              )}
               {tab === "hidden" ? (
                 <button onClick={() => setUnarchive({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50">إرجاع من الأرشيف</button>
               ) : (
@@ -226,7 +236,7 @@ export function LeadsView({
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
                     {!isManager && <PullCountdown pull={l.pull} />}
                     {isManager && l.unresponsiveCount > 0 && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning">لم يستجب ×{toArabicDigits(l.unresponsiveCount)}</span>}
-                    {l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}
+                    {l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}
                   </div>
                   <a href={`tel:${l.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{l.phone}</a>
                 </div>
@@ -274,7 +284,7 @@ export function LeadsView({
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
                   <td className="px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
                   <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />{!isManager && <PullCountdown pull={l.pull} />}{isManager && l.unresponsiveCount > 0 && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning">لم يستجب ×{toArabicDigits(l.unresponsiveCount)}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}</span></td>
+                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />{!isManager && <PullCountdown pull={l.pull} />}{isManager && l.unresponsiveCount > 0 && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning">لم يستجب ×{toArabicDigits(l.unresponsiveCount)}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
                   {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
                   <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>

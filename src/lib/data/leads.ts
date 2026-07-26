@@ -77,6 +77,8 @@ export type LeadRow = {
   unresponsiveCount: number;
   /** مسوّق (آخر متابعاته NOT_INTERESTED_MARKETER) — وسم واضح ويُستثنى من الإحياء. */
   marketer: boolean;
+  /** داخل بركة التوزيع التلقائي (autoPoolAt != null) — شارة «تلقائي» وتمييزه عن اليدوي. */
+  inAutoPool: boolean;
   /** موعد الزيارة القادم (لمرحلة «موعد زيارة مؤكّد») — للبانر والتذكير البصري. */
   visitAt: Date | null;
   /** كم مرة أعاد جدولة زيارته — شارة «أعاد الجدولة ×N» (مدير/مالك). */
@@ -175,6 +177,7 @@ type LeadWithRels = {
   manualAssignedAt: Date | null;
   visitAt: Date | null;
   visitRescheduleCount: number;
+  autoPoolAt: Date | null;
   followUps?: { createdAt: Date; result: FollowUpResult }[];
   reassignments?: { reason: string; toUserId: string | null }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
@@ -260,6 +263,7 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     // من نافذة أحدث ٢٠ متابعة (المجلوبة أصلًا) — كافية عمليًا لكلا العدّادين.
     unresponsiveCount: (l.followUps ?? []).filter((f) => f.result === "NO_ANSWER_INTERESTED").length,
     marketer: (l.followUps ?? []).some((f) => f.result === "NOT_INTERESTED_MARKETER"),
+    inAutoPool: l.autoPoolAt != null,
     visitAt: l.visitAt,
     visitRescheduleCount: l.visitRescheduleCount,
     // «راكد»: مهتم بلا متابعة ٧+ أيام (آخر متابعة من نافذة العشرين المجلوبة — الأحدث أولًا).

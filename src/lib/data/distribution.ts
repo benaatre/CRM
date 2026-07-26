@@ -13,6 +13,8 @@ export type DistributedLead = {
   reassignCount: number;
   stage: string;
   overdue: boolean;
+  /// داخل بركة التوزيع التلقائي؟ (autoPoolAt != null) — يميّز «تلقائي» عن «يدوي» في اللوحة.
+  inAutoPool: boolean;
 };
 
 export type ReassignmentRow = {
@@ -27,8 +29,10 @@ export type ReassignmentRow = {
 export type DistributionBoard = {
   todayLeads: DistributedLead[];
   log: ReassignmentRow[];
-  stats: { total: number; contacted: number; pending: number; reassigned: number };
+  stats: { total: number; contacted: number; pending: number; reassigned: number; auto: number; manual: number };
   timeoutMin: number;
+  /// عدّادات البركة نفسها (مستقلة عن «موزّع اليوم»).
+  pool: { total: number; unassigned: number };
 };
 
 /** بيانات لوحة مراقبة التوزيع: عملاء اليوم الموزّعون + سجل إعادات التوجيه. */
@@ -46,7 +50,7 @@ export async function getDistributionBoard(): Promise<DistributionBoard> {
     where: { assignedAt: { gte: dayStart } },
     select: {
       id: true, name: true, phone: true, assignedAt: true, contactedAt: true,
-      reassignCount: true, stage: true, isArchived: true,
+      reassignCount: true, stage: true, isArchived: true, autoPoolAt: true,
       assignedTo: { select: { name: true } },
     },
     orderBy: { assignedAt: "desc" },
@@ -66,6 +70,7 @@ export async function getDistributionBoard(): Promise<DistributionBoard> {
       stage: l.stage,
       // متأخّر = ما تم التواصل، غير مؤرشف، مو مرحلة متقدّمة، ومرّت المهلة.
       overdue: !contacted && !l.isArchived && !advanced && !!l.assignedAt && l.assignedAt <= cutoff,
+      inAutoPool: l.autoPoolAt != null,
     };
   });
 
@@ -92,10 +97,20 @@ export async function getDistributionBoard(): Promise<DistributionBoard> {
   const total = todayLeads.length;
   const contacted = todayLeads.filter((l) => l.contacted).length;
   const reassigned = todayLeads.filter((l) => l.reassignCount > 0).length;
+  // «موزّع اليوم» ينقسم: تلقائي (داخل البركة) · يدوي (خارجها) — رقمان لا رقم واحد.
+  const auto = todayLeads.filter((l) => l.inAutoPool).length;
+
+  // عدّادات البركة نفسها — مستقلة عن اليوم.
+  const [poolTotal, poolUnassigned] = await Promise.all([
+    prisma.lead.count({ where: { autoPoolAt: { not: null }, isArchived: false } }),
+    prisma.lead.count({ where: { autoPoolAt: { not: null }, isArchived: false, assignedToId: null } }),
+  ]);
+
   return {
     todayLeads,
     log,
-    stats: { total, contacted, pending: total - contacted, reassigned },
+    stats: { total, contacted, pending: total - contacted, reassigned, auto, manual: total - auto },
     timeoutMin,
+    pool: { total: poolTotal, unassigned: poolUnassigned },
   };
 }
