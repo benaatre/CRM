@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   Loader2, Zap, Clock, Users2, ArrowUp, ArrowDown, Plus, X,
   CheckCircle2, AlertTriangle, RefreshCw, Repeat, ShieldAlert, Power,
-  ShieldCheck, CalendarClock, Hand, UserCheck,
+  ShieldCheck, CalendarClock, Hand, UserCheck, Layers,
 } from "lucide-react";
 import { toArabicDigits, formatDateTime } from "@/lib/format";
 import { stageLabels } from "@/lib/labels";
 import type { LeadStage } from "@prisma/client";
 import {
-  updateDistributionConfig, runSweepNow,
+  updateDistributionConfig, runSweepNow, updateDailyAssignCaps,
   approveSweepPull, dismissSweepCandidate, dismissAllSweepCandidates,
   updateSweepCutoff, protectAllCurrentFromSweep,
   type DistConfig, type DistEmployee, type LastCron, type SweepCandidateRow,
@@ -19,8 +19,9 @@ import {
 import type { DistributionBoard } from "@/lib/data/distribution";
 import { ManageEmployeeAvailability } from "@/components/availability/manage-availability";
 
-// الحد الأدنى المسموح لمهلة السحب (٢٤ ساعة بالدقائق) — يُفرَض في الواجهة والخادم معًا.
-const MIN_TIMEOUT_MIN = 24 * 60;
+// لا أرضية إجبارية لمهلة السحب — المالك يضبطها كما يشاء (الحد التقني: دقيقة واحدة).
+// تحت هذا الحد نعرض تحذيرًا أصفر لا يمنع الحفظ.
+const SHORT_TIMEOUT_WARN_MIN = 120;
 
 export type DistSwitches = { initialOn: boolean; reassignOn: boolean };
 
@@ -294,6 +295,14 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
   const [initialMode, setInitialMode] = useState(config.distInitialMode);
   const [reassignMode, setReassignMode] = useState(config.distReassignMode);
   const [order, setOrder] = useState<string[]>(config.order);
+  // حوكمة الدفعات والسقوف (٠ = بلا سقف/الكل)
+  const [batchSize, setBatchSize] = useState(config.distBatchSize ?? 0);
+  const [perWindow, setPerWindow] = useState(config.distPerEmployeePerWindow ?? 0);
+  const [windowMin, setWindowMin] = useState(config.distWindowMin);
+  // السقف اليومي لكل موظف (تحرير محلي ثم حفظ)
+  const [caps, setCaps] = useState<Record<string, number>>(
+    Object.fromEntries(employees.map((e) => [e.id, e.dailyAssignCap ?? 0])),
+  );
 
   const byId = new Map(employees.map((e) => [e.id, e]));
   const participants = order.map((id) => byId.get(id)).filter(Boolean) as DistEmployee[];
@@ -311,19 +320,24 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
 
   function save() {
     setMsg(null); setError(null);
-    // فرض الحد الأدنى ٢٤ ساعة في الواجهة أيضًا (الخادم يفرضه كذلك).
-    if (timeout < MIN_TIMEOUT_MIN) {
-      setError(`مهلة السحب لازم ٢٤ ساعة على الأقل (${toArabicDigits(MIN_TIMEOUT_MIN)} دقيقة). مهلة أقصر تسحب العملاء بسرعة قبل تسجيل التواصل وتسبّب فوضى توزيع.`);
-      return;
-    }
     startTransition(async () => {
       const res = await updateDistributionConfig({
         autoDistribute: on, distStartHour: startHour, distEndHour: endHour,
         distTimeoutMin: timeout, distPresenceMin: presence,
         distInitialMode: initialMode, distReassignMode: reassignMode, order,
+        distBatchSize: batchSize > 0 ? batchSize : null,
+        distPerEmployeePerWindow: perWindow > 0 ? perWindow : null,
+        distWindowMin: windowMin,
       });
-      if (res.ok) { setMsg("تم حفظ إعدادات التوزيع"); router.refresh(); }
-      else setError(res.error ?? "صار خطأ");
+      if (res.ok) {
+        // السقوف اليومية تخص جدول User لا Settings — تُحفظ بإجراء منفصل.
+        const changed = employees
+          .filter((e) => (caps[e.id] ?? 0) !== (e.dailyAssignCap ?? 0))
+          .map((e) => ({ userId: e.id, cap: (caps[e.id] ?? 0) > 0 ? caps[e.id] : null }));
+        if (changed.length > 0) await updateDailyAssignCaps(changed);
+        setMsg("تم حفظ إعدادات التوزيع");
+        router.refresh();
+      } else setError(res.error ?? "صار خطأ");
     });
   }
 
@@ -343,8 +357,34 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <NumField label="بداية النافذة (ساعة)" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
           <NumField label="نهاية النافذة (ساعة)" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
-          <NumField label="مهلة السحب (دقيقة)" value={timeout} onChange={setTimeoutMin} min={MIN_TIMEOUT_MIN} max={10080} hint={timeout < MIN_TIMEOUT_MIN ? "٢٤ ساعة على الأقل!" : `≈ ${toArabicDigits(Math.round(timeout / 60))} ساعة`} />
+          <NumField label="مهلة السحب (دقيقة)" value={timeout} onChange={setTimeoutMin} min={1} max={10080} hint={timeout < 60 ? `${toArabicDigits(timeout)} دقيقة` : `≈ ${toArabicDigits(Math.round(timeout / 60))} ساعة`} />
           <NumField label="حد التواجد (دقيقة)" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
+        </div>
+
+        {/* تحذير مهلة قصيرة — لا يمنع الحفظ، مجرّد تنبيه لعواقب القيمة المختارة. */}
+        {timeout < SHORT_TIMEOUT_WARN_MIN && (
+          <p className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs leading-6 text-warning">
+            ⚠️ مهلة أقل من ساعتين قد تسحب عملاء من موظفين اتصلوا هاتفيًا ولم يسجّلوا.
+            السحب لا يقع تلقائيًا — يمرّ بموافقتك.
+          </p>
+        )}
+
+        {/* حوكمة الدفعات والسقوف — تمنع رمي كل غير الموزّعين دفعة واحدة */}
+        <div className="space-y-2 rounded-xl border border-gold/25 bg-gold/5 p-3">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+            <Layers className="size-4 text-gold" /> حوكمة الدفعات والسقوف
+          </div>
+          <p className="text-xs text-muted-foreground">
+            صفر = بلا حد. حجم الدفعة يحدّد كم عميلًا يُوزَّع في الدورة الواحدة، والسقف يحدّ ما يستقبله الموظف داخل النافذة.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <NumField label="حجم الدفعة (عميل/دورة)" value={batchSize} onChange={setBatchSize} min={0} max={500}
+              hint={batchSize === 0 ? "الكل دفعة واحدة" : `${toArabicDigits(batchSize)} في الدورة`} />
+            <NumField label="سقف الموظف في النافذة" value={perWindow} onChange={setPerWindow} min={0} max={100}
+              hint={perWindow === 0 ? "بلا سقف" : `${toArabicDigits(perWindow)} كحد أقصى`} />
+            <NumField label="طول النافذة (دقيقة)" value={windowMin} onChange={setWindowMin} min={1} max={1440}
+              hint={`≈ ${toArabicDigits(Math.round(windowMin / 60 * 10) / 10)} ساعة`} />
+          </div>
         </div>
 
         {/* طريقة التوزيع الأولي */}
@@ -380,6 +420,16 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
                 <StatusDot active={e.active} online={e.online} />
                 <ManageEmployeeAvailability employee={{ id: e.id, name: e.name, paused: e.paused, pauseReason: e.pauseReason, pauseUntil: e.pauseUntil }} />
                 <span className="flex-1" />
+                {/* السقف اليومي — قابل للتحرير مباشرة (٠ = بلا سقف) */}
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground" title="سقف ما يستقبله في اليوم الواحد (٠ = بلا سقف)">
+                  سقف/يوم
+                  <input
+                    type="number" min={0} max={200}
+                    value={caps[e.id] ?? 0}
+                    onChange={(ev) => setCaps((c) => ({ ...c, [e.id]: Math.max(0, Number(ev.target.value) || 0) }))}
+                    className="w-14 rounded-lg border border-border bg-background px-1.5 py-1 text-center text-xs text-foreground outline-none focus:border-gold"
+                  />
+                </label>
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowUp className="size-4" /></button>
                 <button onClick={() => move(i, 1)} disabled={i === participants.length - 1} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowDown className="size-4" /></button>
                 <button onClick={() => remove(e.id)} title="إزالة من الدور" className="rounded p-1 text-destructive hover:bg-destructive/10"><X className="size-4" /></button>
@@ -437,12 +487,23 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
       </div>
       {msg && <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">{msg}</p>}
 
-      {/* بطاقات الإحصاء */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="موزّع اليوم" value={stats.total} />
+      {/* بطاقات الإحصاء — «موزّع اليوم» مقسوم: تلقائي (البركة) بارز · يدوي رمادي */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCard label="تلقائي اليوم" value={stats.auto} tone="gold" hint="من بركة التوزيع التلقائي" />
+        <StatCard label="يدوي اليوم" value={stats.manual} tone="muted" hint="أسنده مدير بيده — خارج البركة" />
         <StatCard label="تم التواصل" value={stats.contacted} tone="success" />
         <StatCard label="بانتظار التواصل" value={stats.pending} tone="warning" />
         <StatCard label="أُعيد توجيهه" value={stats.reassigned} tone="info" />
+      </div>
+
+      {/* حجم البركة نفسها */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gold/25 bg-gold/5 px-4 py-2.5 text-sm">
+        <Layers className="size-4 shrink-0 text-gold" />
+        <span className="text-muted-foreground">بركة التوزيع التلقائي:</span>
+        <span className="font-bold text-gold">{toArabicDigits(board.pool.total)}</span>
+        <span className="text-muted-foreground">عميلًا — منهم</span>
+        <span className="font-bold text-foreground">{toArabicDigits(board.pool.unassigned)}</span>
+        <span className="text-muted-foreground">بانتظار التوزيع</span>
       </div>
 
       {/* عملاء اليوم */}
@@ -466,7 +527,16 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
               <tbody>
                 {board.todayLeads.map((l) => (
                   <tr key={l.id} className="border-t border-border">
-                    <td className="px-4 py-2.5 text-foreground">{l.name}</td>
+                    <td className="px-4 py-2.5 text-foreground">
+                      <span className="inline-flex items-center gap-1.5">
+                        {l.name}
+                        {l.inAutoPool ? (
+                          <span className="rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-bold text-gold" title="من بركة التوزيع التلقائي">تلقائي</span>
+                        ) : (
+                          <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground" title="إسناد يدوي — خارج البركة">يدوي</span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{l.employeeName ?? "—"}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{l.assignedAt ? formatDateTime(l.assignedAt) : "—"}</td>
                     <td className="px-4 py-2.5">
@@ -569,12 +639,21 @@ function StatusDot({ active, online }: { active: boolean; online: boolean }) {
   return <span className={`size-2 shrink-0 rounded-full ${online ? "bg-success" : "bg-muted-foreground/40"}`} title={online ? "متصل الآن" : "غير متصل"} />;
 }
 
-function StatCard({ label, value, tone }: { label: string; value: number; tone?: "success" | "warning" | "info" }) {
-  const color = tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : tone === "info" ? "text-info" : "text-gold";
+function StatCard({ label, value, tone, hint }: {
+  label: string; value: number;
+  tone?: "success" | "warning" | "info" | "gold" | "muted";
+  hint?: string;
+}) {
+  const color = tone === "success" ? "text-success"
+    : tone === "warning" ? "text-warning"
+      : tone === "info" ? "text-info"
+        : tone === "muted" ? "text-muted-foreground"
+          : "text-gold";
   return (
-    <div className="glass rounded-2xl p-4">
+    <div className={`glass rounded-2xl p-4 ${tone === "gold" ? "border border-gold/40" : ""}`} title={hint}>
       <div className={`text-2xl font-bold ${color}`}>{toArabicDigits(value)}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
+      {hint && <div className="mt-0.5 text-[10px] text-muted-foreground/70">{hint}</div>}
     </div>
   );
 }
