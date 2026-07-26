@@ -257,7 +257,7 @@ function TimingsForm({ notify }: { notify: { followupBeforeHours: number; staleH
   return (
     <form onSubmit={save} className="space-y-3 border-t border-border/60 pt-5">
       <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><span className="h-4 w-1 rounded-full bg-gold" /> توقيتات التنبيهات</h3>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block space-y-1.5">
           <span className="text-xs text-muted-foreground">تنبيه قبل موعد المتابعة (ساعات)</span>
           <input name="followupBeforeHours" inputMode="numeric" dir="ltr" defaultValue={notify.followupBeforeHours} className="select-base" />

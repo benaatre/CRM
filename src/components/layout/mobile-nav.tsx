@@ -27,7 +27,6 @@ export function MobileNav({
   dupCount?: number;
 }) {
   const [open, setOpen] = useState(false);
-  const [shown, setShown] = useState(false); // إطار واحد بعد الفتح — يشغّل انزلاق الدخول
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const nav = navForRole(isManager, isOwner);
@@ -36,16 +35,15 @@ export function MobileNav({
   // (الذي يكسر fixed ويجعل محتوى الدرج يتسرّب فوق الصفحة).
   useEffect(() => setMounted(true), []);
 
-  // انزلاق سلس + قفل تمرير الصفحة خلف الدرج + الإغلاق بمفتاح Esc.
+  // قفل تمرير الصفحة خلف الدرج + الإغلاق بمفتاح Esc.
+  // الانزلاق نفسه حركة CSS (.drawer-panel) — لا يعتمد على توقيت JS إطلاقًا.
   useEffect(() => {
-    if (!open) { setShown(false); return; }
-    const raf = requestAnimationFrame(() => setShown(true));
+    if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("keydown", onKey);
     return () => {
-      cancelAnimationFrame(raf);
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKey);
     };
@@ -65,26 +63,23 @@ export function MobileNav({
         type="button"
         onClick={() => setOpen(true)}
         aria-label="القائمة"
-        className="flex size-11 items-center justify-center rounded-xl border border-border text-foreground md:hidden"
+        className="flex size-11 items-center justify-center rounded-xl border border-border text-foreground lg:hidden"
       >
         <Menu className="size-5" />
       </button>
 
       {mounted && open && createPortal(
-        <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" aria-label="القائمة">
+        <div className="fixed inset-0 z-[80] lg:hidden" role="dialog" aria-modal="true" aria-label="القائمة">
           {/* طبقة معتمة — تتلاشى دخولًا مع الدرج */}
           <div
-            className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${shown ? "opacity-100" : "opacity-0"}`}
+            className="drawer-overlay absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
 
           {/* الدرج — ينزلق من اليمين (RTL)، بعرض ٨٦٪ فيبقى جزء من الصفحة ظاهرًا للإغلاق باللمس */}
           <aside
-            className="absolute inset-y-0 right-0 flex w-[86%] max-w-[21rem] flex-col bg-card p-5 shadow-2xl transition-transform duration-300 ease-out"
-            style={{
-              transform: shown ? "translateX(0)" : "translateX(100%)",
-              paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))",
-            }}
+            className="drawer-panel absolute inset-y-0 right-0 flex w-[86%] max-w-[21rem] flex-col bg-card p-5 shadow-2xl"
+            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
           >
             <div className="mb-6 flex items-start justify-between">
               <div>

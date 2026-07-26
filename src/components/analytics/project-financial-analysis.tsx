@@ -78,7 +78,7 @@ function SingleProject({ d }: { d: ProjectFinance }) {
               <Bar n={d.availableCount} total={d.unitsTotal} cls="bg-success/60" />
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-center text-xs lg:w-80">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs lg:w-80">
             <CountCell label="الكل" v={d.unitsTotal} cls="text-foreground" />
             <CountCell label="مباع" v={d.soldCount} cls="text-info" dot="bg-info" />
             <CountCell label="محجوز" v={d.reservedCount} cls="text-warning" dot="bg-warning" />

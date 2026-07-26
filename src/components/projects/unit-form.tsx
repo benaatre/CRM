@@ -36,7 +36,7 @@ export function UnitForm({ open, onClose, projectId, unit }: { open: boolean; on
           <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"><X className="size-5" /></button>
         </div>
         <form onSubmit={submit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="رقم الوحدة *"><input name="number" required dir="ltr" defaultValue={unit?.number ?? ""} className="select-base" /></Field>
             <Field label="النوع">
               <select name="type" defaultValue={unit?.type ?? "APARTMENT"} className="select-base">

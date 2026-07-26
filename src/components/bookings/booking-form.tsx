@@ -275,7 +275,7 @@ export function BookingForm({
 
           {/* طريقة الدفع */}
           <Field label="طريقة الدفع *">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(["CASH", "BANK_FINANCE", "CASH_AND_FINANCE"] as PaymentMethod[]).map((m) => (
                 <label key={m} className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs ${method === m ? "border-gold/50 bg-gold/10 text-gold" : "border-border text-muted-foreground"}`}>
                   <input type="radio" name="paymentMethod" value={m} checked={method === m} onChange={() => setMethod(m)} className="hidden" />
