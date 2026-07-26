@@ -10,11 +10,21 @@ import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { assignLead } from "@/lib/assignment";
 import { dayStartKSA, ksaHourOf } from "@/lib/ksa-time";
+import { atLimitUserIds } from "@/lib/dist-limits";
+
+/**
+ * بركة التوزيع التلقائي — القاعدة القاطعة:
+ *   العميل داخل البركة ⟺ autoPoolAt != null.
+ *   من هو خارجها لا يدخل المحرك أبدًا، لا توزيعًا أوليًا ولا إعادة توجيه.
+ * وmanualAssignedAt != null يعني خارج البركة دائمًا (الاثنان متنافيان — أبواب الدخول
+ * الثلاثة في lib/actions/distribution.ts تمسح manualAssignedAt عند الإدخال).
+ */
+export const IN_AUTO_POOL = { autoPoolAt: { not: null } } as const;
 import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
 import { getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats } from "./no-response-escalation";
 
 // نعيد تصدير الحد الأدنى للمهلة (تستورده أكشنات التوزيع من هنا) — مصدره الوحدة النقية.
-export { MIN_REASSIGN_TIMEOUT_MIN } from "./sweep-eligibility";
+// (لا إعادة تصدير لأرضية المهلة — أُلغيت الأرضية نهائيًا؛ القيمة من الإعدادات مباشرة.)
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -81,12 +91,16 @@ export type DistSettings = {
   distInitialMode: string; // ROUND_ROBIN | LEAST_LOADED
   distReassignMode: string; // MOST_ACTIVE | ROTATION
   sweepCutoffAt: Date; // الحاجز التاريخي — لا يُرشَّح ليد assignedAt < هذا التاريخ
+  distBatchSize: number | null;            // حجم الدفعة في الدورة — null = الكل
+  distPerEmployeePerWindow: number | null; // سقف الموظف داخل النافذة — null = بلا سقف
+  distWindowMin: number;                   // طول نافذة السقف بالدقائق
 };
 
 const DIST_SELECT = {
   autoDistribute: true, distStartHour: true, distEndHour: true, distTimeoutMin: true,
   distPresenceMin: true, distOrder: true, distPointer: true, distInitialMode: true, distReassignMode: true,
   sweepCutoffAt: true,
+  distBatchSize: true, distPerEmployeePerWindow: true, distWindowMin: true,
 } as const;
 
 /** يجلب إعدادات التوزيع (ينشئ السجل إن لزم). */
@@ -105,7 +119,7 @@ async function presentParticipants(db: Db, settings: DistSettings, now: Date): P
   const users = await db.user.findMany({
     where: { id: { in: settings.distOrder }, active: true },
     select: {
-      id: true, lastSeenAt: true, availabilityPaused: true, pauseUntil: true, maxClients: true,
+      id: true, lastSeenAt: true, availabilityPaused: true, pauseUntil: true, maxClients: true, dailyAssignCap: true,
       _count: { select: { assignedLeads: { where: { isArchived: false } } } },
     },
   });
@@ -119,7 +133,12 @@ async function presentParticipants(db: Db, settings: DistSettings, now: Date): P
       .map((u) => u.id),
   );
   // الترتيب حسب distOrder، مع إبقاء المتواجدين فقط
-  return settings.distOrder.filter((id) => ok.has(id));
+  const shortlist = settings.distOrder.filter((id) => ok.has(id));
+  // سقفا الحوكمة — يسريان هنا أيضًا: هذا مسار إعادة التوجيه (executeSweepPull)
+  // وإسناد العميل المنشأ يدويًا من المدير، فلا يتجاوز أحدهما السقف.
+  const caps = new Map(users.map((u) => [u.id, u.dailyAssignCap]));
+  const blocked = await atLimitUserIds(shortlist, caps, settings, now);
+  return shortlist.filter((id) => !blocked.has(id));
 }
 
 /** اختيار التالي في الدور الثابت ابتداءً من pointer+1، متخطّيًا غير المتواجدين. */
@@ -238,7 +257,7 @@ async function availableParticipants(db: Db, settings: DistSettings, now: Date):
   const users = await db.user.findMany({
     where: { id: { in: settings.distOrder }, active: true },
     select: {
-      id: true, availabilityPaused: true, pauseUntil: true, maxClients: true,
+      id: true, availabilityPaused: true, pauseUntil: true, maxClients: true, dailyAssignCap: true,
       _count: { select: { assignedLeads: { where: { isArchived: false } } } },
     },
   });
@@ -249,7 +268,12 @@ async function availableParticipants(db: Db, settings: DistSettings, now: Date):
       .filter((u) => u.maxClients == null || u._count.assignedLeads < u.maxClients)
       .map((u) => u.id),
   );
-  return settings.distOrder.filter((id) => ok.has(id));
+  const shortlist = settings.distOrder.filter((id) => ok.has(id));
+  // سقفا الحوكمة (نافذة + يومي) — استعلامان مجمّعان لا استعلام لكل موظف.
+  // يسريان على مساري التوزيع الأولي وإعادة التوجيه معًا (كلاهما يمرّ من هنا).
+  const caps = new Map(users.map((u) => [u.id, u.dailyAssignCap]));
+  const blocked = await atLimitUserIds(shortlist, caps, settings, now);
+  return shortlist.filter((id) => !blocked.has(id));
 }
 
 /**
@@ -262,9 +286,16 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
   if (available.length === 0) return 0;
   const unassigned = await prisma.lead.findMany({
     // المكررون يُستثنون من التوزيع التلقائي — يُوزّعون حصريًا من «العملاء المكررون».
-    where: { assignedToId: null, stage: "NEW", isArchived: false, ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}) },
+    // ...IN_AUTO_POOL: القاعدة القاطعة — من هو خارج البركة لا يدخل المحرك أبدًا.
+    where: {
+      assignedToId: null, stage: "NEW", isArchived: false,
+      ...IN_AUTO_POOL,
+      ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}),
+    },
     select: { id: true, name: true },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "asc" }, // الأقدم أولًا — والدفعة تقتطع من الرأس
+    // حجم الدفعة: يمنع رمي كل غير الموزّعين دفعةً واحدة. null = الكل (السلوك القديم).
+    ...(settings.distBatchSize != null && settings.distBatchSize > 0 ? { take: settings.distBatchSize } : {}),
   });
   if (unassigned.length === 0) return 0;
 
@@ -369,6 +400,7 @@ async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: S
       stage: "NEW",                          // قاعدة ١: المرحلة ∉ [NEW] → حصانة
       isArchived: false,
       manualAssignedAt: null,                // قاعدة ٢: حصانة الإسناد اليدوي الدائمة
+      ...IN_AUTO_POOL,                       // القاعدة القاطعة: خارج البركة = خارج المحرك
       followUps: { none: {} },               // قاعدة ١: أي متابعة واحدة → حصانة دائمة
       reassignCount: { lt: MAX_REASSIGNS }, // #22: تجاوزوا السقف يبقون مع آخر موظف
       ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}), // المكرر لا يُرشَّح آليًا
@@ -424,8 +456,10 @@ async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: S
  */
 export async function executeSweepPull(leadId: string, now: Date = new Date()): Promise<{ ok: boolean; toUserId?: string; error?: string }> {
   const settings = await getDistSettings(prisma);
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true, assignedToId: true } });
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true, assignedToId: true, autoPoolAt: true } });
   if (!lead || !lead.assignedToId) return { ok: false, error: "العميل غير موجود أو غير مُسند" };
+  // حارس القاعدة القاطعة: حتى بضغطة المالك، من هو خارج البركة لا يُنقل بالمحرك.
+  if (lead.autoPoolAt == null) return { ok: false, error: "هذا العميل خارج بركة التوزيع التلقائي — انقله يدويًا أو أدخله البركة أولًا" };
   const from = lead.assignedToId;
 
   const present = await presentParticipants(prisma, settings, now);

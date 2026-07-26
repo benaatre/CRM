@@ -8,6 +8,7 @@ import { analyzeStubbornRows, type AiRowResult } from "@/lib/sheet-ai";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
 import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
 import { channelForSourceName } from "@/lib/source-channel";
+import { isAutoPoolSource } from "@/lib/auto-pool";
 
 export type SheetSyncResult = {
   linkId: string;
@@ -103,6 +104,8 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
     // قناة المصدر (سناب/تيك توك/ميتا/جوجل…) تُكتب على كل عملائه — sourceId + channel معًا.
     const channel = channelForSourceName(sourceName);
     const ad = { sourceId: link.sourceId, channel };
+    // وسم «مصدر تلقائي» يُقرأ مرة واحدة للرابط كله (لا استعلام لكل صف).
+    const autoPoolSource = await isAutoPoolSource(link.sourceId);
     const seen = new Set<string>(); // منع تكرار نفس الرقم داخل نفس الدفعة
 
     let created = 0, duplicates = 0, skipped = 0;
@@ -139,6 +142,9 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
           channel,
           stage: "NEW",
           assignedToId: null,               // غير موزّع — التوزيع التلقائي القائم يلتقطه طبيعيًا
+          // باب البركة ١: مصدر موسوم autoPool → الصف الوارد من الشيت يدخل البركة فورًا.
+          // (autoPoolSource يُحسب مرة واحدة للرابط كله — لا استعلام لكل صف.)
+          ...(autoPoolSource ? { autoPoolAt: new Date() } : {}),
           sourceId: link.sourceId,
           source: sourceName,               // نص المصدر (للعرض)
           purchaseMethod: purchaseMethod ?? undefined,

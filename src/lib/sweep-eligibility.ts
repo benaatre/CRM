@@ -6,7 +6,9 @@
 export const MAX_REASSIGNS = 3;
 
 // شبكة أمان المهلة:
-export const MIN_REASSIGN_TIMEOUT_MIN = 24 * 60;   // الحد الأدنى المطلق لمهلة السحب: ٢٤ ساعة (لا أقل مهما كان الإعداد)
+// ملاحظة: لا أرضية إجبارية لمهلة السحب — القيمة كما يضبطها المالك في لوحة التوزيع
+// حرفيًا. المقابل الذي يجعل ذلك آمنًا: السحب لا يقع تلقائيًا أبدًا — دورة الكرون
+// تكتب SweepCandidate (اقتراح) والنقل الفعلي لا يتم إلا بضغطة المالك عبر executeSweepPull.
 export const ESTABLISHED_TIMEOUT_MIN = 48 * 60;    // مهلة الليد المُسند من زمان (الافتراضي الموصى): ٤٨ ساعة
 export const NEW_LEAD_TIMEOUT_MIN = 60;            // مهلة الليد الجديد فعلًا: ٦٠ دقيقة
 export const NEW_LEAD_MAX_AGE_MS = 6 * 60 * 60_000; // نافذة «جديد فعلًا»: دخل النظام وأُسند خلال آخر ٦ ساعات
@@ -18,7 +20,7 @@ export type CutoffSettings = { sweepCutoffAt: Date };
  * مهلة السحب لعميل بعينه بالدقائق حسب نموذج المهلتين:
  *  - «جديد فعلًا» (٦٠ دقيقة) فقط لو الشروط الثلاثة معًا: reassignCount==0 + createdAt خلال ٦ ساعات
  *    + assignedAt خلال ٦ ساعات. (createdAt هو المؤشّر غير الملوّث بتصفير العدّاد في الاسترجاعات.)
- *  - غير ذلك → مهلة المُسند من زمان (٤٨ ساعة)، بحدّ أدنى مطلق ٢٤ ساعة على أي إعداد.
+ *  - غير ذلك → مهلة الإعداد كما ضبطها المالك (distTimeoutMin) بلا أي أرضية.
  */
 export function leadTimeoutMin(
   lead: { reassignCount: number; createdAt: Date; assignedAt: Date | null },
@@ -30,7 +32,7 @@ export function leadTimeoutMin(
     now.getTime() - lead.createdAt.getTime() <= NEW_LEAD_MAX_AGE_MS &&
     lead.assignedAt != null && now.getTime() - lead.assignedAt.getTime() <= NEW_LEAD_MAX_AGE_MS;
   if (isTrulyNew) return NEW_LEAD_TIMEOUT_MIN;
-  return Math.max(settings.distTimeoutMin, MIN_REASSIGN_TIMEOUT_MIN);
+  return settings.distTimeoutMin;
 }
 
 export type SweepEligibilityInput = {

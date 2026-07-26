@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
 import { requireManager } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
+import { countToday } from "@/lib/dist-limits";
 import { assignLeadsToEmployee } from "@/lib/assignment";
 import { logAudit } from "@/lib/audit";
 import { sendMail } from "@/lib/mailer";
@@ -272,16 +273,31 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
   }
 }
 
-/** أحمال الموظفين الحالية + السعة المتبقية — لجدول التوزيع المخصّص. */
-export async function getEmployeeLoads(): Promise<{ id: string; name: string; count: number; maxClients: number | null; remaining: number | null }[]> {
+/**
+ * أحمال الموظفين الحالية + السعة المتبقية — لجدول التوزيع المخصّص.
+ * يضيف السقف اليومي وما استقبله الموظف اليوم — للتحذير فقط: التوزيع اليدوي قرار
+ * المدير ولا يُمنع بالسقف (السقف يلزم المحرك التلقائي وحده).
+ */
+export async function getEmployeeLoads(): Promise<{
+  id: string; name: string; count: number; maxClients: number | null; remaining: number | null;
+  dailyAssignCap: number | null; assignedToday: number;
+}[]> {
   await requireManager();
   const emps = await loadEmployees();
+  const ids = emps.map((e) => e.id);
+  const [caps, today] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, dailyAssignCap: true } }),
+    countToday(ids, new Date()),
+  ]);
+  const capById = new Map(caps.map((c) => [c.id, c.dailyAssignCap]));
   return emps.map((e) => ({
     id: e.id,
     name: e.name,
     count: e.count,
     maxClients: e.maxClients,
     remaining: e.capacity === Infinity ? null : e.capacity,
+    dailyAssignCap: capById.get(e.id) ?? null,
+    assignedToday: today.get(e.id) ?? 0,
   }));
 }
 

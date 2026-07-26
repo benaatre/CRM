@@ -22,6 +22,7 @@ import { latestRevealAction, shouldHideHistory, REVEAL_HISTORY_ACTION, HIDE_HIST
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 import { channelForSourceName } from "@/lib/source-channel";
+import { resolveAutoPoolAt } from "@/lib/auto-pool";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -110,6 +111,10 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // باب البركة ١: مصدر موسوم autoPool → العميل يدخل بركة التوزيع التلقائي عند إنشائه.
+    // لا يدخلها إن اختار المدير موظفًا صراحةً (قرار بشري = يدوي = خارج البركة دائمًا).
+    const autoPoolAt = await resolveAutoPoolAt(sourceId, assignedToId, autoDistributed);
+
     const lead = await prisma.lead.create({
       data: {
         name,
@@ -125,6 +130,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
         nextFollowup: tomorrow,
         // م-١: أختام الإسناد الموحّدة — اختيار بشري (موظف لنفسه/مدير) = يدوي بحصانته.
         ...(assignedToId ? assignmentData(assignedToId, { manual: !autoDistributed }) : {}),
+        ...(autoPoolAt ? { autoPoolAt } : {}),
       },
     });
     if (assignedToId) {

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
 import { requireManager, requireRole } from "@/lib/auth-guards";
-import { runDistributionPasses, executeSweepPull, MIN_REASSIGN_TIMEOUT_MIN } from "@/lib/auto-distribute";
+import { logAudit } from "@/lib/audit";
+import { runDistributionPasses, executeSweepPull } from "@/lib/auto-distribute";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -16,12 +17,18 @@ export type DistConfig = {
   distPresenceMin: number;
   distInitialMode: "ROUND_ROBIN" | "LEAST_LOADED";
   distReassignMode: "MOST_ACTIVE" | "ROTATION";
+  /** حوكمة التوزيع — null = بلا سقف / بلا تحديد دفعة. */
+  distBatchSize: number | null;
+  distPerEmployeePerWindow: number | null;
+  distWindowMin: number;
   order: string[];
 };
 
 export type DistEmployee = {
   id: string; name: string; active: boolean; online: boolean;
   paused: boolean; pauseReason: string | null; pauseUntil: Date | null;
+  /** سقف ما يستقبله في اليوم الواحد — null = بلا سقف. */
+  dailyAssignCap: number | null;
 };
 
 const ONLINE_MS = 5 * 60 * 1000;
@@ -37,11 +44,12 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
       autoDistribute: true, distStartHour: true, distEndHour: true, distTimeoutMin: true,
       distPresenceMin: true, distOrder: true, distInitialMode: true, distReassignMode: true,
       lastCronAt: true, lastCronDistributed: true, lastCronReassigned: true, sweepCutoffAt: true,
+      distBatchSize: true, distPerEmployeePerWindow: true, distWindowMin: true,
     },
   });
   const emps = await prisma.user.findMany({
     where: { role: "EMPLOYEE" },
-    select: { id: true, name: true, active: true, lastSeenAt: true, availabilityPaused: true, pauseReason: true, pauseUntil: true },
+    select: { id: true, name: true, active: true, lastSeenAt: true, availabilityPaused: true, pauseReason: true, pauseUntil: true, dailyAssignCap: true },
     orderBy: { name: "asc" },
   });
   const now = Date.now();
@@ -59,6 +67,9 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
       distPresenceMin: s.distPresenceMin,
       distInitialMode: s.distInitialMode as DistConfig["distInitialMode"],
       distReassignMode: s.distReassignMode as DistConfig["distReassignMode"],
+      distBatchSize: s.distBatchSize,
+      distPerEmployeePerWindow: s.distPerEmployeePerWindow,
+      distWindowMin: s.distWindowMin,
       order: inOrder,
     },
     employees: ordered.map((id) => {
@@ -67,6 +78,7 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
         id: e.id, name: e.name, active: e.active,
         online: !!e.lastSeenAt && now - e.lastSeenAt.getTime() < ONLINE_MS,
         paused: e.availabilityPaused, pauseReason: e.pauseReason, pauseUntil: e.pauseUntil,
+        dailyAssignCap: e.dailyAssignCap,
       };
     }),
     lastCron: { at: s.lastCronAt, distributed: s.lastCronDistributed, reassigned: s.lastCronReassigned },
@@ -75,6 +87,12 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
 }
 
 function clampHour(n: number) { return Math.min(23, Math.max(0, Math.round(n))); }
+
+/** رقم موجب أو null — الصفر والسالب والفارغ كلها «بلا سقف». */
+function posOrNull(v: number | null | undefined): number | null {
+  const n = Math.round(Number(v) || 0);
+  return n > 0 ? n : null;
+}
 
 /** حفظ إعدادات التوزيع — للمالك/المدير فقط (تحقّق على الخادم). */
 export async function updateDistributionConfig(input: DistConfig): Promise<ActionResult> {
@@ -92,11 +110,12 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
     }
     const startHour = clampHour(input.distStartHour);
     const endHour = clampHour(input.distEndHour);
-    // مهلة السحب: الحد الأدنى ٢٤ ساعة (تُفرَض على الخادم — لا نكتفي بالواجهة). #خطر: مهلة أقصر
-    // تسحب العملاء من الموظفين قبل ما يسجّلوا تواصلهم بالجوال، فتسبّب موجة إعادة توزيع خاطئة.
+    // مهلة السحب: بلا أرضية — القيمة كما يضبطها المالك، بحدّ أدنى تقني دقيقة واحدة
+    // (صفر/سالب يعطّل المعنى). الأمان يأتي من أن السحب اقتراح لا تنفيذ: الكرون يكتب
+    // SweepCandidate والنقل الفعلي لا يقع إلا بموافقة المالك في اللوحة.
     const timeout = Math.round(input.distTimeoutMin || 0);
-    if (timeout < MIN_REASSIGN_TIMEOUT_MIN) {
-      return { ok: false, error: `مهلة السحب لازم ٢٤ ساعة على الأقل (${MIN_REASSIGN_TIMEOUT_MIN} دقيقة). مهلة أقصر تسحب العملاء بسرعة قبل تسجيل التواصل وتسبّب فوضى توزيع.` };
+    if (!Number.isInteger(timeout) || timeout < 1) {
+      return { ok: false, error: "مهلة السحب لازم دقيقة واحدة على الأقل" };
     }
     const presence = Math.max(0, Math.round(input.distPresenceMin ?? 30));
     const initialMode = input.distInitialMode === "LEAST_LOADED" ? "LEAST_LOADED" : "ROUND_ROBIN";
@@ -113,6 +132,10 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
         distInitialMode: initialMode,
         distReassignMode: reassignMode,
         distOrder: order,
+        // حوكمة الدفعات والسقوف — الصفر/السالب/الفارغ كلها «بلا سقف» (null).
+        distBatchSize: posOrNull(input.distBatchSize),
+        distPerEmployeePerWindow: posOrNull(input.distPerEmployeePerWindow),
+        distWindowMin: Math.max(1, Math.round(input.distWindowMin || 30)),
         // المؤشّر يشير لآخر من استلم — نضبطه على آخر القائمة حتى يبدأ الدور من الأول (#41).
         distPointer: order.length > 0 ? order.length - 1 : 0,
       },
@@ -254,6 +277,175 @@ export async function protectAllCurrentFromSweep(): Promise<ActionResult> {
     await prisma.settings.update({ where: { id: "singleton" }, data: { sweepCutoffAt: new Date() } });
     revalidatePath("/distribution");
     return { ok: true, message: "تم حماية كل العملاء الحاليين — السحب يبدأ من الآن" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+// ===================== أبواب بركة التوزيع التلقائي (٢ و ٣) =====================
+// القاعدة القاطعة: العميل في البركة ⟺ autoPoolAt != null، وmanualAssignedAt != null
+// يعني خارجها دائمًا. لذلك كل باب يمسح manualAssignedAt عند الإدخال — الاثنان متنافيان.
+// الصلاحية على الخادم (requireManager) لا على الواجهة.
+
+/** حدّ أقصى للدفعة الواحدة — يمنع إدخال آلاف العملاء بضغطة واحدة بالخطأ. */
+const POOL_ADMIT_CAP = 500;
+
+/**
+ * الباب ٢: إدخال عملاء **غير موزّعين** إلى البركة.
+ * لا يمسّ أي عميل مُسند — من له موظف يمرّ بالباب ٣ وحده.
+ */
+export async function admitToAutoPool(leadIds: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireManager();
+    const ids = [...new Set((leadIds ?? []).filter(Boolean))];
+    if (ids.length === 0) return { ok: false, error: "ما حدّدت عملاء" };
+    if (ids.length > POOL_ADMIT_CAP) return { ok: false, error: `الحد الأقصى ${POOL_ADMIT_CAP} عميل في المرة` };
+
+    // الشرط الصارم: غير موزّع + جديد + غير مؤرشف + ليس في البركة أصلًا.
+    const eligible = await prisma.lead.findMany({
+      where: { id: { in: ids }, assignedToId: null, stage: "NEW", isArchived: false, autoPoolAt: null },
+      select: { id: true },
+    });
+    if (eligible.length === 0) {
+      return { ok: false, error: "ما فيه عميل مؤهّل — الشرط: غير موزّع، مرحلته «جديد»، وغير موجود في البركة" };
+    }
+    const eligibleIds = eligible.map((l) => l.id);
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.updateMany({
+        where: { id: { in: eligibleIds } },
+        data: { autoPoolAt: now, manualAssignedAt: null },
+      });
+      await logAudit(tx, {
+        userId: user.id,
+        action: "lead.autoPoolAdmitted",
+        entity: "lead",
+        entityId: eligibleIds[0],
+        summary: `أدخل ${eligibleIds.length} عميلًا لبركة التوزيع التلقائي (غير موزّعين)`,
+      });
+    });
+    revalidatePath("/distribution");
+    revalidatePath("/leads");
+    const skipped = ids.length - eligibleIds.length;
+    return {
+      ok: true,
+      message: skipped > 0
+        ? `دخل ${eligibleIds.length} عميلًا البركة — و${skipped} غير مؤهّلين (مُسندون أو في البركة أصلًا)`
+        : `دخل ${eligibleIds.length} عميلًا بركة التوزيع التلقائي`,
+    };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * الباب ٣: تحويل عملاء **مُسندين لموظف** إلى البركة — يسحبهم من صاحبهم الحالي.
+ * يمسح الإسناد ويمسح حصانة اليدوي ويضع ختم البركة، ويسجّل في سجل التدقيق:
+ * من كان يملكه · إلى البركة · بأمر مَن.
+ */
+export async function transferToAutoPool(leadIds: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireManager();
+    const ids = [...new Set((leadIds ?? []).filter(Boolean))];
+    if (ids.length === 0) return { ok: false, error: "ما حدّدت عملاء" };
+    if (ids.length > POOL_ADMIT_CAP) return { ok: false, error: `الحد الأقصى ${POOL_ADMIT_CAP} عميل في المرة` };
+
+    const targets = await prisma.lead.findMany({
+      where: { id: { in: ids }, isArchived: false },
+      select: { id: true, name: true, assignedToId: true },
+    });
+    if (targets.length === 0) return { ok: false, error: "ما فيه عملاء مطابقون" };
+
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      for (const t of targets) {
+        await tx.lead.update({
+          where: { id: t.id },
+          data: {
+            assignedToId: null,
+            autoPoolAt: now,
+            manualAssignedAt: null,
+            assignedAt: null,
+            contactedAt: null,
+          },
+        });
+        // سجل التحويل نفسه (من → الحوض) بنفس نمط Reassignment القائم.
+        if (t.assignedToId) {
+          await tx.reassignment.create({
+            data: { leadId: t.id, fromUserId: t.assignedToId, toUserId: null, reason: "to_auto_pool" },
+          });
+        }
+        await tx.activity.create({
+          data: { leadId: t.id, userId: user.id, type: "ASSIGNMENT", note: "حُوّل إلى بركة التوزيع التلقائي" },
+        });
+      }
+      await logAudit(tx, {
+        userId: user.id,
+        action: "lead.autoPoolTransferred",
+        entity: "lead",
+        entityId: targets[0].id,
+        summary: `حوّل ${targets.length} عميلًا إلى بركة التوزيع التلقائي (سُحبوا من أصحابهم)`,
+      });
+    });
+    revalidatePath("/distribution");
+    revalidatePath("/leads");
+    return { ok: true, message: `حُوّل ${targets.length} عميلًا إلى البركة — المحرك يوزّعهم في الدورة القادمة` };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** إخراج عملاء من البركة (تراجع) — يعيدهم خارج المحرك بلا لمس إسنادهم. */
+export async function removeFromAutoPool(leadIds: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireManager();
+    const ids = [...new Set((leadIds ?? []).filter(Boolean))];
+    if (ids.length === 0) return { ok: false, error: "ما حدّدت عملاء" };
+    const res = await prisma.lead.updateMany({
+      where: { id: { in: ids }, autoPoolAt: { not: null } },
+      data: { autoPoolAt: null },
+    });
+    if (res.count === 0) return { ok: false, error: "ما فيه عميل داخل البركة من المحدّدين" };
+    await logAudit(prisma, {
+      userId: user.id, action: "lead.autoPoolRemoved", entity: "lead", entityId: ids[0],
+      summary: `أخرج ${res.count} عميلًا من بركة التوزيع التلقائي`,
+    });
+    revalidatePath("/distribution");
+    revalidatePath("/leads");
+    return { ok: true, message: `خرج ${res.count} عميلًا من البركة` };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** عدد العملاء داخل البركة الآن (للوحة والمعاينة). */
+export async function countAutoPool(): Promise<{ total: number; unassigned: number; assigned: number }> {
+  await requireManager();
+  const [total, unassigned] = await Promise.all([
+    prisma.lead.count({ where: { autoPoolAt: { not: null }, isArchived: false } }),
+    prisma.lead.count({ where: { autoPoolAt: { not: null }, isArchived: false, assignedToId: null } }),
+  ]);
+  return { total, unassigned, assigned: total - unassigned };
+}
+
+/** حفظ السقوف اليومية لدفعة موظفين (عمود «السقف اليومي» في لوحة التوزيع). */
+export async function updateDailyAssignCaps(
+  items: { userId: string; cap: number | null }[],
+): Promise<ActionResult> {
+  try {
+    await requireManager();
+    const rows = (items ?? []).filter((i) => i.userId);
+    if (rows.length === 0) return { ok: true };
+    await prisma.$transaction(
+      rows.map((r) =>
+        prisma.user.update({
+          where: { id: r.userId },
+          data: { dailyAssignCap: r.cap != null && r.cap > 0 ? Math.round(r.cap) : null },
+        }),
+      ),
+    );
+    revalidatePath("/distribution");
+    return { ok: true, message: `حُدّث السقف اليومي لـ${rows.length} موظف` };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }

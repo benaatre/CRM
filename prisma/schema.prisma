@@ -220,6 +220,8 @@ model User {
   targetDeals  Int      @default(0)
   /// الحد الأقصى لعدد العملاء المسندين (اختياري)
   maxClients   Int?
+  /// سقف ما يستقبله الموظف من التوزيع التلقائي في اليوم الواحد (توقيت الرياض) — null = بلا سقف
+  dailyAssignCap Int?
   /// ملاحظات خاصة بالموظف (للمدير)
   staffNotes   String?
   active       Boolean  @default(true)
@@ -397,6 +399,10 @@ model Lead {
   reassignCount Int        @default(0)
   /// وقت آخر إسناد يدوي (نقل/توزيع من مدير) — يمنح حصانة ٧٢ ساعة من السحب التلقائي
   manualAssignedAt DateTime?
+  /// «بركة التوزيع التلقائي»: وقت دخول العميل البركة — null = خارجها تمامًا.
+  /// قاعدة قاطعة: العميل في البركة ⟺ autoPoolAt != null، وmanualAssignedAt != null
+  /// يعني خارجها دائمًا (الاثنان متنافيان). المحرك لا يمسّ من هو خارج البركة أبدًا.
+  autoPoolAt   DateTime?
 
   // ===== محرّك الزيارات (VISIT_SCHEDULED) =====
   /// موعد الزيارة القادم — يُضبط من متابعة «موعد زيارة» ويُمسح عند الخروج من المرحلة
@@ -423,6 +429,7 @@ model Lead {
   @@index([assignedAt])
   @@index([assignedToId, assignedAt])
   @@index([sourceId])
+  @@index([autoPoolAt])
 }
 
 /// سجل إعادات التوجيه التلقائية (من → إلى، السبب، الوقت) — للوحة المراقبة.
@@ -656,6 +663,12 @@ model Settings {
   distInitialMode  String   @default("ROUND_ROBIN")
   /// طريقة إعادة التوجيه: MOST_ACTIVE (الأكثر نشاطًا اليوم) | ROTATION (التالي في الدور)
   distReassignMode String   @default("MOST_ACTIVE")
+  /// حجم الدفعة في الدورة الواحدة — null = كل غير الموزّعين (السلوك القديم)
+  distBatchSize    Int?
+  /// سقف ما يستقبله الموظف الواحد داخل نافذة distWindowMin — null = بلا سقف
+  distPerEmployeePerWindow Int?
+  /// طول نافذة السقف بالدقائق
+  distWindowMin    Int      @default(30)
   /// الحاجز التاريخي للسحب: الـsweep يتجاهل أي ليد assignedAt < هذا التاريخ. الافتراضي now
   /// عند الترحيل — يعني كل العملاء الحاليين محميّون فورًا، والسحب يشتغل فقط على ما بعده.
   sweepCutoffAt    DateTime @default(now())
@@ -700,6 +713,8 @@ model LeadSource {
   id         String      @id @default(cuid())
   name       String      @unique
   isDefault  Boolean     @default(false)
+  /// مصدر تلقائي: أي عميل يدخل منه يُوضع في بركة التوزيع تلقائيًا (autoPoolAt = now)
+  autoPool   Boolean     @default(false)
   createdAt  DateTime    @default(now())
 
   sheetLinks SheetLink[]

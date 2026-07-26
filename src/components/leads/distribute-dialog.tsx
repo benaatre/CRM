@@ -16,7 +16,7 @@ export function DistributeDialog({
 }) {
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>("equal");
-  const [loads, setLoads] = useState<{ id: string; name: string; count: number; maxClients: number | null; remaining: number | null }[] | null>(null);
+  const [loads, setLoads] = useState<{ id: string; name: string; count: number; maxClients: number | null; remaining: number | null; dailyAssignCap: number | null; assignedToday: number }[] | null>(null);
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +31,8 @@ export function DistributeDialog({
   const over = totalWanted > availableUnassigned;
   // تجاوز موظفٍ لسعته المتبقية
   const overCap = (loads ?? []).some((e) => e.remaining != null && (Number(alloc[e.id]) || 0) > e.remaining);
+  // تحذير فقط (لا منع): التوزيع اليدوي قرار المدير — السقف اليومي يلزم المحرك التلقائي وحده.
+  const overDaily = (loads ?? []).filter((e) => e.dailyAssignCap != null && e.assignedToday + (Number(alloc[e.id]) || 0) > e.dailyAssignCap);
   const canRun = mode === "custom" ? !over && !overCap && totalWanted > 0 : true;
 
   function run() {
@@ -102,6 +104,13 @@ export function DistributeDialog({
                   <span className={`text-xs ${over ? "text-destructive" : "text-muted-foreground"}`}>المجموع: {toArabicDigits(totalWanted)} من {toArabicDigits(availableUnassigned)} متاح</span>
                   {over && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">المجموع أكبر من عدد العملاء المتاح ({toArabicDigits(availableUnassigned)}).</p>}
                   {overCap && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">في موظف تجاوز سعته المتبقية — صحّح الأعداد المظللة بالأحمر.</p>}
+                  {/* تحذير السقف اليومي — لا يمنع التوزيع (قرار المدير فوق السقف). */}
+                  {overDaily.length > 0 && (
+                    <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                      ⚠️ تجاوز السقف اليومي (تحذير فقط — التوزيع اليدوي ما ينمنع):{" "}
+                      {overDaily.map((e) => `${e.name} (${toArabicDigits(e.assignedToday)}+${toArabicDigits(Number(alloc[e.id]) || 0)} من ${toArabicDigits(e.dailyAssignCap ?? 0)})`).join(" · ")}
+                    </p>
+                  )}
                 </>
               )}
             </div>
