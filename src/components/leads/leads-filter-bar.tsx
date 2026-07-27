@@ -66,6 +66,8 @@ export function LeadsFilterBar({
     if (sort && sort !== DEFAULT_LEAD_SORT) p.set("sort", sort); // نظافة الرابط
     const nr = next.nr ?? filters.nr;
     if (nr) p.set("nr", "1"); // فلتر «لم يستجب»
+    const tr = next.tr ?? filters.tr;
+    if (tr) p.set("tr", "1"); // فلتر «محوَّل» (المحوّلون بالبيانات)
     const s = p.toString();
     return s ? `${basePath}?${s}` : basePath;
   }
@@ -96,7 +98,7 @@ export function LeadsFilterBar({
     go({ emps: filters.emps.includes(t) ? filters.emps.filter((x) => x !== t) : [...filters.emps, t] });
   }
 
-  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.nr;
+  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.nr || filters.tr;
   const notContactedActive = filters.stages.length === 1 && filters.stages[0] === "NEW";
 
   return (
@@ -119,6 +121,13 @@ export function LeadsFilterBar({
               لم يستجب <span className="font-bold">×{toArabicDigits(unresponsive)}</span>
             </button>
           )}
+          {/* فلتر «محوَّل» — المحوّلون يدويًا «بالبيانات» فقط (كجديد لا يظهر — لا يُميَّز عن الجديد) */}
+          <button
+            onClick={() => go({ tr: !filters.tr })}
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.tr ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
+          >
+            ⇄ محوَّل
+          </button>
         </div>
       )}
 
@@ -162,7 +171,7 @@ export function LeadsFilterBar({
         </div>
         {hasFilters && (
           <button
-            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], nr: false }))); }}
+            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], nr: false, tr: false }))); }}
             className="rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
           >مسح الكل</button>
         )}
