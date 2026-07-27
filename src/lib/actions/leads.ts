@@ -23,6 +23,7 @@ import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe"
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 import { channelForSourceName } from "@/lib/source-channel";
 import { resolveAutoPoolAt } from "@/lib/auto-pool";
+import { manualTransferReason, type TransferMode } from "@/lib/transfer-mode";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -545,7 +546,7 @@ export async function setFirstContactStage(leadId: string, stage: FirstContactSt
 export async function transferLeads(
   ids: string[],
   toUserId: string,
-  mode: "full" | "fresh",
+  mode: TransferMode,
 ): Promise<ActionResult> {
   try {
     const user = await requireUser();
@@ -559,7 +560,7 @@ export async function transferLeads(
       // «fresh» = المرحلة «جديد» + تصفير موعد المتابعة القادم فقط.
       await assignLeadsToEmployee(tx, ids, toUserId, {
         manual: true,
-        reason: mode === "fresh" ? "manual_transfer_fresh" : "manual_transfer_full",
+        reason: manualTransferReason(mode),
         extraData: mode === "fresh" ? { stage: LeadStage.NEW, nextFollowup: null } : {},
       });
       await tx.activity.createMany({
@@ -617,10 +618,15 @@ export async function recoverLeads(ids: string[]): Promise<ActionResult> {
   }
 }
 
-/** إعادة إسناد العميل لموظف آخر — للمدير فقط. */
+/**
+ * نقل عميل واحد لموظف آخر (من درج العميل) — للمدير فقط، وبنفس وضعَي transferLeads تمامًا:
+ * "full" → بالبيانات (وسم ⇄ «محوَّل») · "fresh" → كجديد (إخفاء السجل عن الموظف بلا وسم).
+ * mode إلزامي عمدًا: أي مسار نقل جديد يجب أن يقرّر الوضع صراحةً بدل الوقوع في سبب مجرد.
+ */
 export async function reassignLead(
   leadId: string,
   toUserId: string,
+  mode: TransferMode,
 ): Promise<ActionResult> {
   try {
     const user = await requireUser();
@@ -635,17 +641,25 @@ export async function reassignLead(
 
     await prisma.$transaction(async (tx) => {
       // م-١: الإسناد عبر الدالة الموحّدة — أختام كاملة + سجل Reassignment.
-      await assignLead(tx, leadId, toUserId, { manual: true, reason: "manual_transfer" });
+      // ح-٤: المتابعات لا تُحذف في أي وضع — «كجديد» إخفاء عرضٍ عن الموظف لا حذفًا.
+      await assignLead(tx, leadId, toUserId, {
+        manual: true,
+        reason: manualTransferReason(mode),
+        extraData: mode === "fresh" ? { stage: LeadStage.NEW, nextFollowup: null } : {},
+      });
       await tx.activity.create({
         data: {
           leadId,
           userId: user.id,
           type: ActivityType.ASSIGNMENT,
-          note: `أُسند إلى ${target.name}`,
+          note: mode === "fresh" ? `نُقل كعميل جديد إلى ${target.name}` : `نُقل إلى ${target.name}`,
         },
       });
     });
-    await logAudit(prisma, { userId: user.id, action: "lead.reassigned", entity: "lead", entityId: leadId, summary: `أعاد إسناد عميل إلى ${target.name}` });
+    await logAudit(prisma, {
+      userId: user.id, action: "lead.reassigned", entity: "lead", entityId: leadId,
+      summary: `${mode === "fresh" ? "نقل كعميل جديد" : "نقل بالبيانات"} عميل إلى ${target.name}`,
+    });
     // حدث: توزّع عليك عميل (الجمهور حسب الإعداد — افتراضيًا الموظف المعني).
     await emitNotification({
       eventKey: "lead_assigned",

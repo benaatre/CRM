@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { daysWaiting } from "@/lib/assignment";
 import { hiddenHistoryIds, isFreshDistributed, latestRevealAction, REVEAL_HISTORY_ACTION } from "@/lib/visibility";
+import { MANUAL_TRANSFER_FULL } from "@/lib/transfer-mode";
 import { getNoResponseConfig, noAnswerStats, noResponseBaseline, noResponseState, type NoResponseConfig } from "@/lib/no-response-escalation";
 import { MAX_REASSIGNS } from "@/lib/sweep-eligibility";
 import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
@@ -275,7 +276,7 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     stale: l.stage === "INTERESTED" && !l.isArchived
       && interestedIdleDays(latestFuAt, l.assignedAt ?? l.createdAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
     // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
-    manualTransferred: lastAssignReasonOf(l.reassignments) === "manual_transfer_full",
+    manualTransferred: lastAssignReasonOf(l.reassignments) === MANUAL_TRANSFER_FULL,
   };
 }
 
