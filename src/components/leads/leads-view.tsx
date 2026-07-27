@@ -10,6 +10,10 @@ import {
 import { formatDate, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import { TransferStar, TransferBadge } from "./transfer-star";
+import { TransferModeDialog } from "./transfer-mode-dialog";
+// اسم مستعار: TransferMode المحلي في هذا الملف يشمل "recover" (نافذة التحويل الجماعية)،
+// أما وضع التوزيع فهو الثنائي المشترك في lib/transfer-mode.
+import type { TransferMode as LeadReceiveMode } from "@/lib/transfer-mode";
 import { PullCountdown } from "./pull-countdown";
 import {
   transferLeads, recoverLeads, bulkArchive, bulkDelete, unarchiveLeads,
@@ -395,6 +399,15 @@ function UnassignedTools({
   const [custom, setCustom] = useState(false);
   const [loads, setLoads] = useState<{ id: string; name: string; count: number; maxClients: number | null; remaining: number | null }[] | null>(null);
   const [alloc, setAlloc] = useState<Record<string, string>>({});
+  // طريقة التوزيع المنتظِرة قرار الوضع (بالبيانات/كجديد) — تُفتح النافذة قبل أي تنفيذ.
+  const [askMode, setAskMode] = useState<"equal" | "least" | "custom" | null>(null);
+
+  function runDistribution(how: "equal" | "least" | "custom", leadMode: LeadReceiveMode) {
+    dist(() =>
+      how === "equal" ? distributeUnassigned(leadMode)
+        : how === "least" ? distributeLeastLoaded(leadMode)
+          : distributeCustom((loads ?? []).map((e) => ({ userId: e.id, count: Number(alloc[e.id]) || 0 })), leadMode));
+  }
 
   function dist(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
     setMsg(null);
@@ -430,8 +443,9 @@ function UnassignedTools({
       {/* التوزيع */}
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <span className="text-sm font-medium text-foreground">التوزيع:</span>
-        <button onClick={() => dist(() => distributeUnassigned())} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">بالتساوي</button>
-        <button onClick={() => dist(() => distributeLeastLoaded())} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">الأقل عملاءً</button>
+        {/* الوضع يُسأل مرة لكل دفعة قبل التنفيذ — لا توزيع صامت بضغطة. */}
+        <button onClick={() => setAskMode("equal")} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">بالتساوي</button>
+        <button onClick={() => setAskMode("least")} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">الأقل عملاءً</button>
         <button onClick={openCustom} className={`rounded-lg border px-3 py-1.5 text-xs ${custom ? "border-gold bg-gold/15 text-gold" : "border-border text-foreground hover:bg-secondary"}`}>مخصص</button>
         <span className="text-xs text-muted-foreground">— أو يدويًا: حدّد عملاء بالأسفل ثم «تحويل».</span>
       </div>
@@ -480,7 +494,7 @@ function UnassignedTools({
                   المجموع: {toArabicDigits(totalWanted)} من {toArabicDigits(availableUnassigned)} متاح
                 </span>
                 <button
-                  onClick={() => dist(() => distributeCustom(loads.map((e) => ({ userId: e.id, count: Number(alloc[e.id]) || 0 }))))}
+                  onClick={() => setAskMode("custom")}
                   disabled={pending || over || overCap || totalWanted === 0}
                   className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
                 >وزّع الآن</button>
@@ -493,6 +507,16 @@ function UnassignedTools({
       )}
 
       {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">{msg}</p>}
+
+      {askMode && (
+        <TransferModeDialog
+          title="توزيع العملاء غير الموزّعين"
+          variant="distribute"
+          confirmLabel="وزّع"
+          onClose={() => setAskMode(null)}
+          onConfirm={(leadMode) => { const how = askMode; setAskMode(null); runDistribution(how, leadMode); }}
+        />
+      )}
     </div>
   );
 }

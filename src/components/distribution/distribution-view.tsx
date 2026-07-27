@@ -8,6 +8,7 @@ import {
   ShieldCheck, CalendarClock, Hand, UserCheck, Layers,
 } from "lucide-react";
 import { toArabicDigits, formatDateTime } from "@/lib/format";
+import { isInitialReason, INITIAL_FRESH } from "@/lib/transfer-mode";
 import { stageLabels } from "@/lib/labels";
 import type { LeadStage } from "@prisma/client";
 import {
@@ -582,8 +583,9 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
                     <td className="px-4 py-2.5 text-muted-foreground">{r.fromName ?? "—"}</td>
                     <td className="px-4 py-2.5 text-foreground">{r.toName ?? "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${r.reason === "initial" ? "bg-info/15 text-info" : "bg-warning/15 text-warning"}`}>
-                        {r.reason === "initial" ? "إسناد أولي" : "تأخّر تواصل"}
+                      {/* عائلة الإسناد الأولي: initial و initial_fresh (الأخير لمسترد بتاريخ سابق). */}
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${isInitialReason(r.reason) ? "bg-info/15 text-info" : "bg-warning/15 text-warning"}`}>
+                        {r.reason === INITIAL_FRESH ? "إسناد أولي (كجديد)" : isInitialReason(r.reason) ? "إسناد أولي" : "تأخّر تواصل"}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{formatDateTime(r.createdAt)}</td>

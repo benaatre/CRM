@@ -8,6 +8,8 @@ import { roleLabel } from "@/lib/labels";
 import { toArabicDigits, lastSeenAgo } from "@/lib/format";
 import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
+import { ModeChoiceRow } from "@/components/leads/transfer-mode-dialog";
+import type { TransferMode } from "@/lib/transfer-mode";
 import { ImportDialog } from "./import-dialog";
 import { EmployeeSettingsDialog } from "./employee-settings-dialog";
 import { AvailabilityBadge } from "@/components/availability/availability-ui";
@@ -198,11 +200,13 @@ function DistributeDialog({ onClose, unassigned, empCount }: { onClose: () => vo
   const [mode, setMode] = useState<"equal" | "count">("equal");
   const [perEmp, setPerEmp] = useState("5");
   const [msg, setMsg] = useState<string | null>(null);
+  // وضع الاستلام — يُسأل مرة لكل دفعة (بلا افتراضي صامت على الخادم).
+  const [leadMode, setLeadMode] = useState<TransferMode>("full");
 
   function run() {
     setMsg(null);
     startTransition(async () => {
-      const res = await distributeUnassigned(mode === "count" ? Number(perEmp) || 0 : undefined);
+      const res = await distributeUnassigned(leadMode, mode === "count" ? Number(perEmp) || 0 : undefined);
       setMsg(res.ok ? res.message ?? "تم" : res.error ?? "صار خطأ");
       router.refresh();
     });
@@ -221,6 +225,7 @@ function DistributeDialog({ onClose, unassigned, empCount }: { onClose: () => vo
           عدد محدد لكل موظف:
           <input value={perEmp} onChange={(e) => setPerEmp(e.target.value.replace(/\D/g, ""))} disabled={mode !== "count"} inputMode="numeric" dir="ltr" className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm disabled:opacity-50" />
         </label>
+        <ModeChoiceRow value={leadMode} onChange={setLeadMode} />
         {msg && <p className="rounded-lg bg-secondary px-3 py-2 text-sm text-foreground">{msg}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">إغلاق</button>

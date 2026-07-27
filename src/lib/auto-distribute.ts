@@ -9,6 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { assignLead } from "@/lib/assignment";
+import { initialReason } from "@/lib/transfer-mode";
 import { dayStartKSA, ksaHourOf } from "@/lib/ksa-time";
 import { atLimitUserIds } from "@/lib/dist-limits";
 
@@ -292,7 +293,9 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
       ...IN_AUTO_POOL,
       ...(dupIds.size ? { id: { notIn: [...dupIds] } } : {}),
     },
-    select: { id: true, name: true },
+    // followUps: وجود متابعة واحدة يكفي — العميل مسترد/مسحوب بتاريخ سابق لا عميل جديد فعلًا،
+    // فيُوزَّع «كجديد» (initial_fresh) ليُخفى سجله عن الموظف المستلم ويبقى كاملًا للمالك.
+    select: { id: true, name: true, followUps: { take: 1, select: { id: true } } },
     orderBy: { createdAt: "asc" }, // الأقدم أولًا — والدفعة تقتطع من الرأس
     // حجم الدفعة: يمنع رمي كل غير الموزّعين دفعةً واحدة. null = الكل (السلوك القديم).
     ...(settings.distBatchSize != null && settings.distBatchSize > 0 ? { take: settings.distBatchSize } : {}),
@@ -328,8 +331,9 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
     if (!pick) break;
     const toUserId = pick;
     // م-١: الإسناد التلقائي عبر الدالة الموحّدة (manual=false — بلا حصانة يدوية).
+    // السبب مشتق: من له متابعات سابقة ⇒ initial_fresh (إخفاء سجله عن الموظف)، وإلا initial.
     await prisma.$transaction(async (tx) => {
-      await assignLead(tx, lead.id, toUserId, { manual: false, reason: "initial", now });
+      await assignLead(tx, lead.id, toUserId, { manual: false, reason: initialReason(lead.followUps.length > 0), now });
     });
     const b = buckets.get(toUserId);
     if (b) b.count++;
