@@ -22,6 +22,17 @@ if (existsSync(".next/static")) {
   console.log("✓ نُسخ .next/static → .next/standalone/.next/static");
 }
 
+// ===== ١ب) إشارة إعادة التشغيل داخل الحمولة نفسها (حادثة 2026-07-27) =====
+// النشر يستبدل محتوى public_html بالكامل بحمولة الـstandalone، فأي شيء يكتبه هذا
+// السكربت على المسار المطلق (الخطوة ٢) يُمحى قبل أن تراه Passenger — ولهذا بقي
+// tmp/ مفقودًا وصارت إعادة التشغيل عرَضية: نشرة 14:08 ظلّت على القرص ٢٥ دقيقة
+// والعملية القديمة تخدم كودًا قديمًا. الحل: نجعل tmp/restart.txt جزءًا من الحمولة،
+// فينسخه النشر مع الكود لا قبله، بطابع زمني جديد كل بناء ⇒ Passenger ترى تغيّرًا
+// حقيقيًا بعد اكتمال النشر فتعيد التشغيل حتمًا، ويبقى PassengerRestartDir صالحًا.
+mkdirSync(`${standalone}/tmp`, { recursive: true });
+writeFileSync(`${standalone}/tmp/restart.txt`, String(Date.now()));
+console.log("✓ أُدرج tmp/restart.txt في الحمولة — إشارة إعادة تشغيل تصل مع الكود");
+
 // ===== ٢) إعادة تشغيل Passenger (بلا نسخ — البناء يتمّ داخل مجلد التشغيل نفسه) =====
 // مجلد تشغيل Passenger = PassengerAppRoot للدومين (public_html). على الخادم يُبنى التطبيق داخله
 // مباشرة، فالبناء ينزل في .next هناك ولا حاجة لأي نسخ؛ يكفي لمس tmp/restart.txt (= PassengerRestartDir)
