@@ -537,9 +537,10 @@ export async function setFirstContactStage(leadId: string, stage: FirstContactSt
 }
 
 /**
- * تحويل عملاء لموظف — للمدير فقط. وضعان:
- *  - "full": نقل مع كل السجل والمتابعات (تبقى البيانات كما هي).
- *  - "fresh": نقل كعميل جديد (البيانات الأساسية فقط؛ المتابعات تبدأ من صفر).
+ * تحويل عملاء لموظف — للمدير فقط. وضعان (اللاحقة في السبب هي مصدر الحقيقة — بلا عمود إضافي):
+ *  - "full" → `manual_transfer_full`: نقل بالبيانات — الموظف الجديد يرى كل السجل، ويظهر وسم ⇄ «محوَّل».
+ *  - "fresh" → `manual_transfer_fresh`: نقل كجديد — اللاحقة `_fresh` تفعّل إخفاء السجل عن الموظف
+ *    عبر visibility.ts (نفس آلية إعادة التوزيع)، بلا وسم؛ والتاريخ محفوظ كاملًا للمالك/الأدمن.
  */
 export async function transferLeads(
   ids: string[],
@@ -558,7 +559,7 @@ export async function transferLeads(
       // «fresh» = المرحلة «جديد» + تصفير موعد المتابعة القادم فقط.
       await assignLeadsToEmployee(tx, ids, toUserId, {
         manual: true,
-        reason: "manual_transfer",
+        reason: mode === "fresh" ? "manual_transfer_fresh" : "manual_transfer_full",
         extraData: mode === "fresh" ? { stage: LeadStage.NEW, nextFollowup: null } : {},
       });
       await tx.activity.createMany({

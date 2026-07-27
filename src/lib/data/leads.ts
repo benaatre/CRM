@@ -85,6 +85,11 @@ export type LeadRow = {
   visitRescheduleCount: number;
   /** «راكد»: مهتم بلا متابعة جديدة ٧+ أيام (من نقطة صفر محرّك الزيارات) — شارة صفراء. */
   stale: boolean;
+  /**
+   * حُوّل يدويًا «بالبيانات» (آخر إسناد فعلي سببه manual_transfer_full) — وسم ⇄ «محوَّل»
+   * يظهر للموظف المستلم وللمالك/الأدمن. المحوّل «كجديد» (_fresh) بلا وسم لأحد عمدًا.
+   */
+  manualTransferred: boolean;
 };
 
 export type LeadActivity = {
@@ -269,6 +274,8 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     // «راكد»: مهتم بلا متابعة ٧+ أيام (آخر متابعة من نافذة العشرين المجلوبة — الأحدث أولًا).
     stale: l.stage === "INTERESTED" && !l.isArchived
       && interestedIdleDays(latestFuAt, l.assignedAt ?? l.createdAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
+    // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
+    manualTransferred: lastAssignReasonOf(l.reassignments) === "manual_transfer_full",
   };
 }
 
@@ -303,6 +310,8 @@ export type LeadFilters = {
   includeUnassigned?: boolean;
   /** فلتر «لم يستجب»: مهتمون تراكمت عليهم متابعات NO_ANSWER_INTERESTED — للمالك/المدير فقط. */
   unresponsive?: boolean;
+  /** فلتر «محوَّل»: المحوّلون يدويًا «بالبيانات» فقط (manual_transfer_full) — للجميع ضمن صلاحيته. */
+  transferred?: boolean;
   /** فلتر سبب الأرشفة (تبويب «مؤرشف»): نهائي / مسوّق / يدوي. */
   archiveReason?: ArchiveReason;
   q?: string;
@@ -362,7 +371,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { user, where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, archiveReason, q, sort = "activity" } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, transferred, archiveReason, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
@@ -409,7 +418,10 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   });
   // الخطوة ٣ب: قرار الإخفاء للدفعة كاملة (استعلام تدقيق واحد) — للموظف فقط.
   const ctx = await buildRowCtx(user.id, manager, user.role, leads);
-  return leads.map((l) => toRow(l, ctx));
+  const rows = leads.map((l) => toRow(l, ctx));
+  // فلتر «محوَّل بالبيانات»: «الأخير» في السجل لا يُعبَّر عنه بشرط Prisma مباشر، والصفوف تحمل
+  // القرار المشتق أصلًا — فالترشيح هنا (الترقيم client-side على كامل النتيجة، فلا فقد صفحات).
+  return transferred ? rows.filter((r) => r.manualTransferred) : rows;
 }
 
 /** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */

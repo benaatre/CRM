@@ -20,6 +20,7 @@ import { BookingForm } from "@/components/bookings/booking-form";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { WaAskLink } from "./wa-ask";
+import { TransferBadge } from "./transfer-star";
 import { useFollowUps } from "./use-followups";
 
 type Tab = "data" | "followups" | "ai" | "transfers";
@@ -76,6 +77,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
               <div className="mt-1 flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
                 <span dir="ltr">{detail.phone}</span>
                 <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[detail.stage]}`}>{stageLabels[detail.stage]}</span>
+                <TransferBadge show={detail.manualTransferred} />
                 {detail.marketer && (
                   <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-bold text-destructive" title="سُجّل كمسوّق (عقاري/منافس) — يُستثنى من أي إحياء مستقبلي">مسوّق</span>
                 )}
