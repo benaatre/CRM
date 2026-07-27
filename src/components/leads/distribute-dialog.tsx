@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { toArabicDigits } from "@/lib/format";
 import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmployeeLoads } from "@/lib/actions/team";
+import type { TransferMode } from "@/lib/transfer-mode";
+import { ModeChoiceRow } from "./transfer-mode-dialog";
 
 type Mode = "equal" | "least" | "custom";
 
@@ -19,6 +21,8 @@ export function DistributeDialog({
   const [loads, setLoads] = useState<{ id: string; name: string; count: number; maxClients: number | null; remaining: number | null; dailyAssignCap: number | null; assignedToday: number }[] | null>(null);
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  // وضع الاستلام — يُسأل مرة واحدة لكل دفعة، بلا افتراضي صامت على الخادم.
+  const [leadMode, setLeadMode] = useState<TransferMode>("full");
 
   function pickMode(m: Mode) {
     setMode(m); setError(null);
@@ -39,9 +43,9 @@ export function DistributeDialog({
     setError(null);
     startTransition(async () => {
       const res =
-        mode === "equal" ? await distributeUnassigned()
-          : mode === "least" ? await distributeLeastLoaded()
-            : await distributeCustom((loads ?? []).map((e) => ({ userId: e.id, count: Number(alloc[e.id]) || 0 })));
+        mode === "equal" ? await distributeUnassigned(leadMode)
+          : mode === "least" ? await distributeLeastLoaded(leadMode)
+            : await distributeCustom((loads ?? []).map((e) => ({ userId: e.id, count: Number(alloc[e.id]) || 0 })), leadMode);
       if (!res.ok) { setError(res.error ?? "صار خطأ"); return; }
       onDone();
       onClose();
@@ -115,6 +119,8 @@ export function DistributeDialog({
               )}
             </div>
           )}
+
+          <ModeChoiceRow value={leadMode} onChange={setLeadMode} />
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
 

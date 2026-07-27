@@ -22,7 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { daysWaiting } from "@/lib/assignment";
 import { hiddenHistoryIds, isFreshDistributed, latestRevealAction, REVEAL_HISTORY_ACTION } from "@/lib/visibility";
-import { MANUAL_TRANSFER_FULL } from "@/lib/transfer-mode";
+import { MANUAL_TRANSFER_FULL, isInitialReason } from "@/lib/transfer-mode";
 import { getNoResponseConfig, noAnswerStats, noResponseBaseline, noResponseState, type NoResponseConfig } from "@/lib/no-response-escalation";
 import { MAX_REASSIGNS } from "@/lib/sweep-eligibility";
 import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
@@ -581,8 +581,8 @@ export async function getLeadTransferHistory(id: string): Promise<LeadTransferHi
   const users = userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
   const nameById = new Map(users.map((u) => [u.id, u.name]));
   return {
-    // عدد التحويلات الفعلية (بلا الإسناد الأولي «initial»).
-    transferCount: reassignments.filter((r) => r.reason !== "initial").length,
+    // عدد التحويلات الفعلية (بلا عائلة الإسناد الأولي: initial و initial_fresh).
+    transferCount: reassignments.filter((r) => !isInitialReason(r.reason)).length,
     transfers: reassignments.map((r) => ({
       id: r.id,
       fromName: r.fromUserId ? (nameById.get(r.fromUserId) ?? null) : null,

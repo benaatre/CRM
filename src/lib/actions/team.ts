@@ -10,6 +10,7 @@ import { requireManager } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { countToday } from "@/lib/dist-limits";
 import { assignLeadsToEmployee } from "@/lib/assignment";
+import { distributeReason, type TransferMode } from "@/lib/transfer-mode";
 import { logAudit } from "@/lib/audit";
 import { sendMail } from "@/lib/mailer";
 import { emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
@@ -223,7 +224,7 @@ function bumpBucket(buckets: Map<string, LeadAssignedBucket>, userId: string, le
  * perEmployee غير محدّد → بالتساوي (round-robin على الكل، مع تخطّي من وصل حدّه).
  * perEmployee = N → كل موظف ياخذ حتى N عميل (أو سعته المتبقية، الأصغر).
  */
-export async function distributeUnassigned(perEmployee?: number): Promise<ActionResult> {
+export async function distributeUnassigned(mode: TransferMode, perEmployee?: number): Promise<ActionResult> {
   try {
     await requireManager();
     const emps = await loadEmployees();
@@ -259,7 +260,8 @@ export async function distributeUnassigned(perEmployee?: number): Promise<Action
     if (assignedCount === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
     await prisma.$transaction(async (tx) => {
       for (const [userId, leadIds] of byEmployee) {
-        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: "manual_distribute" });
+        // الوضع إلزامي من الواجهة — الحوض يخلط جددًا ومستردّين بتاريخ، فالقرار للمالك لا افتراضي صامت.
+        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode) });
       }
     });
     await emitLeadAssignedBatch([...buckets.values()]);
@@ -302,7 +304,7 @@ export async function getEmployeeLoads(): Promise<{
 }
 
 /** توزيع مخصّص: عدد محدّد لكل موظف من العملاء غير الموزّعين (بترتيب الأقدم) — لا يتجاوز سعة أي موظف. */
-export async function distributeCustom(alloc: { userId: string; count: number }[]): Promise<ActionResult> {
+export async function distributeCustom(alloc: { userId: string; count: number }[], mode: TransferMode): Promise<ActionResult> {
   try {
     await requireManager();
     const items = alloc.filter((a) => a.userId && a.count > 0);
@@ -337,7 +339,8 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
     for (const t of targets) byEmployee.set(t.userId, [...(byEmployee.get(t.userId) ?? []), t.id]);
     await prisma.$transaction(async (tx) => {
       for (const [userId, leadIds] of byEmployee) {
-        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: "manual_distribute" });
+        // الوضع إلزامي من الواجهة — الحوض يخلط جددًا ومستردّين بتاريخ، فالقرار للمالك لا افتراضي صامت.
+        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode) });
       }
     });
     const buckets = new Map<string, LeadAssignedBucket>();
@@ -352,7 +355,7 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
 }
 
 /** توزيع غير الموزّعين على الأخفّ حملًا — يحترم الحد الأقصى لكل موظف. */
-export async function distributeLeastLoaded(): Promise<ActionResult> {
+export async function distributeLeastLoaded(mode: TransferMode): Promise<ActionResult> {
   try {
     await requireManager();
     const emps = await loadEmployees();
@@ -386,7 +389,8 @@ export async function distributeLeastLoaded(): Promise<ActionResult> {
     if (assignedCount === 0) return { ok: false, error: "كل الموظفين وصلوا الحد الأقصى لعملائهم" };
     await prisma.$transaction(async (tx) => {
       for (const [userId, leadIds] of byEmployee) {
-        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: "manual_distribute" });
+        // الوضع إلزامي من الواجهة — الحوض يخلط جددًا ومستردّين بتاريخ، فالقرار للمالك لا افتراضي صامت.
+        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode) });
       }
     });
     await emitLeadAssignedBatch([...buckets.values()]);

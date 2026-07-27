@@ -336,8 +336,8 @@ export function LeadDrawer({
 
       {lead && reassignTo && (
         <TransferModeDialog
-          leadName={lead.name}
-          employeeName={reassignTo.name}
+          title={`تحويل «${lead.name}» إلى ${reassignTo.name}`}
+          variant="transfer"
           onClose={() => setReassignTo(null)}
           onConfirm={(mode) => {
             const to = reassignTo;
