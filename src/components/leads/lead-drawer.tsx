@@ -23,6 +23,7 @@ import { cancelBooking } from "@/lib/actions/bookings";
 import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { NotInterestedDialog } from "./not-interested-dialog";
+import { TransferModeDialog } from "./transfer-mode-dialog";
 import { useFollowUps } from "./use-followups";
 
 type Employee = { id: string; name: string };
@@ -50,6 +51,8 @@ export function LeadDrawer({
   const [tab, setTab] = useState<Tab>("data");
   const [showBooking, setShowBooking] = useState(false);
   const [showNi, setShowNi] = useState(false);
+  // الموظف المختار بانتظار قرار وضع التحويل (بالبيانات / كجديد) — لا نقل قبل الاختيار.
+  const [reassignTo, setReassignTo] = useState<Employee | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -244,7 +247,18 @@ export function LeadDrawer({
                     </DField>
                     {isManager && (
                       <DField label="الموظف">
-                        <select value={lead.assignedTo?.id ?? ""} disabled={pending} onChange={(e) => startTransition(async () => { await reassignLead(lead.id, e.target.value); refresh(); })} className="select-base">
+                        {/* اختيار الموظف يفتح نافذة الوضع (بالبيانات/كجديد) — لا تحويل صامت بضغطة.
+                            القائمة مضبوطة بـvalue، فإلغاء النافذة يعيدها للموظف الحالي تلقائيًا. */}
+                        <select
+                          value={lead.assignedTo?.id ?? ""}
+                          disabled={pending}
+                          onChange={(e) => {
+                            const emp = employees.find((x) => x.id === e.target.value);
+                            if (!emp || emp.id === lead.assignedTo?.id) return;
+                            setReassignTo(emp);
+                          }}
+                          className="select-base"
+                        >
                           {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                         </select>
                       </DField>
@@ -317,6 +331,23 @@ export function LeadDrawer({
           leadId={lead.id}
           leadName={lead.name}
           onDone={refresh}
+        />
+      )}
+
+      {lead && reassignTo && (
+        <TransferModeDialog
+          leadName={lead.name}
+          employeeName={reassignTo.name}
+          onClose={() => setReassignTo(null)}
+          onConfirm={(mode) => {
+            const to = reassignTo;
+            setReassignTo(null);
+            startTransition(async () => {
+              const res = await reassignLead(lead.id, to.id, mode);
+              if (!res.ok && res.error) alert(res.error);
+              refresh();
+            });
+          }}
         />
       )}
 
