@@ -14,6 +14,7 @@ import {
   unitTypeLabels,
 } from "@/lib/labels";
 import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
+import { normalizeAreas } from "@/lib/utils/sheet-parse";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
 import { assignmentData } from "@/lib/assignment";
 import { getOwnerIds } from "@/lib/data/leads";
@@ -318,6 +319,11 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
       // ما تم تحديد موظف فعلي (الإسناد للمالك) → غير موزّع.
       if (assignedToId && ownerIds.includes(assignedToId)) assignedToId = null;
 
+      // الحي → الأحياء المناسبة عبر نفس قاموس sheet-sync (كان الاستيراد اليدوي يكتب
+      // preferredDistrict فقط، فتضيع «الأحمدية» و«جميع الأحياء» من الحقل المعتمد).
+      // النص غير المفهوم يصير «أخرى» + ملاحظة خام — بلا تخمين، مثل مسار الشيت تمامًا.
+      const areasParse = r.district ? normalizeAreas(r.district) : { areas: [], note: null };
+
       toCreate.push({
         name: r.name,
         phone: r.phone,
@@ -330,8 +336,8 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
         budget: r.budget ? Number(r.budget) : null,
         purchaseMethod: normalizePurchaseMethod(r.purchaseMethod),
         purchaseGoal: normalizePurchaseGoal(r.purchaseGoal),
-        preferredDistrict: r.district || null,
-        notes: r.notes || null,
+        ...(areasParse.areas.length ? { preferredAreas: areasParse.areas } : {}),
+        notes: [r.notes || null, areasParse.note].filter(Boolean).join(" · ") || null,
         projectId: r.project ? projectByName.get(r.project) ?? null : null,
         // م-١: أختام الإسناد الموحّدة — الاستيراد اختيار بشري للموظف = يدوي (بحصانته).
         ...(assignedToId ? assignmentData(assignedToId, { manual: true }) : {}),
@@ -358,7 +364,7 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
     for (const r of existing) {
       const lead = await prisma.lead.findFirst({
         where: { phone: { in: phoneVariants(r.phone) } },
-        select: { id: true, purchaseMethod: true, purchaseGoal: true, budget: true, unitType: true, preferredDistrict: true, projectId: true },
+        select: { id: true, purchaseMethod: true, purchaseGoal: true, budget: true, unitType: true, preferredAreas: true, projectId: true },
       });
       if (!lead) continue;
 
@@ -369,7 +375,11 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
       if (pg && !lead.purchaseGoal) data.purchaseGoal = pg;
       if (r.budget && lead.budget == null) data.budget = Number(r.budget);
       if (r.unitType && !lead.unitType) { const ut = unitTypeBy[r.unitType]; if (ut) data.unitType = ut; }
-      if (r.district && !lead.preferredDistrict) data.preferredDistrict = r.district;
+      // تعبئة الفاضي فقط — «أخرى» وحدها ما تُكتب (ما تضيف معلومة وتخفي أن الحقل فاضٍ).
+      if (r.district && lead.preferredAreas.length === 0) {
+        const areas = normalizeAreas(r.district).areas.filter((a) => a !== "أخرى");
+        if (areas.length) data.preferredAreas = areas;
+      }
       if (r.project && !lead.projectId) { const pid = projectByName.get(r.project); if (pid) data.projectId = pid; }
 
       if (Object.keys(data).length > 0) {

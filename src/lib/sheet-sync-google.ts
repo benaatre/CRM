@@ -149,7 +149,7 @@ async function syncSheetLink(link: LinkWithSource, opts?: { limit?: number }): P
           source: sourceName,               // نص المصدر (للعرض)
           purchaseMethod: purchaseMethod ?? undefined,
           purchaseGoal: purchaseGoal ?? undefined,
-          preferredDistrict: l.district,
+          // preferredDistrict موقوف الكتابة (deprecated) — الحقل المعتمد هو preferredAreas وحده.
           // الحي المطبّع (قاموس الأحياء الثلاثة) — نفس حقل «الأحياء المناسبة» اليدوي، والموظف يعدّله.
           ...(areas.length ? { preferredAreas: areas } : {}),
           // السعر من–إلى بالريال الكامل (من عمود الميزانية إن وُجد).

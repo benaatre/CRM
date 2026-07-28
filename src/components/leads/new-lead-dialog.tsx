@@ -7,6 +7,7 @@ import type { UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
+import { DistrictSelect } from "./district-select";
 
 type Employee = { id: string; name: string };
 
@@ -27,8 +28,10 @@ export function NewLeadDialog({
   const [channel, setChannel] = useState<string>("");
   const [sources, setSources] = useState<SourceListItem[]>([]);
   const [sourceSel, setSourceSel] = useState("");
+  // «في أي حي تفضّل التملك؟» — اختياري، بلا إلزام.
+  const [areas, setAreas] = useState<string[]>([]);
 
-  useEffect(() => { if (open) fetchSources().then(setSources).catch(() => {}); }, [open]);
+  useEffect(() => { if (open) { fetchSources().then(setSources).catch(() => {}); setAreas([]); } }, [open]);
 
   if (!open) return null;
 
@@ -111,6 +114,9 @@ export function NewLeadDialog({
               </Field>
             )}
           </div>
+          {/* اختياري — يُرسل كقيم متعددة بنفس الاسم، والخادم يقبل المعتمدة فقط. */}
+          <DistrictSelect value={areas} onChange={setAreas} disabled={pending} />
+          {areas.map((a) => <input key={a} type="hidden" name="preferredAreas" value={a} />)}
           <Field label="ملاحظات">
             <textarea name="notes" rows={2} className="select-base" placeholder="أي ملاحظة…" />
           </Field>

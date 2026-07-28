@@ -222,8 +222,7 @@ export const cashPaymentTypeLabels: Record<CashPaymentType, string> = {
   INSTALLMENTS: "دفعات",
 };
 
-/// أحياء شائعة (قابلة للتوسعة) — مع «أخرى».
-export const districtOptions = ["المهدية", "ظهرة لبن", "لبن الشرقي", "أخرى"];
+/// الأحياء: القيم وخيارات الواجهة انتقلت إلى lib/districts (مصدر حقيقة واحد للتخزين والعرض).
 
 export const bankLabels: Record<SaudiBank, string> = {
   RAJHI: "الراجحي",

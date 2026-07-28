@@ -24,6 +24,7 @@ import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 import { channelForSourceName } from "@/lib/source-channel";
 import { resolveAutoPoolAt } from "@/lib/auto-pool";
 import { manualTransferReason, type TransferMode } from "@/lib/transfer-mode";
+import { ALL_AREAS, canonicalAreas } from "@/lib/districts";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -78,6 +79,10 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     const budgetRaw = String(formData.get("budget") ?? "").replace(/[^\d]/g, "");
     const budget = budgetRaw ? Number(budgetRaw) : null;
     const notes = String(formData.get("notes") ?? "").trim() || null;
+    // «في أي حي تفضّل التملك؟» — اختياري. التحقق على الخادم: القيم المعتمدة فقط.
+    const preferredAreas = canonicalAreas(
+      formData.getAll("preferredAreas").map(String).filter((a) => ALL_AREAS.includes(a)),
+    );
 
     // استثناء المكرر: نفس الرقم + نفس الإعلان (المصدر) خلال ٤٨ ساعة = ضجيج/تكرار آلي → لا نضيف نسخة.
     // غير ذلك (مصدر مختلف أو بعد ٤٨ ساعة) يُضاف ويظهر في «العملاء المكررون».
@@ -129,6 +134,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
         stage: LeadStage.NEW,
         priority: Priority.MEDIUM,
         nextFollowup: tomorrow,
+        ...(preferredAreas.length ? { preferredAreas } : {}),
         // م-١: أختام الإسناد الموحّدة — اختيار بشري (موظف لنفسه/مدير) = يدوي بحصانته.
         ...(assignedToId ? assignmentData(assignedToId, { manual: !autoDistributed }) : {}),
         ...(autoPoolAt ? { autoPoolAt } : {}),
@@ -432,7 +438,8 @@ export async function updateLead(
     priority?: Priority;
     purchaseMethod?: PurchaseMethod | null;
     purchaseGoal?: PurchaseGoal | null;
-    preferredDistrict?: string | null;
+    /** «في أي حي تفضّل التملك؟» — preferredDistrict القديم موقوف الكتابة (deprecated). */
+    preferredAreas?: string[];
     sourceId?: string | null;
   },
 ): Promise<ActionResult> {
@@ -450,7 +457,7 @@ export async function updateLead(
         ...(budget !== undefined ? { budget } : {}),
         ...(data.purchaseMethod !== undefined ? { purchaseMethod: data.purchaseMethod } : {}),
         ...(data.purchaseGoal !== undefined ? { purchaseGoal: data.purchaseGoal } : {}),
-        ...(data.preferredDistrict !== undefined ? { preferredDistrict: data.preferredDistrict || null } : {}),
+        ...(data.preferredAreas ? { preferredAreas: canonicalAreas(data.preferredAreas) } : {}),
         ...(data.sourceId !== undefined ? { sourceId: data.sourceId || null } : {}),
       },
     });
@@ -496,7 +503,7 @@ export async function updateLeadIntake(
         ...(data.purchaseMethod !== undefined ? { purchaseMethod: data.purchaseMethod } : {}),
         ...(data.priceMin !== undefined ? { priceMin: data.priceMin } : {}),
         ...(data.priceMax !== undefined ? { priceMax: data.priceMax } : {}),
-        ...(data.preferredAreas ? { preferredAreas: data.preferredAreas } : {}),
+        ...(data.preferredAreas ? { preferredAreas: canonicalAreas(data.preferredAreas) } : {}),
         ...(data.preferredProjects ? { preferredProjects: data.preferredProjects } : {}),
         ...(data.sourceId !== undefined ? sourceFields : {}),
       },

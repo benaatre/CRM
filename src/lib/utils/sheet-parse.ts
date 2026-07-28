@@ -1,6 +1,8 @@
 // تحليل صفوف جوجل شيت — منطق نقي (بدون googleapis) قابل للاختبار والاستيراد في أي مكان.
 import type { PurchaseMethod, PurchaseGoal } from "@prisma/client";
 import { normalizePhone, normalizePurchaseGoal } from "../value-normalize";
+// القيم المخزَّنة للأحياء — مصدر الحقيقة الوحيد في lib/districts.
+import { ALL_AREAS, AREA_AHMADIA, AREA_DHAHRAT_LABAN, AREA_MAHDIA } from "@/lib/districts";
 
 /** توحيد عربي بسيط (إزالة تشكيل + توحيد الألف/الياء/التاء + تصغير). */
 function norm(s: string): string {
@@ -75,51 +77,74 @@ const KNOWN_DISTRICTS = [
 
 /** قيمة «حي»: تبدأ بكلمة «حي» أو تطابق اسم حي معروف أو صيغة «جميع الأحياء». */
 function isDistrictValue(raw: string | null | undefined): boolean {
-  const s = norm(cleanValue(raw ?? ""));
+  const plain = norm(cleanValue(raw ?? ""));
+  if (!plain) return false;
+  if (/(^|\s)حي(\s|$)/.test(plain)) return true;
+  const s = areaKey(raw ?? "");
   if (!s) return false;
-  if (/(^|\s)حي(\s|$)/.test(s)) return true;
   if (ALL_AREAS_RE.test(s)) return true;
+  if (RE_ANY_AREA.test(s)) return true;
   return KNOWN_DISTRICTS.some((d) => d && s.includes(d));
 }
 
 // ===================== تطبيع الحي → الأحياء المناسبة (preferredAreas) =====================
 
-// الأحياء الثلاثة المعتمدة (نفس القيم اللي يعبّيها الموظف يدويًا في ملف العميل).
-export const AREA_MAHDIA = "الرياض المهدية";
-export const AREA_DHAHRAT_LABAN = "الرياض ظهرة لبن";
-export const AREA_AHMADIA = "الرياض الأحمدية";
-export const ALL_AREAS = [AREA_MAHDIA, AREA_DHAHRAT_LABAN, AREA_AHMADIA];
+// إعادة تصدير للتوافق مع المستوردين القدامى من هذا الملف (المصدر: lib/districts).
+export { ALL_AREAS, AREA_AHMADIA, AREA_DHAHRAT_LABAN, AREA_MAHDIA };
 
-// «جميع الأحياء / الثلاثة / كلها / الكل» — كقيمة كاملة (لا كجزء من جملة أخرى).
-const ALL_AREAS_RE = /^(جميع( الاحياء)?|الثلاثه|كلها|الكل)$/;
+// «جميع الأحياء / الثلاثة / كلها / الكل» — بعد حذف كلمات الحشو في areaKey تبقى كلمة واحدة.
+const ALL_AREAS_RE = /^(all|جميع|الجميع|جميعها|كلها|الكل|كل|الثلاثه|الثلاث|ثلاثه)$/;
+
+// قاموس المطابقة — عربي + الصيغ اللاتينية الشائعة (norm يُصغّر الحروف اللاتينية).
+// «لبن الشرقي» = الأحمدية، وتُشال قبل فحص «لبن» العام (وإلا حُسبت ظهرة لبن غلط).
+const RE_AHMADIA = /لبن\s*الشرقي|احمديه|ahmadi|east\s*lab[ae]n|lab[ae]n\s*(al\s*)?sharqi/;
+const RE_AHMADIA_STRIP = /لبن\s*الشرقي|east\s*lab[ae]n|lab[ae]n\s*(al\s*)?sharqi/g;
+const RE_MAHDIA = /مهديه|mahdi/;
+const RE_DHAHRAT_LABAN = /ظهره\s*لبن|(^|\s)لبن(?=\s|$)|(dhahrat?|zahrat?|dahrat?|thahrat?)\s*lab[ae]n|(^|\s)lab[ae]n(?=\s|$)/;
+/** أي إشارة لحي معتمد — للتعرّف على عمود «الحي» بمحتواه. */
+const RE_ANY_AREA = /مهديه|احمديه|ظهره\s*لبن|(^|\s)لبن(?=\s|$)|mahdi|ahmadi|lab[ae]n/;
+
+/**
+ * مفتاح مطابقة الحي: norm ثم حذف الضجيج المتكرر في نماذج الإعلانات —
+ * رموز التزيين («·» و«•» والشرطات) وكلمات الحشو («الرياض»، «حي»، «الأحياء»،
+ * «مناسبة»، «تناسبني»…) — فتصير «· جميع الأحياء مناسبة» ← «جميع».
+ */
+function areaKey(raw: string | null | undefined): string {
+  return norm(cleanValue(raw ?? ""))
+    .replace(/[·•‧∙*_|/\\\-–—]+/g, " ")
+    .replace(/(^|\s)(الرياض|حي|الحي|احياء|الاحياء|منطقه|المنطقه|مناسب|مناسبه|مناسبين|تناسبني|يناسبني|في|riyadh|al)(?=\s|$)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export type AreasParse = { areas: string[]; note: string | null };
 
 /**
- * قاموس تطبيع الحي (مطابقة مرنة — norm يوحّد الهمزات والتاء المربوطة، ونتجاهل
- * «ال» التعريف وكلمة «الرياض» وكلمة «حي» والمسافات الزائدة):
- *   ظهرة لبن ← الرياض ظهرة لبن · المهدية ← الرياض المهدية ·
- *   الأحمدية/لبن الشرقي ← الرياض الأحمدية · جميع/الثلاثة/كلها ← الثلاثة معًا ·
+ * قاموس تطبيع الحي (مطابقة مرنة — norm يوحّد الهمزات والتاء المربوطة ويُصغّر اللاتيني،
+ * وareaKey يحذف «الرياض»/«حي»/رموز التزيين/كلمات الحشو):
+ *   ظهرة لبن / ظهره لبن / Dhahrat Laban ← الرياض ظهرة لبن ·
+ *   المهدية / Al Mahdiyah ← الرياض المهدية ·
+ *   الأحمدية / لبن الشرقي / Ahmadiyah ← الرياض الأحمدية ·
+ *   جميع / الثلاثة / كلها / «· جميع الأحياء مناسبة» ← الثلاثة معًا ·
  *   غير ذلك ← «أخرى» + النص الخام في ملاحظة (لا تخمين).
  */
 export function normalizeAreas(raw: string): AreasParse {
   const original = cleanValue(raw);
-  // norm ثم إزالة «الرياض» و«حي» ككلمات مستقلة.
-  const s = norm(original).replace(/(^|\s)(الرياض|حي)(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  const s = areaKey(raw);
+  if (!s) return { areas: [], note: null };
   if (ALL_AREAS_RE.test(s)) return { areas: [...ALL_AREAS], note: null };
 
   const areas: string[] = [];
-  // «لبن الشرقي» = الأحمدية — تُلتقط وتُشال قبل فحص «لبن» العام (وإلا حُسبت ظهرة لبن غلط).
   let rest = s;
-  if (/لبن\s*الشرقي|احمديه/.test(rest)) {
+  if (RE_AHMADIA.test(rest)) {
     areas.push(AREA_AHMADIA);
-    rest = rest.replace(/لبن\s*الشرقي/g, " ");
+    rest = rest.replace(RE_AHMADIA_STRIP, " ");
   }
-  if (/مهديه/.test(rest)) areas.push(AREA_MAHDIA);
-  if (/ظهره\s*لبن|(^|\s)لبن(?=\s|$)/.test(rest)) areas.push(AREA_DHAHRAT_LABAN);
+  if (RE_MAHDIA.test(rest)) areas.push(AREA_MAHDIA);
+  if (RE_DHAHRAT_LABAN.test(rest)) areas.push(AREA_DHAHRAT_LABAN);
 
   if (areas.length > 0) {
-    // بترتيب العرض المعتمد (المهدية · ظهرة لبن · الأحمدية).
+    // بترتيب التخزين المعتمد (المهدية · ظهرة لبن · الأحمدية).
     return { areas: ALL_AREAS.filter((a) => areas.includes(a)), note: null };
   }
   return { areas: ["أخرى"], note: `الحي (من الشيت): ${original}` };

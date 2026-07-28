@@ -21,6 +21,7 @@ import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { WaAskLink } from "./wa-ask";
 import { TransferBadge } from "./transfer-star";
+import { DistrictSelect } from "./district-select";
 import { useFollowUps } from "./use-followups";
 
 type Tab = "data" | "followups" | "ai" | "transfers";
@@ -291,18 +292,12 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
   const [priceMin, setPriceMin] = useState(detail.priceMin?.toString() ?? "");
   const [priceMax, setPriceMax] = useState(detail.priceMax?.toString() ?? "");
   const [areas, setAreas] = useState<string[]>(detail.preferredAreas ?? []);
-  const [areaInput, setAreaInput] = useState("");
   const [projSel, setProjSel] = useState<Set<string>>(new Set(detail.preferredProjects ?? []));
   const [sources, setSources] = useState<SourceListItem[]>([]);
   const [sourceSel, setSourceSel] = useState(detail.sourceId ?? "");
 
   useEffect(() => { fetchSources().then(setSources).catch(() => {}); }, []);
 
-  function addArea() {
-    const v = areaInput.trim();
-    if (v && !areas.includes(v)) setAreas((a) => [...a, v]);
-    setAreaInput("");
-  }
   function save() {
     setMsg(null);
     startTransition(async () => {
@@ -347,18 +342,7 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
         </Field>
       </div>
 
-      <div className="space-y-2">
-        <span className="text-xs text-muted-foreground">الأحياء المناسبة</span>
-        <div className="flex flex-wrap gap-2">
-          {areas.map((a) => (
-            <span key={a} className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-foreground">{a}<button onClick={() => setAreas((xs) => xs.filter((x) => x !== a))} className="text-muted-foreground hover:text-destructive" aria-label="حذف">×</button></span>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <input value={areaInput} onChange={(e) => setAreaInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addArea(); } }} placeholder="اكتب حيًّا واضغط Enter…" className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-          <button onClick={addArea} className="rounded-lg border border-border px-3 text-sm text-muted-foreground hover:text-foreground">إضافة</button>
-        </div>
-      </div>
+      <DistrictSelect value={areas} onChange={setAreas} disabled={pending} />
 
       <div className="space-y-2">
         <span className="text-xs text-muted-foreground">المشاريع المناسبة</span>
