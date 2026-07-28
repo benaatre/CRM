@@ -1,11 +1,22 @@
 import "server-only";
 
-import type { Channel, PrismaClient } from "@prisma/client";
+import type { Channel, LeadStage, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneVariants } from "@/lib/value-normalize";
 
 // نافذة استثناء «نفس الإعلان خلال ٤٨ ساعة» — ضجيج/إعادة إدخال آلي.
 const DUP_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * الصفوف «الميتة»: العميل المقفول (بيعًا أو خسارة) أو المؤرشف — سجلٌّ منتهٍ.
+ * لا يُحتسب طرفًا في التكرار: حجبُه ليدًا جديدًا حيًّا يُضيّع عميلًا بلا سبب
+ * (تشخيص 2026-07-28: ٩ من ١٣ عميلًا غير موزّع كان يحجبهم سجل مقفول/مؤرشف).
+ *
+ * شرط واحد مشترك بين duplicateLeadIds و phoneHasExistingLead — يُمرَّر كـwhere
+ * لاستعلامَي Prisma مباشرةً، فلا نصّ مكرَّر يمكن أن ينحرف أحد طرفيه عن الآخر.
+ */
+const DEAD_STAGES: LeadStage[] = ["CLOSED_LOST", "CLOSED_WON"];
+const LIVE_ROWS_ONLY = { isArchived: false, stage: { notIn: DEAD_STAGES } } as const;
 
 /**
  * مفتاح التطبيع للمقارنة فقط (لا يُخزَّن، لا يمسّ normalizePhone العامة):
@@ -77,14 +88,15 @@ export function dupeCheckKey(phone: string, ad: { sourceId: string | null; chann
 }
 
 /**
- * هل يوجد Lead موجود يطابق هذا الجوال (آخر ٩)؟ — لتحديد أن الليد الجديد «مكرر» وقت الإنشاء
+ * هل يوجد Lead **حيّ** يطابق هذا الجوال (آخر ٩)؟ — لتحديد أن الليد الجديد «مكرر» وقت الإنشاء
  * فلا يُسنَد آليًا (يبقى معلّقًا في «العملاء المكررون»).
+ * الصفوف الميتة (LIVE_ROWS_ONLY) لا تُحتسب — وإلا انتظر الليد الجديد دورة كرون بلا سبب.
  */
 export async function phoneHasExistingLead(phone: string, db: PrismaClient = prisma): Promise<boolean> {
   const key = dedupeKey(phone);
   if (!key) return false;
   const cand = await db.lead.findMany({
-    where: { phone: { in: phoneVariants(normalizePhone(phone)) } },
+    where: { phone: { in: phoneVariants(normalizePhone(phone)) }, ...LIVE_ROWS_ONLY },
     select: { phone: true },
   });
   return cand.some((c) => dedupeKey(c.phone) === key);
@@ -97,12 +109,16 @@ const DUP_CACHE_MS = 60_000;
 let dupIdsCache: { at: number; ids: Set<string> } | null = null;
 
 /**
- * معرّفات كل الليدات التي جوالها (آخر ٩) مكرر (يظهر في أكثر من سجل) — لاستثناء المكررين المعلّقين
- * من عدّاد الداشبورد. استعلام واحد (id, phone) + تجميع بالذاكرة (بلا N+1) + كاش ٦٠ث.
+ * معرّفات الليدات **الحيّة** التي جوالها (آخر ٩) مكرر بين حيَّين — لحجبهم عن التوزيع
+ * وعن عدّادات «غير الموزّعين». استعلام واحد (id, phone) + تجميع بالذاكرة (بلا N+1) + كاش ٦٠ث.
+ *
+ * هذه دالة **الحجب** لا العرض: الصفوف الميتة (LIVE_ROWS_ONLY) لا تدخل التجميع أصلًا،
+ * فأي مجموعة يبقى فيها صف حيّ واحد تنحلّ تلقائيًا بشرط `ids.length > 1` أدناه.
+ * صفحة المكررين (data/duplicates.ts) تبني مجموعاتها بنفسها وتعرض التاريخ كاملًا — لا تتأثر.
  */
 export async function duplicateLeadIds(db: PrismaClient = prisma): Promise<Set<string>> {
   if (dupIdsCache && Date.now() - dupIdsCache.at < DUP_CACHE_MS) return dupIdsCache.ids;
-  const leads = await db.lead.findMany({ select: { id: true, phone: true } });
+  const leads = await db.lead.findMany({ where: LIVE_ROWS_ONLY, select: { id: true, phone: true } });
   const byKey = new Map<string, string[]>();
   for (const l of leads) {
     const k = dedupeKey(l.phone);
