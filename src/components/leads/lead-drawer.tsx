@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   stageOrder, stageLabels, stageColor, priorityLabels,
-  unitTypeLabels, purchaseMethodLabels, purchaseMethodOptions, purchaseGoalLabels, districtOptions,
+  unitTypeLabels, purchaseMethodLabels, purchaseMethodOptions, purchaseGoalLabels,
 } from "@/lib/labels";
 import { daysAgoLabel } from "@/lib/format";
 import type { LeadDetail } from "@/lib/data/leads";
@@ -24,6 +24,7 @@ import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { NotInterestedDialog } from "./not-interested-dialog";
 import { TransferModeDialog } from "./transfer-mode-dialog";
+import { DistrictSelect } from "./district-select";
 import { useFollowUps } from "./use-followups";
 
 type Employee = { id: string; name: string };
@@ -58,6 +59,8 @@ export function LeadDrawer({
   const [copied, setCopied] = useState(false);
   const [sources, setSources] = useState<SourceListItem[]>([]);
   const [sourceSel, setSourceSel] = useState("");
+  // «في أي حي تفضّل التملك؟» — يكتب على preferredAreas (بدل preferredDistrict القديم).
+  const [areas, setAreas] = useState<string[]>([]);
 
   async function load(id: string) {
     setLoading(true);
@@ -81,6 +84,8 @@ export function LeadDrawer({
   useEffect(() => { fetchSources().then(setSources).catch(() => {}); }, []);
   // مزامنة قيمة المصدر المختارة مع العميل المحمّل.
   useEffect(() => { setSourceSel(lead?.sourceId ?? ""); }, [lead?.id, lead?.sourceId]);
+  // مزامنة الأحياء مع العميل المحمّل.
+  useEffect(() => { setAreas(lead?.preferredAreas ?? []); }, [lead?.id, lead?.preferredAreas]);
 
   function refresh() {
     if (leadId) load(leadId);
@@ -100,7 +105,7 @@ export function LeadDrawer({
         priority: fd.get("priority") as Priority,
         purchaseMethod: (fd.get("purchaseMethod") as PurchaseMethod) || null,
         purchaseGoal: (fd.get("purchaseGoal") as PurchaseGoal) || null,
-        preferredDistrict: String(fd.get("preferredDistrict") ?? ""),
+        preferredAreas: areas,
         sourceId: sourceSel || null,
       });
       refresh();
@@ -213,18 +218,16 @@ export function LeadDrawer({
                         {(Object.keys(purchaseGoalLabels) as PurchaseGoal[]).map((g) => <option key={g} value={g}>{purchaseGoalLabels[g]}</option>)}
                       </select>
                     </DField>
-                    <DField label="الحي المفضّل">
-                      <select name="preferredDistrict" defaultValue={lead.preferredDistrict ?? ""} className="select-base">
-                        <option value="">—</option>
-                        {districtOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </DField>
                     <DField label="المصدر">
                       <select value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} className="select-base">
                         <option value="">—</option>
                         {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                     </DField>
+                    {/* «الحي المفضّل» القديم (preferredDistrict) استُبدل بهذا — يكتب على preferredAreas. */}
+                    <div className="sm:col-span-2">
+                      <DistrictSelect value={areas} onChange={setAreas} disabled={pending} />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border pt-3">
