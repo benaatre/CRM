@@ -28,19 +28,19 @@ function resultsFor(stage: LeadStage): string[] {
     // مظلة «مهتم»: زر «زيارة» الموحّد (جدولة موعد — «الزيارة زيارة») + «حسبة البنك»
     // و«في الانتظار» (نتيجة بلا تغيير مرحلة).
     case "INTERESTED":
-      return ["visit", "appointment", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["visit", "appointment", "negotiation", "bankcheck", "onhold", "notInterested"];
     // موعد لاحق: نعاود ونحاول نوصله لزيارة.
     case "FOLLOW_UP_LATER":
-      return ["interested", "visit", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["interested", "visit", "bankcheck", "onhold", "notInterested"];
     // عنده زيارة قادمة: «زيارة» تفتح (تم الزيارة / تعديل الموعد — استبدال)، أو ما حضر وما يبي.
     case "VISIT_SCHEDULED":
-      return ["visit", "noShowDeclined", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["visit", "noShowDeclined", "bankcheck", "onhold", "notInterested"];
     // زار المشروع: تفاوض، أو زيارة أخرى (جدولة جديدة)، أو ينسحب.
     case "VIEWING":
-      return ["visit", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["visit", "negotiation", "bankcheck", "onhold", "notInterested"];
     // تفاوض: إما يحجز أو ينسحب.
     case "NEGOTIATION":
-      return ["booked", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["booked", "bankcheck", "onhold", "notInterested"];
     default:
       return [];
   }
@@ -49,7 +49,7 @@ function resultsFor(stage: LeadStage): string[] {
 const LABEL: Record<string, string> = {
   interested: "مهتم", noanswer: "لم يرد", appointment: "موعد لاحق",
   visit: "زيارة", negotiation: "تفاوض", notInterested: "غير مهتم", booked: "تم الحجز",
-  unresponsive: "لم يستجب", bankcheck: "حسبة البنك", onhold: "في الانتظار",
+  bankcheck: "حسبة البنك", onhold: "في الانتظار",
   noShowDeclined: "ما حضر — ما يبي",
 };
 
@@ -162,13 +162,12 @@ export function FollowUpsForm({
       case "negotiation":
         return post({ type: "CALL", result: "NEGOTIATING", section: "INTERESTED", stage: "NEGOTIATION", note: compose("تفاوض", [], note) });
       // نتائج «بلا تغيير مرحلة» للمظلة المهتمة — stage الحالية تُرسل كما هي (والخادم يثبّتها كمان).
-      case "unresponsive":
-        return post({ type: "CALL", result: "NO_ANSWER_INTERESTED", section: "INTERESTED", stage, note: compose("لم يستجب", [], note) });
+      // «لم يستجب» (NO_ANSWER_INTERESTED) دُمجت في «في الانتظار» — القيمة باقية للسجل القديم فقط.
       case "bankcheck":
         return post({ type: "CALL", result: "BANK_CHECK", section: "INTERESTED", stage, note: compose("حسبة البنك", [], note) });
       case "onhold":
-        // النص إلزامي (سبب الانتظار) — يُخزّن في note ويظهر بشارة «في الانتظار: السبب» بملف العميل.
-        return post({ type: "CALL", result: "ON_HOLD", section: "INTERESTED", stage, note: compose("في الانتظار", [], note) });
+        // النص إلزامي (سبب الانتظار) + موعد رجوع اختياري يكتب nextFollowup (تذكير).
+        return post({ type: "CALL", result: "ON_HOLD", section: "INTERESTED", stage, note: compose("في الانتظار", [], note), ...(date ? { nextDate: date } : {}) });
       case "notInterested":
         // منطق «غير مهتم» موحّد عبر المكوّن المشترك (نفس النتيجة المنظّمة ونفس الملاحظة).
         return post(buildNotInterestedBody(reasons, niRetry, date, note));
@@ -388,6 +387,14 @@ export function FollowUpsForm({
                 </label>
               )}
             </div>
+          )}
+
+          {/* في الانتظار: موعد رجوع اختياري (يكتب موعد المتابعة القادم — تذكير) */}
+          {sel === "onhold" && (
+            <label className="block space-y-1">
+              <span className="text-xs text-muted-foreground">متى ترجع له؟ (اختياري — يضبط تذكير المتابعة)</span>
+              <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+            </label>
           )}
 
           {/* غير مهتم: أسباب + نحاول لاحقًا — عبر المكوّن المشترك */}
