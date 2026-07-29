@@ -19,8 +19,18 @@ export const NOTE_REQUIRED_RESULTS: FollowUpResult[] = ["NOT_INTERESTED_FINAL", 
 /** نتائج الأرشفة التلقائية مع الإغلاق (الانتساب يبقى — نحتاج نعرف عملاء مين في الأرشيف). */
 export const AUTO_ARCHIVE_RESULTS: FollowUpResult[] = ["NOT_INTERESTED_FINAL", "NOT_INTERESTED_MARKETER"];
 
-/** المواعيد بلا تاريخ ما تنحفظ: موعد الزيارة/إعادة الجدولة + موعد الاتصال. */
-export const APPOINTMENT_DATE_REQUIRED_RESULTS: FollowUpResult[] = [...VISIT_APPOINTMENT_RESULTS, "INTERESTED_SCHEDULED"];
+/**
+ * المواعيد بلا تاريخ ما تنحفظ: مواعيد الزيارة فقط.
+ * INTERESTED_SCHEDULED خرجت من الإلزام (2026-07-29): «مهتم» في أول تواصل يُحفظ
+ * بلا موعد — الموعد اختياري («متى تحب تتابع معه؟»)، والواجهة تُلزم به حيث يلزم.
+ *
+ * CALL_LATER («اتصال في وقت آخر») خارج كل القوائم هنا عمدًا:
+ * لا KEEP_STAGE (تنقل لـ ATTEMPTED عبر resultToStage)، لا أرشفة، لا نص إلزامي،
+ * لا تاريخ إلزامي — وnextDate معها اختياري يكتب nextFollowup إن أُرسل.
+ * وهي ليست من NO_ANSWER_RESULTS فلا تدخل نظام «لم يرد»، وكونها أحدث متابعة
+ * يكسر تسلسل «آخر متابعة لم يرد» فيخرج العميل من السحب (السلوك المطلوب).
+ */
+export const APPOINTMENT_DATE_REQUIRED_RESULTS: FollowUpResult[] = [...VISIT_APPOINTMENT_RESULTS];
 
 export type FollowUpOutcome = {
   /** المرحلة الناتجة — "keep" = نتيجة «بلا تغيير مرحلة»، العميل يبقى بمرحلته. */

@@ -285,6 +285,7 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
   NOT_INTERESTED_OTHER: "غير مهتم — سبب آخر",
   INTERESTED_VISIT_SCHEDULED: "مهتم — موعد زيارة",
   VISIT_NO_SHOW_RESCHEDULED: "ما حضر — أُعيدت الجدولة",
+  CALL_LATER: "اتصال في وقت آخر",
 };
 
 /**
@@ -328,6 +329,8 @@ export const resultToStage: Record<FollowUpResult, LeadStage> = {
   // محرّك الزيارات: موعد زيارة (جديد أو مُعاد جدولته) → «موعد زيارة مؤكّد».
   INTERESTED_VISIT_SCHEDULED: "VISIT_SCHEDULED",
   VISIT_NO_SHOW_RESCHEDULED: "VISIT_SCHEDULED",
+  // «اتصال في وقت آخر»: العميل ردّ فعلًا (تواصل حصل) — محاولة، لا «لم يرد».
+  CALL_LATER: "ATTEMPTED",
 };
 
 export const deliveryStatusLabels: Record<DeliveryStatus, string> = {

@@ -201,6 +201,8 @@ enum FollowUpResult {
   // محرّك الزيارات (دُفعت للإنتاج 2026-07-25).
   INTERESTED_VISIT_SCHEDULED // مهتم — موعد زيارة (nextDate = موعد الزيارة) → VISIT_SCHEDULED
   VISIT_NO_SHOW_RESCHEDULED // ما حضر — أُعيدت الجدولة (nextDate = الموعد الجديد، يبقى VISIT_SCHEDULED)
+  // ⚠️ تتطلب تطبيق ترحيل 20260729140000_add_call_later_result على الإنتاج قبل أول استخدام.
+  CALL_LATER // اتصال في وقت آخر — العميل ردّ وطلب معاودة → ATTEMPTED (خارج نظام «لم يرد» تمامًا)
 }
 
 // ===================== الجداول (Models) =====================
