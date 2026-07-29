@@ -7,6 +7,7 @@ import { stageLabels, stageOrder } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
 import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA, VISIT_FILTER_STAGES, collapseStagesParam } from "@/lib/lead-filters";
 import type { LeadFilterValues, LeadSort } from "@/lib/lead-filters";
+import { stageFilterChip, toneFilterChip, WAITING_TONE, BANK_TONE, STAGE_TONES } from "@/lib/stage-colors";
 
 type Employee = { id: string; name: string };
 
@@ -134,43 +135,37 @@ export function LeadsFilterBar({
           >
             ⇄ محوَّل
           </button>
-          {/* فلتر «حسبة البنك» — آخر متابعة BANK_CHECK (للجميع ضمن صلاحيته) */}
+          {/* فلتر «حسبة البنك» — ذهبي من المصدر الموحّد (للجميع ضمن صلاحيته) */}
           {bankCheck != null && (
-            <button
-              onClick={() => go({ bank: !filters.bank })}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.bank ? "border-info bg-info/20 text-info" : "border-info/40 text-info hover:bg-info/10"}`}
-            >
+            <button onClick={() => go({ bank: !filters.bank })} className={toneFilterChip(BANK_TONE, filters.bank)}>
               حسبة البنك <span className="font-bold">({toArabicDigits(bankCheck)})</span>
             </button>
           )}
         </div>
       )}
 
-      {/* فلتر المراحل — «زيارة» شريحة واحدة لمرحلتي الزيارة (كل صف يعرض مرحلته الفعلية) */}
+      {/* فلتر المراحل — «زيارة» شريحة واحدة لمرحلتي الزيارة، وكل شريحة بلون مرحلتها (stage-colors) */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button onClick={() => go({ stages: [] })} className={chipAll(filters.stages.length === 0)}>كل المراحل</button>
         {stageOrder.map((s) =>
           s === "INTERESTED" ? (
             // مظلّة شاملة بدل مرحلة حرفية — تفلتر كل المتفاعلين دفعة واحدة.
-            <button key={s} onClick={toggleInterestUmbrella} className={chip(interestUmbrellaActive)}>{stageLabels.INTERESTED}</button>
+            <button key={s} onClick={toggleInterestUmbrella} className={stageFilterChip("INTERESTED", interestUmbrellaActive)}>{stageLabels.INTERESTED}</button>
           ) : s === "VIEWING" ? null // مدموجة في شريحة «زيارة» الموحّدة
             : s === "VISIT_SCHEDULED" ? (
               <span key="visit-united" className="contents">
-                <button onClick={toggleVisitFilter} className={chip(visitFilterActive)}>
+                <button onClick={toggleVisitFilter} className={toneFilterChip(STAGE_TONES.VISIT_SCHEDULED, visitFilterActive)}>
                   زيارة{visitCount != null ? ` (${toArabicDigits(visitCount)})` : ""}
                 </button>
-                {/* شريحة «في الانتظار (N)» بجانب «زيارة» — آخر متابعة لم يستجب/في الانتظار (للجميع ضمن صلاحيته) */}
+                {/* شريحة «في الانتظار (N)» بجانب «زيارة» — برتقالي الحالة من المصدر الموحّد */}
                 {waiting != null && (
-                  <button
-                    onClick={() => go({ wait: !filters.wait })}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.wait ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
-                  >
+                  <button onClick={() => go({ wait: !filters.wait })} className={toneFilterChip(WAITING_TONE, filters.wait)}>
                     في الانتظار <span className="font-bold">({toArabicDigits(waiting)})</span>
                   </button>
                 )}
               </span>
             ) : (
-              <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
+              <button key={s} onClick={() => toggleStage(s)} className={stageFilterChip(s as LeadStage, filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
             )
         )}
       </div>

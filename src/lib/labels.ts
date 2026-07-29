@@ -60,20 +60,9 @@ export const stageLabels: Record<LeadStage, string> = {
 };
 export const stageLabel = (s: LeadStage) => stageLabels[s] ?? s;
 
-// أصناف ألوان (نص + خلفية شفافة خفيفة + حدّ بنفس اللون) لكل مرحلة — لون مميّز لكل مرحلة بلا تكرار،
-// بتباين واضح على خلفية أوبسيديان (#0A0A0B). المصدر الوحيد للجدول/الكانبان/الدرج/الملف/بطاقة الجوال.
-export const stageColor: Record<LeadStage, string> = {
-  NEW: "text-slate-300 bg-slate-400/10 border-slate-400/30",       // رمادي
-  ATTEMPTED: "text-amber-400 bg-amber-400/10 border-amber-400/30", // كهرماني
-  INTERESTED: "text-green-400 bg-green-400/10 border-green-400/30", // أخضر
-  FOLLOW_UP_LATER: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30", // سماوي
-  VISIT_SCHEDULED: "text-sky-300 bg-sky-300/10 border-sky-300/30", // سماوي فاتح
-  VIEWING: "text-blue-400 bg-blue-400/10 border-blue-400/30",      // أزرق
-  NEGOTIATION: "text-violet-400 bg-violet-400/10 border-violet-400/30", // بنفسجي
-  RESERVED: "text-gold bg-gold/10 border-gold/30",                 // ذهبي #CBA45E
-  CLOSED_WON: "text-emerald-500 bg-emerald-500/15 border-emerald-500/40", // زمردي غامق
-  CLOSED_LOST: "text-red-400 bg-red-400/10 border-red-400/30",     // أحمر
-};
+// ألوان المراحل انتقلت إلى **مصدر الحقيقة الوحيد** lib/stage-colors — يعاد تصديرها هنا
+// بالاسم التاريخي stageColor فلا ينكسر أي مستورد (ممنوع hardcoded خارج stage-colors).
+export { stageChipClass as stageColor } from "./stage-colors";
 
 export const channelLabels: Record<Channel, string> = {
   WHATSAPP: "واتساب",

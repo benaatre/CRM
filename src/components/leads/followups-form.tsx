@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
 import { stageLabels } from "@/lib/labels";
+import { formButtonClass } from "@/lib/stage-colors";
 import { NotInterestedReasons, buildNotInterestedBody, niRequiresText, NI_TEXT_PLACEHOLDER, NI_REASONS } from "./not-interested-dialog";
 
 type Project = { id: string; name: string };
@@ -212,7 +213,7 @@ export function FollowUpsForm({
               key={k}
               type="button"
               onClick={() => { setFcSel(k); setError(null); setStep(null); setReasons(new Set()); setNiRetry("no"); setDate(""); }}
-              className={`rounded-lg border px-4 py-2 text-sm transition-colors ${fcSel === k ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`}
+              className={formButtonClass(k, fcSel === k)}
             >
               {FC_LABEL[k]}
             </button>
@@ -300,7 +301,8 @@ export function FollowUpsForm({
           }
           const active = sel === k;
           return (
-            <button key={k} type="button" onClick={() => pick(k)} className={`rounded-lg border px-4 py-2 text-sm transition-colors ${active ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`}>
+            // كل زر بلون نتيجته — من مصدر الألوان الموحّد (stage-colors).
+            <button key={k} type="button" onClick={() => pick(k)} className={formButtonClass(k, active)}>
               {LABEL[k]}
             </button>
           );

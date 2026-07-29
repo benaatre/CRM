@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { LeadStage, Priority } from "@prisma/client";
 import { stageOrder, stageLabels, purchaseGoalLabels, purchaseMethodLabels, priorityLabels } from "@/lib/labels";
+import { STAGE_TONES } from "@/lib/stage-colors";
 import { toArabicDigits, formatCurrency, daysAgoLabel } from "@/lib/format";
 import type { LeadFilterValues } from "@/lib/lead-filters";
 import { LeadsFilterBar } from "./leads-filter-bar";
@@ -130,8 +131,9 @@ export function KanbanBoard({
               onDrop={() => moveTo(stage)}
               className={`flex w-72 shrink-0 flex-col rounded-2xl border bg-card/40 transition-colors ${overStage === stage ? "border-gold/60 bg-gold/5" : "border-border"}`}
             >
+              {/* رأس العمود بلون مرحلته — من مصدر الألوان الموحّد */}
               <div className="flex items-center justify-between border-b border-border p-3">
-                <span className="text-sm font-semibold text-foreground">{stageLabels[stage]}</span>
+                <span className={`rounded-full border px-2.5 py-0.5 text-sm font-semibold ${STAGE_TONES[stage].chip}`}>{stageLabels[stage]}</span>
                 <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{toArabicDigits(cards.length)}</span>
               </div>
 

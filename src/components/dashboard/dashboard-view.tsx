@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Phone, MessageCircle, LayoutGrid, BarChart2, Rows3, Check } from "lucide-react";
 import { stageLabels, stageColor } from "@/lib/labels";
+import { STAGE_HEX } from "@/lib/stage-colors";
 import { waPhone } from "@/lib/value-normalize";
 import { formatCurrency, formatCount, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
@@ -54,10 +55,11 @@ export function DashboardView({ data }: { data: DashboardData }) {
     { label: "معدل التحويل", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false, show: true },
     { label: "إجمالي العملاء", value: formatCount(k.totalClients), unit: "عميل", fill: 100, up: true, chip: null, action: false, show: true },
     { label: "غير موزّعين", value: toArabicDigits(k.unassigned), unit: "ليد", fill: pct(k.unassigned), up: false, chip: k.unassigned > 0 ? toArabicDigits(k.unassigned) : null, action: data.manager && k.unassigned > 0, show: data.manager },
-    { label: "عدد الحجوزات", value: formatCount(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false, show: true },
-    { label: "عدد الزيارات", value: formatCount(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false, show: true },
-    { label: "صفقات مقفولة", value: formatCount(k.closedWon), unit: "صفقة", fill: pct(k.closedWon), up: true, chip: null, action: false, show: true },
-  ].filter((c) => c.show);
+    // البطاقات المرتبطة بمراحل تحمل لون مرحلتها من المصدر الموحّد (stage-colors).
+    { label: "عدد الحجوزات", value: formatCount(k.bookings), unit: "حجز", fill: pct(k.bookings), up: true, chip: null, action: false, show: true, tone: STAGE_HEX.RESERVED },
+    { label: "عدد الزيارات", value: formatCount(k.visits), unit: "زيارة", fill: pct(k.visits), up: true, chip: null, action: false, show: true, tone: STAGE_HEX.VIEWING },
+    { label: "صفقات مقفولة", value: formatCount(k.closedWon), unit: "صفقة", fill: pct(k.closedWon), up: true, chip: null, action: false, show: true, tone: STAGE_HEX.CLOSED_WON },
+  ].filter((c) => c.show) as { label: string; value: string; unit: string; fill: number; up: boolean; chip: string | null; action: boolean; show: boolean; tone?: string }[];
 
   return (
     <div className="space-y-7">
@@ -149,7 +151,8 @@ export function DashboardView({ data }: { data: DashboardData }) {
               )}
 
               <div style={{ marginTop: 14, height: 6, background: "var(--inset)", borderRadius: 20, overflow: "hidden", display: V === 1 ? "none" : "block" }}>
-                <div style={{ height: "100%", width: `${c.fill}%`, borderRadius: 20, background: goldNum ? "linear-gradient(90deg,#9C7C3C,#E2C078)" : "var(--border)" }} />
+                {/* شريط البطاقة بلون مرحلته إن كانت مرتبطة بمرحلة (المصدر الموحّد) */}
+                <div style={{ height: "100%", width: `${c.fill}%`, borderRadius: 20, background: c.tone ?? (goldNum ? "linear-gradient(90deg,#9C7C3C,#E2C078)" : "var(--border)") }} />
               </div>
             </div>
           );
@@ -245,9 +248,10 @@ export function DashboardView({ data }: { data: DashboardData }) {
             const max = Math.max(...data.funnel.map((f) => f.count), 1);
             return data.funnel.map((f) => (
               <div key={f.stage} className="flex items-center gap-3">
-                <span className="w-28 shrink-0 text-sm text-muted-foreground">{stageLabels[f.stage]}</span>
+                <span className={`w-28 shrink-0 text-sm ${stageColor[f.stage].split(" ")[0]}`}>{stageLabels[f.stage]}</span>
                 <div className="h-7 flex-1 overflow-hidden rounded-lg bg-secondary">
-                  <div className="flex h-full items-center justify-end rounded-lg bg-gradient-to-l from-gold to-gold-dark px-2 text-xs font-medium text-primary-foreground" style={{ width: `${Math.max((f.count / max) * 100, 6)}%` }}>
+                  {/* شريط كل مرحلة بلونها من المصدر الموحّد (stage-colors) */}
+                  <div className="flex h-full items-center justify-end rounded-lg px-2 text-xs font-semibold" style={{ width: `${Math.max((f.count / max) * 100, 6)}%`, background: STAGE_HEX[f.stage], color: "#0A0A0B" }}>
                     {f.count > 0 ? toArabicDigits(f.count) : ""}
                   </div>
                 </div>
