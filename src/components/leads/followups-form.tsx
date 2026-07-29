@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
 import { stageLabels } from "@/lib/labels";
-import { NotInterestedReasons, buildNotInterestedBody, niRequiresText, NI_TEXT_PLACEHOLDER } from "./not-interested-dialog";
+import { NotInterestedReasons, buildNotInterestedBody, niRequiresText, NI_TEXT_PLACEHOLDER, NI_REASONS } from "./not-interested-dialog";
 
 type Project = { id: string; name: string };
 type SaveBody = {
@@ -32,9 +32,9 @@ function resultsFor(stage: LeadStage): string[] {
     // موعد لاحق: نعاود ونحاول نوصله لزيارة.
     case "FOLLOW_UP_LATER":
       return ["interested", "visit", "bankcheck", "onhold", "notInterested"];
-    // عنده زيارة قادمة: «زيارة» تفتح (تم الزيارة / تعديل الموعد — استبدال)، أو ما حضر وما يبي.
+    // عنده زيارة قادمة: «زيارة» تفتح (تم الزيارة / تعديل الموعد — استبدال)، أو «ما حضر» بتدرج.
     case "VISIT_SCHEDULED":
-      return ["visit", "noShowDeclined", "bankcheck", "onhold", "notInterested"];
+      return ["visit", "noShow", "bankcheck", "onhold", "notInterested"];
     // زار المشروع: تفاوض، أو زيارة أخرى (جدولة جديدة)، أو ينسحب.
     case "VIEWING":
       return ["visit", "negotiation", "bankcheck", "onhold", "notInterested"];
@@ -50,7 +50,7 @@ const LABEL: Record<string, string> = {
   interested: "مهتم", noanswer: "لم يرد", appointment: "موعد لاحق",
   visit: "زيارة", negotiation: "تفاوض", notInterested: "غير مهتم", booked: "تم الحجز",
   bankcheck: "حسبة البنك", onhold: "في الانتظار",
-  noShowDeclined: "ما حضر — ما يبي",
+  noShow: "ما حضر",
 };
 
 /** الخطوة التالية لنتيجة «مهتم» — اختيارية (بلا خطوة = مهتم مباشرةً بموعد اختياري). */
@@ -89,6 +89,8 @@ export function FollowUpsForm({
   const [visitKind, setVisitKind] = useState<"project" | "office">("project");
   // زر «زيارة» لعميل عنده زيارة قادمة: «تم الزيارة» أو «تعديل موعد الزيارة» (استبدال) — اختيار إلزامي.
   const [visitAction, setVisitAction] = useState<"done" | "reschedule" | null>(null);
+  // «ما حضر» بتدرج: أول سؤال «نعيد جدولة الزيارة؟» — نعم ⟵ تاريخ جديد · لا ⟵ الأسباب تدريجيًا.
+  const [noShowChoice, setNoShowChoice] = useState<"resched" | "declined" | null>(null);
   const [selProjects, setSelProjects] = useState<Set<string>>(new Set());
   const [reasons, setReasons] = useState<Set<string>>(new Set());
   const [niRetry, setNiRetry] = useState<"yes" | "no">("no");
@@ -97,11 +99,11 @@ export function FollowUpsForm({
 
   function pick(key: string) {
     if (key === "booked") { onBook?.(); return; }
-    setSel(key); setError(null); setStep(null); setVisitAction(null);
+    setSel(key); setError(null); setStep(null); setVisitAction(null); setNoShowChoice(null);
     setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no");
   }
   function clearAll() {
-    setSel(null); setStep(null); setVisitAction(null); setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
+    setSel(null); setStep(null); setVisitAction(null); setNoShowChoice(null); setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
   }
   function toggle(setS: React.Dispatch<React.SetStateAction<Set<string>>>, v: string) {
     setS((s) => { const n = new Set(s); if (n.has(v)) n.delete(v); else n.add(v); return n; });
@@ -139,8 +141,11 @@ export function FollowUpsForm({
         if (step === "notsuitable")
           return post(buildNotInterestedBody(reasons, niRetry, date, note));
         return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "INTERESTED", note: compose("مهتم", [], note), ...(date ? { nextDate: date } : {}) });
-      case "noShowDeclined": {
-        // ما حضر — ما يبي: المسار الموحّد لغير المهتم، مع وسم «ما حضر» في النص (يغذّي مؤشر الحضور).
+      case "noShow": {
+        // «ما حضر» بتدرج — النتائج المرسلة كما هي (بلا تغيير منطق):
+        // إعادة الجدولة = مسار الاستبدال القائم؛ الرفض = المسار الموحّد لغير المهتم بوسم «ما حضر».
+        if (noShowChoice === "resched")
+          return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("ما حضر — أُعيدت جدولة الزيارة", [], note), nextDate: date });
         const b = buildNotInterestedBody(reasons, niRetry, date, note);
         return post({ ...b, note: `ما حضر — ${b.note}` });
       }
@@ -253,16 +258,22 @@ export function FollowUpsForm({
   }
 
   // تعطيل الحفظ لو الحقول الإجبارية ناقصة (ومنها النص الإلزامي لأسباب «أخرى/نهائي» و«في الانتظار»).
-  const niNeedsText = (sel === "notInterested" || sel === "noShowDeclined" || (sel === "interested" && step === "notsuitable")) && niRequiresText(reasons);
+  const niNeedsText = (sel === "notInterested" || (sel === "noShow" && noShowChoice === "declined") || (sel === "interested" && step === "notsuitable")) && niRequiresText(reasons);
   // «زيارة» الموحّد: عنده زيارة قادمة ⟵ الاختيار (تم/تعديل) إلزامي، والتاريخ إلزامي إلا في «تم الزيارة».
   const visitNeedsDate = !(stage === "VISIT_SCHEDULED" && visitAction === "done");
   const saveDisabled = pending || (
     sel === "appointment" ? !date
       : sel === "interested" ? (((step === "visit" || step === "call") && !date) || (step === "notsuitable" && ((niRetry === "yes" && !date) || (niNeedsText && !note.trim()))))
         : sel === "visit" ? ((stage === "VISIT_SCHEDULED" && !visitAction) || (visitNeedsDate && !date) || (visitKind === "project" && visitMode === "select" && selProjects.size === 0))
-          : sel === "notInterested" || sel === "noShowDeclined" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
-            : sel === "onhold" ? !note.trim()
-              : false
+          : sel === "notInterested" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
+            : sel === "noShow" ? (
+              // التدرج: لازم إجابة السؤال الأول؛ إعادة الجدولة تحتاج تاريخًا؛ الرفض يحتاج سببًا.
+              !noShowChoice
+              || (noShowChoice === "resched" && !date)
+              || (noShowChoice === "declined" && (reasons.size === 0 || (niRetry === "yes" && !date) || (niNeedsText && !note.trim())))
+            )
+              : sel === "onhold" ? !note.trim()
+                : false
   );
   const ON_HOLD_PLACEHOLDER = "ينتظر إيش؟ (مثال: بيع شقته القديمة، رجوعه من السفر)";
 
@@ -338,16 +349,46 @@ export function FollowUpsForm({
             </div>
           )}
 
-          {/* ما حضر — ما يبي: نفس أسباب «غير مهتم» المنظّمة */}
-          {sel === "noShowDeclined" && (
-            <NotInterestedReasons
-              reasons={reasons}
-              onToggle={(r) => toggle(setReasons, r)}
-              retry={niRetry}
-              onRetry={setNiRetry}
-              date={date}
-              onDate={setDate}
-            />
+          {/* «ما حضر» بتدرج — كل خطوة تظهر بعد اختيار اللي قبلها (لا جدار أزرار دفعة واحدة) */}
+          {sel === "noShow" && (
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground">نعيد جدولة الزيارة؟</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setNoShowChoice("resched"); setDate(""); setReasons(new Set()); setNiRetry("no"); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${noShowChoice === "resched" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>نعم — موعد جديد</button>
+                <button type="button" onClick={() => { setNoShowChoice("declined"); setDate(""); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${noShowChoice === "declined" ? "border-destructive bg-destructive/10 text-destructive" : "border-border text-muted-foreground"}`}>لا — ما يبي</button>
+              </div>
+              {noShowChoice === "resched" && (
+                <label className="block space-y-1">
+                  <span className="text-xs text-muted-foreground">موعد الزيارة الجديد (تاريخ ووقت)</span>
+                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                </label>
+              )}
+              {noShowChoice === "declined" && (
+                <div className="space-y-2">
+                  <span className="text-xs text-muted-foreground">وش السبب؟</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {NI_REASONS.map((r) => (
+                      <button key={r} type="button" onClick={() => toggle(setReasons, r)} className={`rounded-lg border px-2.5 py-1.5 text-xs ${reasons.has(r) ? "border-destructive bg-destructive/10 text-destructive" : "border-border text-muted-foreground"}`}>{r}</button>
+                    ))}
+                  </div>
+                  {reasons.size > 0 && (
+                    <>
+                      <span className="text-xs text-muted-foreground">نحاول معه بعد فترة؟</span>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setNiRetry("yes")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${niRetry === "yes" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>نعم</button>
+                        <button type="button" onClick={() => { setNiRetry("no"); setDate(""); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${niRetry === "no" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>لا</button>
+                      </div>
+                      {niRetry === "yes" && (
+                        <label className="block space-y-1">
+                          <span className="text-xs text-muted-foreground">تاريخ المحاولة القادمة</span>
+                          <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                        </label>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* موعد لاحق: تاريخ */}
@@ -416,8 +457,11 @@ export function FollowUpsForm({
             />
           )}
 
-          {/* ملاحظة — إلزامية لأسباب «أخرى/نهائي» ولنتيجة «في الانتظار»، اختيارية لغيرها */}
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={niNeedsText ? NI_TEXT_PLACEHOLDER : sel === "onhold" ? ON_HOLD_PLACEHOLDER : "اكتب ملاحظة عن العميل…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${(niNeedsText || sel === "onhold") && !note.trim() ? "border-destructive/60" : "border-border"}`} />
+          {/* ملاحظة — إلزامية لأسباب «أخرى/نهائي» ولنتيجة «في الانتظار»، اختيارية لغيرها.
+              في «ما حضر» تظهر تدريجيًا: بعد إجابة السؤال الأول (وبعد اختيار سبب في مسار الرفض). */}
+          {!(sel === "noShow" && (!noShowChoice || (noShowChoice === "declined" && reasons.size === 0))) && (
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={niNeedsText ? NI_TEXT_PLACEHOLDER : sel === "onhold" ? ON_HOLD_PLACEHOLDER : "اكتب ملاحظة عن العميل…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${(niNeedsText || sel === "onhold") && !note.trim() ? "border-destructive/60" : "border-border"}`} />
+          )}
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
           <div className="flex justify-end gap-2">
