@@ -1,9 +1,16 @@
 // محرّك الزيارات — ثوابت السقف الزمني على «مهتم» ودالة حساب الركود.
-// نقطة الصفر = تاريخ نشر الميزة: العملاء المهتمون الراكدون قبلها يبدأ عدّهم منها
-// (لا من آخر متابعتهم الفعلية) — حتى لا ينزل ٣٠٠+ عميل دفعة واحدة يوم التفعيل.
+//
+// إعادة ضبط 2026-07-29 (تحييد التنزيل الجماعي المؤجّل):
+// القاعدة القديمة كانت createdAt + بوابة زمنية عامة — وكانت ستُنزل كل الراكدين القدامى
+// دفعة واحدة ابتداءً من 2026-08-08. القاعدة الآن:
+//   - المرجع الزمني الوحيد = آخر متابعة (لا createdAt).
+//   - الأهلية = عنده متابعة واحدة على الأقل بعد نقطة الصفر الجديدة — أي أن التنزيل
+//     التلقائي يسري فقط على من «يدخل/يتحرّك في مهتم» من الآن فصاعدًا؛ الراكد القديم
+//     الذي لم يُلمس بعدها لا يُنزّل أبدًا تلقائيًا (قراره يدوي).
+//   - شارة «راكد» على نفس المرجع بالضبط — فلا تفترق الشارة عن التنزيل.
 
-/** تاريخ نشر محرّك الزيارات (توقيت الرياض) — لا يُغيَّر بعد النشر. */
-export const VISIT_ENGINE_EPOCH = new Date("2026-07-25T00:00:00+03:00");
+/** نقطة صفر قاعدة الركود (توقيت الرياض) — لا تُغيَّر بعد النشر. */
+export const STALE_DEMOTE_EPOCH = new Date("2026-07-29T00:00:00+03:00");
 
 /** ٧ أيام بلا متابعة → شارة «راكد» صفراء (قائمة التحذير). */
 export const INTERESTED_STALE_WARN_DAYS = 7;
@@ -12,10 +19,11 @@ export const INTERESTED_STALE_WARN_DAYS = 7;
 export const INTERESTED_STALE_DEMOTE_DAYS = 14;
 
 /**
- * أيام ركود عميل «مهتم»: منذ آخر متابعة (أو الإسناد/الإنشاء لو ما فيه متابعات)،
- * مع نقطة الصفر حدًّا أدنى — ما قبل نشر الميزة لا يُحتسب.
+ * أيام ركود عميل «مهتم» — منذ آخر متابعة حصريًا:
+ * بلا متابعات، أو آخر متابعة قبل نقطة الصفر ⟵ صفر (خارج قاعدة الركود كليًّا —
+ * لا شارة ولا تنزيل؛ نفس شرط أهلية runInterestedStaleDemotion حرفيًا).
  */
-export function interestedIdleDays(lastFollowupAt: Date | null, fallback: Date, now: Date = new Date()): number {
-  const base = Math.max((lastFollowupAt ?? fallback).getTime(), VISIT_ENGINE_EPOCH.getTime());
-  return Math.floor((now.getTime() - base) / 86_400_000);
+export function interestedIdleDays(lastFollowupAt: Date | null, now: Date = new Date()): number {
+  if (!lastFollowupAt || lastFollowupAt < STALE_DEMOTE_EPOCH) return 0;
+  return Math.floor((now.getTime() - lastFollowupAt.getTime()) / 86_400_000);
 }

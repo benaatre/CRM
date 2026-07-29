@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { emitNotification } from "@/lib/notifications/emit";
 import { logAudit } from "@/lib/audit";
 import { VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
-import { VISIT_ENGINE_EPOCH, INTERESTED_STALE_DEMOTE_DAYS } from "@/lib/visit-engine";
+import { STALE_DEMOTE_EPOCH, INTERESTED_STALE_DEMOTE_DAYS } from "@/lib/visit-engine";
 import { KSA_OFFSET_MS, ksaHourOf, ksaDayKey } from "@/lib/ksa-time";
 
 const CLOSED = ["CLOSED_WON", "CLOSED_LOST"] as const;
@@ -232,23 +232,27 @@ export async function runNeverContactedAlert(now: Date = new Date()): Promise<nu
 }
 
 /**
- * السقف الزمني على «مهتم» (محرّك الزيارات): عميل INTERESTED بلا أي متابعة ١٤ يومًا
- * (من نقطة صفر الميزة حدًّا أدنى — لا تنزيل جماعيًا للراكدين القدامى) ينزل تلقائيًا
- * إلى «موعد لاحق» بموعد صباح الغد (١٠ص بتوقيت الرياض) — فيدخل دورة متابعات اليوم
- * والتذكيرات طبيعيًا. سجل تدقيق + نشاط لكل تنزيل. دفعات ٥٠ لكل دورة (الكرون كل دقائق).
+ * السقف الزمني على «مهتم» (إعادة ضبط 2026-07-29): المرجع الوحيد = آخر متابعة.
+ * الأهلية: عنده متابعة بعد نقطة الصفر، وآخر متابعة أقدم من ١٤ يومًا — أي أن التنزيل
+ * يسري فقط على من تحرّك في «مهتم» بعد النشر؛ الراكد القديم الذي لم يُلمس لا يُنزّل
+ * أبدًا (لا تنزيل جماعيًا مؤجّلًا). ينزل إلى «موعد لاحق» بموعد صباح الغد (١٠ص الرياض).
+ * سجل تدقيق + نشاط لكل تنزيل. دفعات ٥٠ لكل دورة.
  */
 export async function runInterestedStaleDemotion(now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - INTERESTED_STALE_DEMOTE_DAYS * 86_400_000);
-  // قبل (نقطة الصفر + ١٤ يومًا) ما فيه أي تنزيل إطلاقًا.
-  if (VISIT_ENGINE_EPOCH > cutoff) return 0;
+  // أول تنزيل ممكن = نقطة الصفر + ١٤ يومًا (قبلها لا يوجد مؤهَّل رياضيًا).
+  if (STALE_DEMOTE_EPOCH > cutoff) return 0;
 
   const stale = await prisma.lead.findMany({
     where: {
       stage: LeadStage.INTERESTED,
       isArchived: false,
-      createdAt: { lte: cutoff },
-      // «بلا أي متابعة جديدة»: ولا متابعة واحدة بعد حدّ الـ١٤ يومًا.
-      followUps: { none: { createdAt: { gt: cutoff } } },
+      // آخر متابعة ∈ [نقطة الصفر، قبل ١٤ يومًا]: متابعة بعد الصفر تثبت الأهلية،
+      // وغياب أي متابعة أحدث من الحدّ يعني أن آخرها أقدم من ١٤ يومًا.
+      followUps: {
+        some: { createdAt: { gte: STALE_DEMOTE_EPOCH } },
+        none: { createdAt: { gt: cutoff } },
+      },
     },
     select: { id: true, name: true },
     orderBy: { updatedAt: "asc" },

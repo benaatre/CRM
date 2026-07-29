@@ -272,9 +272,10 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     inAutoPool: l.autoPoolAt != null,
     visitAt: l.visitAt,
     visitRescheduleCount: l.visitRescheduleCount,
-    // «راكد»: مهتم بلا متابعة ٧+ أيام (آخر متابعة من نافذة العشرين المجلوبة — الأحدث أولًا).
+    // «راكد»: مهتم بلا متابعة ٧+ أيام — المرجع آخر متابعة حصريًا (نفس مرجع التنزيل التلقائي؛
+    // بلا متابعة بعد نقطة الصفر ⟵ خارج قاعدة الركود، لا شارة ولا تنزيل).
     stale: l.stage === "INTERESTED" && !l.isArchived
-      && interestedIdleDays(latestFuAt, l.assignedAt ?? l.createdAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
+      && interestedIdleDays(latestFuAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
     // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
     manualTransferred: lastAssignReasonOf(l.reassignments) === MANUAL_TRANSFER_FULL,
   };
