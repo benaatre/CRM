@@ -23,7 +23,7 @@ import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe"
 import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 import { channelForSourceName } from "@/lib/source-channel";
 import { resolveAutoPoolAt } from "@/lib/auto-pool";
-import { manualTransferReason, type TransferMode } from "@/lib/transfer-mode";
+import { manualTransferReason, redistributeReason, MANUAL_UNARCHIVE_FRESH, type TransferMode } from "@/lib/transfer-mode";
 import { ALL_AREAS, canonicalAreas } from "@/lib/districts";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -319,26 +319,67 @@ export type UnarchiveMode = "asis" | "freshUnassigned" | "freshKeepEmployee";
 /**
  * إرجاع عملاء من تبويب «مؤرشف». المتابعات (FollowUp) لا تُمسح أبدًا في أي نمط.
  * النطاق مثل bulkArchive: الموظف على عملائه فقط، المدير/المالك على الكل (فرض على الخادم).
- * - asis: يشيل الأرشفة فقط (المرحلة والإسناد كما هما) → يرجع لتبويبه الطبيعي.
- * - freshUnassigned: يشيل الأرشفة + المرحلة «جديد» + بلا موظف → حوض «غير موزّعين».
- * - freshKeepEmployee: يشيل الأرشفة + المرحلة «جديد» + يبقى مع نفس الموظف.
+ * - asis: يشيل الأرشفة فقط (المرحلة والإسناد كما هما) → يرجع لتبويبه الطبيعي — سلوك مقصود.
+ * - freshUnassigned: «ولادة كاملة» (FRESH_RESET_DATA) + بلا موظف → حوض «غير موزّعين».
+ * - freshKeepEmployee: «ولادة كاملة» + يبقى مع موظفه بإسناد مجدَّد وسبب `_fresh` —
+ *   فيطلع له كعميل جديد بنموذج أول تواصل من الصفر وسجله القديم مخفي (وظاهر للمالك).
  */
 export async function unarchiveLeads(ids: string[], mode: UnarchiveMode): Promise<ActionResult> {
   try {
     const user = await requireUser();
     if (ids.length === 0) return { ok: false, error: "ما فيه عملاء محدّدين" };
     const scope = isManager(user.role) ? {} : { assignedToId: user.id };
-    const data =
-      mode === "freshUnassigned"
-        // رجوع للحوض: تصفير أختام الإسناد كاملة (متسق مع بقية مسارات السحب للحوض).
-        ? { isArchived: false, stage: LeadStage.NEW, assignedToId: null, assignedAt: null, contactedAt: null }
-        : mode === "freshKeepEmployee"
-          ? { isArchived: false, stage: LeadStage.NEW }
-          : { isArchived: false }; // asis (الافتراضي الآمن)
-    // «مسوّق» يُستثنى من أنماط الإحياء «كجديد» (يبقى بإمكان إرجاعه asis كسجل تاريخي).
-    const marketerGuard = mode === "asis" ? {} : { NOT: { followUps: { some: { result: "NOT_INTERESTED_MARKETER" as const } } } };
-    const res = await prisma.lead.updateMany({ where: { id: { in: ids }, ...scope, ...marketerGuard }, data });
-    await logAudit(prisma, { userId: user.id, action: "lead.unarchived", entity: "lead", summary: `أرجع ${res.count} عميل من الأرشيف (${mode})` });
+
+    if (mode === "asis") {
+      const res = await prisma.lead.updateMany({ where: { id: { in: ids }, ...scope }, data: { isArchived: false } });
+      await logAudit(prisma, { userId: user.id, action: "lead.unarchived", entity: "lead", summary: `أرجع ${res.count} عميل من الأرشيف (asis)` });
+      revalidateLeads();
+      return { ok: true };
+    }
+
+    // أوضاع «كجديد» — «مسوّق» يُستثنى من الإحياء (يبقى بإمكان إرجاعه asis كسجل تاريخي).
+    const targets = await prisma.lead.findMany({
+      where: { id: { in: ids }, ...scope, NOT: { followUps: { some: { result: "NOT_INTERESTED_MARKETER" } } } },
+      select: { id: true, assignedToId: true },
+    });
+    if (targets.length === 0) {
+      return { ok: false, error: "ما فيه عملاء قابلين للإحياء (المسوّقون مستثنون)" };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (mode === "freshUnassigned") {
+        // ولادة كاملة + رجوع للحوض: تصفير أختام الإسناد (متسق مع مسارات السحب للحوض)،
+        // وسجل حدث (toUserId=null) يوثّق الإحياء — الإخفاء يتفعّل عند توزيعه لاحقًا بلاحقة _fresh.
+        await tx.lead.updateMany({
+          where: { id: { in: targets.map((t) => t.id) } },
+          data: { ...FRESH_RESET_DATA, assignedToId: null, assignedAt: null, contactedAt: null },
+        });
+        await tx.reassignment.createMany({
+          data: targets.map((t) => ({ leadId: t.id, fromUserId: t.assignedToId, toUserId: null, reason: MANUAL_UNARCHIVE_FRESH })),
+        });
+      } else {
+        // freshKeepEmployee: الإسناد يُجدَّد عبر الدالة الموحّدة (assignedAt جديد + سجل بسبب
+        // _fresh) — فيشتغل إخفاء التاريخ ونافذة الحالة بنفس آلية النقل «كجديد» حرفيًا.
+        const withEmp = targets.filter((t) => t.assignedToId);
+        const withoutEmp = targets.filter((t) => !t.assignedToId);
+        for (const t of withEmp) {
+          await assignLead(tx, t.id, t.assignedToId as string, {
+            manual: true,
+            reason: MANUAL_UNARCHIVE_FRESH,
+            fromUserId: t.assignedToId,
+            extraData: FRESH_RESET_DATA,
+          });
+        }
+        // بلا موظف أصلًا؟ ما فيه أحد «يبقى عنده» — يعامَل كرجوع للحوض (ولادة كاملة).
+        if (withoutEmp.length) {
+          await tx.lead.updateMany({
+            where: { id: { in: withoutEmp.map((t) => t.id) } },
+            data: { ...FRESH_RESET_DATA, assignedToId: null, assignedAt: null, contactedAt: null },
+          });
+        }
+      }
+      await logAudit(tx, { userId: user.id, action: "lead.unarchived", entity: "lead", summary: `أرجع ${targets.length} عميل من الأرشيف (${mode} — ولادة كاملة)` });
+    });
     revalidateLeads();
     return { ok: true };
   } catch (e) {
