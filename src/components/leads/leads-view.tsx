@@ -22,6 +22,7 @@ import type { UnarchiveMode } from "@/lib/actions/leads";
 import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmployeeLoads } from "@/lib/actions/team";
 import { admitToAutoPool } from "@/lib/actions/distribution";
 import { LeadsFilterBar } from "./leads-filter-bar";
+import { FilterChip } from "./filter-chip";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
 import { ImportDialog } from "@/components/team/import-dialog";
@@ -187,11 +188,12 @@ export function LeadsView({
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-muted-foreground">سبب الأرشفة:</span>
               {ARCHIVE_REASON_CHIPS.map((c) => (
-                <button
+                <FilterChip
                   key={c.value}
+                  active={filters.ar === c.value}
                   onClick={() => setArchiveReason(c.value)}
-                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${filters.ar === c.value ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}
-                >{c.label}</button>
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${filters.ar === c.value ? "border-gold bg-gold/20 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}
+                >{c.label}</FilterChip>
               ))}
             </div>
           )}

@@ -8,6 +8,7 @@ import { toArabicDigits } from "@/lib/format";
 import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA, VISIT_FILTER_STAGES, collapseStagesParam, dateRangeApplies } from "@/lib/lead-filters";
 import type { LeadFilterValues, LeadSort } from "@/lib/lead-filters";
 import { stageFilterChip, toneFilterChip, WAITING_TONE, BANK_TONE, STAGE_TONES } from "@/lib/stage-colors";
+import { FilterChip } from "./filter-chip";
 
 type Employee = { id: string; name: string };
 
@@ -21,9 +22,9 @@ const SORT_OPTIONS: { value: LeadSort; label: string }[] = [
 
 // مظلّة «مهتم»: المصدر الواحد في lead-filters.ts (type-only على Prisma — آمنة لحزمة العميل).
 
-// عنصر مختار: أخضر هادئ بخلفية شفافة (نفس روح درجات stage-colors الخافتة). غير مختار: رمادي محايد.
+// عنصر مختار: أخضر هادئ بخلفية أصلب وحد واضح (نفس روح stage-colors). غير مختار: رمادي محايد.
 function chip(active: boolean) {
-  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-green-400/60 bg-green-500/20 text-green-200" : "border-border text-muted-foreground hover:text-foreground"}`;
+  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-green-400 bg-green-500/25 text-green-200" : "border-border text-muted-foreground hover:text-foreground"}`;
 }
 // زر «الكل»: ذهبي #CBA45E عند تفعيله (لا فلتر محدّد).
 function chipAll(active: boolean) {
@@ -135,50 +136,52 @@ export function LeadsFilterBar({
       {/* فلتر «لم يتم التواصل» — أحمر مع العدد */}
       {notContacted != null && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <button
+          <FilterChip
+            active={notContactedActive}
             onClick={() => go({ stages: notContactedActive ? [] : ["NEW"] })}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${notContactedActive ? "border-destructive bg-destructive/20 text-destructive" : "border-destructive/40 text-destructive hover:bg-destructive/10"}`}
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${notContactedActive ? "border-destructive bg-destructive/25 text-destructive" : "border-destructive/30 text-destructive/70 hover:bg-destructive/10 hover:text-destructive"}`}
           >
             لم يتم التواصل <span className="font-bold">({toArabicDigits(notContacted)})</span>
-          </button>
+          </FilterChip>
           {/* فلتر «محوَّل» — المحوّلون يدويًا «بالبيانات» فقط (كجديد لا يظهر — لا يُميَّز عن الجديد) */}
-          <button
+          <FilterChip
+            active={filters.tr}
             onClick={() => go({ tr: !filters.tr })}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.tr ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.tr ? "border-warning bg-warning/25 text-warning" : "border-warning/30 text-warning/70 hover:bg-warning/10 hover:text-warning"}`}
           >
             ⇄ محوَّل
-          </button>
+          </FilterChip>
           {/* فلتر «حسبة البنك» — ذهبي من المصدر الموحّد (للجميع ضمن صلاحيته) */}
           {bankCheck != null && (
-            <button onClick={() => go({ bank: !filters.bank })} className={toneFilterChip(BANK_TONE, filters.bank)}>
+            <FilterChip active={filters.bank} onClick={() => go({ bank: !filters.bank })} className={toneFilterChip(BANK_TONE, filters.bank)}>
               حسبة البنك <span className="font-bold">({toArabicDigits(bankCheck)})</span>
-            </button>
+            </FilterChip>
           )}
         </div>
       )}
 
       {/* فلتر المراحل — «زيارة» شريحة واحدة لمرحلتي الزيارة، وكل شريحة بلون مرحلتها (stage-colors) */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <button onClick={() => go({ stages: [] })} className={chipAll(filters.stages.length === 0)}>كل المراحل</button>
+        <FilterChip active={filters.stages.length === 0} onClick={() => go({ stages: [] })} className={chipAll(filters.stages.length === 0)}>كل المراحل</FilterChip>
         {stageOrder.map((s) =>
           s === "INTERESTED" ? (
             // مظلّة شاملة بدل مرحلة حرفية — تفلتر كل المتفاعلين دفعة واحدة.
-            <button key={s} onClick={toggleInterestUmbrella} className={stageFilterChip("INTERESTED", interestUmbrellaActive)}>{stageLabels.INTERESTED}</button>
+            <FilterChip key={s} active={interestUmbrellaActive} onClick={toggleInterestUmbrella} className={stageFilterChip("INTERESTED", interestUmbrellaActive)}>{stageLabels.INTERESTED}</FilterChip>
           ) : s === "VIEWING" ? null // مدموجة في شريحة «زيارة» الموحّدة
             : s === "VISIT_SCHEDULED" ? (
               <span key="visit-united" className="contents">
-                <button onClick={toggleVisitFilter} className={toneFilterChip(STAGE_TONES.VISIT_SCHEDULED, visitFilterActive)}>
+                <FilterChip active={visitFilterActive} onClick={toggleVisitFilter} className={toneFilterChip(STAGE_TONES.VISIT_SCHEDULED, visitFilterActive)}>
                   زيارة{visitCount != null ? ` (${toArabicDigits(visitCount)})` : ""}
-                </button>
+                </FilterChip>
                 {/* شريحة «في الانتظار (N)» بجانب «زيارة» — برتقالي الحالة من المصدر الموحّد */}
                 {waiting != null && (
-                  <button onClick={() => go({ wait: !filters.wait })} className={toneFilterChip(WAITING_TONE, filters.wait)}>
+                  <FilterChip active={filters.wait} onClick={() => go({ wait: !filters.wait })} className={toneFilterChip(WAITING_TONE, filters.wait)}>
                     في الانتظار <span className="font-bold">({toArabicDigits(waiting)})</span>
-                  </button>
+                  </FilterChip>
                 )}
               </span>
             ) : (
-              <button key={s} onClick={() => toggleStage(s)} className={stageFilterChip(s as LeadStage, filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
+              <FilterChip key={s} active={filters.stages.includes(s)} onClick={() => toggleStage(s)} className={stageFilterChip(s as LeadStage, filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</FilterChip>
             )
         )}
       </div>
@@ -188,10 +191,12 @@ export function LeadsFilterBar({
       {dateRangeOn && (
         <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/60 bg-card/40 px-3 py-2">
           <span className="text-xs text-muted-foreground">الموعد:</span>
-          <button onClick={() => go({ range: "", from: "", to: "" })} className={chipAll(!filters.range && !customRangeActive)}>الكل</button>
-          <button onClick={() => go({ range: "week", from: "", to: "" })} className={chipAll(filters.range === "week")}>هذا الأسبوع</button>
-          <button onClick={() => go({ range: "next", from: "", to: "" })} className={chipAll(filters.range === "next")}>الأسبوع الجاي</button>
-          <span className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors ${customRangeActive ? "border-gold bg-gold/10" : "border-border"}`}>
+          <FilterChip active={!filters.range && !customRangeActive} onClick={() => go({ range: "", from: "", to: "" })} className={chipAll(!filters.range && !customRangeActive)}>الكل</FilterChip>
+          <FilterChip active={filters.range === "week"} onClick={() => go({ range: "week", from: "", to: "" })} className={chipAll(filters.range === "week")}>هذا الأسبوع</FilterChip>
+          <FilterChip active={filters.range === "next"} onClick={() => go({ range: "next", from: "", to: "" })} className={chipAll(filters.range === "next")}>الأسبوع الجاي</FilterChip>
+          <span className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors ${customRangeActive ? "border-gold bg-gold/15" : "border-border"}`}>
+            {/* نفس معاملة الشرائح: ✓ عند تفعيل النطاق المخصّص (المكوّن للأزرار — هذا حقلا تاريخ) */}
+            {customRangeActive && <span aria-hidden className="text-[0.85em] font-bold leading-none text-gold">✓</span>}
             <span className="text-muted-foreground">من</span>
             <input
               type="date" value={filters.from} dir="ltr" aria-label="من تاريخ"
@@ -211,12 +216,12 @@ export function LeadsFilterBar({
       {/* فلتر الموظفين (للمدير) */}
       {isManager && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <button onClick={() => go({ emps: [] })} className={chipAll(filters.emps.length === 0)}>كل الموظفين</button>
+          <FilterChip active={filters.emps.length === 0} onClick={() => go({ emps: [] })} className={chipAll(filters.emps.length === 0)}>كل الموظفين</FilterChip>
           {employees.map((e) => (
-            <button key={e.id} onClick={() => toggleEmp(e.id)} className={chip(filters.emps.includes(e.id))}>{e.name}</button>
+            <FilterChip key={e.id} active={filters.emps.includes(e.id)} onClick={() => toggleEmp(e.id)} className={chip(filters.emps.includes(e.id))}>{e.name}</FilterChip>
           ))}
           {!hideUnassignedEmp && (
-            <button onClick={() => toggleEmp("none")} className={chip(filters.emps.includes("none"))}>غير موزّع</button>
+            <FilterChip active={filters.emps.includes("none")} onClick={() => toggleEmp("none")} className={chip(filters.emps.includes("none"))}>غير موزّع</FilterChip>
           )}
         </div>
       )}
