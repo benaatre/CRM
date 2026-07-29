@@ -6,7 +6,16 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { markContacted } from "@/lib/auto-distribute";
 import { shouldHideHistory } from "@/lib/visibility";
-import { resultToStage, followUpResultLabels, firstContactStageLabels, KEEP_STAGE_RESULTS, VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
+import { followUpResultLabels, firstContactStageLabels } from "@/lib/labels";
+import {
+  deriveOutcome,
+  REJECTED_RESULTS,
+  REJECTED_RESULT_ERROR,
+  NOTE_REQUIRED_RESULTS,
+  AUTO_ARCHIVE_RESULTS,
+  APPOINTMENT_DATE_REQUIRED_RESULTS,
+  VISIT_APPOINTMENT_RESULTS,
+} from "@/lib/followup-outcome";
 
 export const runtime = "nodejs";
 
@@ -67,6 +76,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const manager = isManager(a.user.role);
   const now = Date.now();
+  // النتيجة تُعدَّل على آخر متابعة فقط (حالة العميل تتبعها) — للعرض؛ PATCH يعيد الفرض.
+  const latestId = items.length ? items[items.length - 1].id : null;
   return NextResponse.json({
     // أفعال النظام منفصلة عن المتابعات عمدًا: صف FollowUp لا يُنشأ إلا من فعل بشري
     // (القاعدة الصارمة فوق model FollowUp) — فالنظام لا «يسجّل متابعة» بل يُعرض حدثًا.
@@ -97,7 +108,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         edited: editedSet.has(f.id),
         // الصلاحية تُعاد حسابها على الخادم عند PATCH — هذه للعرض فقط.
         canEdit: manager || (mine && withinWindow),
-        canEditResult: manager,
+        canEditResult: manager && f.id === latestId,
       };
     }),
   });
@@ -106,15 +117,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 // نافذة تعديل الموظف لمتابعته: ٦٠ دقيقة من تسجيلها.
 const EDIT_WINDOW_MS = 60 * 60 * 1000;
 
-// PATCH /api/leads/[id]/followups — تعديل متابعة (الجزء ١):
+// PATCH /api/leads/[id]/followups — تعديل متابعة:
 //   الموظف: متابعته هو خلال ساعة — الملاحظة وموعد المتابعة القادم فقط (النتيجة لا تُعدَّل).
-//   المالك/المدير: أي متابعة أي وقت شامل النتيجة — وتغيير النتيجة يمر بمسار المرحلة
-//   الموحّد نفسه (resultToStage). التعديل لا يمحو الأصل: سجل تدقيق + وسم «مُعدَّلة».
+//   المالك/المدير: أي متابعة أي وقت — لكن حالة العميل تتبع آخر متابعة فقط:
+//   المتابعة القديمة يُعدَّل نصها ووقتها بلا أي مساس بجدول Lead، والنتيجة تُغيَّر
+//   على الأحدث حصرًا وبنفس صرامة POST (lib/followup-outcome). التعديل لا يمحو
+//   الأصل: سجل تدقيق + وسم «مُعدَّلة».
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const a = await authorize(id);
   if (a.error) return a.error;
-  const { user } = a;
+  const { user, lead } = a;
   const manager = isManager(user.role);
 
   let body: { followupId?: string; note?: string; nextDate?: string | null; result?: string };
@@ -127,7 +140,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const fu = await prisma.followUp.findUnique({
     where: { id: body.followupId },
-    select: { id: true, leadId: true, createdBy: true, createdAt: true, result: true },
+    select: { id: true, leadId: true, createdBy: true, createdAt: true, result: true, note: true, nextDate: true },
   });
   if (!fu || fu.leadId !== id) return NextResponse.json({ error: "المتابعة غير موجودة" }, { status: 404 });
 
@@ -155,28 +168,78 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const newResult = body.result !== undefined && body.result in FollowUpResult ? (body.result as FollowUpResult) : undefined;
   if (body.result !== undefined && !newResult) return NextResponse.json({ error: "نتيجة المتابعة غير صحيحة" }, { status: 400 });
   const resultChanged = !!newResult && newResult !== fu.result;
-  // تغيير النتيجة يمر بالمسار الموحّد: المرحلة الجديدة من resultToStage.
-  const newStage = resultChanged ? resultToStage[newResult!] : undefined;
+
+  // حالة العميل تتبع آخر متابعة فقط — تعديل متابعة أقدم لا يلمس جدول Lead إطلاقًا.
+  const latest = await prisma.followUp.findFirst({
+    where: { leadId: id },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true },
+  });
+  const isLatest = latest?.id === fu.id;
+
+  if (!isLatest && resultChanged) {
+    return NextResponse.json({ error: "ما تقدر تغيّر نتيجة متابعة قديمة — حالة العميل تتبع آخر متابعة" }, { status: 400 });
+  }
+
+  // الحالة النهائية للصف بعد التعديل — عليها تُفرض إلزامات POST نفسها.
+  const finalResult = newResult ?? fu.result;
+  const finalNote = body.note !== undefined ? body.note.trim() || null : fu.note;
+  const finalNextDate = nextDate !== undefined ? nextDate : fu.nextDate;
+
+  const outcome = resultChanged ? deriveOutcome(newResult!) : null;
+  if (isLatest) {
+    if (resultChanged && REJECTED_RESULTS.includes(newResult!)) {
+      return NextResponse.json({ error: REJECTED_RESULT_ERROR }, { status: 400 });
+    }
+    // النص الإلزامي يُفحص عند تغيير النتيجة أو المساس بالملاحظة — لا عند تعديل موعد فقط
+    // (حتى لا يعلق صف قديم سُجّل قبل فرض القاعدة).
+    if ((resultChanged || body.note !== undefined) && NOTE_REQUIRED_RESULTS.includes(finalResult) && !finalNote) {
+      return NextResponse.json({ error: `نتيجة «${followUpResultLabels[finalResult]}» تحتاج نصًا — اكتب ما قاله العميل.` }, { status: 400 });
+    }
+    if ((resultChanged || nextDate !== undefined) && APPOINTMENT_DATE_REQUIRED_RESULTS.includes(finalResult) && !finalNextDate) {
+      return NextResponse.json({ error: "حدّد تاريخ ووقت الموعد." }, { status: 400 });
+    }
+  }
+
+  // المرحلة الجديدة: من المسار الموحّد — نتائج «بلا تغيير مرحلة» تثبّت مرحلة العميل الحالية.
+  const newStage = outcome && outcome.stage !== "keep" ? outcome.stage : undefined;
+
+  // ما يُكتب على العميل — فقط عندما تكون المتابعة هي الأحدث:
+  const leadPatch: Record<string, unknown> = {};
+  if (isLatest) {
+    const finalIsVisitAppt = VISIT_APPOINTMENT_RESULTS.includes(finalResult);
+    if (finalIsVisitAppt) {
+      // متابعة «موعد زيارة»: تاريخها يعدّل visitAt (لا nextFollowup) — نفس منطق POST.
+      if (nextDate !== undefined || resultChanged) leadPatch.visitAt = finalNextDate;
+    } else if (nextDate !== undefined) {
+      // nextFollowup يتغيّر فقط إذا أُرسل nextDate صراحةً — غيابه من الطلب يعني «لا تلمسه».
+      leadPatch.nextFollowup = nextDate;
+    }
+    if (resultChanged) {
+      if (newStage) leadPatch.stage = newStage;
+      if (outcome!.archive) leadPatch.isArchived = true;
+      // فكّ الأرشفة: النتيجة كانت «نهائيًا/مسوّق» وتغيّرت لنتيجة غير مؤرشفة.
+      else if (AUTO_ARCHIVE_RESULTS.includes(fu.result)) leadPatch.isArchived = false;
+      // العدّاد يزيد فقط عند التغيير «إلى» إعادة الجدولة (لا إذا كانت هي أصلًا).
+      if (newResult === "VISIT_NO_SHOW_RESCHEDULED") leadPatch.visitRescheduleCount = { increment: 1 };
+      // الخروج من «موعد زيارة مؤكّد» لأي مرحلة أخرى يمسح موعد الزيارة المعلّق (نفس POST).
+      if (!finalIsVisitAppt && lead.stage === LeadStage.VISIT_SCHEDULED && newStage && newStage !== LeadStage.VISIT_SCHEDULED) {
+        leadPatch.visitAt = null;
+      }
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.followUp.update({
       where: { id: fu.id },
       data: {
-        ...(body.note !== undefined ? { note: body.note.trim() || null } : {}),
+        ...(body.note !== undefined ? { note: finalNote } : {}),
         ...(nextDate !== undefined ? { nextDate } : {}),
-        ...(resultChanged ? { result: newResult, stageAfter: newStage } : {}),
+        ...(resultChanged ? { result: newResult, stageAfter: newStage ?? lead.stage } : {}),
       },
     });
-    if (nextDate !== undefined || resultChanged) {
-      // متابعة «موعد زيارة»: تعديل تاريخها يعدّل visitAt (لا nextFollowup) — نفس منطق POST.
-      const editIsVisitAppt = VISIT_APPOINTMENT_RESULTS.includes(newResult ?? fu.result);
-      await tx.lead.update({
-        where: { id },
-        data: {
-          ...(nextDate !== undefined ? (editIsVisitAppt ? { visitAt: nextDate } : { nextFollowup: nextDate }) : {}),
-          ...(resultChanged ? { stage: newStage } : {}),
-        },
-      });
+    if (Object.keys(leadPatch).length) {
+      await tx.lead.update({ where: { id }, data: leadPatch });
     }
     // التعديل لا يمحو الأصل — سجل تدقيق بنمط المعرّفات (العميل=cuid يصير اسمًا رابطًا في v2).
     await logAudit(tx, {
@@ -222,22 +285,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   // ===== الإلزام على الخادم (محرّك الزيارات) — لا الواجهة فقط =====
+  // القواعد كلها من مصدر واحد (lib/followup-outcome) يتشاركه POST وPATCH.
   // «مهتم» الخام بلا خطوة تالية مرفوض: أحد ثلاثة (موعد زيارة / موعد اتصال / غير مناسب).
   // نتائج «بلا تغيير مرحلة» (لم يستجب/حسبة البنك/في الانتظار) خارج هذا الإلزام.
-  if (result === "INTERESTED_SENT_INFO") {
-    return NextResponse.json({ error: "نتيجة «مهتم» تحتاج خطوة تالية: موعد زيارة أو موعد اتصال أو غير مناسب." }, { status: 400 });
+  if (REJECTED_RESULTS.includes(result)) {
+    return NextResponse.json({ error: REJECTED_RESULT_ERROR }, { status: 400 });
   }
   // المواعيد بلا تاريخ ما تنحفظ (موعد الزيارة/إعادة الجدولة/موعد الاتصال).
   const isVisitAppt = VISIT_APPOINTMENT_RESULTS.includes(result);
-  if ((isVisitAppt || result === "INTERESTED_SCHEDULED") && !nextDate) {
+  if (APPOINTMENT_DATE_REQUIRED_RESULTS.includes(result) && !nextDate) {
     return NextResponse.json({ error: "حدّد تاريخ ووقت الموعد." }, { status: 400 });
   }
-  // نتائج «بلا تغيير مرحلة» (لم يستجب/حسبة البنك/في الانتظار): المرحلة تثبت على الخادم مهما أُرسل —
-  // فلا تُحرَّك المرحلة ولا يدخل العميل نظام «لم يتم الرد» (نتيجتها ليست NOT_ANSWERED_*).
+  // نتائج «بلا تغيير مرحلة»: المرحلة تثبت على الخادم مهما أُرسل — فلا تُحرَّك المرحلة
+  // ولا يدخل العميل نظام «لم يتم الرد» (نتيجتها ليست NOT_ANSWERED_*).
   // غير ذلك: المرحلة المرسلة صراحةً تُقدَّم؛ وإلا تُشتق من النتيجة.
-  const newStage = KEEP_STAGE_RESULTS.includes(result)
-    ? lead.stage
-    : body.stage && body.stage in LeadStage ? (body.stage as LeadStage) : resultToStage[result];
+  const requestedStage = body.stage && body.stage in LeadStage ? (body.stage as LeadStage) : undefined;
+  const outcome = deriveOutcome(result, requestedStage);
+  const newStage = outcome.stage === "keep" ? lead.stage : outcome.stage;
   const bumpsAttempt = type === "CALL" || type === "WHATSAPP";
 
   // المرحلة الأولى تُحدَّد مرة واحدة من أول متابعة (حسب قسمها).
@@ -255,8 +319,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
     // أرشفة تلقائية: «غير مهتم بالعقارات نهائيًا» أو «مسوّق» → يُؤرشف مع الإغلاق مباشرة.
     // ⚠️ الانتساب يبقى (assignedToId لا يُمسح) — نحتاج نعرف عملاء مين في الأرشيف.
-    const autoArchive = newStage === LeadStage.CLOSED_LOST
-      && (result === "NOT_INTERESTED_FINAL" || result === "NOT_INTERESTED_MARKETER");
+    const autoArchive = outcome.archive;
     await tx.lead.update({
       where: { id },
       data: {

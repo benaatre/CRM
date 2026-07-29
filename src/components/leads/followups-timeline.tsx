@@ -141,13 +141,15 @@ function EditFollowUpDialog({ item, leadId, onClose, onSaved }: {
   function save() {
     setErr(null);
     startTransition(async () => {
+      // ما تغيّر فقط يُرسل — غياب الحقل عند الخادم يعني «لا تلمسه»:
+      // تعديل الملاحظة وحدها ما عاد يمسح موعد المتابعة القادم من العميل.
       const res = await fetch(`/api/leads/${leadId}/followups`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           followupId: item.id,
-          note,
-          nextDate: nextDate || null,
+          ...(note !== (item.note ?? "") ? { note } : {}),
+          ...(nextDate !== toLocalInput(item.nextDate) ? { nextDate: nextDate || null } : {}),
           ...(item.canEditResult && result !== item.result ? { result } : {}),
         }),
       });
