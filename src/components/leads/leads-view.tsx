@@ -7,7 +7,7 @@ import {
   purchaseMethodLabels, purchaseGoalLabels,
   stageLabels, stageColor,
 } from "@/lib/labels";
-import { formatDate, toArabicDigits, daysAgoLabel } from "@/lib/format";
+import { formatDate, formatDateTime, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import { TransferStar, TransferBadge } from "./transfer-star";
 import { TransferModeDialog } from "./transfer-mode-dialog";
@@ -27,8 +27,8 @@ import { FollowUpsDrawer } from "./followups-drawer";
 import { ImportDialog } from "@/components/team/import-dialog";
 import { useLeads } from "./use-leads";
 
-import { DEFAULT_LEAD_SORT, collapseStagesParam, type LeadSort } from "@/lib/lead-filters";
-import { WAITING_TONE } from "@/lib/stage-colors";
+import { DEFAULT_LEAD_SORT, collapseStagesParam, VISIT_FILTER_STAGES, type LeadSort } from "@/lib/lead-filters";
+import { WAITING_TONE, STAGE_TONES } from "@/lib/stage-colors";
 
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
@@ -63,6 +63,8 @@ export function LeadsView({
 }) {
   const router = useRouter();
   const { leads: rows, loading, reload } = useLeads(query);
+  // فلتر «زيارة» مفعّل؟ (المرحلتان متلازمتان دائمًا) — يعرض أجندة زيارات الشهر فوق النتائج.
+  const visitFilterOn = VISIT_FILTER_STAGES.every((s) => filters.stages.includes(s));
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
@@ -192,6 +194,9 @@ export function LeadsView({
           )}
         </div>
       )}
+
+      {/* أجندة زيارات الشهر — تظهر مع تفعيل فلتر «زيارة» (نفس بيانات القائمة، بلا استعلامات) */}
+      {visitFilterOn && <VisitAgenda rows={rows} />}
 
       {/* شريط أدوات التحديد — ظاهر دائمًا (مع عدّاد واضح + زر «تحديد الكل») */}
       {rows.length > 0 && (
@@ -629,5 +634,58 @@ function UnarchiveDialog({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * أجندة زيارات الشهر الحالي — تظهر مع تفعيل فلتر «زيارة»: نفس صفوف القائمة المجلوبة
+ * معاد ترتيبها زمنيًا (صفر استعلامات جديدة)، مجمّعة: اليوم · بكرة · هالأسبوع · باقي الشهر.
+ * للموظف عملاؤه وللمدير الكل (النطاق من الصفوف نفسها). الضغط يفتح ملف العميل.
+ */
+function VisitAgenda({ rows }: { rows: { id: string; name: string; visitAt: Date | string | null; projectName: string | null }[] }) {
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  const DAY = 86_400_000;
+  const visits = rows
+    .filter((l) => l.visitAt && new Date(l.visitAt).getTime() >= startToday && new Date(l.visitAt).getTime() < endMonth)
+    .sort((a, b) => new Date(a.visitAt!).getTime() - new Date(b.visitAt!).getTime());
+  if (visits.length === 0) return null;
+
+  const groupOf = (t: number) =>
+    t < startToday + DAY ? "اليوم" : t < startToday + 2 * DAY ? "بكرة" : t < startToday + 7 * DAY ? "هالأسبوع" : "باقي الشهر";
+  const GROUPS = ["اليوم", "بكرة", "هالأسبوع", "باقي الشهر"] as const;
+  const grouped = new Map<string, typeof visits>();
+  for (const v of visits) {
+    const g = groupOf(new Date(v.visitAt!).getTime());
+    grouped.set(g, [...(grouped.get(g) ?? []), v]);
+  }
+
+  return (
+    <section className={`mb-4 rounded-2xl border p-4 ${STAGE_TONES.VISIT_SCHEDULED.chip.replace(/text-\S+/, "")}`}>
+      <h2 className={`mb-3 text-sm font-bold ${STAGE_TONES.VISIT_SCHEDULED.text}`}>
+        أجندة زيارات الشهر ({toArabicDigits(visits.length)})
+      </h2>
+      <div className="space-y-3">
+        {GROUPS.map((g) => {
+          const items = grouped.get(g);
+          if (!items?.length) return null;
+          return (
+            <div key={g}>
+              <div className="mb-1.5 text-xs font-semibold text-muted-foreground">{g}</div>
+              <div className="space-y-1">
+                {items.map((v) => (
+                  <Link key={v.id} href={`/leads/${v.id}`} className="flex flex-wrap items-center gap-x-2 rounded-lg border border-border/60 bg-card/60 px-3 py-1.5 text-xs hover:border-sky-400/50">
+                    <span className={`font-medium ${STAGE_TONES.VISIT_SCHEDULED.text}`} dir="rtl">{formatDateTime(v.visitAt!)}</span>
+                    <span className="font-medium text-foreground">{v.name}</span>
+                    {v.projectName && <span className="text-muted-foreground">· {v.projectName}</span>}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
