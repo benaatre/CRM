@@ -99,8 +99,8 @@ export function LeadDrawer({
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       await updateLead(lead.id, {
-        name: String(fd.get("name") ?? ""),
-        phone: String(fd.get("phone") ?? ""),
+        // الهوية تُرسل من المدير فقط (الحقول معطّلة لغيره فلا تصل في FormData أصلًا).
+        ...(isManager ? { name: String(fd.get("name") ?? ""), phone: String(fd.get("phone") ?? "") } : {}),
         budget: String(fd.get("budget") ?? ""),
         unitType: (fd.get("unitType") as UnitType) || null,
         priority: fd.get("priority") as Priority,
@@ -191,8 +191,9 @@ export function LeadDrawer({
               {/* تبويب البيانات */}
               {tab === "data" && (
                 <form onSubmit={saveData} className="space-y-3">
-                  <DField label="الاسم"><input name="name" defaultValue={lead.name} className="select-base" /></DField>
-                  <DField label="الجوال"><input name="phone" defaultValue={lead.phone} dir="ltr" className="select-base" /></DField>
+                  {/* الاسم/الجوال: تعديلهما للمالك/المدير فقط (الخادم يفرضها أيضًا) — الموظف قراءة. */}
+                  <DField label="الاسم"><input name="name" defaultValue={lead.name} disabled={!isManager} title={isManager ? undefined : "تعديل الاسم للمالك والمدير فقط"} className="select-base disabled:opacity-60" /></DField>
+                  <DField label="الجوال"><input name="phone" defaultValue={lead.phone} dir="ltr" disabled={!isManager} title={isManager ? undefined : "تعديل الجوال للمالك والمدير فقط"} className="select-base disabled:opacity-60" /></DField>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* «القناة» أُزيلت — «المصدر» الموحّد أدناه هو الحقل الوحيد (القناة تُشتق منه تلقائيًا). */}
                     <DField label="الأولوية">

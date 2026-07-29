@@ -24,6 +24,7 @@ import { getLeadDetail, type LeadDetail } from "@/lib/data/leads";
 import { channelForSourceName } from "@/lib/source-channel";
 import { resolveAutoPoolAt } from "@/lib/auto-pool";
 import { manualTransferReason, redistributeReason, MANUAL_UNARCHIVE_FRESH, type TransferMode } from "@/lib/transfer-mode";
+import { normalizeAnyPhone } from "@/lib/value-normalize";
 import { ALL_AREAS, canonicalAreas } from "@/lib/districts";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -475,6 +476,52 @@ export async function toggleRevealHistory(leadId: string): Promise<{ ok: boolean
   }
 }
 
+/**
+ * تعديل هوية العميل (الاسم/الجوال) — للمالك/المدير فقط (فرض على الخادم؛ الموظف قراءة).
+ * الجوال عبر القاعدة الموحّدة normalizeAnyPhone: سعودي ⟵ 05XXXXXXXX، دولي بمفتاح دولة ⟵
+ * بصيغته؛ نص غير رقمي يُرفض برسالة واضحة — لا يُفرَّغ بصمت أبدًا. كل تغيير يُدوَّن في
+ * سجل التدقيق بالقيمتين. (المكررون: dedupeKey لحظي بلا عمود — صفحة المكررين وعدّادات
+ * الحجب تلتقط الرقم الجديد تلقائيًا من أول قراءة، بلا أي إجراء إضافي.)
+ */
+export async function updateLeadIdentity(
+  leadId: string,
+  data: { name?: string; phone?: string },
+): Promise<ActionResult> {
+  try {
+    const { user } = await assertLeadAccess(leadId);
+    const current = await prisma.lead.findUnique({ where: { id: leadId }, select: { name: true, phone: true } });
+    if (!current) return { ok: false, error: "العميل غير موجود" };
+
+    const upd: { name?: string; phone?: string } = {};
+    const changes: string[] = [];
+    if (data.name !== undefined) {
+      const name = data.name.trim();
+      if (!name) return { ok: false, error: "الاسم ما يصير فاضيًا" };
+      if (name !== current.name) { upd.name = name; changes.push(`الاسم «${current.name}» ← «${name}»`); }
+    }
+    if (data.phone !== undefined) {
+      const raw = data.phone.trim();
+      if (!raw) return { ok: false, error: "الجوال ما يصير فاضيًا" };
+      const phone = normalizeAnyPhone(raw);
+      if (!phone) return { ok: false, error: "رقم الجوال غير صالح — سعودي 05XXXXXXXX أو دولي بمفتاح الدولة (+…)" };
+      if (phone !== current.phone) { upd.phone = phone; changes.push(`الجوال «${current.phone || "—"}» ← «${phone}»`); }
+    }
+    if (changes.length === 0) return { ok: true }; // لا تغيير فعليًا — بلا بوابة ولا سجل
+    if (!isManager(user.role)) return { ok: false, error: "تعديل الاسم أو الجوال للمالك والمدير فقط" };
+
+    await prisma.lead.update({ where: { id: leadId }, data: upd });
+    await logAudit(prisma, {
+      userId: user.id, action: "lead.identity", entity: "lead", entityId: leadId,
+      summary: `عدّل بيانات العميل: ${changes.join(" · ")} · العميل=${leadId}`,
+    });
+    revalidateLeads();
+    revalidatePath(`/leads/${leadId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
 /** تعديل بيانات العميل من تبويب «البيانات» في الدرج. */
 export async function updateLead(
   leadId: string,
@@ -493,13 +540,17 @@ export async function updateLead(
 ): Promise<ActionResult> {
   try {
     await assertLeadAccess(leadId);
+    // الاسم/الجوال عبر المسار الموحّد (بوابة المدير + normalizeAnyPhone + سجل تدقيق) —
+    // كان الجوال هنا يُجرَّد لأرقام خام فيكسر الصيغة الدولية، وبلا بوابة ولا سجل.
+    if (data.name !== undefined || data.phone !== undefined) {
+      const idRes = await updateLeadIdentity(leadId, { name: data.name, phone: data.phone });
+      if (!idRes.ok) return idRes;
+    }
     const budget =
       data.budget != null ? Number(String(data.budget).replace(/[^\d]/g, "")) || null : undefined;
     await prisma.lead.update({
       where: { id: leadId },
       data: {
-        ...(data.name ? { name: data.name.trim() } : {}),
-        ...(data.phone ? { phone: data.phone.replace(/[^\d]/g, "") } : {}),
         ...(data.priority ? { priority: data.priority } : {}),
         ...(data.unitType !== undefined ? { unitType: data.unitType } : {}),
         ...(budget !== undefined ? { budget } : {}),
