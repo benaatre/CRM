@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
+import { randomUUID } from "node:crypto";
 
 const nextConfig: NextConfig = {
   // مطلوب لـ Hostinger Node.js — يبني خادمًا مستقلًّا في .next/standalone
@@ -13,4 +15,14 @@ const nextConfig: NextConfig = {
   // SOURCE_COMMIT/git وقت البناء لأنهما غير مضمونَين في بيئة Hostinger.
 };
 
-export default nextConfig;
+// إعداد Serwist لتوليد service worker في الإنتاج فقط (معطّل في التطوير).
+// swSrc تحت src/app لأن المشروع يستخدم بنية src/.
+const withSerwist = withSerwistInit({
+  swSrc: "src/app/sw.ts",
+  swDest: "public/sw.js",
+  additionalPrecacheEntries: [{ url: "/~offline", revision: randomUUID() }],
+  disable: process.env.NODE_ENV === "development",
+  reloadOnOnline: true,
+});
+
+export default withSerwist(nextConfig);

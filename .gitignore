@@ -54,6 +54,10 @@ devserver.log
 # تقارير تدقيق محلية — لا تُرفع
 AUDIT-FULL-2026-07-04.md
 
+# serwist — service worker مُولّد وقت البناء (لا يُرفع)
+public/sw.js
+public/sw.js.map
+
 # vercel
 .vercel
 
