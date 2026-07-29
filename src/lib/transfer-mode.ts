@@ -40,6 +40,27 @@ export function distributeReason(mode: TransferMode): string {
 }
 
 /**
+ * ===== إعادة التوزيع من حوض «لم يتم الرد» + توزيع المكررين =====
+ * كانت السلاسل نصًّا مباشرًا في actions/no-response.ts (نمط الانحراف الذي أُنشئ هذا
+ * الملف لمنعه)، وكان توزيع المكرر يكتب «manual_redistribute» مجردًا بلا لاحقة —
+ * فلا إخفاء ولا تصفير لوضع «كجديد» (توحيد 2026-07-29).
+ */
+export const MANUAL_REDISTRIBUTE_FULL = "manual_redistribute_full";
+export const MANUAL_REDISTRIBUTE_FRESH = "manual_redistribute_fresh";
+
+/** سبب سجل Reassignment لإعادة توزيع (حوض «لم يتم الرد» / مكرر) حسب الوضع. */
+export function redistributeReason(mode: TransferMode): string {
+  return mode === "fresh" ? MANUAL_REDISTRIBUTE_FRESH : MANUAL_REDISTRIBUTE_FULL;
+}
+
+/**
+ * ===== إلغاء الأرشفة «كجديد» =====
+ * إرجاع مؤرشف كعميل جديد (بقاؤه عند موظفه أو رجوعه للحوض) — اللاحقة _fresh تفعّل
+ * إخفاء السجل عن الموظف بنفس آلية النقل، والتصفير عبر FRESH_RESET_DATA الموحّد.
+ */
+export const MANUAL_UNARCHIVE_FRESH = "manual_unarchive_fresh";
+
+/**
  * ===== التوزيع التلقائي (المحرك) =====
  * لا إنسان يُسأل، فالقرار مشتق: من يحمل متابعات سابقة يُوزَّع «كجديد» (سجله يُخفى عن
  * الموظف المستلم ويبقى كاملًا للمالك)، ومن لا تاريخ له يبقى `initial` كما كان.

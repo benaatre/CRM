@@ -12,6 +12,7 @@ import { notify } from "@/lib/notify";
 import { emitNotification, emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { NO_RESPONSE_STAGES, unreachableLeadIds } from "@/lib/auto-distribute";
 import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
+import { MANUAL_REDISTRIBUTE_FRESH, MANUAL_REDISTRIBUTE_FULL } from "@/lib/transfer-mode";
 import {
   warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, overdueAgeBucket,
   type EscalationCategory, type OverdueAgeBucket,
@@ -82,7 +83,8 @@ async function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toU
   // startsWith("no_response") كلها على صفوف السحب (toUserId=null) — لا تتأثر.
   const ok = await assignLead(tx, leadId, toUserId, {
     manual: false,
-    reason: fresh ? "manual_redistribute_fresh" : "manual_redistribute_full",
+    // من مصدر الحقيقة الوحيد (transfer-mode) — كانت نصًّا مباشرًا هشًّا أمام الانحراف.
+    reason: fresh ? MANUAL_REDISTRIBUTE_FRESH : MANUAL_REDISTRIBUTE_FULL,
     now,
     guardWhere: { assignedToId: null },
     // «كجديد» = ولادة كاملة (تصفير أول التواصل والمواعيد والأرشفة)؛ «بمحتواه» يبقى
