@@ -53,7 +53,7 @@ const LABEL: Record<string, string> = {
   noShowDeclined: "ما حضر — ما يبي",
 };
 
-/** الخطوة التالية الإلزامية لنتيجة «مهتم» — أحد ثلاثة لا رابع لها. */
+/** الخطوة التالية لنتيجة «مهتم» — اختيارية (بلا خطوة = مهتم مباشرةً بموعد اختياري). */
 type InterestedStep = "visit" | "call" | "notsuitable";
 const STEP_LABEL: Record<InterestedStep, string> = {
   visit: "زيارة", call: "موعد اتصال", notsuitable: "غير مناسب",
@@ -80,7 +80,7 @@ export function FollowUpsForm({
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(initialSel ?? null);
   const [fcSel, setFcSel] = useState<"interested" | "noanswer" | "calllater" | "notInterested" | null>(null);
-  // الخطوة الإلزامية لنتيجة «مهتم» — لا حفظ بدونها (والخادم يرفضها كمان).
+  // خطوة «مهتم» الاختيارية — null = حفظ «مهتم» مباشرةً (الخادم يقبل INTERESTED_SCHEDULED بلا موعد).
   const [step, setStep] = useState<InterestedStep | null>(null);
 
   const [note, setNote] = useState("");
@@ -130,14 +130,15 @@ export function FollowUpsForm({
     if (!sel) return;
     switch (sel) {
       case "interested":
-        // الإلزام: «مهتم» بلا خطوة تالية ما ينحفظ — أحد ثلاثة (والخادم يرفض INTERESTED_SENT_INFO الخام).
+        // الخطوة التالية اختيارية (أُزيل الإلزام — نفس فلسفة أول التواصل): بلا خطوة ⟵
+        // «مهتم» مباشرةً INTERESTED بموعد متابعة اختياري.
         if (step === "visit")
           return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("مهتم — موعد زيارة", [], note), nextDate: date });
         if (step === "call")
           return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("مهتم — موعد اتصال", [], note), nextDate: date });
         if (step === "notsuitable")
           return post(buildNotInterestedBody(reasons, niRetry, date, note));
-        return;
+        return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "INTERESTED", note: compose("مهتم", [], note), ...(date ? { nextDate: date } : {}) });
       case "noShowDeclined": {
         // ما حضر — ما يبي: المسار الموحّد لغير المهتم، مع وسم «ما حضر» في النص (يغذّي مؤشر الحضور).
         const b = buildNotInterestedBody(reasons, niRetry, date, note);
@@ -257,7 +258,7 @@ export function FollowUpsForm({
   const visitNeedsDate = !(stage === "VISIT_SCHEDULED" && visitAction === "done");
   const saveDisabled = pending || (
     sel === "appointment" ? !date
-      : sel === "interested" ? (!step || ((step === "visit" || step === "call") && !date) || (step === "notsuitable" && ((niRetry === "yes" && !date) || (niNeedsText && !note.trim()))))
+      : sel === "interested" ? (((step === "visit" || step === "call") && !date) || (step === "notsuitable" && ((niRetry === "yes" && !date) || (niNeedsText && !note.trim()))))
         : sel === "visit" ? ((stage === "VISIT_SCHEDULED" && !visitAction) || (visitNeedsDate && !date) || (visitKind === "project" && visitMode === "select" && selProjects.size === 0))
           : sel === "notInterested" || sel === "noShowDeclined" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
             : sel === "onhold" ? !note.trim()
@@ -303,15 +304,21 @@ export function FollowUpsForm({
 
       {sel && sel !== "booked" && (
         <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
-          {/* مهتم: الخطوة التالية إلزامية — موعد زيارة / موعد اتصال / غير مناسب */}
+          {/* مهتم: الخطوة التالية اختيارية — بلا خطوة يُحفظ «مهتم» مباشرة بموعد اختياري */}
           {sel === "interested" && (
             <div className="space-y-2">
-              <span className="text-xs text-muted-foreground">وش الخطوة الجاية معه؟ (إلزامي — ما ينحفظ بدونها)</span>
+              <span className="text-xs text-muted-foreground">وش الخطوة الجاية معه؟ (اختياري)</span>
               <div className="flex gap-2">
                 {(["visit", "call", "notsuitable"] as const).map((s) => (
-                  <button key={s} type="button" onClick={() => { setStep(s); setDate(""); setReasons(new Set()); setNiRetry("no"); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${step === s ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>{STEP_LABEL[s]}</button>
+                  <button key={s} type="button" onClick={() => { setStep(step === s ? null : s); setDate(""); setReasons(new Set()); setNiRetry("no"); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${step === s ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>{STEP_LABEL[s]}</button>
                 ))}
               </div>
+              {!step && (
+                <label className="block space-y-1">
+                  <span className="text-xs text-muted-foreground">متى تحب تتابع معه؟ (اختياري)</span>
+                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                </label>
+              )}
               {(step === "visit" || step === "call") && (
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">{step === "visit" ? "تاريخ ووقت الزيارة" : "تاريخ ووقت الاتصال"}</span>
