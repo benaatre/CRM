@@ -12,6 +12,7 @@ import {
 } from "@/lib/labels";
 import { daysAgoLabel } from "@/lib/format";
 import { waPhone } from "@/lib/value-normalize";
+import { WAITING_TONE } from "@/lib/stage-colors";
 import type { LeadDetail } from "@/lib/data/leads";
 import {
   fetchLeadDetail, updateLeadStage, updateLeadFields,
@@ -162,9 +163,15 @@ export function LeadDrawer({
                   </div>
                   <div>
                     <h2 className="text-lg font-bold text-foreground">{lead.name}</h2>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
                       <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[lead.stage]}`}>{stageLabels[lead.stage]}</span>
                       <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{lead.attempts} محاولة</span>
+                      {/* «في الانتظار» بسببها — تظهر هنا وفي ملف العميل (القائمة شارة فقط بلا سبب). */}
+                      {lead.waiting && (
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار — ظرف عند العميل بلا تاريخ محدد">
+                          في الانتظار{lead.waitingReason ? `: ${lead.waitingReason}` : ""}
+                        </span>
+                      )}
                     </div>
                     {/* كتلة الاستلام للموظف فقط — المالك/المدير كما كانت الشاشة سابقًا (بلا إضافة). */}
                     {!isManager && (

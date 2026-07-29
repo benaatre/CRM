@@ -22,6 +22,7 @@ import { FollowUpsForm } from "./followups-form";
 import { FollowUpsTimeline } from "./followups-timeline";
 import { WaAskLink } from "./wa-ask";
 import { TransferBadge } from "./transfer-star";
+import { WAITING_TONE } from "@/lib/stage-colors";
 import { DistrictSelect } from "./district-select";
 import { useFollowUps } from "./use-followups";
 
@@ -84,7 +85,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
                   <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-bold text-destructive" title="سُجّل كمسوّق (عقاري/منافس) — يُستثنى من أي إحياء مستقبلي">مسوّق</span>
                 )}
                 {onHoldReason && (
-                  <span className="rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium text-info" title="آخر متابعة: في الانتظار — ظرف عند العميل بلا تاريخ محدد">في الانتظار: {onHoldReason}</span>
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار — ظرف عند العميل بلا تاريخ محدد">في الانتظار: {onHoldReason}</span>
                 )}
                 {/* عدّاد إعادة الجدولة — للمالك/المدير (مؤشر جدّية العميل) */}
                 {isManager && detail.visitRescheduleCount > 0 && (
