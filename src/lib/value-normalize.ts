@@ -32,13 +32,16 @@ export function normalizePurchaseMethod(raw: string | null | undefined): Purchas
   if (s === "bank_finance") return "BANK_FINANCE";
   if (s === "cash_and_finance") return "CASH_AND_FINANCE";
 
-  const hasCash = /كاش|نقد/.test(s);
-  const hasFinance = /تمويل|بنك/.test(s);
+  // توسعة 2026-07-29: القيم النصية المباشرة خارج صيغة الفورم تنمسك أيضًا —
+  // عربي (بالهمزات وبدونها عبر norm) + الإنجليزية الشائعة. غير المتعرف عليه ⟵ null
+  // حصرًا (ممنوع أي قيمة افتراضية من النظام — بيانات مفبركة أسوأ من فراغ).
+  const hasCash = /كاش|نقد|كامل المبلغ|cash/.test(s);
+  const hasFinance = /تمويل|بنك|قرض|اقساط|قسط|finance|bank|mortgage|loan/.test(s);
   if (hasCash && hasFinance) return "CASH_AND_FINANCE";
   if (s.includes("الاثنين") || s === "both") return "CASH_AND_FINANCE";
   // #23: نميّز «مدعوم/غير مدعوم» (غير مدعوم أولاً لأن نصّه يحوي «مدعوم»).
-  if (hasFinance && /غير مدعوم/.test(s)) return "BANK_FINANCE_UNSUPPORTED";
-  if (hasFinance && /مدعوم/.test(s)) return "BANK_FINANCE_SUPPORTED";
+  if (hasFinance && /غير مدعوم|غير المدعوم|unsupported/.test(s)) return "BANK_FINANCE_UNSUPPORTED";
+  if (hasFinance && /مدعوم|supported/.test(s)) return "BANK_FINANCE_SUPPORTED";
   if (hasCash) return "CASH";
   if (hasFinance) return "BANK_FINANCE"; // تمويل مجرّد بلا تحديد → القديم (توافق)
   return null;
@@ -123,8 +126,9 @@ export function normalizePurchaseGoal(raw: string | null | undefined): PurchaseG
   if (s === "investment") return "INVESTMENT";
   if (s === "both") return "BOTH";
 
-  const hasRes = s.includes("سكن"); // سكن / سكني / للسكن
-  const hasInv = s.includes("استثمار"); // استثمار / للاستثمار / استثماري
+  // توسعة 2026-07-29: الإنجليزية الشائعة أيضًا. غير المتعرف عليه ⟵ null حصرًا (لا افتراضي).
+  const hasRes = /سكن|resid/.test(s); // سكن / سكني / للسكن / residence
+  const hasInv = /استثمار|invest/.test(s); // استثمار / للاستثمار / investment
   if (hasRes && hasInv) return "BOTH";
   if (s.includes("الاثنين")) return "BOTH";
   if (hasRes) return "RESIDENCE";

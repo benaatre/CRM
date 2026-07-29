@@ -56,12 +56,14 @@ function cleanName(v: string | null | undefined): string {
 function matchPurchaseMethod(raw: string | null | undefined): PurchaseMethod | null {
   const s = norm(cleanValue(raw ?? ""));
   if (!s) return null;
-  const hasCash = /كاش|نقد/.test(s);
-  const hasFinance = /تمويل|بنك/.test(s);
+  // توسعة 2026-07-29: نفس مرادفات normalizePurchaseMethod (عربي + إنجليزي) —
+  // القيمة النصية المباشرة بعمود مستقل تنمسك مثل صيغة الفورم. غير المتعرف عليه ⟵ null (لا افتراضي).
+  const hasCash = /كاش|نقد|كامل المبلغ|cash/.test(s);
+  const hasFinance = /تمويل|بنك|قرض|اقساط|قسط|finance|bank|mortgage|loan/.test(s);
   // «الاثنين معاً» = هدف (سكن+استثمار)، مو طريقة شراء — فلا نطابقه هنا.
   if (hasCash && hasFinance) return "CASH_AND_FINANCE";
-  if (hasFinance && /غير مدعوم/.test(s)) return "BANK_FINANCE_UNSUPPORTED";
-  if (hasFinance && /مدعوم/.test(s)) return "BANK_FINANCE_SUPPORTED";
+  if (hasFinance && /غير مدعوم|غير المدعوم|unsupported/.test(s)) return "BANK_FINANCE_UNSUPPORTED";
+  if (hasFinance && /مدعوم|supported/.test(s)) return "BANK_FINANCE_SUPPORTED";
   if (hasCash) return "CASH";
   if (hasFinance) return "BANK_FINANCE"; // تمويل بنكي مجرّد (بدون مدعوم/غير) → القديم
   return null;
