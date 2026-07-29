@@ -9,7 +9,8 @@ type Project = { id: string; name: string };
 type SaveBody = {
   type: FollowUpType;
   result: FollowUpResult;
-  section: FollowUpSection;
+  /** «اتصال في وقت آخر» بلا قسم — أقسام FollowUpSection الثلاثة لا تنطبق عليها. */
+  section?: FollowUpSection;
   stage: LeadStage;
   note?: string;
   nextDate?: string;
@@ -60,11 +61,16 @@ const STEP_LABEL: Record<InterestedStep, string> = {
 };
 
 export function FollowUpsForm({
-  leadId, stage, firstContactStage, projects, onSaved, onBook, initialSel,
+  leadId, stage, firstContactStage, hasFollowups, projects, onSaved, onBook, initialSel,
 }: {
   leadId: string;
   stage: LeadStage;
   firstContactStage?: FirstContactStage | null;
+  /**
+   * عنده متابعات مسجّلة؟ «اتصال في وقت آخر» في أول تواصل لا تضبط firstContactStage
+   * (بلا قسم) — فوجود أي متابعة يكفي للخروج من وضع «أول تواصل» إلى النموذج الاعتيادي.
+   */
+  hasFollowups?: boolean;
   projects: Project[];
   onSaved: () => void;
   onBook?: () => void;
@@ -74,7 +80,7 @@ export function FollowUpsForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(initialSel ?? null);
-  const [fcSel, setFcSel] = useState<"interested" | "noanswer" | "notInterested" | null>(null);
+  const [fcSel, setFcSel] = useState<"interested" | "noanswer" | "calllater" | "notInterested" | null>(null);
   // الخطوة الإلزامية لنتيجة «مهتم» — لا حفظ بدونها (والخادم يرفضها كمان).
   const [step, setStep] = useState<InterestedStep | null>(null);
 
@@ -169,33 +175,34 @@ export function FollowUpsForm({
     }
   }
 
-  // أول تواصل: ٣ خيارات إلزامية تحدّد المرحلة الأولى ومرحلة العميل.
-  const FC_LABEL = { interested: "مهتم", noanswer: "لا يرد", notInterested: "غير مهتم" } as const;
+  // أول تواصل: ٤ خيارات — «مهتم» بلا خطوة إلزامية (الموعد اختياري) + «اتصال في وقت آخر».
+  const FC_LABEL = { interested: "مهتم", noanswer: "لا يرد", calllater: "اتصال في وقت آخر", notInterested: "غير مهتم" } as const;
   function submitFirstContact() {
     if (!fcSel) return;
     // «غير مهتم» في أول تواصل = نفس منطق المتابعة العادية (أسباب منظّمة + retry).
     if (fcSel === "notInterested") {
       return post(buildNotInterestedBody(reasons, niRetry, date, note));
     }
-    // «مهتم» في أول تواصل يخضع لنفس الإلزام: موعد زيارة أو موعد اتصال (غير مناسب له زره الخاص).
+    // «مهتم»: بلا أي إلزام — المرحلة INTERESTED مباشرة، والموعد (إن حُدّد) يكتب nextFollowup.
     if (fcSel === "interested") {
-      if (step === "visit")
-        return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("تم تسجيل أول تواصل: مهتم — موعد زيارة", [], note), nextDate: date });
-      if (step === "call")
-        return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("تم تسجيل أول تواصل: مهتم — موعد اتصال", [], note), nextDate: date });
-      return;
+      return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "INTERESTED", note: compose("تم تسجيل أول تواصل: مهتم", [], note), ...(date ? { nextDate: date } : {}) });
+    }
+    // «اتصال في وقت آخر»: العميل ردّ وطلب معاودة — ATTEMPTED، بلا قسم (لا يصنّف المرحلة الأولى).
+    if (fcSel === "calllater") {
+      return post({ type: "CALL", result: "CALL_LATER", stage: "ATTEMPTED", note: compose("تم تسجيل أول تواصل: اتصال في وقت آخر", [], note), ...(date ? { nextDate: date } : {}) });
     }
     post({ type: "CALL", result: "NOT_ANSWERED_SCHEDULED", section: "NO_ANSWER", stage: "ATTEMPTED", note: compose("تم تسجيل أول تواصل: لا يرد", [], note) });
   }
 
-  // وضع «أول تواصل»: ما تحدّدت المرحلة الأولى بعد (null صريح) → الأزرار الثلاثة الإلزامية.
-  if (firstContactStage === null) {
+  // وضع «أول تواصل»: ما تحدّدت المرحلة الأولى (null صريح) وما فيه ولا متابعة —
+  // «اتصال في وقت آخر» تترك firstContactStage فارغة فلا تكفي وحدها كبوابة.
+  if (firstContactStage === null && !hasFollowups) {
     return (
       <section className="glass space-y-3 rounded-2xl p-5">
         <h2 className="font-semibold text-foreground">سجّل أول تواصل مع العميل</h2>
         <p className="text-xs text-muted-foreground">اختر نتيجة أول تواصل (إلزامي):</p>
         <div className="flex flex-wrap gap-2">
-          {(["interested", "noanswer", "notInterested"] as const).map((k) => (
+          {(["interested", "noanswer", "calllater", "notInterested"] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -208,22 +215,19 @@ export function FollowUpsForm({
         </div>
         {fcSel && (
           <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-3">
-            {/* «مهتم» في أول تواصل: الخطوة التالية إلزامية — موعد زيارة أو موعد اتصال */}
+            {/* «مهتم»: موعد المتابعة اختياري بالكامل — لا خطوة إلزامية */}
             {fcSel === "interested" && (
-              <div className="space-y-2">
-                <span className="text-xs text-muted-foreground">وش الخطوة الجاية معه؟ (إلزامي)</span>
-                <div className="flex gap-2">
-                  {(["visit", "call"] as const).map((s) => (
-                    <button key={s} type="button" onClick={() => { setStep(s); setDate(""); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${step === s ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>{STEP_LABEL[s]}</button>
-                  ))}
-                </div>
-                {step && (
-                  <label className="block space-y-1">
-                    <span className="text-xs text-muted-foreground">{step === "visit" ? "تاريخ ووقت الزيارة" : "تاريخ ووقت الاتصال"}</span>
-                    <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-                  </label>
-                )}
-              </div>
+              <label className="block space-y-1">
+                <span className="text-xs text-muted-foreground">متى تحب تتابع معه؟ (اختياري)</span>
+                <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+              </label>
+            )}
+            {/* «اتصال في وقت آخر»: تاريخ اختياري للمعاودة */}
+            {fcSel === "calllater" && (
+              <label className="block space-y-1">
+                <span className="text-xs text-muted-foreground">متى قال أتصل فيه؟ (اختياري)</span>
+                <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+              </label>
             )}
             {/* «غير مهتم» في أول تواصل: نفس شرائح الأسباب المنظّمة + «نحاول لاحقًا» */}
             {fcSel === "notInterested" && (
@@ -239,7 +243,7 @@ export function FollowUpsForm({
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={fcSel === "notInterested" && niRequiresText(reasons) ? NI_TEXT_PLACEHOLDER : "ملاحظة (اختياري)…"} className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-gold ${fcSel === "notInterested" && niRequiresText(reasons) && !note.trim() ? "border-destructive/60" : "border-border"}`} />
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
             <div className="flex justify-end">
-              <button type="button" onClick={submitFirstContact} disabled={pending || (fcSel === "notInterested" && ((niRetry === "yes" && !date) || (niRequiresText(reasons) && !note.trim()))) || (fcSel === "interested" && (!step || !date))} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
+              <button type="button" onClick={submitFirstContact} disabled={pending || (fcSel === "notInterested" && ((niRetry === "yes" && !date) || (niRequiresText(reasons) && !note.trim())))} className="rounded-lg bg-primary px-5 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "جارٍ…" : "حفظ أول تواصل"}</button>
             </div>
           </div>
         )}

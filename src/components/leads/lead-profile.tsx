@@ -247,6 +247,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
               leadId={detail.id}
               stage={detail.stage}
               firstContactStage={detail.firstContactStage}
+              hasFollowups={items.length > 0}
               projects={projects}
               onSaved={() => { setQuickFu(null); reload(); router.refresh(); }}
               onBook={() => setReserveMode("reserve")}

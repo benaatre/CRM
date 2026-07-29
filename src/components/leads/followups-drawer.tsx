@@ -60,7 +60,7 @@ function DrawerBody({
           className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5"
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
         >
-          <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} projects={[]} onSaved={() => { reload(); onChanged?.(); }} />
+          <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} hasFollowups={items.length > 0} projects={[]} onSaved={() => { reload(); onChanged?.(); }} />
           <FollowUpsTimeline items={items} systemEvents={systemEvents} loading={loading} leadId={leadId} onChanged={() => { reload(); onChanged?.(); }} />
         </div>
       </aside>

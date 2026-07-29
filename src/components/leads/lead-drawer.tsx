@@ -370,7 +370,7 @@ function DrawerFollowups({ leadId, stage, firstContactStage, onChanged }: { lead
   const { items, systemEvents, loading, reload } = useFollowUps(leadId);
   return (
     <div className="space-y-4">
-      <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} projects={[]} onSaved={() => { reload(); onChanged(); }} />
+      <FollowUpsForm leadId={leadId} stage={stage} firstContactStage={firstContactStage} hasFollowups={items.length > 0} projects={[]} onSaved={() => { reload(); onChanged(); }} />
       <FollowUpsTimeline items={items} systemEvents={systemEvents} loading={loading} />
     </div>
   );
