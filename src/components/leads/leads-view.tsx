@@ -32,7 +32,7 @@ import { DEFAULT_LEAD_SORT, type LeadSort } from "@/lib/lead-filters";
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
 type ArchiveReason = "" | "final" | "marketer" | "manual";
-type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean; tr: boolean; ar: ArchiveReason };
+type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean; tr: boolean; bank: boolean; ar: ArchiveReason };
 
 // شرائح فلتر «سبب الأرشفة» بتبويب «مؤرشف».
 const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
