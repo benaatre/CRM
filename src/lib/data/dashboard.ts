@@ -110,7 +110,7 @@ export type InterestSentiment = {
   interested: {
     total: number;      // مجموع الخمسة أدناه
     interested: number;  // INTERESTED
-    visitScheduled: number; // VISIT_SCHEDULED (موعد زيارة مؤكّد)
+    visitScheduled: number; // VISIT_SCHEDULED (موعد زيارة)
     viewed: number;      // VIEWING (زار)
     negotiating: number; // NEGOTIATION (تفاوض)
     followUpLater: number; // FOLLOW_UP_LATER المهتم فقط (section آخر متابعة = INTERESTED)
