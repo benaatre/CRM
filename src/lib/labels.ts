@@ -285,7 +285,7 @@ export const followUpResultLabels: Record<FollowUpResult, string> = {
   NOT_INTERESTED_OTHER: "غير مهتم — سبب آخر",
   INTERESTED_VISIT_SCHEDULED: "مهتم — موعد زيارة",
   VISIT_NO_SHOW_RESCHEDULED: "ما حضر — أُعيدت الجدولة",
-  CALL_LATER: "اتصال في وقت آخر",
+  CALL_LATER: "طلب التواصل في وقت آخر",
 };
 
 /**

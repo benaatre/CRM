@@ -175,7 +175,7 @@ export function FollowUpsForm({
   }
 
   // أول تواصل: ٤ خيارات — «مهتم» بلا خطوة إلزامية (الموعد اختياري) + «اتصال في وقت آخر».
-  const FC_LABEL = { interested: "مهتم", noanswer: "لا يرد", calllater: "اتصال في وقت آخر", notInterested: "غير مهتم" } as const;
+  const FC_LABEL = { interested: "مهتم", noanswer: "لا يرد", calllater: "طلب التواصل في وقت آخر", notInterested: "غير مهتم" } as const;
   function submitFirstContact() {
     if (!fcSel) return;
     // «غير مهتم» في أول تواصل = نفس منطق المتابعة العادية (أسباب منظّمة + retry).
@@ -188,7 +188,7 @@ export function FollowUpsForm({
     }
     // «اتصال في وقت آخر»: العميل ردّ وطلب معاودة — ATTEMPTED، بلا قسم (لا يصنّف المرحلة الأولى).
     if (fcSel === "calllater") {
-      return post({ type: "CALL", result: "CALL_LATER", stage: "ATTEMPTED", note: compose("تم تسجيل أول تواصل: اتصال في وقت آخر", [], note), ...(date ? { nextDate: date } : {}) });
+      return post({ type: "CALL", result: "CALL_LATER", stage: "ATTEMPTED", note: compose("تم تسجيل أول تواصل: طلب التواصل في وقت آخر", [], note), ...(date ? { nextDate: date } : {}) });
     }
     post({ type: "CALL", result: "NOT_ANSWERED_SCHEDULED", section: "NO_ANSWER", stage: "ATTEMPTED", note: compose("تم تسجيل أول تواصل: لا يرد", [], note) });
   }
