@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
-import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA } from "@/lib/lead-filters";
+import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA, VISIT_FILTER_STAGES, collapseStagesParam } from "@/lib/lead-filters";
 import type { LeadFilterValues, LeadSort } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
@@ -35,7 +35,7 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, unresponsive, bankCheck,
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, unresponsive, bankCheck, visitCount,
 }: {
   basePath: string;
   isManager: boolean;
@@ -48,6 +48,8 @@ export function LeadsFilterBar({
   unresponsive?: number;
   /** عدد «حسبة البنك» (آخر متابعة BANK_CHECK) — الفلتر للجميع ضمن صلاحيته. */
   bankCheck?: number;
+  /** عدد عملاء مرحلتي الزيارة معًا — رقم شريحة «زيارة» الموحّدة (اختياري). */
+  visitCount?: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -61,7 +63,7 @@ export function LeadsFilterBar({
     const q = next.q ?? filters.q;
     if (q) p.set("q", q);
     const stages = next.stages ?? filters.stages;
-    if (stages.length) p.set("stages", stages.join(","));
+    if (stages.length) p.set("stages", collapseStagesParam(stages).join(",")); // زوج الزيارة ⟵ "visit"
     const emps = next.emps ?? filters.emps;
     if (emps.length) p.set("emps", emps.join(","));
     const sort = next.sort ?? filters.sort;
@@ -90,6 +92,15 @@ export function LeadsFilterBar({
   }
   // مظلّة «مهتم» نشطة فقط لمّا تكون المراحل الأربع كلها محدّدة (يميّزها عن ضغط زر فرعي واحد).
   const interestUmbrellaActive = INTEREST_UMBRELLA.every((s) => filters.stages.includes(s));
+  // فلتر «زيارة» الموحّد: المرحلتان تُضافان وتُزالان معًا دائمًا (الرابط يحملهما كـ"visit").
+  const visitFilterActive = VISIT_FILTER_STAGES.every((s) => filters.stages.includes(s));
+  function toggleVisitFilter() {
+    go({
+      stages: visitFilterActive
+        ? filters.stages.filter((x) => !(VISIT_FILTER_STAGES as string[]).includes(x))
+        : [...new Set([...filters.stages, ...VISIT_FILTER_STAGES])],
+    });
+  }
   function toggleInterestUmbrella() {
     // نشطة → أزل الأربع؛ غير نشطة → أضفها للمحدّد الحالي (بلا تكرار، يحفظ أي مراحل أخرى).
     go({
@@ -144,16 +155,21 @@ export function LeadsFilterBar({
         </div>
       )}
 
-      {/* فلتر المراحل */}
+      {/* فلتر المراحل — «زيارة» شريحة واحدة لمرحلتي الزيارة (كل صف يعرض مرحلته الفعلية) */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button onClick={() => go({ stages: [] })} className={chipAll(filters.stages.length === 0)}>كل المراحل</button>
         {stageOrder.map((s) =>
           s === "INTERESTED" ? (
             // مظلّة شاملة بدل مرحلة حرفية — تفلتر كل المتفاعلين دفعة واحدة.
             <button key={s} onClick={toggleInterestUmbrella} className={chip(interestUmbrellaActive)}>{stageLabels.INTERESTED}</button>
-          ) : (
-            <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
-          )
+          ) : s === "VIEWING" ? null // مدموجة في شريحة «زيارة» الموحّدة
+            : s === "VISIT_SCHEDULED" ? (
+              <button key="visit-united" onClick={toggleVisitFilter} className={chip(visitFilterActive)}>
+                زيارة{visitCount != null ? ` (${toArabicDigits(visitCount)})` : ""}
+              </button>
+            ) : (
+              <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
+            )
         )}
       </div>
 

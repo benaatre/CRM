@@ -1,5 +1,5 @@
 import { requireUser, isManager } from "@/lib/auth-guards";
-import { getLeadCounts, getEmployees, getNotContactedCount, getUnresponsiveCount, getBankCheckCount } from "@/lib/data/leads";
+import { getLeadCounts, getEmployees, getNotContactedCount, getUnresponsiveCount, getBankCheckCount, getVisitStagesCount } from "@/lib/data/leads";
 import { parseLeadFilters, buildLeadsQuery } from "@/lib/lead-filters";
 import { LeadsView } from "@/components/leads/leads-view";
 
@@ -18,12 +18,13 @@ export default async function LeadsPage({
     sp.tab === "archived" ? "archived" : sp.tab === "hidden" ? "hidden" : sp.tab === "unassigned" ? "unassigned" : "working";
   const { values, assigneeIds } = parseLeadFilters(sp);
 
-  const [counts, employees, notContacted, unresponsive, bankCheck] = await Promise.all([
+  const [counts, employees, notContacted, unresponsive, bankCheck, visitCount] = await Promise.all([
     getLeadCounts(),
     manager ? getEmployees() : Promise.resolve([]),
     getNotContactedCount(assigneeIds),
     manager ? getUnresponsiveCount() : Promise.resolve(0),
     getBankCheckCount(),
+    getVisitStagesCount(),
   ]);
 
   // الجدول يقرأ صفوفه من نفس الـ API GET /api/leads — كل تبويب بقيوده على الخادم.
@@ -36,6 +37,7 @@ export default async function LeadsPage({
       notContacted={notContacted}
       unresponsive={manager ? unresponsive : undefined}
       bankCheck={bankCheck}
+      visitCount={visitCount}
       tab={tab}
       isManager={manager}
       employees={employees}

@@ -29,7 +29,7 @@ import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
-import { INTEREST_UMBRELLA, type LeadSort, type ArchiveReason } from "@/lib/lead-filters";
+import { INTEREST_UMBRELLA, VISIT_FILTER_STAGES, type LeadSort, type ArchiveReason } from "@/lib/lead-filters";
 import { interestedIdleDays, INTERESTED_STALE_WARN_DAYS } from "@/lib/visit-engine";
 import { Prisma } from "@prisma/client";
 
@@ -442,6 +442,12 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
  * عدد العملاء الذين آخر متابعة لهم «حسبة البنك» (لشارة الفلتر) — ضمن صلاحية المستخدم
  * (الموظف: عملاؤه فقط). استعلام تجميعي واحد بـ LATERAL على أحدث متابعة لكل عميل.
  */
+/** عدد عملاء مرحلتي الزيارة معًا (موعد + زار) — رقم شريحة «زيارة» الموحّدة، ضمن الصلاحية. */
+export async function getVisitStagesCount(): Promise<number> {
+  const { where } = await scopeForUser();
+  return prisma.lead.count({ where: { AND: [where, { stage: { in: VISIT_FILTER_STAGES }, isArchived: false }] } });
+}
+
 export async function getBankCheckCount(): Promise<number> {
   const { user, manager } = await scopeForUser();
   const rows = await prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`

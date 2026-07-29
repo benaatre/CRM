@@ -27,7 +27,7 @@ import { FollowUpsDrawer } from "./followups-drawer";
 import { ImportDialog } from "@/components/team/import-dialog";
 import { useLeads } from "./use-leads";
 
-import { DEFAULT_LEAD_SORT, type LeadSort } from "@/lib/lead-filters";
+import { DEFAULT_LEAD_SORT, collapseStagesParam, type LeadSort } from "@/lib/lead-filters";
 
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
@@ -44,7 +44,7 @@ const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
 const PAGE_SIZE = 12;
 
 export function LeadsView({
-  query, counts, notContacted, unresponsive, bankCheck, tab, isManager, employees, filters,
+  query, counts, notContacted, unresponsive, bankCheck, visitCount, tab, isManager, employees, filters,
 }: {
   query: string;
   counts: { working: number; archived: number; hidden: number; unassigned: number };
@@ -52,6 +52,8 @@ export function LeadsView({
   unresponsive?: number;
   /** عدد «حسبة البنك» (آخر متابعة BANK_CHECK) — لشارة الفلتر، ضمن صلاحية المستخدم. */
   bankCheck?: number;
+  /** عدد عملاء مرحلتي الزيارة معًا — رقم شريحة «زيارة» الموحّدة. */
+  visitCount?: number;
   tab: Tab;
   isManager: boolean;
   employees: Employee[];
@@ -79,7 +81,7 @@ export function LeadsView({
     else if (v === "hidden") p.set("tab", "hidden");
     else if (v === "unassigned") p.set("tab", "unassigned");
     if (filters.q) p.set("q", filters.q);
-    if (filters.stages.length) p.set("stages", filters.stages.join(","));
+    if (filters.stages.length) p.set("stages", collapseStagesParam(filters.stages).join(",")); // زوج الزيارة ⟵ "visit"
     if (filters.emps.length) p.set("emps", filters.emps.join(","));
     if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort); // يحفظ الترتيب عبر التبويبات
     if (filters.nr) p.set("nr", "1"); // فلتر «لم يستجب» يبقى عبر التبويبات
@@ -95,7 +97,7 @@ export function LeadsView({
     const p = new URLSearchParams();
     p.set("tab", "hidden");
     if (filters.q) p.set("q", filters.q);
-    if (filters.stages.length) p.set("stages", filters.stages.join(","));
+    if (filters.stages.length) p.set("stages", collapseStagesParam(filters.stages).join(",")); // زوج الزيارة ⟵ "visit"
     if (filters.emps.length) p.set("emps", filters.emps.join(","));
     if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort);
     if (v) p.set("ar", v);
@@ -171,6 +173,7 @@ export function LeadsView({
             notContacted={tab === "working" ? notContacted : undefined}
             unresponsive={tab === "working" ? unresponsive : undefined}
             bankCheck={tab === "working" ? bankCheck : undefined}
+            visitCount={visitCount}
           />
           {/* فلتر «سبب الأرشفة» — تبويب «مؤرشف» فقط */}
           {tab === "hidden" && (
