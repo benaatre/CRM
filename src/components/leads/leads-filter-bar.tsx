@@ -35,7 +35,7 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, unresponsive, bankCheck, visitCount,
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, waiting, bankCheck, visitCount,
 }: {
   basePath: string;
   isManager: boolean;
@@ -44,8 +44,8 @@ export function LeadsFilterBar({
   preserve?: Record<string, string>;
   hideUnassignedEmp?: boolean;
   notContacted?: number;
-  /** عدد «لم يستجب ×N» — يظهر الفلتر للمالك/المدير فقط عند تمريره. */
-  unresponsive?: number;
+  /** عدد «في الانتظار» (آخر متابعة لم يستجب/في الانتظار) — الفلتر للجميع ضمن صلاحيته. */
+  waiting?: number;
   /** عدد «حسبة البنك» (آخر متابعة BANK_CHECK) — الفلتر للجميع ضمن صلاحيته. */
   bankCheck?: number;
   /** عدد عملاء مرحلتي الزيارة معًا — رقم شريحة «زيارة» الموحّدة (اختياري). */
@@ -68,8 +68,8 @@ export function LeadsFilterBar({
     if (emps.length) p.set("emps", emps.join(","));
     const sort = next.sort ?? filters.sort;
     if (sort && sort !== DEFAULT_LEAD_SORT) p.set("sort", sort); // نظافة الرابط
-    const nr = next.nr ?? filters.nr;
-    if (nr) p.set("nr", "1"); // فلتر «لم يستجب»
+    const wait = next.wait ?? filters.wait;
+    if (wait) p.set("wait", "1"); // فلتر «في الانتظار»
     const tr = next.tr ?? filters.tr;
     if (tr) p.set("tr", "1"); // فلتر «محوَّل» (المحوّلون بالبيانات)
     const bank = next.bank ?? filters.bank;
@@ -113,7 +113,7 @@ export function LeadsFilterBar({
     go({ emps: filters.emps.includes(t) ? filters.emps.filter((x) => x !== t) : [...filters.emps, t] });
   }
 
-  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.nr || filters.tr || filters.bank;
+  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.wait || filters.tr || filters.bank;
   const notContactedActive = filters.stages.length === 1 && filters.stages[0] === "NEW";
 
   return (
@@ -127,13 +127,13 @@ export function LeadsFilterBar({
           >
             لم يتم التواصل <span className="font-bold">({toArabicDigits(notContacted)})</span>
           </button>
-          {/* فلتر «لم يستجب ×N» — مهتمون تراكمت عليهم متابعات «لم يستجب» (مالك/مدير فقط) */}
-          {isManager && unresponsive != null && (
+          {/* فلتر «في الانتظار (N)» — آخر متابعة «لم يستجب» أو «في الانتظار» (للجميع ضمن صلاحيته) */}
+          {waiting != null && (
             <button
-              onClick={() => go({ nr: !filters.nr })}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.nr ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
+              onClick={() => go({ wait: !filters.wait })}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.wait ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
             >
-              لم يستجب <span className="font-bold">×{toArabicDigits(unresponsive)}</span>
+              في الانتظار <span className="font-bold">({toArabicDigits(waiting)})</span>
             </button>
           )}
           {/* فلتر «محوَّل» — المحوّلون يدويًا «بالبيانات» فقط (كجديد لا يظهر — لا يُميَّز عن الجديد) */}
@@ -200,7 +200,7 @@ export function LeadsFilterBar({
         </div>
         {hasFilters && (
           <button
-            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], nr: false, tr: false, bank: false }))); }}
+            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], wait: false, tr: false, bank: false }))); }}
             className="rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
           >مسح الكل</button>
         )}

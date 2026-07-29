@@ -23,17 +23,18 @@ export async function GET(req: Request) {
         : tabParam === "all" ? "all"
           : "working";
 
-  const { q, stages, assigneeIds, includeUnassigned, unresponsive, transferred, bankCheck, archiveReason, sort } = parseLeadFilters({
+  const { q, stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, sort } = parseLeadFilters({
     q: url.searchParams.get("q") ?? undefined,
     stages: url.searchParams.get("stages") ?? undefined,
     emps: url.searchParams.get("emps") ?? undefined,
     sort: url.searchParams.get("sort") ?? undefined,
-    nr: url.searchParams.get("nr") ?? undefined,
+    wait: url.searchParams.get("wait") ?? undefined,
+    nr: url.searchParams.get("nr") ?? undefined, // توافق خلفي — يفتح «في الانتظار»
     tr: url.searchParams.get("tr") ?? undefined,
     bank: url.searchParams.get("bank") ?? undefined,
     ar: url.searchParams.get("ar") ?? undefined,
   });
 
-  const leads = await getLeads({ tab, stages, assigneeIds, includeUnassigned, unresponsive, transferred, bankCheck, archiveReason, q, sort });
+  const leads = await getLeads({ tab, stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, q, sort });
   return NextResponse.json({ leads });
 }

@@ -74,8 +74,10 @@ export type LeadRow = {
    * للموظف EMPLOYEE فقط — دائمًا null للمالك/المدير وخارج نظام «لم يتم الرد».
    */
   pull: { state: "grace" | "warning" | "overdue"; baselineMs: number; deadlineMs: number; noAnswerCount: number } | null;
-  /** عدد متابعات «لم يستجب» (NO_ANSWER_INTERESTED) — لشارة «لم يستجب ×N» (مدير/مالك). */
-  unresponsiveCount: number;
+  /** آخر متابعة (المرئية) «لم يستجب» أو «في الانتظار» — عضوية شريحة «في الانتظار» (wait=1). */
+  waiting: boolean;
+  /** عدد متابعات عائلة الانتظار (لم يستجب + في الانتظار) بالنافذة المرئية — شارة «في الانتظار ×N». */
+  waitingCount: number;
   /** مسوّق (آخر متابعاته NOT_INTERESTED_MARKETER) — وسم واضح ويُستثنى من الإحياء. */
   marketer: boolean;
   /** داخل بركة التوزيع التلقائي (autoPoolAt != null) — شارة «تلقائي» وتمييزه عن اليدوي. */
@@ -196,6 +198,9 @@ export function lastAssignReasonOf(reassignments?: { reason: string; toUserId: s
   return reassignments?.find((r) => r.toUserId !== null)?.reason ?? null;
 }
 
+/** نتائج «عائلة الانتظار»: آخر متابعة منها = العميل «في الانتظار» (شريحة wait=1). */
+const WAITING_RESULTS: FollowUpResult[] = ["NO_ANSWER_INTERESTED", "ON_HOLD"];
+
 type RowCtx = { userId: string; manager: boolean; hidden: Set<string>; nrConfig: NoResponseConfig; now: Date };
 
 function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
@@ -210,6 +215,12 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
   const postAssignFuCount = l.assignedAt
     ? (l.followUps ?? []).filter((f) => f.createdAt > l.assignedAt!).length
     : 0;
+  // النافذة المرئية للمتابعات: للمخفي سجلُّه — ما بعد آخر إسناد فقط (ما قبل الاستلام
+  // لا يُكشف حتى عبر الفلاتر والشارات). المتابعات مجلوبة تنازليًا فأولها الأحدث.
+  const visibleFus = hidden && l.assignedAt
+    ? (l.followUps ?? []).filter((f) => f.createdAt > l.assignedAt!)
+    : (l.followUps ?? []);
+  const latestVisibleFu = visibleFus[0] ?? null;
   // الخطوة ٤: عدّاد السحب الحي — نفس أهلية محرّك «لم يتم الرد» حرفيًا (مراحل NEW/ATTEMPTED،
   // بلا حصانة يدوية، دون سقف الدورات) ونفس دواله النقية. للموظف فقط.
   const pull = ((): LeadRow["pull"] => {
@@ -268,8 +279,9 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     // §٦: أيقونة حمراء لو آخر سحب كان بسبب استنفاد المحاولات (وإلا نجمة ذهبية للتقصير).
     transferredExhausted: transferred && lastPullReason.startsWith("no_response_exhausted"),
     pull,
-    // من نافذة أحدث ٢٠ متابعة (المجلوبة أصلًا) — كافية عمليًا لكلا العدّادين.
-    unresponsiveCount: (l.followUps ?? []).filter((f) => f.result === "NO_ANSWER_INTERESTED").length,
+    // «في الانتظار»: آخر متابعة مرئية من عائلة الانتظار — نفس نمط «حسبة البنك» حرفيًا.
+    waiting: !!latestVisibleFu && WAITING_RESULTS.includes(latestVisibleFu.result),
+    waitingCount: visibleFus.filter((f) => WAITING_RESULTS.includes(f.result)).length,
     marketer: (l.followUps ?? []).some((f) => f.result === "NOT_INTERESTED_MARKETER"),
     inAutoPool: l.autoPoolAt != null,
     visitAt: l.visitAt,
@@ -280,11 +292,8 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
       && interestedIdleDays(latestFuAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
     // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
     manualTransferred: lastAssignReasonOf(l.reassignments) === MANUAL_TRANSFER_FULL,
-    // «حسبة البنك»: آخر متابعة مرئية — للمخفي سجلُّه تُعتمد أحدث متابعة بعد الإسناد فقط
-    // (ما قبل الاستلام لا يُكشف حتى عبر الفلتر). المتابعات مجلوبة تنازليًا.
-    bankCheck: (hidden && l.assignedAt
-      ? ((l.followUps ?? []).find((f) => f.createdAt > l.assignedAt!) ?? null)
-      : (l.followUps?.[0] ?? null))?.result === "BANK_CHECK",
+    // «حسبة البنك»: آخر متابعة مرئية (نفس نافذة الخصوصية أعلاه).
+    bankCheck: latestVisibleFu?.result === "BANK_CHECK",
   };
 }
 
@@ -317,8 +326,8 @@ export type LeadFilters = {
   stages?: LeadStage[];
   assigneeIds?: string[];
   includeUnassigned?: boolean;
-  /** فلتر «لم يستجب»: مهتمون تراكمت عليهم متابعات NO_ANSWER_INTERESTED — للمالك/المدير فقط. */
-  unresponsive?: boolean;
+  /** فلتر «في الانتظار»: آخر متابعة «لم يستجب» أو «في الانتظار» — للجميع ضمن صلاحيته. */
+  waiting?: boolean;
   /** فلتر «محوَّل»: المحوّلون يدويًا «بالبيانات» فقط (manual_transfer_full) — للجميع ضمن صلاحيته. */
   transferred?: boolean;
   /** فلتر «حسبة البنك»: آخر متابعة نتيجتها BANK_CHECK — للجميع ضمن صلاحيته. */
@@ -382,7 +391,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { user, where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, transferred, bankCheck, archiveReason, q, sort = "activity" } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
@@ -405,10 +414,6 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
     const term = q.trim();
     and.push({ OR: [{ name: { contains: term } }, { phone: { contains: term } }] });
   }
-  // فلتر «لم يستجب» (مدير/مالك فقط — يُتجاهل للموظف): مهتمون عليهم متابعة NO_ANSWER_INTERESTED واحدة فأكثر.
-  if (manager && unresponsive) {
-    and.push({ stage: { in: INTEREST_UMBRELLA }, followUps: { some: { result: "NO_ANSWER_INTERESTED" } } });
-  }
   // فلتر سبب الأرشفة (تبويب «مؤرشف»): نهائي/مسوّق حسب المتابعة المنظّمة، يدوي = بلا أيٍّ منهما.
   if (tab === "hidden" && archiveReason) {
     if (archiveReason === "final") and.push({ followUps: { some: { result: "NOT_INTERESTED_FINAL" } } });
@@ -430,11 +435,12 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   // الخطوة ٣ب: قرار الإخفاء للدفعة كاملة (استعلام تدقيق واحد) — للموظف فقط.
   const ctx = await buildRowCtx(user.id, manager, user.role, leads);
   const rows = leads.map((l) => toRow(l, ctx));
-  // فلترا «محوَّل» و«حسبة البنك»: «الأخير» في السجل لا يُعبَّر عنه بشرط Prisma مباشر،
-  // والصفوف تحمل القرار المشتق أصلًا — فالترشيح هنا بلا أي استعلام إضافي.
+  // فلاتر «محوَّل» و«حسبة البنك» و«في الانتظار»: «الأخير» في السجل لا يُعبَّر عنه بشرط
+  // Prisma مباشر، والصفوف تحمل القرار المشتق أصلًا — فالترشيح هنا بلا أي استعلام إضافي.
   let out = rows;
   if (transferred) out = out.filter((r) => r.manualTransferred);
   if (bankCheck) out = out.filter((r) => r.bankCheck);
+  if (waiting) out = out.filter((r) => r.waiting);
   return out;
 }
 
@@ -652,19 +658,25 @@ export async function getNotContactedCount(assigneeIds?: string[]): Promise<numb
 }
 
 /**
- * عدد المهتمين الذين عليهم متابعات «لم يستجب» (لشارة فلتر «لم يستجب ×N») — للمالك/المدير.
- * غير المدير يرجّع صفرًا (الفلتر لا يظهر له أصلًا).
+ * عدد العملاء الذين آخر متابعة لهم من «عائلة الانتظار» (لم يستجب/في الانتظار) — لشريحة
+ * «في الانتظار (N)». ضمن الصلاحية (الموظف: عملاؤه فقط) — نفس نمط عدّاد «حسبة البنك».
  */
-export async function getUnresponsiveCount(): Promise<number> {
-  const { manager } = await scopeForUser();
-  if (!manager) return 0;
-  return prisma.lead.count({
-    where: {
-      stage: { in: INTEREST_UMBRELLA },
-      isArchived: false,
-      followUps: { some: { result: "NO_ANSWER_INTERESTED" } },
-    },
-  });
+export async function getWaitingCount(): Promise<number> {
+  const { user, manager } = await scopeForUser();
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS n
+    FROM "Lead" l
+    JOIN LATERAL (
+      SELECT f."result" FROM "FollowUp" f
+      WHERE f."leadId" = l."id"
+      ORDER BY f."createdAt" DESC
+      LIMIT 1
+    ) lf ON TRUE
+    WHERE l."isArchived" = false
+      AND lf."result" IN ('NO_ANSWER_INTERESTED'::"FollowUpResult", 'ON_HOLD'::"FollowUpResult")
+      ${manager ? Prisma.empty : Prisma.sql`AND l."assignedToId" = ${user.id}`}
+  `);
+  return Number(rows[0]?.n ?? 0);
 }
 
 /** قائمة الموظفين (لفلتر المدير وإعادة الإسناد). */

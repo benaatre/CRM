@@ -32,7 +32,7 @@ import { DEFAULT_LEAD_SORT, collapseStagesParam, type LeadSort } from "@/lib/lea
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
 type ArchiveReason = "" | "final" | "marketer" | "manual";
-type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean; tr: boolean; bank: boolean; ar: ArchiveReason };
+type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; wait: boolean; tr: boolean; bank: boolean; ar: ArchiveReason };
 
 // شرائح فلتر «سبب الأرشفة» بتبويب «مؤرشف».
 const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
@@ -44,12 +44,13 @@ const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
 const PAGE_SIZE = 12;
 
 export function LeadsView({
-  query, counts, notContacted, unresponsive, bankCheck, visitCount, tab, isManager, employees, filters,
+  query, counts, notContacted, waiting, bankCheck, visitCount, tab, isManager, employees, filters,
 }: {
   query: string;
   counts: { working: number; archived: number; hidden: number; unassigned: number };
   notContacted: number;
-  unresponsive?: number;
+  /** عدد «في الانتظار» (آخر متابعة لم يستجب/في الانتظار) — ضمن صلاحية المستخدم. */
+  waiting?: number;
   /** عدد «حسبة البنك» (آخر متابعة BANK_CHECK) — لشارة الفلتر، ضمن صلاحية المستخدم. */
   bankCheck?: number;
   /** عدد عملاء مرحلتي الزيارة معًا — رقم شريحة «زيارة» الموحّدة. */
@@ -84,7 +85,7 @@ export function LeadsView({
     if (filters.stages.length) p.set("stages", collapseStagesParam(filters.stages).join(",")); // زوج الزيارة ⟵ "visit"
     if (filters.emps.length) p.set("emps", filters.emps.join(","));
     if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort); // يحفظ الترتيب عبر التبويبات
-    if (filters.nr) p.set("nr", "1"); // فلتر «لم يستجب» يبقى عبر التبويبات
+    if (filters.wait) p.set("wait", "1"); // فلتر «في الانتظار» يبقى عبر التبويبات
     if (filters.tr) p.set("tr", "1"); // فلتر «محوَّل» يبقى عبر التبويبات
     if (filters.bank) p.set("bank", "1"); // فلتر «حسبة البنك» يبقى عبر التبويبات
     if (v === "hidden" && filters.ar) p.set("ar", filters.ar); // سبب الأرشفة خاص بتبويب «مؤرشف»
@@ -171,7 +172,7 @@ export function LeadsView({
             preserve={{ tab: tab === "archived" || tab === "hidden" ? tab : "" }}
             hideUnassignedEmp={tab === "working"}
             notContacted={tab === "working" ? notContacted : undefined}
-            unresponsive={tab === "working" ? unresponsive : undefined}
+            waiting={tab === "working" ? waiting : undefined}
             bankCheck={tab === "working" ? bankCheck : undefined}
             visitCount={visitCount}
           />
@@ -248,7 +249,7 @@ export function LeadsView({
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
                     <TransferBadge show={l.manualTransferred} />
                     {!isManager && <PullCountdown pull={l.pull} />}
-                    {isManager && l.unresponsiveCount > 0 && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning">لم يستجب ×{toArabicDigits(l.unresponsiveCount)}</span>}
+                    {isManager && l.waiting && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning" title="آخر متابعة: لم يستجب / في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}
                     {l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}
                   </div>
                   <a href={`tel:${l.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{l.phone}</a>
@@ -297,7 +298,7 @@ export function LeadsView({
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
                   <td className="px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
                   <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} />{!isManager && <PullCountdown pull={l.pull} />}{isManager && l.unresponsiveCount > 0 && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning">لم يستجب ×{toArabicDigits(l.unresponsiveCount)}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
+                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} />{!isManager && <PullCountdown pull={l.pull} />}{isManager && l.waiting && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning" title="آخر متابعة: لم يستجب / في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
                   {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
                   <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>
