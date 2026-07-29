@@ -127,15 +127,6 @@ export function LeadsFilterBar({
           >
             لم يتم التواصل <span className="font-bold">({toArabicDigits(notContacted)})</span>
           </button>
-          {/* فلتر «في الانتظار (N)» — آخر متابعة «لم يستجب» أو «في الانتظار» (للجميع ضمن صلاحيته) */}
-          {waiting != null && (
-            <button
-              onClick={() => go({ wait: !filters.wait })}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.wait ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
-            >
-              في الانتظار <span className="font-bold">({toArabicDigits(waiting)})</span>
-            </button>
-          )}
           {/* فلتر «محوَّل» — المحوّلون يدويًا «بالبيانات» فقط (كجديد لا يظهر — لا يُميَّز عن الجديد) */}
           <button
             onClick={() => go({ tr: !filters.tr })}
@@ -164,9 +155,20 @@ export function LeadsFilterBar({
             <button key={s} onClick={toggleInterestUmbrella} className={chip(interestUmbrellaActive)}>{stageLabels.INTERESTED}</button>
           ) : s === "VIEWING" ? null // مدموجة في شريحة «زيارة» الموحّدة
             : s === "VISIT_SCHEDULED" ? (
-              <button key="visit-united" onClick={toggleVisitFilter} className={chip(visitFilterActive)}>
-                زيارة{visitCount != null ? ` (${toArabicDigits(visitCount)})` : ""}
-              </button>
+              <span key="visit-united" className="contents">
+                <button onClick={toggleVisitFilter} className={chip(visitFilterActive)}>
+                  زيارة{visitCount != null ? ` (${toArabicDigits(visitCount)})` : ""}
+                </button>
+                {/* شريحة «في الانتظار (N)» بجانب «زيارة» — آخر متابعة لم يستجب/في الانتظار (للجميع ضمن صلاحيته) */}
+                {waiting != null && (
+                  <button
+                    onClick={() => go({ wait: !filters.wait })}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.wait ? "border-warning bg-warning/20 text-warning" : "border-warning/40 text-warning hover:bg-warning/10"}`}
+                  >
+                    في الانتظار <span className="font-bold">({toArabicDigits(waiting)})</span>
+                  </button>
+                )}
+              </span>
             ) : (
               <button key={s} onClick={() => toggleStage(s)} className={chip(filters.stages.includes(s))}>{stageLabels[s as LeadStage]}</button>
             )
