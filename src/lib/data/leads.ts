@@ -252,7 +252,8 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     channel: l.channel,
     stage: l.stage,
     priority: l.priority,
-    attempts: l.attempts,
+    // «جديد ١٠٠٪»: عدّاد المحاولات التاريخي لا يصل الموظف المخفي عنه السجل (العمود محفوظ).
+    attempts: hidden ? 0 : l.attempts,
     budget: l.budget ? l.budget.toNumber() : null,
     unitType: l.unitType,
     // حجب تاريخ دخول النظام عن الموظف (يراه OWNER/ADMIN فقط) — نفس نمط حجب مبالغ الحجوزات.
@@ -260,7 +261,8 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     assignedAt: l.assignedAt,
     // يُحسب على الخادم بالتواريخ الحقيقية، فلا يحتاج الموظف createdAt إطلاقًا.
     daysWaiting: daysWaiting({ assignedAt: l.assignedAt, createdAt: l.createdAt, lastContact: l.lastContact }),
-    lastContact: l.lastContact,
+    // آخر تواصل تاريخي لا يُعرض للمخفي سجلّه (يبدأ صفحته بيضاء) — الحساب أعلاه بالقيم الحقيقية.
+    lastContact: hidden ? null : l.lastContact,
     nextFollowup: l.nextFollowup,
     // المُسند لمالك يُعرض «غير موزّع» (المالك ليس موظف مبيعات).
     assignedTo: l.assignedTo && l.assignedTo.role !== "OWNER" ? { id: l.assignedTo.id, name: l.assignedTo.name } : null,
@@ -280,9 +282,11 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
       return mine ? bookingCollection(bk.stage, bk.finalPrice.toNumber(), bk.collectedAmount.toNumber()) : null;
     })(),
     // نجمة العميل المحوّل: أُعيد توجيهه ولم يُسجّل أي متابعة بعد آخر إسناد (تختفي أول متابعة).
-    isTransferred: transferred,
+    // المحوَّل «كجديد» المخفي سجلّه: النجمة نفسها تفضح أن له ماضيًا — لا تظهر له إطلاقًا
+    // (المالك/المدير يرونها كاملة — hidden للموظف حصرًا).
+    isTransferred: hidden ? false : transferred,
     // §٦: أيقونة حمراء لو آخر سحب كان بسبب استنفاد المحاولات (وإلا نجمة ذهبية للتقصير).
-    transferredExhausted: transferred && lastPullReason.startsWith("no_response_exhausted"),
+    transferredExhausted: !hidden && transferred && lastPullReason.startsWith("no_response_exhausted"),
     pull,
     // «في الانتظار»: آخر متابعة مرئية من عائلة الانتظار — نفس نمط «حسبة البنك» حرفيًا.
     waiting: !!latestVisibleFu && WAITING_RESULTS.includes(latestVisibleFu.result),
