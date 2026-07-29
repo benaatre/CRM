@@ -9,7 +9,7 @@ import { toUserError } from "@/lib/action-error";
 import { requireManager } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { countToday } from "@/lib/dist-limits";
-import { assignLeadsToEmployee } from "@/lib/assignment";
+import { assignLeadsToEmployee, FRESH_RESET_DATA } from "@/lib/assignment";
 import { distributeReason, type TransferMode } from "@/lib/transfer-mode";
 import { logAudit } from "@/lib/audit";
 import { sendMail } from "@/lib/mailer";
@@ -261,7 +261,7 @@ export async function distributeUnassigned(mode: TransferMode, perEmployee?: num
     await prisma.$transaction(async (tx) => {
       for (const [userId, leadIds] of byEmployee) {
         // الوضع إلزامي من الواجهة — الحوض يخلط جددًا ومستردّين بتاريخ، فالقرار للمالك لا افتراضي صامت.
-        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode) });
+        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode), extraData: mode === "fresh" ? FRESH_RESET_DATA : {} });
       }
     });
     await emitLeadAssignedBatch([...buckets.values()]);
@@ -340,7 +340,7 @@ export async function distributeCustom(alloc: { userId: string; count: number }[
     await prisma.$transaction(async (tx) => {
       for (const [userId, leadIds] of byEmployee) {
         // الوضع إلزامي من الواجهة — الحوض يخلط جددًا ومستردّين بتاريخ، فالقرار للمالك لا افتراضي صامت.
-        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode) });
+        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode), extraData: mode === "fresh" ? FRESH_RESET_DATA : {} });
       }
     });
     const buckets = new Map<string, LeadAssignedBucket>();
@@ -390,7 +390,7 @@ export async function distributeLeastLoaded(mode: TransferMode): Promise<ActionR
     await prisma.$transaction(async (tx) => {
       for (const [userId, leadIds] of byEmployee) {
         // الوضع إلزامي من الواجهة — الحوض يخلط جددًا ومستردّين بتاريخ، فالقرار للمالك لا افتراضي صامت.
-        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode) });
+        await assignLeadsToEmployee(tx, leadIds, userId, { manual: true, reason: distributeReason(mode), extraData: mode === "fresh" ? FRESH_RESET_DATA : {} });
       }
     });
     await emitLeadAssignedBatch([...buckets.values()]);

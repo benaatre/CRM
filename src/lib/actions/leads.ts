@@ -16,7 +16,7 @@ import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards"
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
-import { assignLead, assignLeadsToEmployee, assignmentData } from "@/lib/assignment";
+import { assignLead, assignLeadsToEmployee, assignmentData, FRESH_RESET_DATA } from "@/lib/assignment";
 import { applyStageChange } from "@/lib/stage-change";
 import { latestRevealAction, shouldHideHistory, REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION } from "@/lib/visibility";
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
@@ -572,7 +572,7 @@ export async function transferLeads(
       await assignLeadsToEmployee(tx, ids, toUserId, {
         manual: true,
         reason: manualTransferReason(mode),
-        extraData: mode === "fresh" ? { stage: LeadStage.NEW, nextFollowup: null } : {},
+        extraData: mode === "fresh" ? FRESH_RESET_DATA : {},
       });
       await tx.activity.createMany({
         data: ids.map((leadId) => ({
@@ -656,7 +656,7 @@ export async function reassignLead(
       await assignLead(tx, leadId, toUserId, {
         manual: true,
         reason: manualTransferReason(mode),
-        extraData: mode === "fresh" ? { stage: LeadStage.NEW, nextFollowup: null } : {},
+        extraData: mode === "fresh" ? FRESH_RESET_DATA : {},
       });
       await tx.activity.create({
         data: {

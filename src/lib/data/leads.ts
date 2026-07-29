@@ -215,10 +215,15 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
   const postAssignFuCount = l.assignedAt
     ? (l.followUps ?? []).filter((f) => f.createdAt > l.assignedAt!).length
     : 0;
-  // النافذة المرئية للمتابعات: للمخفي سجلُّه — ما بعد آخر إسناد فقط (ما قبل الاستلام
-  // لا يُكشف حتى عبر الفلاتر والشارات). المتابعات مجلوبة تنازليًا فأولها الأحدث.
-  const visibleFus = hidden && l.assignedAt
-    ? (l.followUps ?? []).filter((f) => f.createdAt > l.assignedAt!)
+  const lastAssignReason = lastAssignReasonOf(l.reassignments);
+  // نافذة الحالة للمتابعات: ما بعد آخر إسناد فقط في حالتين —
+  //   (أ) المخفي سجلُّه عن الموظف (خصوصية)، و(ب) المحوَّل «كجديد» (_fresh) لكل المشاهدين:
+  //   ولادة جديدة = شارات «في الانتظار/حسبة البنك» وعدّاداتها تبدأ من الصفر حتى عند المالك
+  //   (حادثة 2026-07-29: عميل منقول كجديد ظل يحمل شارة «ينتظر» من عهده القديم).
+  // المتابعات مجلوبة تنازليًا فأولها الأحدث.
+  const statusSince = (hidden || isFreshDistributed(lastAssignReason)) && l.assignedAt ? l.assignedAt : null;
+  const visibleFus = statusSince
+    ? (l.followUps ?? []).filter((f) => f.createdAt > statusSince)
     : (l.followUps ?? []);
   const latestVisibleFu = visibleFus[0] ?? null;
   // الخطوة ٤: عدّاد السحب الحي — نفس أهلية محرّك «لم يتم الرد» حرفيًا (مراحل NEW/ATTEMPTED،
@@ -291,7 +296,7 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     stale: l.stage === "INTERESTED" && !l.isArchived
       && interestedIdleDays(latestFuAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
     // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
-    manualTransferred: lastAssignReasonOf(l.reassignments) === MANUAL_TRANSFER_FULL,
+    manualTransferred: lastAssignReason === MANUAL_TRANSFER_FULL,
     // «حسبة البنك»: آخر متابعة مرئية (نفس نافذة الخصوصية أعلاه).
     bankCheck: latestVisibleFu?.result === "BANK_CHECK",
   };
@@ -460,13 +465,21 @@ export async function getBankCheckCount(): Promise<number> {
     SELECT COUNT(*)::bigint AS n
     FROM "Lead" l
     JOIN LATERAL (
-      SELECT f."result" FROM "FollowUp" f
+      SELECT f."result", f."createdAt" FROM "FollowUp" f
       WHERE f."leadId" = l."id"
       ORDER BY f."createdAt" DESC
       LIMIT 1
     ) lf ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT r."reason" FROM "Reassignment" r
+      WHERE r."leadId" = l."id" AND r."toUserId" IS NOT NULL
+      ORDER BY r."createdAt" DESC
+      LIMIT 1
+    ) lr ON TRUE
     WHERE l."isArchived" = false
       AND lf."result" = 'BANK_CHECK'::"FollowUpResult"
+      -- المحوَّل «كجديد» وآخر متابعته أقدم من إسناده = خارج العدّاد (نفس نافذة toRow).
+      AND NOT (COALESCE(lr."reason", '') ~ '_fresh$' AND l."assignedAt" IS NOT NULL AND lf."createdAt" <= l."assignedAt")
       ${manager ? Prisma.empty : Prisma.sql`AND l."assignedToId" = ${user.id}`}
   `);
   return Number(rows[0]?.n ?? 0);
@@ -667,13 +680,22 @@ export async function getWaitingCount(): Promise<number> {
     SELECT COUNT(*)::bigint AS n
     FROM "Lead" l
     JOIN LATERAL (
-      SELECT f."result" FROM "FollowUp" f
+      SELECT f."result", f."createdAt" FROM "FollowUp" f
       WHERE f."leadId" = l."id"
       ORDER BY f."createdAt" DESC
       LIMIT 1
     ) lf ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT r."reason" FROM "Reassignment" r
+      WHERE r."leadId" = l."id" AND r."toUserId" IS NOT NULL
+      ORDER BY r."createdAt" DESC
+      LIMIT 1
+    ) lr ON TRUE
     WHERE l."isArchived" = false
       AND lf."result" IN ('NO_ANSWER_INTERESTED'::"FollowUpResult", 'ON_HOLD'::"FollowUpResult")
+      -- المحوَّل «كجديد» (_fresh) وآخر متابعته أقدم من إسناده = ولادة جديدة، خارج العدّاد
+      -- (نفس نافذة الحالة في toRow حرفيًا — فلا يفترق العدّاد عن القائمة).
+      AND NOT (COALESCE(lr."reason", '') ~ '_fresh$' AND l."assignedAt" IS NOT NULL AND lf."createdAt" <= l."assignedAt")
       ${manager ? Prisma.empty : Prisma.sql`AND l."assignedToId" = ${user.id}`}
   `);
   return Number(rows[0]?.n ?? 0);

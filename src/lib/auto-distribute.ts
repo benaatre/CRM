@@ -8,7 +8,7 @@ import { notify, ownerIds } from "@/lib/notify";
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
-import { assignLead } from "@/lib/assignment";
+import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
 import { initialReason } from "@/lib/transfer-mode";
 import { dayStartKSA, ksaHourOf } from "@/lib/ksa-time";
 import { atLimitUserIds } from "@/lib/dist-limits";
@@ -331,9 +331,13 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
     if (!pick) break;
     const toUserId = pick;
     // م-١: الإسناد التلقائي عبر الدالة الموحّدة (manual=false — بلا حصانة يدوية).
-    // السبب مشتق: من له متابعات سابقة ⇒ initial_fresh (إخفاء سجله عن الموظف)، وإلا initial.
+    // السبب مشتق: من له متابعات سابقة ⇒ initial_fresh (إخفاء سجله + ولادة جديدة كاملة)، وإلا initial.
+    const freshStart = lead.followUps.length > 0;
     await prisma.$transaction(async (tx) => {
-      await assignLead(tx, lead.id, toUserId, { manual: false, reason: initialReason(lead.followUps.length > 0), now });
+      await assignLead(tx, lead.id, toUserId, {
+        manual: false, reason: initialReason(freshStart), now,
+        ...(freshStart ? { extraData: FRESH_RESET_DATA } : {}),
+      });
     });
     const b = buckets.get(toUserId);
     if (b) b.count++;

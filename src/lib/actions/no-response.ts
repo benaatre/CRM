@@ -11,7 +11,7 @@ import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notify";
 import { emitNotification, emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { NO_RESPONSE_STAGES, unreachableLeadIds } from "@/lib/auto-distribute";
-import { assignLead } from "@/lib/assignment";
+import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
 import {
   warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, overdueAgeBucket,
   type EscalationCategory, type OverdueAgeBucket,
@@ -85,7 +85,9 @@ async function assignQueueLead(tx: Prisma.TransactionClient, leadId: string, toU
     reason: fresh ? "manual_redistribute_fresh" : "manual_redistribute_full",
     now,
     guardWhere: { assignedToId: null },
-    extraData: { stage: LeadStage.NEW, nextFollowup: null },
+    // «كجديد» = ولادة كاملة (تصفير أول التواصل والمواعيد والأرشفة)؛ «بمحتواه» يبقى
+    // على سلوكه القائم في هذا الحوض (مرحلة جديد + تصفير الموعد فقط).
+    extraData: fresh ? FRESH_RESET_DATA : { stage: LeadStage.NEW, nextFollowup: null },
   });
   if (!ok) return false;
   await tx.activity.create({ data: { leadId, userId: actorId, type: ActivityType.ASSIGNMENT, note: fresh ? "توزيع يدوي من «لم يتم الرد» (كعميل جديد)" : "توزيع يدوي من «لم يتم الرد»" } });

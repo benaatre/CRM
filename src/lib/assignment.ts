@@ -1,8 +1,27 @@
 import "server-only";
 
+import { LeadStage } from "@prisma/client";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 type Db = PrismaClient | Prisma.TransactionClient;
+
+/**
+ * التحويل/التوزيع «كجديد» (_fresh) = ولادة جديدة كاملة للعميل عند الموظف الجديد
+ * (حادثة 2026-07-29: المرحلة كانت تصير NEW لكن أول التواصل والمواعيد والأرشفة تعلق):
+ *   المرحلة NEW + تصفير أول التواصل (يطلع نموذج «سجّل أول تواصل» من الصفر)
+ *   + تصفير nextFollowup/visitAt (لا مواعيد ولا شارات من العهد القديم) + فك الأرشفة.
+ * المتابعات التاريخية لا تُمس أبدًا — تبقى بالسجل (مخفية عن الموظف بآلية _fresh، ظاهرة للمالك).
+ * التحويل «بمتابعاته» (_full) لا يستخدم هذا — ينقل الحالة كاملة عمدًا.
+ */
+export const FRESH_RESET_DATA: Prisma.LeadUpdateManyMutationInput = {
+  stage: LeadStage.NEW,
+  nextFollowup: null,
+  visitAt: null,
+  firstContactStage: null,
+  firstContactDate: null,
+  firstContactAt: null,
+  isArchived: false,
+};
 
 /**
  * دالة الإسناد الموحّدة — كل مسار يُسند عميلًا لموظف يمرّ من هنا (م-١ من تدقيق 2026-07).
