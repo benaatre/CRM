@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Phone, MessageCircle, LayoutGrid, BarChart2, Rows3, Check } from "lucide-react";
 import { stageLabels, stageColor } from "@/lib/labels";
+import { waPhone } from "@/lib/value-normalize";
 import { formatCurrency, formatCount, timeAgo, toArabicDigits } from "@/lib/format";
 import type { DashboardData } from "@/lib/data/dashboard";
 import { DistributeDialog } from "@/components/leads/distribute-dialog";
@@ -176,7 +177,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
                     <a href={`tel:${l.phone}`} className="flex min-h-11 items-center justify-center gap-1 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90" title="اتصال">
                       <Phone className="size-3.5" /> اتصال
                     </a>
-                    <a href={`https://wa.me/966${l.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center justify-center gap-1 rounded-lg bg-success/15 px-2.5 text-xs font-medium text-success hover:bg-success/25" title="واتساب">
+                    <a href={`https://wa.me/${waPhone(l.phone)}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center justify-center gap-1 rounded-lg bg-success/15 px-2.5 text-xs font-medium text-success hover:bg-success/25" title="واتساب">
                       <MessageCircle className="size-3.5" /> واتساب
                     </a>
                     <Link href={`/leads/${l.id}`} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-border px-2 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold" title="فتح ملف العميل">←</Link>

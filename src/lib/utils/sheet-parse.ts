@@ -1,6 +1,6 @@
 // تحليل صفوف جوجل شيت — منطق نقي (بدون googleapis) قابل للاختبار والاستيراد في أي مكان.
 import type { PurchaseMethod, PurchaseGoal } from "@prisma/client";
-import { normalizePhone, normalizePurchaseGoal } from "../value-normalize";
+import { normalizePhone, normalizeIntlPhone, normalizePurchaseGoal } from "../value-normalize";
 // القيم المخزَّنة للأحياء — مصدر الحقيقة الوحيد في lib/districts.
 import { ALL_AREAS, AREA_AHMADIA, AREA_DHAHRAT_LABAN, AREA_MAHDIA } from "@/lib/districts";
 
@@ -329,7 +329,7 @@ function looksPhoneLike(clean: string): boolean {
 export type ParsedLead = {
   row: number;                          // رقم الصف في الشيت (1-based، للعرض)
   name: string;
-  phone: string;                        // موحّد 05XXXXXXXX — أو "" لو غير صالح (يدخل بملاحظة، لا يُسقط الصف)
+  phone: string;                        // سعودي موحّد 05XXXXXXXX أو دولي بصيغته (+965…) — "" لو غير صالح (يدخل بملاحظة)
   purchaseMethod: PurchaseMethod | null;
   purchaseGoal: PurchaseGoal | null;
   district: string | null;              // النص الخام (للتوافق مع preferredDistrict)
@@ -352,6 +352,12 @@ function classifyCell(raw: string | null | undefined): { type: CellType; value: 
   if (!clean) return { type: "ignore", value: "" };
   if (UUID_RE.test(clean) || DATE_RE.test(clean)) return { type: "ignore", value: "" };
   if (isSaudiMobile(clean)) return { type: "phone", value: normalizePhone(clean) };
+  // حادثة 2026-07-29: الأرقام الدولية (+965/+973…) كانت تسقط لـ«جوال غير صالح» فيضيع
+  // الجوال. دولي بمفتاح دولة ⟵ جوال بصيغته الدولية كما هو (dedupeKey يعمل عليه طبيعيًا).
+  {
+    const intl = normalizeIntlPhone(clean);
+    if (intl && looksPhoneLike(clean)) return { type: "phone", value: intl };
+  }
   // الهدف والحي قبل الطريقة: «الاثنين معاً» هدف (مو طريقة)، والحي أوضح من الطريقة.
   const goal = normalizePurchaseGoal(clean);
   if (goal) return { type: "goal", value: goal };

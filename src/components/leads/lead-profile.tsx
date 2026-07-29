@@ -9,6 +9,7 @@ import {
   paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels,
   followUpResultLabels, followUpTypeLabels,
 } from "@/lib/labels";
+import { waPhone } from "@/lib/value-normalize";
 import { updateLeadIntake, toggleRevealHistory } from "@/lib/actions/leads";
 import { transferToAutoPool, removeFromAutoPool } from "@/lib/actions/distribution";
 import { fetchSources } from "@/lib/actions/sources";
@@ -52,7 +53,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
     ? (lastFu.note ?? "").replace(/^في الانتظار\s*—\s*/, "").trim() || null
     : null;
 
-  const wa = `https://wa.me/966${detail.phone.replace(/^0/, "")}`;
+  const wa = `https://wa.me/${waPhone(detail.phone)}`;
 
   function cancel(bookingId: string) {
     const reason = window.prompt("سبب إلغاء الحجز (اختياري):");
@@ -408,7 +409,7 @@ function AiTab({ leadId, phone }: { leadId: string; phone: string }) {
               <button onClick={() => { navigator.clipboard.writeText(analysis.whatsapp); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="text-xs text-gold">{copied ? "تم النسخ" : "نسخ"}</button>
             </div>
             <p className="whitespace-pre-wrap text-sm text-foreground">{analysis.whatsapp}</p>
-            <a href={`https://wa.me/966${phone.replace(/^0/, "")}?text=${encodeURIComponent(analysis.whatsapp)}`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/25">إرسال واتساب</a>
+            <a href={`https://wa.me/${waPhone(phone)}?text=${encodeURIComponent(analysis.whatsapp)}`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/25">إرسال واتساب</a>
           </div>
 
           {analysis.source && <p className="text-center text-xs text-muted-foreground/60">المصدر: {analysis.source}</p>}

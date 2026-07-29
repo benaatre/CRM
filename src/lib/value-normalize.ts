@@ -59,6 +59,43 @@ export function normalizePhone(raw: string | null | undefined): string {
   return d;
 }
 
+/**
+ * رقم دولي بمفتاح دولة (حادثة 2026-07-29: أرقام كويتية/بحرينية ضاعت بالاستيراد):
+ *   يبدأ بـ«+» أو «00» (٨–١٥ خانة بعد المفتاح) ⟵ يُعاد بصيغة «+…» (تُشال الفواصل فقط)،
+ *   أو أرقام عارية ١٠–١٥ خانة ليست صيغة سعودية ⟵ تُعاد كما هي.
+ * الصيغ السعودية ليست دولية هنا (لها مسارها الموحّد 05XXXXXXXX). غير الصالح ⟵ "".
+ */
+export function normalizeIntlPhone(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  const digits = s.replace(/\D/g, "");
+  if (!digits) return "";
+  if (/^(00966|966)?0?5\d{8}$/.test(digits)) return ""; // سعودي — ليس دوليًا
+  const explicit = s.startsWith("+") || digits.startsWith("00");
+  const core = digits.startsWith("00") ? digits.slice(2) : digits;
+  if (explicit && core.length >= 8 && core.length <= 15) return "+" + core;
+  if (!explicit && digits.length >= 10 && digits.length <= 15) return digits;
+  return "";
+}
+
+/**
+ * القاعدة الموحّدة لكل مسارات الاستيراد:
+ *   سعودي ⟵ 05XXXXXXXX · دولي صالح ⟵ بصيغته الدولية (بلا تطبيع) · غير رقم ⟵ "" فقط حينها.
+ */
+export function normalizeAnyPhone(raw: string | null | undefined): string {
+  const saudi = normalizePhone(raw);
+  if (/^05\d{8}$/.test(saudi)) return saudi;
+  return normalizeIntlPhone(raw);
+}
+
+/** رقم رابط واتساب (wa.me): سعودي 05X ⟵ 966XXXXXXXXX · دولي ⟵ أرقامه كما هي (بلا +). */
+export function waPhone(phone: string | null | undefined): string {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  if (/^05\d{8}$/.test(digits)) return "966" + digits.slice(1);
+  if (/^5\d{8}$/.test(digits)) return "966" + digits;
+  return digits.startsWith("00") ? digits.slice(2) : digits;
+}
+
 /** صيغ الجوال المحتملة في القاعدة لرقم موحّد — للمطابقة (إزالة التكرار/التحديث). */
 export function phoneVariants(canonical: string): string[] {
   const set = new Set<string>([canonical]);

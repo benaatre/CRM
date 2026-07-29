@@ -5,13 +5,13 @@ import "server-only";
 // نفس نمط مساعد الـAI القائم (fetch خام + ANTHROPIC_API_KEY من .env، لا يصل المتصفح).
 // فشل الدفعة كله آمن: null → كل صف يدخل بما التقطته القواعد + «يحتاج مراجعة». لا يضيع صف أبدًا.
 import type { PurchaseGoal, PurchaseMethod } from "@prisma/client";
-import { normalizePhone, normalizePurchaseGoal, normalizePurchaseMethod } from "@/lib/value-normalize";
+import { normalizeAnyPhone, normalizePurchaseGoal, normalizePurchaseMethod } from "@/lib/value-normalize";
 import { normalizeAreas, type AreasParse } from "@/lib/utils/sheet-parse";
 
 /** نتيجة الـAI لصف واحد بعد التحقق والتطبيع على قيم النظام. */
 export type AiRowResult = {
   name: string | null;
-  phone: string | null;              // موحّد 05XXXXXXXX — أو null لو غير معقول
+  phone: string | null;              // سعودي 05XXXXXXXX أو دولي بصيغته — null لو غير معقول
   purchaseGoal: PurchaseGoal | null;
   purchaseMethod: PurchaseMethod | null;
   areas: string[];                   // مطبّعة بقاموس الأحياء القائم
@@ -21,7 +21,7 @@ export type AiRowResult = {
 };
 
 const PROMPT_HEADER =
-  "استخرج من كل صف من الصفوف التالية: الاسم الكامل، رقم الجوال السعودي، هدف الشراء " +
+  "استخرج من كل صف من الصفوف التالية: الاسم الكامل، رقم الجوال (السعودي، أو الدولي بمفتاح الدولة كما ورد)، هدف الشراء " +
   "(سكن أو استثمار أو سكن واستثمار)، طريقة الشراء (كاش أو تمويل مدعوم أو تمويل غير مدعوم أو كاش وتمويل)، " +
   "الحي (الرياض ظهرة لبن أو الرياض المهدية أو الرياض الأحمدية أو الثلاثة أو أخرى)، " +
   "السعر من وإلى بالريال السعودي كأرقام. " +
@@ -80,9 +80,8 @@ export async function analyzeStubbornRows(rows: string[][]): Promise<AiRowResult
     if (!Array.isArray(parsed) || parsed.length !== rows.length) return null;
 
     return (parsed as RawAiRow[]).map((r) => {
-      // جوال معقول فقط: يطبّع عبر normalizePhone الموحّد ويُقبل حصريًا بصيغة 05XXXXXXXX.
-      const phoneNorm = normalizePhone(str(r.phone) ?? "");
-      const phone = /^05\d{8}$/.test(phoneNorm) ? phoneNorm : null;
+      // جوال معقول فقط: القاعدة الموحّدة (سعودي 05XXXXXXXX أو دولي بمفتاح دولة) — غيرها null.
+      const phone = normalizeAnyPhone(str(r.phone) ?? "") || null;
       const district = str(r.district);
       const areasParse: AreasParse = district && district !== "أخرى"
         ? normalizeAreas(district)

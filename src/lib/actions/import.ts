@@ -13,7 +13,7 @@ import {
   priorityLabels,
   unitTypeLabels,
 } from "@/lib/labels";
-import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, phoneVariants } from "@/lib/value-normalize";
+import { normalizePurchaseMethod, normalizePurchaseGoal, normalizePhone, normalizeAnyPhone, phoneVariants } from "@/lib/value-normalize";
 import { normalizeAreas } from "@/lib/utils/sheet-parse";
 import { recentSameAdKeys, dupeCheckKey } from "@/lib/phone-dupe";
 import { assignmentData } from "@/lib/assignment";
@@ -79,10 +79,11 @@ function matchByHeader(header: string): string | null {
   return null;
 }
 
-// رقم جوال سعودي محتمل (بأي صيغة) — لاستشعار عمود الجوال من القيم.
+// رقم جوال محتمل (سعودي بأي صيغة أو دولي بمفتاح دولة) — لاستشعار عمود الجوال من القيم.
 function looksLikePhone(v: string): boolean {
   const d = v.replace(/[^\d]/g, "");
-  return /^(00966|966)?0?5\d{8}$/.test(d) || /^5\d{8}$/.test(d);
+  if (/^(00966|966)?0?5\d{8}$/.test(d) || /^5\d{8}$/.test(d)) return true;
+  return normalizeAnyPhone(v) !== ""; // دولي صالح (حادثة 2026-07-29)
 }
 
 // اسم محتمل: نص فيه حروف (عربي/إنجليزي)، ليس رقمًا ولا جوالًا ولا رموزًا فقط.
@@ -225,7 +226,8 @@ function buildRecords(rows: string[][], mapping: Record<string, string>): Omit<I
     }
     return {
       name,
-      phone: normalizePhone(rec.phone),
+      // القاعدة الموحّدة: سعودي ⟵ 05XXXXXXXX · دولي صالح ⟵ بصيغته الدولية · غير رقم ⟵ "".
+      phone: normalizeAnyPhone(rec.phone),
       channel: rec.channel,
       project: rec.project,
       budget: rec.budget?.replace(/[^\d]/g, ""),
@@ -262,7 +264,8 @@ export async function previewMapped(
 
     const out: ImportRow[] = records.map((r) => {
       let status: ImportRow["status"];
-      if (!r.name || !/^\d{9,12}$/.test(r.phone)) status = "invalid";
+      // الجوال صالح لو أنتجته القاعدة الموحّدة (سعودي 05 أو دولي) — "" وحدها غير صالحة.
+      if (!r.name || !r.phone) status = "invalid";
       else if (existingSet.has(r.phone)) status = "exists";
       else if (seen.has(r.phone)) status = "duplicate";
       else { seen.add(r.phone); status = "new"; }
