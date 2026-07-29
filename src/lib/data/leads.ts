@@ -78,6 +78,8 @@ export type LeadRow = {
   waiting: boolean;
   /** عدد متابعات عائلة الانتظار (لم يستجب + في الانتظار) بالنافذة المرئية — شارة «في الانتظار ×N». */
   waitingCount: number;
+  /** سبب الانتظار المختصر (نص «ينتظر إيش» من آخر ON_HOLD مرئية) — يظهر بجانب الشارة. */
+  waitingReason: string | null;
   /** مسوّق (آخر متابعاته NOT_INTERESTED_MARKETER) — وسم واضح ويُستثنى من الإحياء. */
   marketer: boolean;
   /** داخل بركة التوزيع التلقائي (autoPoolAt != null) — شارة «تلقائي» وتمييزه عن اليدوي. */
@@ -188,7 +190,7 @@ type LeadWithRels = {
   visitAt: Date | null;
   visitRescheduleCount: number;
   autoPoolAt: Date | null;
-  followUps?: { createdAt: Date; result: FollowUpResult }[];
+  followUps?: { createdAt: Date; result: FollowUpResult; note: string | null }[];
   reassignments?: { reason: string; toUserId: string | null }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
 };
@@ -291,6 +293,12 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     // «في الانتظار»: آخر متابعة مرئية من عائلة الانتظار — نفس نمط «حسبة البنك» حرفيًا.
     waiting: !!latestVisibleFu && WAITING_RESULTS.includes(latestVisibleFu.result),
     waitingCount: visibleFus.filter((f) => WAITING_RESULTS.includes(f.result)).length,
+    // سبب الانتظار: من نص آخر ON_HOLD مرئية (بعد بادئة «في الانتظار — » المركّبة).
+    waitingReason: (() => {
+      if (!latestVisibleFu || latestVisibleFu.result !== "ON_HOLD") return null;
+      const raw = (latestVisibleFu.note ?? "").replace(/^في الانتظار\s*(—|-)?\s*/, "").trim();
+      return raw || null;
+    })(),
     marketer: (l.followUps ?? []).some((f) => f.result === "NOT_INTERESTED_MARKETER"),
     inAutoPool: l.autoPoolAt != null,
     visitAt: l.visitAt,
@@ -319,9 +327,9 @@ const rowInclude = {
   assignedTo: { select: { id: true, name: true, role: true } },
   project: { select: { name: true } },
   _count: { select: { activities: true, followUps: true } },
-  // أحدث ٢٠ متابعة (وقت + نتيجة) — لعدّاد ما بعد الإسناد (الإخفاء) وإحصاء «لم يرد» (العدّاد الحي).
-  // نفس الاستعلام الواحد (بلا استعلامات إضافية)؛ >٢٠ متابعة بعد إسنادٍ واحد غير واقعي عمليًا.
-  followUps: { orderBy: { createdAt: "desc" }, take: 20, select: { createdAt: true, result: true } },
+  // أحدث ٢٠ متابعة (وقت + نتيجة + نص) — لعدّاد ما بعد الإسناد (الإخفاء) وإحصاء «لم يرد»
+  // وسبب «في الانتظار» بالشارة. نفس الاستعلام الواحد؛ >٢٠ متابعة بعد إسنادٍ واحد غير واقعي عمليًا.
+  followUps: { orderBy: { createdAt: "desc" }, take: 20, select: { createdAt: true, result: true, note: true } },
   // آخر ٥ سجلات تحويل (بلا فلتر) — منها آخر سحب (toUserId=null → نجمة/أيقونة §٦)
   // وآخر إسناد فعلي (toUserId≠null → لاحقة _fresh لقرار الإخفاء).
   reassignments: { orderBy: { createdAt: "desc" }, take: 5, select: { reason: true, toUserId: true } },
