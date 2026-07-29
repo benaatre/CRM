@@ -51,7 +51,7 @@ export const stageLabels: Record<LeadStage, string> = {
   ATTEMPTED: "محاولة/لم يرد",
   INTERESTED: "مهتم",
   FOLLOW_UP_LATER: "موعد لاحق",
-  VISIT_SCHEDULED: "موعد زيارة مؤكّد",
+  VISIT_SCHEDULED: "موعد زيارة",
   VIEWING: "زار المشروع",
   NEGOTIATION: "تفاوض",
   RESERVED: "محجوز/عربون",

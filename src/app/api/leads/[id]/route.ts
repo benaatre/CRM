@@ -49,7 +49,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   // «موعد زيارة مؤكّد» لازم له تاريخ زيارة وتذكير — الدخول حصريًا عبر متابعة «موعد زيارة».
   if (stage === "VISIT_SCHEDULED") {
-    return NextResponse.json({ error: "«موعد زيارة مؤكّد» يُسجَّل من متابعة «موعد زيارة» بتاريخ ووقت — مو بالسحب." }, { status: 400 });
+    return NextResponse.json({ error: "موعد الزيارة يُسجَّل من متابعة «زيارة» بتاريخ ووقت — مو بالسحب." }, { status: 400 });
   }
 
   // م-٢: المسار الموحّد (applyStageChange) — نفس سلوك الدرج بالضبط، وبلا متابعة CALL مصطنعة.

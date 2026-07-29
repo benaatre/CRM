@@ -25,20 +25,19 @@ function resultsFor(stage: LeadStage): string[] {
     case "NEW":
     case "ATTEMPTED":
       return ["interested", "noanswer", "appointment", "notInterested"];
-    // مظلة «مهتم»: «لم يستجب» بدل «لم يرد» (لا تغيّر المرحلة ولا تدخله نظام السحب)
-    // + «حسبة البنك» و«في الانتظار» (نتيجة بلا تغيير مرحلة).
+    // مظلة «مهتم»: زر «زيارة» الموحّد (جدولة موعد — «الزيارة زيارة») + «حسبة البنك»
+    // و«في الانتظار» (نتيجة بلا تغيير مرحلة).
     case "INTERESTED":
-      return ["visitAppt", "appointment", "visit", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["visit", "appointment", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // موعد لاحق: نعاود ونحاول نوصله لزيارة.
     case "FOLLOW_UP_LATER":
-      return ["interested", "visitAppt", "visit", "unresponsive", "bankcheck", "onhold", "notInterested"];
-    // موعد زيارة مؤكّد: زار فعلًا، أو موعد زيارة جديد (يستبدل القديم — «الزيارة زيارة»)،
-    // أو ما حضر وما يبي. إعادة الجدولة صارت عبر «موعد زيارة» نفسه، لا خيار منفصل.
+      return ["interested", "visit", "unresponsive", "bankcheck", "onhold", "notInterested"];
+    // عنده زيارة قادمة: «زيارة» تفتح (تم الزيارة / تعديل الموعد — استبدال)، أو ما حضر وما يبي.
     case "VISIT_SCHEDULED":
-      return ["visit", "visitAppt", "noShowDeclined", "unresponsive", "bankcheck", "onhold", "notInterested"];
-    // زار المشروع: إما تفاوض أو ينسحب.
+      return ["visit", "noShowDeclined", "unresponsive", "bankcheck", "onhold", "notInterested"];
+    // زار المشروع: تفاوض، أو زيارة أخرى (جدولة جديدة)، أو ينسحب.
     case "VIEWING":
-      return ["negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["visit", "negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // تفاوض: إما يحجز أو ينسحب.
     case "NEGOTIATION":
       return ["booked", "unresponsive", "bankcheck", "onhold", "notInterested"];
@@ -51,14 +50,13 @@ const LABEL: Record<string, string> = {
   interested: "مهتم", noanswer: "لم يرد", appointment: "موعد لاحق",
   visit: "زيارة", negotiation: "تفاوض", notInterested: "غير مهتم", booked: "تم الحجز",
   unresponsive: "لم يستجب", bankcheck: "حسبة البنك", onhold: "في الانتظار",
-  visitAppt: "موعد زيارة",
   noShowDeclined: "ما حضر — ما يبي",
 };
 
 /** الخطوة التالية الإلزامية لنتيجة «مهتم» — أحد ثلاثة لا رابع لها. */
 type InterestedStep = "visit" | "call" | "notsuitable";
 const STEP_LABEL: Record<InterestedStep, string> = {
-  visit: "موعد زيارة", call: "موعد اتصال", notsuitable: "غير مناسب",
+  visit: "زيارة", call: "موعد اتصال", notsuitable: "غير مناسب",
 };
 
 export function FollowUpsForm({
@@ -89,6 +87,8 @@ export function FollowUpsForm({
   const [date, setDate] = useState("");
   const [visitMode, setVisitMode] = useState<"all" | "select">("all");
   const [visitKind, setVisitKind] = useState<"project" | "office">("project");
+  // زر «زيارة» لعميل عنده زيارة قادمة: «تم الزيارة» أو «تعديل موعد الزيارة» (استبدال) — اختيار إلزامي.
+  const [visitAction, setVisitAction] = useState<"done" | "reschedule" | null>(null);
   const [selProjects, setSelProjects] = useState<Set<string>>(new Set());
   const [reasons, setReasons] = useState<Set<string>>(new Set());
   const [niRetry, setNiRetry] = useState<"yes" | "no">("no");
@@ -97,11 +97,11 @@ export function FollowUpsForm({
 
   function pick(key: string) {
     if (key === "booked") { onBook?.(); return; }
-    setSel(key); setError(null); setStep(null);
+    setSel(key); setError(null); setStep(null); setVisitAction(null);
     setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no");
   }
   function clearAll() {
-    setSel(null); setStep(null); setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
+    setSel(null); setStep(null); setVisitAction(null); setNote(""); setDate(""); setVisitMode("all"); setVisitKind("project"); setSelProjects(new Set()); setReasons(new Set()); setNiRetry("no"); setError(null);
   }
   function toggle(setS: React.Dispatch<React.SetStateAction<Set<string>>>, v: string) {
     setS((s) => { const n = new Set(s); if (n.has(v)) n.delete(v); else n.add(v); return n; });
@@ -138,10 +138,6 @@ export function FollowUpsForm({
         if (step === "notsuitable")
           return post(buildNotInterestedBody(reasons, niRetry, date, note));
         return;
-      case "visitAppt":
-        // موعد زيارة (جديد أو بديل) → «موعد زيارة مؤكّد». لو عنده زيارة قادمة فالخادم
-        // يستبدل الموعد ويسجّل «أعيدت جدولة الزيارة من … إلى …» تلقائيًا.
-        return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("موعد زيارة", [], note), nextDate: date });
       case "noShowDeclined": {
         // ما حضر — ما يبي: المسار الموحّد لغير المهتم، مع وسم «ما حضر» في النص (يغذّي مؤشر الحضور).
         const b = buildNotInterestedBody(reasons, niRetry, date, note);
@@ -152,11 +148,16 @@ export function FollowUpsForm({
       case "appointment":
         return post({ type: "CALL", result: "INTERESTED_SCHEDULED", section: "INTERESTED", stage: "FOLLOW_UP_LATER", note: compose("موعد لاحق", [], note), nextDate: date });
       case "visit": {
-        // زيارة المشروع أو زيارة للمكتب — VISIT_OFFICE كانت موجودة بالكود بلا خيار واجهة.
-        const detail = visitKind === "office"
+        // زر «زيارة» الموحّد («الزيارة زيارة» — نقطة دخول واحدة):
+        const place = visitKind === "office"
           ? "زيارة للمكتب"
-          : visitMode === "all" ? "زيارة — جميع المشاريع" : `زيارة — ${[...selProjects].join("، ")}`;
-        return post({ type: visitKind === "office" ? "VISIT_OFFICE" : "VISIT_PROJECT", result: "INTERESTED_VISITED", section: "INTERESTED", stage: "VIEWING", note: compose(detail, [], note), nextDate: date });
+          : visitMode === "all" ? "جميع المشاريع" : [...selProjects].join("، ");
+        // عنده زيارة قادمة + «تم الزيارة»: تسجيل الزيارة الفعلية (التاريخ معروف من visitAt).
+        if (stage === "VISIT_SCHEDULED" && visitAction === "done") {
+          return post({ type: visitKind === "office" ? "VISIT_OFFICE" : "VISIT_PROJECT", result: "INTERESTED_VISITED", section: "INTERESTED", stage: "VIEWING", note: compose(`تمت الزيارة — ${place}`, [], note) });
+        }
+        // جدولة موعد زيارة (أو «تعديل موعد الزيارة» — الخادم يستبدل ويسجّل «أعيدت جدولة … من … إلى …»).
+        return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose(`موعد زيارة — ${place}`, [], note), nextDate: date });
       }
       case "negotiation":
         return post({ type: "CALL", result: "NEGOTIATING", section: "INTERESTED", stage: "NEGOTIATION", note: compose("تفاوض", [], note) });
@@ -253,15 +254,15 @@ export function FollowUpsForm({
 
   // تعطيل الحفظ لو الحقول الإجبارية ناقصة (ومنها النص الإلزامي لأسباب «أخرى/نهائي» و«في الانتظار»).
   const niNeedsText = (sel === "notInterested" || sel === "noShowDeclined" || (sel === "interested" && step === "notsuitable")) && niRequiresText(reasons);
+  // «زيارة» الموحّد: عنده زيارة قادمة ⟵ الاختيار (تم/تعديل) إلزامي، والتاريخ إلزامي إلا في «تم الزيارة».
+  const visitNeedsDate = !(stage === "VISIT_SCHEDULED" && visitAction === "done");
   const saveDisabled = pending || (
     sel === "appointment" ? !date
-      : sel === "visitAppt" ? !date
-        : sel === "interested" ? (!step || ((step === "visit" || step === "call") && !date) || (step === "notsuitable" && ((niRetry === "yes" && !date) || (niNeedsText && !note.trim()))))
-          // تسجيل «زار» من موعد مؤكّد: الزيارة صارت والتاريخ معروف (visitAt) — لا تاريخ إلزامي.
-          : sel === "visit" ? ((stage !== "VISIT_SCHEDULED" && !date) || (visitKind === "project" && visitMode === "select" && selProjects.size === 0))
-            : sel === "notInterested" || sel === "noShowDeclined" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
-              : sel === "onhold" ? !note.trim()
-                : false
+      : sel === "interested" ? (!step || ((step === "visit" || step === "call") && !date) || (step === "notsuitable" && ((niRetry === "yes" && !date) || (niNeedsText && !note.trim()))))
+        : sel === "visit" ? ((stage === "VISIT_SCHEDULED" && !visitAction) || (visitNeedsDate && !date) || (visitKind === "project" && visitMode === "select" && selProjects.size === 0))
+          : sel === "notInterested" || sel === "noShowDeclined" ? (niRetry === "yes" && !date) || (niNeedsText && !note.trim())
+            : sel === "onhold" ? !note.trim()
+              : false
   );
   const ON_HOLD_PLACEHOLDER = "ينتظر إيش؟ (مثال: بيع شقته القديمة، رجوعه من السفر)";
 
@@ -331,14 +332,6 @@ export function FollowUpsForm({
             </div>
           )}
 
-          {/* موعد زيارة مباشر: تاريخ ووقت الزيارة */}
-          {sel === "visitAppt" && (
-            <label className="block space-y-1">
-              <span className="text-xs text-muted-foreground">تاريخ ووقت الزيارة</span>
-              <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-            </label>
-          )}
-
           {/* ما حضر — ما يبي: نفس أسباب «غير مهتم» المنظّمة */}
           {sel === "noShowDeclined" && (
             <NotInterestedReasons
@@ -359,16 +352,22 @@ export function FollowUpsForm({
             </label>
           )}
 
-          {/* زيارة: نوعها (مشروع/مكتب) + المشاريع + تاريخ */}
+          {/* «زيارة» الموحّد: (تم الزيارة / تعديل الموعد لعميل عنده زيارة قادمة) + مكان الزيارة + التاريخ */}
           {sel === "visit" && (
             <div className="space-y-2">
+              {stage === "VISIT_SCHEDULED" && (
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setVisitAction("done"); setDate(""); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitAction === "done" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>تم الزيارة</button>
+                  <button type="button" onClick={() => { setVisitAction("reschedule"); setDate(""); }} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitAction === "reschedule" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>تعديل موعد الزيارة</button>
+                </div>
+              )}
               <div className="flex gap-2">
                 <button type="button" onClick={() => setVisitKind("project")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitKind === "project" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>زيارة المشروع</button>
                 <button type="button" onClick={() => setVisitKind("office")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitKind === "office" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>زيارة للمكتب</button>
               </div>
               {visitKind === "project" && (
               <div className="flex gap-2">
-                <button type="button" onClick={() => setVisitMode("all")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitMode === "all" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>زار جميع المشاريع</button>
+                <button type="button" onClick={() => setVisitMode("all")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitMode === "all" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>جميع المشاريع</button>
                 <button type="button" onClick={() => setVisitMode("select")} className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs ${visitMode === "select" ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground"}`}>حدد المشاريع</button>
               </div>
               )}
@@ -382,10 +381,12 @@ export function FollowUpsForm({
                   ))}
                 </div>
               )}
-              <label className="block space-y-1">
-                <span className="text-xs text-muted-foreground">تاريخ ووقت الزيارة</span>
-                <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-              </label>
+              {visitNeedsDate && (
+                <label className="block space-y-1">
+                  <span className="text-xs text-muted-foreground">{stage === "VISIT_SCHEDULED" && visitAction === "reschedule" ? "موعد الزيارة الجديد (تاريخ ووقت)" : "تاريخ ووقت الزيارة"}</span>
+                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                </label>
+              )}
             </div>
           )}
 
