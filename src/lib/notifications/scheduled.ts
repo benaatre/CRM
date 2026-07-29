@@ -132,7 +132,7 @@ export async function runLateFollowupReminder(now: Date = new Date()): Promise<n
  * الجمهور: الموظف الحالي المسند له العميل (لا كاتب المتابعة — قد يتغير الإسناد).
  */
 export async function runVisitReminderCheck(now: Date = new Date()): Promise<number> {
-  const fus = await prisma.followUp.findMany({
+  const rows = await prisma.followUp.findMany({
     where: {
       // متابعة نوع زيارة (النمط القديم) أو نتيجة «موعد زيارة» (محرّك الزيارات:
       // INTERESTED_VISIT_SCHEDULED / VISIT_NO_SHOW_RESCHEDULED — nextDate = موعد الزيارة).
@@ -140,8 +140,12 @@ export async function runVisitReminderCheck(now: Date = new Date()): Promise<num
       nextDate: { gt: now, lte: new Date(now.getTime() + 24 * HOUR_MS) },
       lead: { isArchived: false, stage: { notIn: [...CLOSED] }, assignedToId: { not: null } },
     },
-    select: { leadId: true, nextDate: true, lead: { select: { name: true, assignedToId: true } } },
+    select: { leadId: true, nextDate: true, lead: { select: { name: true, assignedToId: true, visitAt: true } } },
   });
+  // «الزيارة زيارة» (2026-07-29): الموعد المعتمد هو Lead.visitAt الحالي حصريًا — صف زيارة
+  // موعده لا يطابقه (استُبدل بموعد جديد، أو أُلغيت الزيارة/خرج من المرحلة فمُسح visitAt)
+  // لا يذكِّر. هذا ما يبطل تذكير الموعد القديم في مسار الاستبدال بلا مساس بالتاريخ.
+  const fus = rows.filter((f) => f.lead.visitAt && f.nextDate && f.lead.visitAt.getTime() === f.nextDate.getTime());
   if (fus.length === 0) return 0;
 
   type Plan = { link: string; userId: string; title: string; body: string };

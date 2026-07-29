@@ -27,7 +27,7 @@ function isManager(role: string) {
 async function authorize(leadId: string) {
   const session = await auth();
   if (!session?.user) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, assignedAt: true, stage: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, assignedAt: true, stage: true, visitAt: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
   if (!lead) return { error: NextResponse.json({ error: "العميل غير موجود" }, { status: 404 }) };
   if (!isManager(session.user.role) && lead.assignedToId !== session.user.id) {
     return { error: NextResponse.json({ error: "ما عندك صلاحية على هذا العميل" }, { status: 403 }) };
@@ -341,6 +341,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         ...(bumpsAttempt ? { attempts: { increment: 1 } } : {}),
       },
     });
+    // «الزيارة زيارة»: موعد زيارة جديد وعنده زيارة قادمة = استبدال — visitAt تحدّث أعلاه،
+    // وتذكير الموعد القديم يبطل تلقائيًا (التذكيرات مشروطة بمطابقة visitAt الحالي)،
+    // وسجل يوضح الاستبدال بلا أي عدّاد ظاهر للموظف.
+    if (isVisitAppt && nextDate && lead.visitAt && lead.visitAt > new Date() && lead.visitAt.getTime() !== nextDate.getTime()) {
+      const fmt = (d: Date) => new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }).format(d);
+      await tx.activity.create({
+        data: { leadId: id, userId: user.id, type: ActivityType.NOTE, note: `أعيدت جدولة الزيارة من ${fmt(lead.visitAt)} إلى ${fmt(nextDate)}` },
+      });
+    }
     // سجل أول تواصل في الـTimeline (Activity) — مع اسم الموظف والوقت تلقائيًا.
     if (firstStage) {
       await tx.activity.create({

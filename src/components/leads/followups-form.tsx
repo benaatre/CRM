@@ -32,9 +32,10 @@ function resultsFor(stage: LeadStage): string[] {
     // موعد لاحق: نعاود ونحاول نوصله لزيارة.
     case "FOLLOW_UP_LATER":
       return ["interested", "visitAppt", "visit", "unresponsive", "bankcheck", "onhold", "notInterested"];
-    // موعد زيارة مؤكّد: زار فعلًا أو ما حضر (إعادة جدولة / ما يبي) — قلب تسجيل الزيارة.
+    // موعد زيارة مؤكّد: زار فعلًا، أو موعد زيارة جديد (يستبدل القديم — «الزيارة زيارة»)،
+    // أو ما حضر وما يبي. إعادة الجدولة صارت عبر «موعد زيارة» نفسه، لا خيار منفصل.
     case "VISIT_SCHEDULED":
-      return ["visit", "noShowReschedule", "noShowDeclined", "unresponsive", "bankcheck", "onhold", "notInterested"];
+      return ["visit", "visitAppt", "noShowDeclined", "unresponsive", "bankcheck", "onhold", "notInterested"];
     // زار المشروع: إما تفاوض أو ينسحب.
     case "VIEWING":
       return ["negotiation", "unresponsive", "bankcheck", "onhold", "notInterested"];
@@ -51,7 +52,7 @@ const LABEL: Record<string, string> = {
   visit: "زيارة", negotiation: "تفاوض", notInterested: "غير مهتم", booked: "تم الحجز",
   unresponsive: "لم يستجب", bankcheck: "حسبة البنك", onhold: "في الانتظار",
   visitAppt: "موعد زيارة",
-  noShowReschedule: "ما حضر — إعادة جدولة", noShowDeclined: "ما حضر — ما يبي",
+  noShowDeclined: "ما حضر — ما يبي",
 };
 
 /** الخطوة التالية الإلزامية لنتيجة «مهتم» — أحد ثلاثة لا رابع لها. */
@@ -138,11 +139,9 @@ export function FollowUpsForm({
           return post(buildNotInterestedBody(reasons, niRetry, date, note));
         return;
       case "visitAppt":
-        // موعد زيارة مباشر لعميل المظلة المهتمة → «موعد زيارة مؤكّد».
+        // موعد زيارة (جديد أو بديل) → «موعد زيارة مؤكّد». لو عنده زيارة قادمة فالخادم
+        // يستبدل الموعد ويسجّل «أعيدت جدولة الزيارة من … إلى …» تلقائيًا.
         return post({ type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("موعد زيارة", [], note), nextDate: date });
-      case "noShowReschedule":
-        // ما حضر — موعد جديد: يبقى «موعد زيارة مؤكّد» والعدّاد يزيد على الخادم.
-        return post({ type: "CALL", result: "VISIT_NO_SHOW_RESCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("ما حضر — إعادة جدولة", [], note), nextDate: date });
       case "noShowDeclined": {
         // ما حضر — ما يبي: المسار الموحّد لغير المهتم، مع وسم «ما حضر» في النص (يغذّي مؤشر الحضور).
         const b = buildNotInterestedBody(reasons, niRetry, date, note);
@@ -256,7 +255,7 @@ export function FollowUpsForm({
   const niNeedsText = (sel === "notInterested" || sel === "noShowDeclined" || (sel === "interested" && step === "notsuitable")) && niRequiresText(reasons);
   const saveDisabled = pending || (
     sel === "appointment" ? !date
-      : sel === "visitAppt" || sel === "noShowReschedule" ? !date
+      : sel === "visitAppt" ? !date
         : sel === "interested" ? (!step || ((step === "visit" || step === "call") && !date) || (step === "notsuitable" && ((niRetry === "yes" && !date) || (niNeedsText && !note.trim()))))
           // تسجيل «زار» من موعد مؤكّد: الزيارة صارت والتاريخ معروف (visitAt) — لا تاريخ إلزامي.
           : sel === "visit" ? ((stage !== "VISIT_SCHEDULED" && !date) || (visitKind === "project" && visitMode === "select" && selProjects.size === 0))
@@ -336,14 +335,6 @@ export function FollowUpsForm({
           {sel === "visitAppt" && (
             <label className="block space-y-1">
               <span className="text-xs text-muted-foreground">تاريخ ووقت الزيارة</span>
-              <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
-            </label>
-          )}
-
-          {/* ما حضر — إعادة جدولة: الموعد الجديد */}
-          {sel === "noShowReschedule" && (
-            <label className="block space-y-1">
-              <span className="text-xs text-muted-foreground">موعد الزيارة الجديد (تاريخ ووقت)</span>
               <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
             </label>
           )}

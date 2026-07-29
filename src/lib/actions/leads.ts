@@ -179,6 +179,10 @@ export async function updateLeadStage(
     if (stage === LeadStage.CLOSED_LOST) {
       return { ok: false, error: "تحويل «غير مهتم» لازم يكون مع سبب — سجّله من نتيجة المتابعة." };
     }
+    // «موعد زيارة مؤكّد» بلا تاريخ زيارة = مرحلة بلا موعد ولا تذكير — نفس منع الكانبان بالضبط.
+    if (stage === LeadStage.VISIT_SCHEDULED) {
+      return { ok: false, error: "«موعد زيارة مؤكّد» يُسجَّل من متابعة «موعد زيارة» بتاريخ ووقت — مو بتغيير المرحلة." };
+    }
 
     const full = await prisma.lead.findUnique({
       where: { id: leadId },

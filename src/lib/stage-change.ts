@@ -48,6 +48,9 @@ export async function applyStageChange(
     data: {
       stage,
       lastContact: now,
+      // الخروج من «موعد زيارة مؤكّد» بالسحب يمسح موعد الزيارة المعلّق — فيبطل تذكيره
+      // تلقائيًا (تذكيرات الزيارة مشروطة بمطابقة visitAt الحالي). نفس منطق POST /followups.
+      ...(lead.stage === LeadStage.VISIT_SCHEDULED && stage !== LeadStage.VISIT_SCHEDULED ? { visitAt: null } : {}),
       ...(fc
         ? {
             firstContactStage: fc,

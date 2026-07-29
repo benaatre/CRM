@@ -7,6 +7,7 @@ import { scopeForUser, getOwnerIds } from "@/lib/data/leads";
 import { ksaTodayStart } from "@/lib/auto-distribute";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { weekStartKSA } from "@/lib/ksa-time";
+import { VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 // المتوقّع من اللمسات (متابعات) لكل عميل عند حساب نسبة النشاط.
@@ -406,13 +407,23 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
         select: { id: true, name: true, nextFollowup: true },
       }),
       prisma.followUp.findMany({
-        where: { type: { in: VISIT_TYPES }, nextDate: { gte: dayStart, lt: dayEnd }, lead: { assignedToId: user.id, isArchived: false } },
-        select: { leadId: true, nextDate: true, lead: { select: { name: true } } },
+        // «الزيارة زيارة»: مواعيد المحرّك (نتائج موعد الزيارة) تظهر في شريط اليوم مثل
+        // متابعات نوع الزيارة القديمة — بشرط مطابقة Lead.visitAt الحالي (الموعد المستبدَل لا يظهر).
+        where: {
+          OR: [{ type: { in: VISIT_TYPES } }, { result: { in: VISIT_APPOINTMENT_RESULTS } }],
+          nextDate: { gte: dayStart, lt: dayEnd },
+          lead: { assignedToId: user.id, isArchived: false },
+        },
+        select: { leadId: true, nextDate: true, type: true, result: true, lead: { select: { name: true, visitAt: true } } },
       }),
     ]);
     todayAppointments = [
       ...fuLeads.map((l) => ({ leadId: l.id, name: l.name, at: l.nextFollowup as Date, kind: "followup" as const })),
-      ...visitFus.map((f) => ({ leadId: f.leadId, name: f.lead.name, at: f.nextDate as Date, kind: "visit" as const })),
+      ...visitFus
+        .filter((f) =>
+          (VISIT_TYPES as string[]).includes(f.type)
+          || (f.lead.visitAt && f.nextDate && f.lead.visitAt.getTime() === f.nextDate.getTime()))
+        .map((f) => ({ leadId: f.leadId, name: f.lead.name, at: f.nextDate as Date, kind: "visit" as const })),
     ].sort((a, b) => a.at.getTime() - b.at.getTime());
   }
 

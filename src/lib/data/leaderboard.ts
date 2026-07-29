@@ -10,7 +10,7 @@ import "server-only";
 import { FollowUpResult } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPendingPullByEmployee } from "@/lib/data/no-response";
-import { KEEP_STAGE_RESULTS } from "@/lib/labels";
+import { KEEP_STAGE_RESULTS, VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
 import { DAY_MS, ksaDayKey, weekStartKSA } from "@/lib/ksa-time";
 
 // نافذة الأسبوع من المصدر الموحّد (lib/ksa-time) — لا تعريف محلي، فلا تنحرف شاشة عن أخرى.
@@ -126,7 +126,9 @@ export function computeAchievement(fus: FuRow[], bookings: number): Achievement 
     // (تحقيق ٢٥ يوليو ٢٠٢٦ — docs/investigations/week-score-2026-07-25.md).
     if (f.stageAfter === "INTERESTED" && !KEEP_STAGE_RESULTS.includes(f.result)) interestedSet.add(f.leadId);
     if (f.stageAfter === "CLOSED_WON") winsSet.add(f.leadId);
-    if (f.result === FollowUpResult.INTERESTED_VISIT_SCHEDULED) visitAppts++;
+    // «الزيارة زيارة»: موعد الزيارة الجديد وإعادة الجدولة القديمة يعدّان معًا —
+    // رقم واحد يطابق «سجلّي» وبقية الشاشات.
+    if (VISIT_APPOINTMENT_RESULTS.includes(f.result)) visitAppts++;
     if (VISIT_DONE_RESULTS.includes(f.result)) visitsDone++;
   }
   const cappedFollowups = [...byDay.values()].reduce((s, n) => s + Math.min(n, DAILY_FOLLOWUP_CAP), 0);
