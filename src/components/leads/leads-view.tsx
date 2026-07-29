@@ -44,12 +44,14 @@ const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
 const PAGE_SIZE = 12;
 
 export function LeadsView({
-  query, counts, notContacted, unresponsive, tab, isManager, employees, filters,
+  query, counts, notContacted, unresponsive, bankCheck, tab, isManager, employees, filters,
 }: {
   query: string;
   counts: { working: number; archived: number; hidden: number; unassigned: number };
   notContacted: number;
   unresponsive?: number;
+  /** عدد «حسبة البنك» (آخر متابعة BANK_CHECK) — لشارة الفلتر، ضمن صلاحية المستخدم. */
+  bankCheck?: number;
   tab: Tab;
   isManager: boolean;
   employees: Employee[];
@@ -82,6 +84,7 @@ export function LeadsView({
     if (filters.sort !== DEFAULT_LEAD_SORT) p.set("sort", filters.sort); // يحفظ الترتيب عبر التبويبات
     if (filters.nr) p.set("nr", "1"); // فلتر «لم يستجب» يبقى عبر التبويبات
     if (filters.tr) p.set("tr", "1"); // فلتر «محوَّل» يبقى عبر التبويبات
+    if (filters.bank) p.set("bank", "1"); // فلتر «حسبة البنك» يبقى عبر التبويبات
     if (v === "hidden" && filters.ar) p.set("ar", filters.ar); // سبب الأرشفة خاص بتبويب «مؤرشف»
     const s = p.toString();
     startTransition(() => router.push(s ? `/leads?${s}` : "/leads"));
@@ -167,6 +170,7 @@ export function LeadsView({
             hideUnassignedEmp={tab === "working"}
             notContacted={tab === "working" ? notContacted : undefined}
             unresponsive={tab === "working" ? unresponsive : undefined}
+            bankCheck={tab === "working" ? bankCheck : undefined}
           />
           {/* فلتر «سبب الأرشفة» — تبويب «مؤرشف» فقط */}
           {tab === "hidden" && (

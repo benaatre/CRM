@@ -12,8 +12,8 @@ export const INTEREST_UMBRELLA: LeadStage[] = ["INTERESTED", "VISIT_SCHEDULED", 
 export type ArchiveReason = "" | "final" | "marketer" | "manual";
 const ARCHIVE_REASONS: ArchiveReason[] = ["", "final", "marketer", "manual"];
 
-/** قيم الفلاتر كما في الرابط (مشتركة بين جدول العملاء والكانبان). nr = «لم يستجب» (مدير فقط) · tr = «محوَّل». */
-export type LeadFilterValues = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean; tr: boolean; ar: ArchiveReason };
+/** قيم الفلاتر كما في الرابط (مشتركة بين جدول العملاء والكانبان). nr = «لم يستجب» (مدير فقط) · tr = «محوَّل» · bank = «حسبة البنك». */
+export type LeadFilterValues = { q: string; stages: string[]; emps: string[]; sort: LeadSort; nr: boolean; tr: boolean; bank: boolean; ar: ArchiveReason };
 
 export type ParsedLeadFilters = {
   q: string;
@@ -22,6 +22,8 @@ export type ParsedLeadFilters = {
   includeUnassigned: boolean;
   unresponsive: boolean;
   transferred: boolean;
+  /** فلتر «حسبة البنك»: آخر متابعة للعميل نتيجتها BANK_CHECK — للجميع ضمن صلاحيته. */
+  bankCheck: boolean;
   archiveReason: ArchiveReason;
   sort: LeadSort;
   values: LeadFilterValues;
@@ -37,12 +39,13 @@ export function buildLeadsQuery(tab: "working" | "archived" | "hidden" | "unassi
   if (v.sort !== DEFAULT_LEAD_SORT) p.set("sort", v.sort); // نظافة الرابط: الافتراضي بلا بارامتر
   if (v.nr) p.set("nr", "1"); // فلتر «لم يستجب» — للمالك/المدير
   if (v.tr) p.set("tr", "1"); // فلتر «محوَّل» — المحوّلون بالبيانات فقط
+  if (v.bank) p.set("bank", "1"); // فلتر «حسبة البنك» — آخر متابعة BANK_CHECK
   if (v.ar) p.set("ar", v.ar); // فلتر سبب الأرشفة (تبويب «مؤرشف»)
   return p.toString();
 }
 
 /** تحويل searchParams إلى فلاتر موحّدة — يستخدمه الجدول والكانبان و GET /api/leads. */
-export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: string; sort?: string; nr?: string; tr?: string; ar?: string }): ParsedLeadFilters {
+export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: string; sort?: string; nr?: string; tr?: string; bank?: string; ar?: string }): ParsedLeadFilters {
   const q = sp.q ?? "";
   // #32: نصفّي القيم على أعضاء LeadStage — أي قيمة خاطئة في الرابط تُتجاهل بدل ٥٠٠.
   const stages = (sp.stages ? sp.stages.split(",").filter(Boolean) : []).filter((s): s is LeadStage => s in LeadStage);
@@ -53,6 +56,7 @@ export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: strin
   const sort: LeadSort = LEAD_SORTS.includes(sp.sort as LeadSort) ? (sp.sort as LeadSort) : DEFAULT_LEAD_SORT;
   const unresponsive = sp.nr === "1";
   const transferred = sp.tr === "1";
+  const bankCheck = sp.bank === "1";
   const archiveReason: ArchiveReason = ARCHIVE_REASONS.includes(sp.ar as ArchiveReason) ? (sp.ar as ArchiveReason) : "";
-  return { q, stages, assigneeIds, includeUnassigned, unresponsive, transferred, archiveReason, sort, values: { q, stages, emps: empTokens, sort, nr: unresponsive, tr: transferred, ar: archiveReason } };
+  return { q, stages, assigneeIds, includeUnassigned, unresponsive, transferred, bankCheck, archiveReason, sort, values: { q, stages, emps: empTokens, sort, nr: unresponsive, tr: transferred, bank: bankCheck, ar: archiveReason } };
 }

@@ -31,7 +31,7 @@ import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { INTEREST_UMBRELLA, type LeadSort, type ArchiveReason } from "@/lib/lead-filters";
 import { interestedIdleDays, INTERESTED_STALE_WARN_DAYS } from "@/lib/visit-engine";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
 export type LeadRow = {
@@ -91,6 +91,8 @@ export type LeadRow = {
    * يظهر للموظف المستلم وللمالك/الأدمن. المحوّل «كجديد» (_fresh) بلا وسم لأحد عمدًا.
    */
   manualTransferred: boolean;
+  /** آخر متابعة (المرئية للمستخدم) نتيجتها «حسبة البنك» — لفلتر bank=1. */
+  bankCheck: boolean;
 };
 
 export type LeadActivity = {
@@ -278,6 +280,11 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
       && interestedIdleDays(latestFuAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
     // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
     manualTransferred: lastAssignReasonOf(l.reassignments) === MANUAL_TRANSFER_FULL,
+    // «حسبة البنك»: آخر متابعة مرئية — للمخفي سجلُّه تُعتمد أحدث متابعة بعد الإسناد فقط
+    // (ما قبل الاستلام لا يُكشف حتى عبر الفلتر). المتابعات مجلوبة تنازليًا.
+    bankCheck: (hidden && l.assignedAt
+      ? ((l.followUps ?? []).find((f) => f.createdAt > l.assignedAt!) ?? null)
+      : (l.followUps?.[0] ?? null))?.result === "BANK_CHECK",
   };
 }
 
@@ -314,6 +321,8 @@ export type LeadFilters = {
   unresponsive?: boolean;
   /** فلتر «محوَّل»: المحوّلون يدويًا «بالبيانات» فقط (manual_transfer_full) — للجميع ضمن صلاحيته. */
   transferred?: boolean;
+  /** فلتر «حسبة البنك»: آخر متابعة نتيجتها BANK_CHECK — للجميع ضمن صلاحيته. */
+  bankCheck?: boolean;
   /** فلتر سبب الأرشفة (تبويب «مؤرشف»): نهائي / مسوّق / يدوي. */
   archiveReason?: ArchiveReason;
   q?: string;
@@ -373,7 +382,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { user, where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, transferred, archiveReason, q, sort = "activity" } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, unresponsive, transferred, bankCheck, archiveReason, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
@@ -421,9 +430,34 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   // الخطوة ٣ب: قرار الإخفاء للدفعة كاملة (استعلام تدقيق واحد) — للموظف فقط.
   const ctx = await buildRowCtx(user.id, manager, user.role, leads);
   const rows = leads.map((l) => toRow(l, ctx));
-  // فلتر «محوَّل بالبيانات»: «الأخير» في السجل لا يُعبَّر عنه بشرط Prisma مباشر، والصفوف تحمل
-  // القرار المشتق أصلًا — فالترشيح هنا (الترقيم client-side على كامل النتيجة، فلا فقد صفحات).
-  return transferred ? rows.filter((r) => r.manualTransferred) : rows;
+  // فلترا «محوَّل» و«حسبة البنك»: «الأخير» في السجل لا يُعبَّر عنه بشرط Prisma مباشر،
+  // والصفوف تحمل القرار المشتق أصلًا — فالترشيح هنا بلا أي استعلام إضافي.
+  let out = rows;
+  if (transferred) out = out.filter((r) => r.manualTransferred);
+  if (bankCheck) out = out.filter((r) => r.bankCheck);
+  return out;
+}
+
+/**
+ * عدد العملاء الذين آخر متابعة لهم «حسبة البنك» (لشارة الفلتر) — ضمن صلاحية المستخدم
+ * (الموظف: عملاؤه فقط). استعلام تجميعي واحد بـ LATERAL على أحدث متابعة لكل عميل.
+ */
+export async function getBankCheckCount(): Promise<number> {
+  const { user, manager } = await scopeForUser();
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS n
+    FROM "Lead" l
+    JOIN LATERAL (
+      SELECT f."result" FROM "FollowUp" f
+      WHERE f."leadId" = l."id"
+      ORDER BY f."createdAt" DESC
+      LIMIT 1
+    ) lf ON TRUE
+    WHERE l."isArchived" = false
+      AND lf."result" = 'BANK_CHECK'::"FollowUpResult"
+      ${manager ? Prisma.empty : Prisma.sql`AND l."assignedToId" = ${user.id}`}
+  `);
+  return Number(rows[0]?.n ?? 0);
 }
 
 /** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */

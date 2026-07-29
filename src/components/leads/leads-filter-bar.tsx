@@ -35,7 +35,7 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, unresponsive,
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, unresponsive, bankCheck,
 }: {
   basePath: string;
   isManager: boolean;
@@ -46,6 +46,8 @@ export function LeadsFilterBar({
   notContacted?: number;
   /** عدد «لم يستجب ×N» — يظهر الفلتر للمالك/المدير فقط عند تمريره. */
   unresponsive?: number;
+  /** عدد «حسبة البنك» (آخر متابعة BANK_CHECK) — الفلتر للجميع ضمن صلاحيته. */
+  bankCheck?: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -68,6 +70,8 @@ export function LeadsFilterBar({
     if (nr) p.set("nr", "1"); // فلتر «لم يستجب»
     const tr = next.tr ?? filters.tr;
     if (tr) p.set("tr", "1"); // فلتر «محوَّل» (المحوّلون بالبيانات)
+    const bank = next.bank ?? filters.bank;
+    if (bank) p.set("bank", "1"); // فلتر «حسبة البنك» (آخر متابعة BANK_CHECK)
     const s = p.toString();
     return s ? `${basePath}?${s}` : basePath;
   }
@@ -98,7 +102,7 @@ export function LeadsFilterBar({
     go({ emps: filters.emps.includes(t) ? filters.emps.filter((x) => x !== t) : [...filters.emps, t] });
   }
 
-  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.nr || filters.tr;
+  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.nr || filters.tr || filters.bank;
   const notContactedActive = filters.stages.length === 1 && filters.stages[0] === "NEW";
 
   return (
@@ -128,6 +132,15 @@ export function LeadsFilterBar({
           >
             ⇄ محوَّل
           </button>
+          {/* فلتر «حسبة البنك» — آخر متابعة BANK_CHECK (للجميع ضمن صلاحيته) */}
+          {bankCheck != null && (
+            <button
+              onClick={() => go({ bank: !filters.bank })}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.bank ? "border-info bg-info/20 text-info" : "border-info/40 text-info hover:bg-info/10"}`}
+            >
+              حسبة البنك <span className="font-bold">({toArabicDigits(bankCheck)})</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -171,7 +184,7 @@ export function LeadsFilterBar({
         </div>
         {hasFilters && (
           <button
-            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], nr: false, tr: false }))); }}
+            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], nr: false, tr: false, bank: false }))); }}
             className="rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
           >مسح الكل</button>
         )}
