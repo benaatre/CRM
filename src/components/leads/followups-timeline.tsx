@@ -2,9 +2,26 @@
 
 import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
+import type { FollowUpResult } from "@prisma/client";
 import { followUpSectionLabels, followUpSectionColor, followUpResultLabels, stageLabels } from "@/lib/labels";
 import { formatDateTime, toArabicDigits } from "@/lib/format";
+import { NI_REASONS, NI_REASON_RESULT } from "./not-interested-dialog";
 import type { FollowUpItem, SystemEvent } from "./use-followups";
+
+/**
+ * خيارات تعديل النتيجة للمدير — نفس أزرار الموظف البسيطة، كل زر يترجم داخليًا
+ * للنتيجة الصحيحة (لا dropdown بأسماء enum التقنية). النتائج التاريخية النادرة
+ * التي بلا زر تبقى معروضة كتسمية فقط — ليست خيار إنشاء.
+ */
+const EDIT_CHOICES: { label: string; result: FollowUpResult }[] = [
+  { label: "مهتم", result: "INTERESTED_SCHEDULED" },
+  { label: "زيارة", result: "INTERESTED_VISIT_SCHEDULED" },
+  { label: "في الانتظار", result: "ON_HOLD" },
+  { label: "حسبة البنك", result: "BANK_CHECK" },
+  { label: "طلب التواصل في وقت آخر", result: "CALL_LATER" },
+  { label: "لم يرد", result: "NOT_ANSWERED_SCHEDULED" },
+];
+const NI_RESULTS = new Set<FollowUpResult>(Object.values(NI_REASON_RESULT));
 
 /**
  * سجل المتابعات + تعديل ضمن الصلاحية (الجزء ١ — التذكيرات):
@@ -172,14 +189,27 @@ function EditFollowUpDialog({ item, leadId, onClose, onSaved }: {
           </p>
 
           {item.canEditResult && (
-            <label className="block space-y-1">
+            <div className="space-y-2">
               <span className="text-xs text-muted-foreground">النتيجة</span>
-              <select value={result} onChange={(e) => setResult(e.target.value as FollowUpItem["result"])} className="select-base">
-                {(Object.keys(followUpResultLabels) as FollowUpItem["result"][]).map((r) => (
-                  <option key={r} value={r}>{followUpResultLabels[r]}</option>
+              {/* النتيجة الحالية بلا زر (تاريخية) تُعرض كتسمية — الاختيار الجديد بالأزرار فقط */}
+              {!EDIT_CHOICES.some((c) => c.result === result) && !NI_RESULTS.has(result) && (
+                <p className="rounded-lg bg-secondary/60 px-2.5 py-1.5 text-xs text-muted-foreground">الحالية: {followUpResultLabels[result]}</p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {EDIT_CHOICES.map((c) => (
+                  <button key={c.result} type="button" onClick={() => setResult(c.result)} className={`rounded-lg border px-2.5 py-1.5 text-xs ${result === c.result ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}>{c.label}</button>
                 ))}
-              </select>
-            </label>
+                <button type="button" onClick={() => setResult(NI_RESULTS.has(result) ? result : NI_REASON_RESULT[NI_REASONS[0]])} className={`rounded-lg border px-2.5 py-1.5 text-xs ${NI_RESULTS.has(result) ? "border-destructive bg-destructive/10 text-destructive" : "border-border text-muted-foreground hover:text-foreground"}`}>غير مهتم</button>
+              </div>
+              {/* «غير مهتم»: السبب يحدد النتيجة المنظّمة — نفس أسباب الموظف */}
+              {NI_RESULTS.has(result) && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  {NI_REASONS.map((r) => (
+                    <button key={r} type="button" onClick={() => setResult(NI_REASON_RESULT[r])} className={`rounded-lg border px-2.5 py-1.5 text-xs ${result === NI_REASON_RESULT[r] ? "border-destructive bg-destructive/10 text-destructive" : "border-border text-muted-foreground"}`}>{r}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           <label className="block space-y-1">
