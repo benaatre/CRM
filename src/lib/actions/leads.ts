@@ -419,16 +419,19 @@ export async function distributeDuplicateLead(
 
     // نعدّل حقول Lead فقط — المتابعات تبقى محفوظة في الأنماط الثلاثة.
     if (mode === "freshUnassigned") {
+      // ولادة كاملة + رجوع للحوض — الإخفاء يتفعّل عند توزيعه لاحقًا بلاحقة _fresh.
       await prisma.lead.update({
         where: { id: leadId },
-        data: { stage: LeadStage.NEW, assignedToId: null, assignedAt: null, contactedAt: null },
+        data: { ...FRESH_RESET_DATA, assignedToId: null, assignedAt: null, contactedAt: null },
       });
     } else {
       // م-١: الإسناد عبر الدالة الموحّدة (أختام كاملة + Reassignment). توزيع المكرر قرار بشري = يدوي.
+      // توحيد 2026-07-29: السبب من مصدر الحقيقة بلاحقته — «كجديد» = _fresh (إخفاء + ولادة كاملة)،
+      // و«بحالته» = _full (كان «manual_redistribute» مجردًا فلا إخفاء ولا تصفير).
       await assignLead(prisma, leadId, toUserId as string, {
         manual: true,
-        reason: "manual_redistribute",
-        extraData: mode === "freshKeepEmployee" ? { stage: LeadStage.NEW } : {},
+        reason: redistributeReason(mode === "freshKeepEmployee" ? "fresh" : "full"),
+        extraData: mode === "freshKeepEmployee" ? FRESH_RESET_DATA : {},
       });
     }
     await logAudit(prisma, { userId: user.id, action: "lead.distributed", entity: "lead", entityId: leadId, summary: `وزّع مكرر (${mode})` });
