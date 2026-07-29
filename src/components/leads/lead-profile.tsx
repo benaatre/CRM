@@ -10,7 +10,7 @@ import {
   followUpResultLabels, followUpTypeLabels,
 } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
-import { updateLeadIntake, toggleRevealHistory } from "@/lib/actions/leads";
+import { updateLeadIntake, updateLeadIdentity, toggleRevealHistory } from "@/lib/actions/leads";
 import { transferToAutoPool, removeFromAutoPool } from "@/lib/actions/distribution";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
@@ -206,7 +206,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
         ))}
       </div>
 
-      {tab === "data" && <DataTab detail={detail} projects={projects} onSaved={() => router.refresh()} />}
+      {tab === "data" && <DataTab detail={detail} projects={projects} isManager={isManager} onSaved={() => router.refresh()} />}
 
       {tab === "followups" && (
         <div className="space-y-5">
@@ -286,9 +286,12 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
 }
 
 // ===== تبويب البيانات =====
-function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: { id: string; name: string }[]; onSaved: () => void }) {
+function DataTab({ detail, projects, isManager, onSaved }: { detail: LeadDetail; projects: { id: string; name: string }[]; isManager: boolean; onSaved: () => void }) {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  // هوية العميل (الاسم/الجوال) — تعديلها للمالك/المدير فقط (الخادم يفرضها أيضًا).
+  const [name, setName] = useState(detail.name);
+  const [phone, setPhone] = useState(detail.phone);
   const [goal, setGoal] = useState<string>(detail.purchaseGoal ?? "");
   const [method, setMethod] = useState<string>(detail.purchaseMethod ?? "");
   const [priceMin, setPriceMin] = useState(detail.priceMin?.toString() ?? "");
@@ -303,6 +306,11 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
   function save() {
     setMsg(null);
     startTransition(async () => {
+      // الهوية أولًا (للمدير) — رفض الجوال غير الصالح يوقف الحفظ برسالته بلا مساس بالبقية.
+      if (isManager && (name.trim() !== detail.name || phone.trim() !== detail.phone)) {
+        const idRes = await updateLeadIdentity(detail.id, { name, phone });
+        if (!idRes.ok) { setMsg(idRes.error ?? "صار خطأ"); return; }
+      }
       const res = await updateLeadIntake(detail.id, {
         purchaseGoal: (goal || null) as PurchaseGoal | null,
         purchaseMethod: (method || null) as PurchaseMethod | null,
@@ -319,6 +327,15 @@ function DataTab({ detail, projects, onSaved }: { detail: LeadDetail; projects: 
 
   return (
     <section className="glass space-y-4 rounded-2xl p-5">
+      {/* هوية العميل — تعديل للمالك/المدير، قراءة للموظف. الجوال يقبل السعودي والدولي (+). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="الاسم">
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!isManager || pending} title={isManager ? undefined : "تعديل الاسم للمالك والمدير فقط"} className="select-base disabled:opacity-60" />
+        </Field>
+        <Field label="الجوال">
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" disabled={!isManager || pending} title={isManager ? undefined : "تعديل الجوال للمالك والمدير فقط"} placeholder="05XXXXXXXX أو ‎+965…" className="select-base disabled:opacity-60" />
+        </Field>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="هدف الشراء">
           <select value={goal} onChange={(e) => setGoal(e.target.value)} className="select-base">
