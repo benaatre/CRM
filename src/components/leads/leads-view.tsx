@@ -7,7 +7,7 @@ import {
   purchaseMethodLabels, purchaseGoalLabels,
   stageLabels, stageColor,
 } from "@/lib/labels";
-import { formatDate, formatDateTime, toArabicDigits, daysAgoLabel } from "@/lib/format";
+import { formatDate, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import type { LeadRow } from "@/lib/data/leads";
 import { TransferStar, TransferBadge } from "./transfer-star";
 import { TransferModeDialog } from "./transfer-mode-dialog";
@@ -27,13 +27,12 @@ import { FollowUpsDrawer } from "./followups-drawer";
 import { ImportDialog } from "@/components/team/import-dialog";
 import { useLeads } from "./use-leads";
 
-import { DEFAULT_LEAD_SORT, collapseStagesParam, VISIT_FILTER_STAGES, type LeadSort } from "@/lib/lead-filters";
-import { WAITING_TONE, STAGE_TONES } from "@/lib/stage-colors";
+import { DEFAULT_LEAD_SORT, collapseStagesParam, dateRangeApplies, type ArchiveReason, type LeadFilterValues } from "@/lib/lead-filters";
+import { WAITING_TONE } from "@/lib/stage-colors";
 
 type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
-type ArchiveReason = "" | "final" | "marketer" | "manual";
-type Filters = { q: string; stages: string[]; emps: string[]; sort: LeadSort; wait: boolean; tr: boolean; bank: boolean; ar: ArchiveReason };
+type Filters = LeadFilterValues;
 
 // شرائح فلتر «سبب الأرشفة» بتبويب «مؤرشف».
 const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
@@ -63,8 +62,6 @@ export function LeadsView({
 }) {
   const router = useRouter();
   const { leads: rows, loading, reload } = useLeads(query);
-  // فلتر «زيارة» مفعّل؟ (المرحلتان متلازمتان دائمًا) — يعرض أجندة زيارات الشهر فوق النتائج.
-  const visitFilterOn = VISIT_FILTER_STAGES.every((s) => filters.stages.includes(s));
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
@@ -91,6 +88,11 @@ export function LeadsView({
     if (filters.wait) p.set("wait", "1"); // فلتر «في الانتظار» يبقى عبر التبويبات
     if (filters.tr) p.set("tr", "1"); // فلتر «محوَّل» يبقى عبر التبويبات
     if (filters.bank) p.set("bank", "1"); // فلتر «حسبة البنك» يبقى عبر التبويبات
+    // النطاق الزمني يبقى عبر التبويبات ما دام فلتر «زيارة»/«موعد لاحق» محمولًا معها.
+    if (dateRangeApplies(filters.stages)) {
+      if (filters.range) p.set("range", filters.range);
+      else { if (filters.from) p.set("from", filters.from); if (filters.to) p.set("to", filters.to); }
+    }
     if (v === "hidden" && filters.ar) p.set("ar", filters.ar); // سبب الأرشفة خاص بتبويب «مؤرشف»
     const s = p.toString();
     startTransition(() => router.push(s ? `/leads?${s}` : "/leads"));
@@ -178,6 +180,7 @@ export function LeadsView({
             waiting={tab === "working" ? waiting : undefined}
             bankCheck={tab === "working" ? bankCheck : undefined}
             visitCount={visitCount}
+            showDateRange
           />
           {/* فلتر «سبب الأرشفة» — تبويب «مؤرشف» فقط */}
           {tab === "hidden" && (
@@ -194,9 +197,6 @@ export function LeadsView({
           )}
         </div>
       )}
-
-      {/* أجندة زيارات الشهر — تظهر مع تفعيل فلتر «زيارة» (نفس بيانات القائمة، بلا استعلامات) */}
-      {visitFilterOn && <VisitAgenda rows={rows} />}
 
       {/* شريط أدوات التحديد — ظاهر دائمًا (مع عدّاد واضح + زر «تحديد الكل») */}
       {rows.length > 0 && (
@@ -255,7 +255,8 @@ export function LeadsView({
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
                     <TransferBadge show={l.manualTransferred} />
                     {!isManager && <PullCountdown pull={l.pull} />}
-                    {l.waiting && <span className={`max-w-48 truncate rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title={`آخر متابعة: في الانتظار${l.waitingReason ? ` — ${l.waitingReason}` : ""}`}>في الانتظار{l.waitingReason ? `: ${l.waitingReason}` : ""}{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}
+                    {/* الشارة الملونة فقط — السبب يظهر في ملف العميل والدرج (القائمة بلا زحمة). */}
+                    {l.waiting && <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}
                     {l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}
                   </div>
                   <a href={`tel:${l.phone}`} className="mt-1 block text-sm text-gold" dir="ltr">{l.phone}</a>
@@ -304,7 +305,7 @@ export function LeadsView({
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
                   <td className="px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
                   <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} />{!isManager && <PullCountdown pull={l.pull} />}{l.waiting && <span className={`max-w-48 truncate rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title={`آخر متابعة: في الانتظار${l.waitingReason ? ` — ${l.waitingReason}` : ""}`}>في الانتظار{l.waitingReason ? `: ${l.waitingReason}` : ""}{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
+                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} />{!isManager && <PullCountdown pull={l.pull} />}{l.waiting && <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
                   {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
                   <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>
@@ -634,58 +635,5 @@ function UnarchiveDialog({
         </div>
       </div>
     </>
-  );
-}
-
-/**
- * أجندة زيارات الشهر الحالي — تظهر مع تفعيل فلتر «زيارة»: نفس صفوف القائمة المجلوبة
- * معاد ترتيبها زمنيًا (صفر استعلامات جديدة)، مجمّعة: اليوم · بكرة · هالأسبوع · باقي الشهر.
- * للموظف عملاؤه وللمدير الكل (النطاق من الصفوف نفسها). الضغط يفتح ملف العميل.
- */
-function VisitAgenda({ rows }: { rows: { id: string; name: string; visitAt: Date | string | null; projectName: string | null }[] }) {
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
-  const DAY = 86_400_000;
-  const visits = rows
-    .filter((l) => l.visitAt && new Date(l.visitAt).getTime() >= startToday && new Date(l.visitAt).getTime() < endMonth)
-    .sort((a, b) => new Date(a.visitAt!).getTime() - new Date(b.visitAt!).getTime());
-  if (visits.length === 0) return null;
-
-  const groupOf = (t: number) =>
-    t < startToday + DAY ? "اليوم" : t < startToday + 2 * DAY ? "بكرة" : t < startToday + 7 * DAY ? "هالأسبوع" : "باقي الشهر";
-  const GROUPS = ["اليوم", "بكرة", "هالأسبوع", "باقي الشهر"] as const;
-  const grouped = new Map<string, typeof visits>();
-  for (const v of visits) {
-    const g = groupOf(new Date(v.visitAt!).getTime());
-    grouped.set(g, [...(grouped.get(g) ?? []), v]);
-  }
-
-  return (
-    <section className={`mb-4 rounded-2xl border p-4 ${STAGE_TONES.VISIT_SCHEDULED.chip.replace(/text-\S+/, "")}`}>
-      <h2 className={`mb-3 text-sm font-bold ${STAGE_TONES.VISIT_SCHEDULED.text}`}>
-        أجندة زيارات الشهر ({toArabicDigits(visits.length)})
-      </h2>
-      <div className="space-y-3">
-        {GROUPS.map((g) => {
-          const items = grouped.get(g);
-          if (!items?.length) return null;
-          return (
-            <div key={g}>
-              <div className="mb-1.5 text-xs font-semibold text-muted-foreground">{g}</div>
-              <div className="space-y-1">
-                {items.map((v) => (
-                  <Link key={v.id} href={`/leads/${v.id}`} className="flex flex-wrap items-center gap-x-2 rounded-lg border border-border/60 bg-card/60 px-3 py-1.5 text-xs hover:border-sky-400/50">
-                    <span className={`font-medium ${STAGE_TONES.VISIT_SCHEDULED.text}`} dir="rtl">{formatDateTime(v.visitAt!)}</span>
-                    <span className="font-medium text-foreground">{v.name}</span>
-                    {v.projectName && <span className="text-muted-foreground">· {v.projectName}</span>}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
   );
 }

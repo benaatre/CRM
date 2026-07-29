@@ -351,6 +351,12 @@ export type LeadFilters = {
   bankCheck?: boolean;
   /** فلتر سبب الأرشفة (تبويب «مؤرشف»): نهائي / مسوّق / يدوي. */
   archiveReason?: ArchiveReason;
+  /**
+   * النطاق الزمني للمواعيد [dateFrom, dateTo) — يعمل مع فلتر «زيارة» (على visitAt)
+   * و«موعد لاحق» (على nextFollowup)؛ مع تفعيلهما معًا يكفي وقوع أحد الموعدين في النطاق.
+   */
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
   q?: string;
   sort?: LeadSort;
 };
@@ -408,7 +414,7 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { user, where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, q, sort = "activity" } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, dateFrom, dateTo, q, sort = "activity" } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
@@ -416,6 +422,16 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   if (base) and.push(base);
 
   if (stages && stages.length) and.push({ stage: { in: stages } });
+  // النطاق الزمني للمواعيد: زيارة على visitAt · موعد لاحق على nextFollowup — server-side
+  // (الموظف محجّم بعملائه أصلًا عبر where، فالصلاحيات كالمعتاد).
+  if (dateFrom && dateTo && stages && stages.length) {
+    const rangeOr: Record<string, unknown>[] = [];
+    if (stages.some((s) => VISIT_FILTER_STAGES.includes(s)))
+      rangeOr.push({ stage: { in: VISIT_FILTER_STAGES }, visitAt: { gte: dateFrom, lt: dateTo } });
+    if (stages.includes("FOLLOW_UP_LATER"))
+      rangeOr.push({ stage: "FOLLOW_UP_LATER", nextFollowup: { gte: dateFrom, lt: dateTo } });
+    if (rangeOr.length) and.push({ OR: rangeOr });
+  }
   // فلتر الموظفين للمدير: خيار «غير موزّع» يُحترم في الكانبان فقط.
   if (manager) {
     if (tab === "all" && ((assigneeIds && assigneeIds.length) || includeUnassigned)) {
@@ -458,6 +474,17 @@ export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   if (transferred) out = out.filter((r) => r.manualTransferred);
   if (bankCheck) out = out.filter((r) => r.bankCheck);
   if (waiting) out = out.filter((r) => r.waiting);
+  // داخل النطاق الزمني: الأقرب موعدًا أولًا (زيارة → visitAt، موعد لاحق → nextFollowup) —
+  // يطغى على الترتيب المختار لأن جوهر النطاق هو جدول مواعيد.
+  if (dateFrom && dateTo) {
+    const dueAt = (r: LeadRow): number => {
+      const times: number[] = [];
+      if (VISIT_FILTER_STAGES.includes(r.stage) && r.visitAt) times.push(new Date(r.visitAt).getTime());
+      if (r.stage === "FOLLOW_UP_LATER" && r.nextFollowup) times.push(new Date(r.nextFollowup).getTime());
+      return times.length ? Math.min(...times) : Number.MAX_SAFE_INTEGER;
+    };
+    out = [...out].sort((a, b) => dueAt(a) - dueAt(b));
+  }
   return out;
 }
 

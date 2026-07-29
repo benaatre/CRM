@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
-import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA, VISIT_FILTER_STAGES, collapseStagesParam } from "@/lib/lead-filters";
+import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA, VISIT_FILTER_STAGES, collapseStagesParam, dateRangeApplies } from "@/lib/lead-filters";
 import type { LeadFilterValues, LeadSort } from "@/lib/lead-filters";
 import { stageFilterChip, toneFilterChip, WAITING_TONE, BANK_TONE, STAGE_TONES } from "@/lib/stage-colors";
 
@@ -21,9 +21,9 @@ const SORT_OPTIONS: { value: LeadSort; label: string }[] = [
 
 // مظلّة «مهتم»: المصدر الواحد في lead-filters.ts (type-only على Prisma — آمنة لحزمة العميل).
 
-// عنصر مختار: أخضر #22c55e بخلفية خضراء شفافة. غير مختار: رمادي محايد.
+// عنصر مختار: أخضر هادئ بخلفية شفافة (نفس روح درجات stage-colors الخافتة). غير مختار: رمادي محايد.
 function chip(active: boolean) {
-  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]" : "border-border text-muted-foreground hover:text-foreground"}`;
+  return `rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-green-400/60 bg-green-500/20 text-green-200" : "border-border text-muted-foreground hover:text-foreground"}`;
 }
 // زر «الكل»: ذهبي #CBA45E عند تفعيله (لا فلتر محدّد).
 function chipAll(active: boolean) {
@@ -36,7 +36,7 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, waiting, bankCheck, visitCount,
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, waiting, bankCheck, visitCount, showDateRange = false,
 }: {
   basePath: string;
   isManager: boolean;
@@ -51,6 +51,8 @@ export function LeadsFilterBar({
   bankCheck?: number;
   /** عدد عملاء مرحلتي الزيارة معًا — رقم شريحة «زيارة» الموحّدة (اختياري). */
   visitCount?: number;
+  /** يعرض شريط النطاق الزمني مع فلتر «زيارة»/«موعد لاحق» — قائمة العملاء فقط (لا الكانبان). */
+  showDateRange?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -75,6 +77,14 @@ export function LeadsFilterBar({
     if (tr) p.set("tr", "1"); // فلتر «محوَّل» (المحوّلون بالبيانات)
     const bank = next.bank ?? filters.bank;
     if (bank) p.set("bank", "1"); // فلتر «حسبة البنك» (آخر متابعة BANK_CHECK)
+    // النطاق الزمني — يُحمل فقط ما دام فلتر «زيارة»/«موعد لاحق» مفعّلًا (يتصفّر مع إلغائه).
+    if (dateRangeApplies(stages)) {
+      const range = next.range ?? filters.range;
+      const from = next.from ?? filters.from;
+      const to = next.to ?? filters.to;
+      if (range) p.set("range", range);
+      else { if (from) p.set("from", from); if (to) p.set("to", to); }
+    }
     const s = p.toString();
     return s ? `${basePath}?${s}` : basePath;
   }
@@ -115,6 +125,9 @@ export function LeadsFilterBar({
   }
 
   const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.wait || filters.tr || filters.bank;
+  // شريط النطاق الزمني: يظهر مع فلتر «زيارة» (على موعد الزيارة) أو «موعد لاحق» (على موعد المتابعة).
+  const dateRangeOn = showDateRange && dateRangeApplies(filters.stages);
+  const customRangeActive = !filters.range && (!!filters.from || !!filters.to);
   const notContactedActive = filters.stages.length === 1 && filters.stages[0] === "NEW";
 
   return (
@@ -170,6 +183,31 @@ export function LeadsFilterBar({
         )}
       </div>
 
+      {/* النطاق الزمني للمواعيد — مع فلتر «زيارة» (موعد الزيارة) أو «موعد لاحق» (موعد المتابعة).
+          يصفّي القائمة نفسها، ينعكس بالرابط، والترتيب داخله: الأقرب موعدًا أولًا. */}
+      {dateRangeOn && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+          <span className="text-xs text-muted-foreground">الموعد:</span>
+          <button onClick={() => go({ range: "", from: "", to: "" })} className={chipAll(!filters.range && !customRangeActive)}>الكل</button>
+          <button onClick={() => go({ range: "week", from: "", to: "" })} className={chipAll(filters.range === "week")}>هذا الأسبوع</button>
+          <button onClick={() => go({ range: "next", from: "", to: "" })} className={chipAll(filters.range === "next")}>الأسبوع الجاي</button>
+          <span className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors ${customRangeActive ? "border-gold bg-gold/10" : "border-border"}`}>
+            <span className="text-muted-foreground">من</span>
+            <input
+              type="date" value={filters.from} dir="ltr" aria-label="من تاريخ"
+              onChange={(e) => go({ range: "", from: e.target.value })}
+              className="bg-transparent text-xs text-foreground outline-none [color-scheme:dark]"
+            />
+            <span className="text-muted-foreground">إلى</span>
+            <input
+              type="date" value={filters.to} dir="ltr" aria-label="إلى تاريخ"
+              onChange={(e) => go({ range: "", to: e.target.value })}
+              className="bg-transparent text-xs text-foreground outline-none [color-scheme:dark]"
+            />
+          </span>
+        </div>
+      )}
+
       {/* فلتر الموظفين (للمدير) */}
       {isManager && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -197,7 +235,7 @@ export function LeadsFilterBar({
         </div>
         {hasFilters && (
           <button
-            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], wait: false, tr: false, bank: false }))); }}
+            onClick={() => { setQLocal(""); startTransition(() => router.push(build({ q: "", stages: [], emps: [], wait: false, tr: false, bank: false, range: "", from: "", to: "" }))); }}
             className="rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
           >مسح الكل</button>
         )}
