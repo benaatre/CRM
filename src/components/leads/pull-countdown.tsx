@@ -59,6 +59,91 @@ const SIZE = 28;
 const R = 11;
 const CIRC = 2 * Math.PI * R;
 
+// ===== دورة حياة السحب: عدّاد مهلة السحب التلقائي (بالدقائق) =====
+
+export type SweepPullInfo = { assignedMs: number; warnMs: number; deadlineMs: number };
+
+/** «٤٢ دقيقة» / «ساعة و١٠ دقايق» — تلميح العدّاد الدقائقي. */
+function remainingMinLabel(ms: number): string {
+  if (ms <= 0) return "الآن";
+  const totalMin = Math.ceil(ms / 60_000);
+  if (totalMin < 60) return `${toArabicDigits(totalMin)} دقيقة`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const hPart = h === 1 ? "ساعة" : h === 2 ? "ساعتين" : `${toArabicDigits(h)} ساعات`;
+  return m > 0 ? `${hPart} و${toArabicDigits(m)} دقيقة` : hPart;
+}
+
+/**
+ * حلقة مهلة السحب التلقائي — لكل عميل موزّع تلقائيًا ولم يُلمس:
+ *   أخضر (باقي فوق ٥٠٪ من المهلة) ⟵ أصفر (تحت ٥٠٪) ⟵ أحمر نابض (دخل نافذة الإنذار).
+ * تختفي بأول متابعة مع حركة الإنقاذ الخضراء. الموظف يشوف العدّ فقط (بلا أي «سحب/تلقائي» —
+ * قاعدة العرض)، والمالك/المدير نفس الحلقة مع التفاصيل الكاملة في التلميح.
+ */
+export function SweepCountdown({ info, manager }: { info: SweepPullInfo | null; manager?: boolean }) {
+  const now = useMinuteNow();
+  const [rescue, setRescue] = useState<"fill" | "fade" | null>(null);
+  const prev = useRef<SweepPullInfo | null>(info);
+  useEffect(() => {
+    if (prev.current && !info) {
+      setRescue("fill");
+      const fadeT = setTimeout(() => setRescue("fade"), 650);
+      const endT = setTimeout(() => setRescue(null), 1300);
+      prev.current = info;
+      return () => { clearTimeout(fadeT); clearTimeout(endT); };
+    }
+    prev.current = info;
+  }, [info]);
+
+  if (!info && rescue) {
+    return (
+      <span className="inline-flex shrink-0 items-center" style={{ width: SIZE, height: SIZE }} aria-hidden>
+        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}
+          className="transition-opacity duration-500" style={{ opacity: rescue === "fade" ? 0 : 1 }}>
+          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="currentColor" strokeOpacity={0.15} strokeWidth={3} className="text-success" />
+          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none"
+            stroke="var(--color-success, #22c55e)" strokeWidth={3} strokeLinecap="round"
+            strokeDasharray={CIRC} strokeDashoffset={rescue === "fill" ? CIRC * 0.02 : 0}
+            transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
+            style={{ transition: "stroke-dashoffset 600ms ease-out" }} />
+        </svg>
+      </span>
+    );
+  }
+  if (!info) return null;
+
+  const total = Math.max(1, info.deadlineMs - info.assignedMs);
+  const consumed = Math.min(1, Math.max(0, (now - info.assignedMs) / total));
+  const remainingMs = info.deadlineMs - now;
+  const inWarn = now >= info.warnMs;
+  // أخضر → أصفر → أحمر نابض (درجات stage-colors المتوسطة الإشباع).
+  const color = inWarn ? "var(--color-destructive, #ef4444)" : consumed > 0.5 ? "#D6B85A" : "#6FBF8B";
+  const title = manager
+    ? remainingMs <= 0
+      ? "تجاوز المهلة — يُسحب ويُعاد توزيعه بالدورة الجاية"
+      : `سحب تلقائي خلال ${remainingMinLabel(remainingMs)}${inWarn ? " (نافذة الإنذار)" : ""}`
+    : remainingMs <= 0
+      ? "تواصل مع العميل الحين"
+      : `باقي ${remainingMinLabel(remainingMs)} — تواصل مع العميل`;
+
+  return (
+    <span
+      title={title}
+      className={`inline-flex shrink-0 items-center rounded-full ${inWarn ? "animate-pulse" : ""}`}
+      style={{ width: SIZE, height: SIZE, ...(inWarn ? { boxShadow: "0 0 8px 1px rgba(239,68,68,0.45)" } : {}) }}
+    >
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+        <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke={color} strokeOpacity={0.18} strokeWidth={3} />
+        <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none"
+          stroke={color} strokeWidth={3} strokeLinecap="round"
+          strokeDasharray={CIRC} strokeDashoffset={CIRC * consumed}
+          transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
+          style={{ transition: "stroke-dashoffset 600ms ease-out" }} />
+      </svg>
+    </span>
+  );
+}
+
 export function PullCountdown({ pull }: { pull: PullInfo | null }) {
   const now = useMinuteNow();
   // حركة الإنقاذ: كانت الحلقة ظاهرة واختفت (متابعة أنقذت العميل) → تعبئة خضراء ثم تلاشٍ.

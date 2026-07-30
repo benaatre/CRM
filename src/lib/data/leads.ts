@@ -24,7 +24,7 @@ import { daysWaiting } from "@/lib/assignment";
 import { hiddenHistoryIds, isFreshDistributed, latestRevealAction, REVEAL_HISTORY_ACTION } from "@/lib/visibility";
 import { MANUAL_TRANSFER_FULL, isInitialReason } from "@/lib/transfer-mode";
 import { getNoResponseConfig, noAnswerStats, noResponseBaseline, noResponseState, type NoResponseConfig } from "@/lib/no-response-escalation";
-import { MAX_REASSIGNS } from "@/lib/sweep-eligibility";
+import { MAX_REASSIGNS, MIN_AUTO_SWEEP_TIMEOUT_MIN, leadTimeoutMin } from "@/lib/sweep-eligibility";
 import { NO_RESPONSE_STAGES } from "@/lib/auto-distribute";
 import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
@@ -74,6 +74,12 @@ export type LeadRow = {
    * للموظف EMPLOYEE فقط — دائمًا null للمالك/المدير وخارج نظام «لم يتم الرد».
    */
   pull: { state: "grace" | "warning" | "overdue"; baselineMs: number; deadlineMs: number; noAnswerCount: number } | null;
+  /**
+   * دورة حياة السحب: عدّاد مهلة السحب التلقائي (بالدقائق) للعميل الموزّع تلقائيًا الذي لم
+   * يُلمس — حلقة أخضر→أصفر→أحمر نابض بالقائمة. يُحسب فقط والسحب التلقائي شغال، ويختفي
+   * بأول متابعة/تواصل. للموظف والمالك معًا (الموظف حلقة بلا نص «سحب»، المالك بالتفاصيل).
+   */
+  sweepPull: { assignedMs: number; warnMs: number; deadlineMs: number } | null;
   /** آخر متابعة (المرئية) «لم يستجب» أو «في الانتظار» — عضوية شريحة «في الانتظار» (wait=1). */
   waiting: boolean;
   /** عدد متابعات عائلة الانتظار (لم يستجب + في الانتظار) بالنافذة المرئية — شارة «في الانتظار ×N». */
@@ -187,6 +193,7 @@ type LeadWithRels = {
   reassignCount: number;
   assignedAt: Date | null;
   manualAssignedAt: Date | null;
+  contactedAt: Date | null;
   visitAt: Date | null;
   visitRescheduleCount: number;
   autoPoolAt: Date | null;
@@ -203,7 +210,11 @@ export function lastAssignReasonOf(reassignments?: { reason: string; toUserId: s
 /** نتائج «عائلة الانتظار»: آخر متابعة منها = العميل «في الانتظار» (شريحة wait=1). */
 const WAITING_RESULTS: FollowUpResult[] = ["NO_ANSWER_INTERESTED", "ON_HOLD"];
 
-type RowCtx = { userId: string; manager: boolean; hidden: Set<string>; nrConfig: NoResponseConfig; now: Date };
+type RowCtx = {
+  userId: string; manager: boolean; hidden: Set<string>; nrConfig: NoResponseConfig; now: Date;
+  /** إعدادات السحب التلقائي (لعدّاد sweepPull) — null لو المفتاح مطفأ. */
+  sweepCfg: { distTimeoutMin: number; sweepWarnMin: number; sweepCutoffAt: Date } | null;
+};
 
 function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
   // محوّل: أُعيد توجيهه (reassignCount>0) ولم تُسجَّل متابعة بعد آخر إسناد (تختفي العلامة أول متابعة).
@@ -290,6 +301,20 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     // §٦: أيقونة حمراء لو آخر سحب كان بسبب استنفاد المحاولات (وإلا نجمة ذهبية للتقصير).
     transferredExhausted: !hidden && transferred && lastPullReason.startsWith("no_response_exhausted"),
     pull,
+    // دورة حياة السحب: عدّاد مهلة السحب — نفس شروط أهلية المحرك حرفيًا (بركة + جديد +
+    // صفر تواصل + بلا متابعات + بلا حصانات)، بأرضية الأمان ٦٠ دقيقة.
+    sweepPull: (() => {
+      const cfg = ctx.sweepCfg;
+      if (!cfg) return null;
+      if (l.isArchived || l.autoPoolAt == null || l.manualAssignedAt != null) return null;
+      if (l.stage !== "NEW" || l.contactedAt != null || l.assignedAt == null || !l.assignedTo) return null;
+      if ((l.followUps?.length ?? 0) > 0) return null; // أي متابعة = حصانة دائمة
+      if (l.reassignCount >= MAX_REASSIGNS) return null;
+      if (l.assignedAt < cfg.sweepCutoffAt) return null;
+      const tmin = leadTimeoutMin(l as { reassignCount: number; createdAt: Date; assignedAt: Date }, { distTimeoutMin: Math.max(MIN_AUTO_SWEEP_TIMEOUT_MIN, cfg.distTimeoutMin) }, ctx.now);
+      const deadlineMs = l.assignedAt.getTime() + tmin * 60_000;
+      return { assignedMs: l.assignedAt.getTime(), warnMs: deadlineMs - cfg.sweepWarnMin * 60_000, deadlineMs };
+    })(),
     // «في الانتظار»: آخر متابعة مرئية من عائلة الانتظار — نفس نمط «حسبة البنك» حرفيًا.
     waiting: !!latestVisibleFu && WAITING_RESULTS.includes(latestVisibleFu.result),
     waitingCount: visibleFus.filter((f) => WAITING_RESULTS.includes(f.result)).length,
@@ -320,7 +345,15 @@ async function buildRowCtx(userId: string, manager: boolean, role: Role, leads: 
     prisma, role,
     leads.map((l) => ({ id: l.id, lastAssignReason: lastAssignReasonOf(l.reassignments), assignedAt: l.assignedAt })),
   );
-  return { userId, manager, hidden, nrConfig: getNoResponseConfig(), now: new Date() };
+  // إعدادات عدّاد السحب التلقائي (sweepPull) — استعلام واحد لكل طلب؛ المفتاح مطفأ = بلا عدّاد.
+  const s = await prisma.settings.findUnique({
+    where: { id: "singleton" },
+    select: { autoSweepEnabled: true, distTimeoutMin: true, sweepWarnMin: true, sweepCutoffAt: true },
+  });
+  const sweepCfg = s?.autoSweepEnabled
+    ? { distTimeoutMin: s.distTimeoutMin, sweepWarnMin: s.sweepWarnMin, sweepCutoffAt: s.sweepCutoffAt }
+    : null;
+  return { userId, manager, hidden, nrConfig: getNoResponseConfig(), now: new Date(), sweepCfg };
 }
 
 const rowInclude = {

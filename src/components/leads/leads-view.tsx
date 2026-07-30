@@ -14,7 +14,7 @@ import { TransferModeDialog } from "./transfer-mode-dialog";
 // اسم مستعار: TransferMode المحلي في هذا الملف يشمل "recover" (نافذة التحويل الجماعية)،
 // أما وضع التوزيع فهو الثنائي المشترك في lib/transfer-mode.
 import type { TransferMode as LeadReceiveMode } from "@/lib/transfer-mode";
-import { PullCountdown } from "./pull-countdown";
+import { PullCountdown, SweepCountdown } from "./pull-countdown";
 import {
   transferLeads, recoverLeads, bulkArchive, bulkDelete, unarchiveLeads,
 } from "@/lib/actions/leads";
@@ -256,7 +256,9 @@ export function LeadsView({
                     <span className="font-medium text-foreground">{l.name}</span>
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
                     <TransferBadge show={l.manualTransferred} />
-                    {!isManager && <PullCountdown pull={l.pull} />}
+                    {/* حلقة مهلة السحب (أخضر→أصفر→أحمر نابض) — للموظف والمالك؛ عدّاد عدم الرد للموظف لما ما فيه حلقة سحب */}
+                    <SweepCountdown info={l.sweepPull} manager={isManager} />
+                    {!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}
                     {/* الشارة الملونة فقط — السبب يظهر في ملف العميل والدرج (القائمة بلا زحمة). */}
                     {l.waiting && <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}
                     {l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}
@@ -307,7 +309,7 @@ export function LeadsView({
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
                   <td className="px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
                   <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} />{!isManager && <PullCountdown pull={l.pull} />}{l.waiting && <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
+                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} /><SweepCountdown info={l.sweepPull} manager={isManager} />{!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}{l.waiting && <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
                   <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
                   {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
                   <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>
