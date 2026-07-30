@@ -359,6 +359,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     // #20: أي متابعة مسجّلة = تعامل فعلي مع العميل → توقف عدّاد إعادة التوجيه.
     // (عدّاد المحاولات attempts يبقى للمكالمات/واتساب فقط عبر bumpsAttempt أعلاه.)
     await markContacted(tx, id);
+    // الحصانة اللحظية (خلل المرشحين): أي متابعة تُلغي مسار السحب فورًا — بطاقة الترشيح
+    // تُحذف لحظة التسجيل نفسها (لا عند الدورة الجاية)، والعدّاد/الوميض يختفيان معها.
+    await tx.sweepCandidate.deleteMany({ where: { leadId: id } });
     await logAudit(tx, {
       userId: user.id, action: "followup.added", entity: "lead", entityId: id,
       // معرّف العميل داخل النص — يلتقطه resolveAuditNames فيتحوّل لاسم رابط في سجل التدقيق v2.

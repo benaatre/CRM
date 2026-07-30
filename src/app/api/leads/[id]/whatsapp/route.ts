@@ -67,6 +67,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     });
     // يوقف عدّاد إعادة التوجيه التلقائي.
     await markContacted(tx, id, now);
+    // الحصانة اللحظية: التواصل يلغي مسار السحب فورًا — بطاقة الترشيح تُحذف لحظتها.
+    await tx.sweepCandidate.deleteMany({ where: { leadId: id } });
   });
 
   revalidatePath("/leads");

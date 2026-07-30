@@ -456,7 +456,12 @@ async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: S
     ? { ...settings, distTimeoutMin: Math.max(MIN_AUTO_SWEEP_TIMEOUT_MIN, settings.distTimeoutMin) }
     : settings;
   // استعلام تقريبي على القاعدة (للأداء) يعكس قواعد الحماية الدائمة؛ الحكم النهائي بـ sweepEligible.
-  const loosest = new Date(now.getTime() - NEW_LEAD_TIMEOUT_MIN * 60_000);
+  // مع السحب التلقائي نوسّع الالتقاط بمقدار دقائق الإنذار — حتى نلتقط من دخل «نافذة الإنذار»
+  // قبل انقضاء مهلته فنرسل إنذاره في وقته.
+  const loosestMin = settings.autoSweepEnabled
+    ? Math.max(1, NEW_LEAD_TIMEOUT_MIN - settings.sweepWarnMin)
+    : NEW_LEAD_TIMEOUT_MIN;
+  const loosest = new Date(now.getTime() - loosestMin * 60_000);
   const overdueRaw = await prisma.lead.findMany({
     where: {
       assignedToId: { not: null },
@@ -482,6 +487,20 @@ async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: S
 
   // الحكم النهائي بالدالة النقية (مصدر الحقيقة). hasFollowUp=false لأن الاستعلام صفّى ذوي المتابعات.
   const overdue = overdueRaw.filter((l) => sweepEligible({ ...l, hasFollowUp: false }, effective, now));
+
+  // إنذار ما قبل السحب: من دخل نافذة الإنذار (deadline − sweepWarnMin ≤ الآن < deadline)
+  // يصله إشعار «بينتقل منك خلال X دقايق» (مرة واحدة لكل دورة إسناد) — والوميض الأحمر
+  // بقائمته يُشتق من نفس التوقيتات على العميل (sweepPull) بلا أي استعلام إضافي.
+  if (settings.autoSweepEnabled) {
+    const warnMs = settings.sweepWarnMin * 60_000;
+    const inWarnWindow = overdueRaw.filter((l) => {
+      if (!l.assignedAt) return false;
+      const deadline = l.assignedAt.getTime() + leadTimeoutMin(l, effective, now) * 60_000;
+      return now.getTime() < deadline && now.getTime() >= deadline - warnMs;
+    });
+    await sendSweepWarnings(inWarnWindow, effective, now);
+  }
+
   if (overdue.length === 0) return { proposed: 0, checked: 0 };
 
   // سقف مطلق: لا أكثر من ٥ مرشّحين في نداء الكرون الواحد.
@@ -518,6 +537,33 @@ async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: S
 }
 
 /**
+ * إنذار ما قبل السحب — إشعار واحد للموظف لكل دورة إسناد (dedup بـcreatedAt > assignedAt):
+ * «العميل فلان بينتقل من عندك خلال X دقايق». الصياغة لبقة بلا «سحب/تلقائي» (قاعدة العرض).
+ */
+async function sendSweepWarnings(
+  leads: { id: string; name: string; assignedToId: string | null; assignedAt: Date | null; createdAt: Date; reassignCount: number }[],
+  effective: DistSettings,
+  now: Date,
+): Promise<number> {
+  let sent = 0;
+  for (const l of leads) {
+    if (!l.assignedToId || !l.assignedAt) continue;
+    const link = `/leads/${l.id}`;
+    const already = await prisma.notification.findFirst({
+      where: { type: "sweep.warn", userId: l.assignedToId, link, createdAt: { gt: l.assignedAt } },
+      select: { id: true },
+    });
+    if (already) continue;
+    const deadline = l.assignedAt.getTime() + leadTimeoutMin(l, effective, now) * 60_000;
+    const remainMin = Math.max(1, Math.ceil((deadline - now.getTime()) / 60_000));
+    await notify(prisma, [l.assignedToId], "sweep.warn", "عميلك ينتظر تواصلك",
+      `العميل ${l.name} بينتقل من عندك خلال ${remainMin} دقايق — سجّل تواصلك معه الحين`, link);
+    sent++;
+  }
+  return sent;
+}
+
+/**
  * «الحزمة ب»: تنفيذ السحب آليًا (autoSweepEnabled) — بدل كتابة SweepCandidate وانتظار الموافقة.
  * المرشّحون وصلوا من نفس استعلام runReassignSweepPass وحصانات sweepEligible بلا أي تخفيف،
  * ومحصورون بالبركة (autoPoolAt != null في الاستعلام) — الموزَّع يدويًا لا يصله هذا المسار أبدًا.
@@ -547,6 +593,23 @@ async function autoExecuteSweep(
   for (const lead of targets) {
     if (remaining.size === 0) { console.info("[sweep][auto] المتاحون استوفوا نصيب الدورة — الباقي للدورة الجاية"); break; }
     const from = lead.assignedToId as string;
+    // ضمانة «الإنذار ثم السحب»: لا سحب إلا بعد إنذارٍ مضى عليه sweepWarnMin كاملة بلا تواصل.
+    // لو ما فيه إنذار لهذه الدورة الإسنادية (كرون متباعد/مهلة قصيرة) نرسله الآن ونؤجل السحب.
+    const warned = await prisma.notification.findFirst({
+      where: { type: "sweep.warn", userId: from, link: `/leads/${lead.id}`, createdAt: { gt: lead.assignedAt ?? new Date(0) } },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    });
+    if (!warned) {
+      await notify(prisma, [from], "sweep.warn", "عميلك ينتظر تواصلك",
+        `العميل ${lead.name} بينتقل من عندك خلال ${effective.sweepWarnMin} دقايق — سجّل تواصلك معه الحين`, `/leads/${lead.id}`);
+      console.info(`[sweep][auto] warn-first lead=${lead.id} — أُرسل الإنذار الآن والسحب مؤجل`);
+      continue;
+    }
+    if (now.getTime() - warned.createdAt.getTime() < effective.sweepWarnMin * 60_000) {
+      console.info(`[sweep][auto] warn-grace lead=${lead.id} — مدة الإنذار لم تنقضِ بعد`);
+      continue;
+    }
     // المستلم حسب طريقة المالك (بالترتيب/الأقل حملًا/الأكثر نشاطًا) — دائمًا باستثناء المسحوب منه.
     const picked = await pickPullRecipient(prisma, settings, [...remaining], pointer, from, now);
     if (!picked) { console.info(`[sweep][auto] skip lead=${lead.id} — لا بديل متاح غير موظفه الحالي`); continue; }
