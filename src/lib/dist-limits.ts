@@ -44,6 +44,23 @@ export async function countToday(userIds: string[], now: Date): Promise<Map<stri
   return new Map(rows.map((r) => [r.assignedToId as string, r._count._all]));
 }
 
+/**
+ * «فاصل الاستقبال» (منظم الوتيرة): يرجّع الموظفين الذين استقبلوا أي عميل خلال آخر
+ * gapMin دقيقة — فيُستبعدون من الإسناد الآلي حتى يمر الفاصل (عميل واحد كل X دقائق).
+ * المرجع assignedAt أيًّا كان مصدره (يدوي أو آلي): من استلم توًا لا يُرمى عليه ثانٍ فورًا.
+ * الإسناد اليدوي نفسه لا يخضع للفاصل — الفلترة تُطبَّق في المسارات الآلية حصرًا.
+ */
+export async function receiveGapBlockedIds(userIds: string[], gapMin: number, now: Date): Promise<Set<string>> {
+  if (userIds.length === 0 || gapMin <= 0) return new Set();
+  const since = new Date(now.getTime() - gapMin * 60_000);
+  const rows = await prisma.lead.groupBy({
+    by: ["assignedToId"],
+    where: { assignedToId: { in: userIds }, assignedAt: { gte: since } },
+    _count: { _all: true },
+  });
+  return new Set(rows.map((r) => r.assignedToId as string));
+}
+
 export type LimitSettings = {
   distPerEmployeePerWindow: number | null;
   distWindowMin: number;

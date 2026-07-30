@@ -11,7 +11,7 @@ import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
 import { initialReason, AUTO_REDISTRIBUTE_FRESH } from "@/lib/transfer-mode";
 import { dayStartKSA, ksaHourOf } from "@/lib/ksa-time";
-import { atLimitUserIds } from "@/lib/dist-limits";
+import { atLimitUserIds, receiveGapBlockedIds } from "@/lib/dist-limits";
 
 /**
  * بركة التوزيع التلقائي — القاعدة القاطعة:
@@ -166,6 +166,34 @@ function pickRotation(order: string[], present: Set<string>, pointer: number, ex
   return null;
 }
 
+/**
+ * «فاصل الاستقبال» (منظم الوتيرة): يستبعد من استقبل عميلًا خلال آخر distReceiveGapMin دقيقة.
+ * يُطبَّق على المسارات الآلية حصرًا (توزيع أولي + إعادة توزيع مسحوب) — الإسناد اليدوي خارجه.
+ */
+async function withoutReceiveGap(ids: string[], settings: DistSettings, now: Date): Promise<string[]> {
+  if (settings.distReceiveGapMin <= 0 || ids.length === 0) return ids;
+  const blocked = await receiveGapBlockedIds(ids, settings.distReceiveGapMin, now);
+  return ids.filter((id) => !blocked.has(id));
+}
+
+/**
+ * اختيار مستلم العميل المسحوب حسب طريقة المالك (distReassignMode) — دائمًا باستثناء
+ * المسحوب منه: ROTATION بالدور الثابت · LEAST_LOADED الأقل حملًا · MOST_ACTIVE الأكثر نشاطًا اليوم.
+ */
+async function pickPullRecipient(
+  db: Db, settings: DistSettings, candidates: string[], pointer: number, excludeId: string, now: Date,
+): Promise<{ userId: string; pointer: number } | null> {
+  if (settings.distReassignMode === "LEAST_LOADED") {
+    const u = await pickLeastLoaded(db, candidates, excludeId);
+    return u ? { userId: u, pointer } : null;
+  }
+  if (settings.distReassignMode === "MOST_ACTIVE") {
+    const u = await pickMostActiveToday(db, settings.distOrder, candidates, now, excludeId);
+    return u ? { userId: u, pointer } : null;
+  }
+  return pickRotation(settings.distOrder, new Set(candidates), pointer, excludeId);
+}
+
 /** الأقل عملاءً (غير مؤرشفين) بين المشاركين المتواجدين. */
 async function pickLeastLoaded(db: Db, candidates: string[], excludeId?: string): Promise<string | null> {
   const ids = candidates.filter((id) => id !== excludeId);
@@ -215,13 +243,18 @@ export async function pickInitialAssignee(db: Db, now: Date = new Date()): Promi
   if (!settings.autoDistribute) return null;
   if (!isWithinWindow(settings.distStartHour, settings.distEndHour, now)) return null;
   const present = await presentParticipants(db, settings, now);
-  if (present.length === 0) return null;
+  // «فاصل الاستقبال»: من استلم توًا ينتظر فاصله — لو الكل داخل فاصله يبقى العميل بلا إسناد (لا يُجبر).
+  const eligible = await withoutReceiveGap(present, settings, now);
+  if (eligible.length === 0) return null;
 
   if (settings.distInitialMode === "LEAST_LOADED") {
-    return pickLeastLoaded(db, present);
+    return pickLeastLoaded(db, eligible);
+  }
+  if (settings.distInitialMode === "MOST_ACTIVE") {
+    return pickMostActiveToday(db, settings.distOrder, eligible, now);
   }
   // الدور الثابت
-  const picked = pickRotation(settings.distOrder, new Set(present), settings.distPointer);
+  const picked = pickRotation(settings.distOrder, new Set(eligible), settings.distPointer);
   if (!picked) return null;
   await db.settings.update({ where: { id: "singleton" }, data: { distPointer: picked.pointer } });
   return picked.userId;
@@ -296,7 +329,10 @@ async function availableParticipants(db: Db, settings: DistSettings, now: Date):
  * ليدخلوا دورة إعادة التوجيه. يُحدّث المؤشّر (في القاعدة والذاكرة). يرجّع عدد الموزّعين.
  */
 async function distributeUnassignedPass(settings: DistSettings, now: Date, dupIds: Set<string>): Promise<number> {
-  const available = await availableParticipants(prisma, settings, now);
+  const availableAll = await availableParticipants(prisma, settings, now);
+  // «فاصل الاستقبال»: من استقبل عميلًا خلال الفاصل يُستبعد هذه الدورة — والباقون يستقبل
+  // كلٌّ منهم عميلًا واحدًا كحد أقصى (one-per-cycle)، وما زاد ينتظر بالبركة للدورة الجاية.
+  const available = await withoutReceiveGap(availableAll, settings, now);
   if (available.length === 0) return 0;
   const unassigned = await prisma.lead.findMany({
     // المكررون يُستثنون من التوزيع التلقائي — يُوزّعون حصريًا من «العملاء المكررون».
@@ -315,7 +351,8 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
   });
   if (unassigned.length === 0) return 0;
 
-  const availSet = new Set(available);
+  // one-per-cycle: بعد إسناد موظف يخرج من مرشّحي بقية الدورة (فاصل الاستقبال يبدأ لحظتها).
+  const remaining = new Set(available);
   let pointer = settings.distPointer;
   // أحمال حالية للأقل-حملًا.
   const load = new Map<string, number>(available.map((id) => [id, 0]));
@@ -332,17 +369,20 @@ async function distributeUnassignedPass(settings: DistSettings, now: Date, dupId
   // نجمّع لكل موظف عدد ما استقبله + عيّنة، عشان إشعار واحد مجمّع بدل عدة أصوات.
   const buckets = new Map<string, LeadAssignedBucket>();
   for (const lead of unassigned) {
+    if (remaining.size === 0) break; // كل المتاحين أخذوا نصيب الدورة — الباقي ينتظر بالبركة
     let pick: string | null = null;
     if (settings.distInitialMode === "LEAST_LOADED") {
       let min = Infinity;
-      for (const id of available) { const l = load.get(id) ?? 0; if (l < min) { min = l; pick = id; } }
-      if (pick) load.set(pick, (load.get(pick) ?? 0) + 1);
+      for (const id of remaining) { const l = load.get(id) ?? 0; if (l < min) { min = l; pick = id; } }
+    } else if (settings.distInitialMode === "MOST_ACTIVE") {
+      pick = await pickMostActiveToday(prisma, settings.distOrder, [...remaining], now);
     } else {
-      const picked = pickRotation(settings.distOrder, availSet, pointer);
+      const picked = pickRotation(settings.distOrder, remaining, pointer);
       if (picked) { pick = picked.userId; pointer = picked.pointer; }
     }
     if (!pick) break;
     const toUserId = pick;
+    remaining.delete(toUserId);
     // م-١: الإسناد التلقائي عبر الدالة الموحّدة (manual=false — بلا حصانة يدوية).
     // السبب مشتق: من له متابعات سابقة ⇒ initial_fresh (إخفاء سجله + ولادة جديدة كاملة)، وإلا initial.
     const freshStart = lead.followUps.length > 0;
@@ -492,17 +532,23 @@ async function autoExecuteSweep(
 ): Promise<{ proposed: number; checked: number; skipped?: string }> {
   if (targets.length === 0) return { proposed: 0, checked: 0 };
   const present = await presentParticipants(prisma, settings, now);
-  if (present.length === 0) return { proposed: 0, checked: targets.length, skipped: "ما فيه موظف متواجد للاستقبال" };
+  // «فاصل الاستقبال» + one-per-cycle: المستلم المحتمل لازم يكون خارج فاصله، وبعد استلامه
+  // عميلًا يخرج من مرشّحي بقية الدورة — من لا بديل له ينتظر الدورة الجاية (لا يُجبر أحد).
+  const eligible = await withoutReceiveGap(present, settings, now);
+  if (eligible.length === 0) return { proposed: 0, checked: targets.length, skipped: "ما فيه موظف متاح للاستقبال (تواجد/فاصل الاستقبال)" };
   const owners = await ownerIds(prisma);
-  const involved = [...new Set([...present, ...targets.map((t) => t.assignedToId).filter(Boolean) as string[]])];
+  const involved = [...new Set([...eligible, ...targets.map((t) => t.assignedToId).filter(Boolean) as string[]])];
   const users = await prisma.user.findMany({ where: { id: { in: involved } }, select: { id: true, name: true } });
   const nameById = new Map(users.map((u) => [u.id, u.name]));
 
+  const remaining = new Set(eligible);
   let pointer = settings.distPointer;
   let pulled = 0;
   for (const lead of targets) {
+    if (remaining.size === 0) { console.info("[sweep][auto] المتاحون استوفوا نصيب الدورة — الباقي للدورة الجاية"); break; }
     const from = lead.assignedToId as string;
-    const picked = pickRotation(settings.distOrder, new Set(present), pointer, from);
+    // المستلم حسب طريقة المالك (بالترتيب/الأقل حملًا/الأكثر نشاطًا) — دائمًا باستثناء المسحوب منه.
+    const picked = await pickPullRecipient(prisma, settings, [...remaining], pointer, from, now);
     if (!picked) { console.info(`[sweep][auto] skip lead=${lead.id} — لا بديل متاح غير موظفه الحالي`); continue; }
     const target = picked.userId;
     const tmin = leadTimeoutMin(lead, effective, now);
@@ -538,6 +584,7 @@ async function autoExecuteSweep(
     });
     if (!done) continue;
     pointer = picked.pointer;
+    remaining.delete(target); // one-per-cycle — فاصل استقباله بدأ توًا
     pulled++;
   }
   if (pointer !== settings.distPointer) {
@@ -563,16 +610,12 @@ export async function executeSweepPull(leadId: string, now: Date = new Date()): 
   const present = await presentParticipants(prisma, settings, now);
   if (present.length === 0) return { ok: false, error: "ما فيه موظف متواجد لاستقبال العميل الآن" };
 
-  let toUserId: string | null;
+  // موافقة المالك = قرار يدوي: لا يخضع لـ«فاصل الاستقبال» (الفاصل للمسارات الآلية حصرًا).
   let pointer = settings.distPointer;
-  if (settings.distReassignMode === "ROTATION") {
-    const picked = pickRotation(settings.distOrder, new Set(present), pointer, from);
-    if (picked) { toUserId = picked.userId; pointer = picked.pointer; } else toUserId = null;
-  } else {
-    toUserId = await pickMostActiveToday(prisma, settings.distOrder, present, now, from);
-  }
-  if (!toUserId || toUserId === from) return { ok: false, error: "ما فيه موظف بديل مناسب لاستقباله" };
-  const target = toUserId;
+  const picked = await pickPullRecipient(prisma, settings, present, pointer, from, now);
+  if (!picked || picked.userId === from) return { ok: false, error: "ما فيه موظف بديل مناسب لاستقباله" };
+  pointer = picked.pointer;
+  const target = picked.userId;
 
   console.info(`[sweep] pull(approved) lead=${lead.id} from=${from} to=${target}`);
   await prisma.$transaction(async (tx) => {
@@ -619,25 +662,28 @@ export async function runDistributionPasses(now: Date = new Date()): Promise<Dis
     // «الحزمة ب»: مفتاح المالك autoSweepEnabled يشغّل pass السحب بنفسه (تنفيذًا آليًا)،
     // وسويتش env وحده = وضع الاقتراح اليدوي القديم كما هو.
     const sweepOn = reassignSweepOn() || settings.autoSweepEnabled;
-    const within = isWithinWindow(settings.distStartHour, settings.distEndHour, now);
-    // شرط القاعدة + النافذة فوق السويتشين (لا يُكسَر autoDistribute).
-    const gateSkip = !settings.autoDistribute ? "التوزيع التلقائي متوقّف (القاعدة)" : !within ? "خارج نافذة العمل" : null;
+    // نافذتان مستقلتان: التوزيع على نافذة العمل، والسحب على نافذة السحب الخاصة به.
+    const withinDist = isWithinWindow(settings.distStartHour, settings.distEndHour, now);
+    const withinSweep = isWithinWindow(settings.sweepStartHour, settings.sweepEndHour, now);
+    const masterSkip = !settings.autoDistribute ? "التوزيع التلقائي متوقّف (القاعدة)" : null;
+    const initialSkip = masterSkip ?? (!withinDist ? "خارج نافذة العمل" : null);
+    const sweepSkip = masterSkip ?? (!withinSweep ? "خارج نافذة السحب" : null);
 
     // استبعاد المكررين + «تعذّر الوصول» (§٤) من كل توزيع تلقائي — مجموعة واحدة مدمجة.
-    const dupIds = (initialOn || sweepOn) && !gateSkip
+    const dupIds = (initialOn && !initialSkip) || (sweepOn && !sweepSkip)
       ? new Set<string>([...(await duplicateLeadIds()), ...(await unreachableLeadIds())])
       : new Set<string>();
 
     // pass ١: توزيع أولي (مفعّل افتراضيًا).
     let initial: PassResult;
     if (!initialOn) initial = { on: false, count: 0, skipped: "السويتش مطفأ (AUTO_INITIAL_DISTRIBUTE)" };
-    else if (gateSkip) initial = { on: true, count: 0, skipped: gateSkip };
+    else if (initialSkip) initial = { on: true, count: 0, skipped: initialSkip };
     else initial = { on: true, count: await distributeUnassignedPass(settings, now, dupIds) };
 
     // pass ٢: ترشيح المتأخرين للسحب (مطفأ افتراضيًا). true = «اقترح للمالك»، لا تنفيذ تلقائي.
     let sweep: PassResult;
     if (!sweepOn) sweep = { on: false, count: 0, skipped: "السويتش مطفأ (AUTO_REASSIGN_SWEEP)" };
-    else if (gateSkip) sweep = { on: true, count: 0, skipped: gateSkip };
+    else if (sweepSkip) sweep = { on: true, count: 0, skipped: sweepSkip };
     else {
       const r = await runReassignSweepPass(settings, now, dupIds);
       sweep = { on: true, count: r.proposed, skipped: r.skipped };
@@ -811,9 +857,13 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     const batchId = randomUUID();
     const affected = new Map<string, number>(); // fromUserId → عدد المسحوبين منه
 
-    // «الحزمة ب»: إعادة التوزيع الآلي للمسحوبين — بالدور مع استثناء المسحوب منه، «كجديد».
+    // «الحزمة ب»: إعادة التوزيع الآلي للمسحوبين — بطريقة المالك مع استثناء المسحوب منه، «كجديد».
+    // «فاصل الاستقبال» + one-per-cycle يسريان هنا كذلك (مسار آلي).
     const redistributeOn = dist.autoRedistributeEnabled;
-    const available = redistributeOn ? await availableParticipants(prisma, dist, now) : [];
+    const available = redistributeOn
+      ? await withoutReceiveGap(await availableParticipants(prisma, dist, now), dist, now)
+      : [];
+    const remainingRecipients = new Set(available);
     let pointer = dist.distPointer;
     let redistributed = 0;
     const freshBuckets = new Map<string, LeadAssignedBucket>(); // إشعار المستلمين مجمّعًا
@@ -847,9 +897,9 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         pullers.add(t.from);
         unreachable = pullers.size >= 2;
       }
-      // المستلم بالدور الثابت مع استثناء المسحوب منه — قد لا يوجد بديل فيبقى بالحوض.
-      const picked = redistributeOn && !unreachable
-        ? pickRotation(dist.distOrder, new Set(available), pointer, t.from)
+      // المستلم بطريقة المالك مع استثناء المسحوب منه — قد لا يوجد بديل فيبقى بالحوض.
+      const picked = redistributeOn && !unreachable && remainingRecipients.size > 0
+        ? await pickPullRecipient(prisma, dist, [...remainingRecipients], pointer, t.from, now)
         : null;
       // حارس تزامن: لا نسحب إلا إذا كان لا يزال مُسندًا لنفس الموظف (count===1). غير ذلك → تخطٍّ صامت.
       const done = await prisma.$transaction(async (tx) => {
@@ -884,6 +934,7 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       if (!done) continue;
       if (picked) {
         pointer = picked.pointer;
+        remainingRecipients.delete(picked.userId); // one-per-cycle — بدأ فاصل استقباله
         redistributed++;
         const b = freshBuckets.get(picked.userId);
         if (b) b.count++;
