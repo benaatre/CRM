@@ -13,8 +13,13 @@ export const NOTIFICATION_EVENTS = [
   { key: "employee_paused", label: "موظف وقف نفسه", audience: "MANAGERS" },
   { key: "unit_booked_sold", label: "تم حجز / بيع وحدة", audience: "ALL" },
   { key: "no_response.warn", label: "إنذار سحب عميل", audience: "ASSIGNED" },
+  // إنذار ما قبل السحب («بينتقل منك خلال X دقايق») — نغمته الافتراضية «تنبيه عاجل» (أبرز من العادي).
+  { key: "sweep.warn", label: "إنذار انتقال عميل", audience: "ASSIGNED" },
   { key: "never_contacted", label: "عميل بلا تواصل من ٣ أيام", audience: "ASSIGNED" },
 ] as const;
+
+/** أحداث حرجة نغمتها الافتراضية «تنبيه عاجل» بدل «تنبيه ناعم» — تلفت الانتباه فورًا. */
+const URGENT_DEFAULT_KEYS = new Set<string>(["sweep.warn"]);
 
 export type AudienceCode = "OWNER" | "MANAGERS" | "ASSIGNED" | "MANAGERS_AND_ASSIGNED" | "ALL";
 
@@ -109,9 +114,16 @@ export async function ensureNotificationDefaults(): Promise<void> {
   // إضافة حدث جديد لاحقًا (مثل «إنذار سحب عميل») تُزرع تلقائيًا دون مسّ إعدادات الموجود،
   // وهذا ضروري لأن updateNotificationEvent يستخدم update لا upsert (يحتاج صفًّا موجودًا).
   if ((await prisma.notificationSetting.count()) < NOTIFICATION_EVENTS.length) {
-    const softSound = await prisma.soundAsset.findFirst({ where: { fileUrl: "/sounds/soft.wav" }, select: { id: true } });
+    const [softSound, urgentSound] = await Promise.all([
+      prisma.soundAsset.findFirst({ where: { fileUrl: "/sounds/soft.wav" }, select: { id: true } }),
+      prisma.soundAsset.findFirst({ where: { fileUrl: "/sounds/urgent.wav" }, select: { id: true } }),
+    ]);
     await prisma.notificationSetting.createMany({
-      data: NOTIFICATION_EVENTS.map((e) => ({ eventKey: e.key, audience: e.audience, soundId: softSound?.id ?? null })),
+      data: NOTIFICATION_EVENTS.map((e) => ({
+        eventKey: e.key,
+        audience: e.audience,
+        soundId: (URGENT_DEFAULT_KEYS.has(e.key) ? (urgentSound?.id ?? softSound?.id) : softSound?.id) ?? null,
+      })),
       skipDuplicates: true,
     });
   }

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { notify, ownerIds } from "@/lib/notify";
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
+import { ensureNotificationDefaults } from "@/lib/data/notifications-config";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
 import { initialReason, AUTO_REDISTRIBUTE_FRESH } from "@/lib/transfer-mode";
@@ -545,6 +546,9 @@ async function sendSweepWarnings(
   effective: DistSettings,
   now: Date,
 ): Promise<number> {
+  // زرع إعداد الحدث «إنذار انتقال عميل» بنغمته الافتراضية (عاجل) إن لم يكن مزروعًا —
+  // مسار الإنذار يرسل بـnotify مباشرة فلا يمرّ بزرع emitNotification (idempotent ومكاشة).
+  if (leads.length > 0) await ensureNotificationDefaults();
   let sent = 0;
   for (const l of leads) {
     if (!l.assignedToId || !l.assignedAt) continue;

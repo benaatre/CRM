@@ -7,6 +7,7 @@ const EVENT_COLOR: Record<string, string> = {
   lead_reassigned: "#F59E0B",     // برتقالي — تنبيه (تحرّك)
   employee_idle: "#F0685F",       // أحمر — عاجل (مشكلة)
   followup_due: "#CBA45E",        // ذهبي — تذكير محايد
+  "sweep.warn": "#F0685F",        // أحمر — إنذار انتقال عميل (قبل السحب)
   employee_paused: "#8B5CF6",     // بنفسجي — معلومة إدارية
   unit_booked_sold: "#10B981",    // أخضر لامع — نجاح احتفالي
 };
