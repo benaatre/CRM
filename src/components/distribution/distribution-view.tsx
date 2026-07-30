@@ -21,10 +21,6 @@ import {
 import type { DistributionBoard } from "@/lib/data/distribution";
 import { ManageEmployeeAvailability } from "@/components/availability/manage-availability";
 
-// لا أرضية إجبارية لمهلة السحب — المالك يضبطها كما يشاء (الحد التقني: دقيقة واحدة).
-// تحت هذا الحد نعرض تحذيرًا أصفر لا يمنع الحفظ.
-const SHORT_TIMEOUT_WARN_MIN = 120;
-
 export type DistSwitches = { initialOn: boolean; reassignOn: boolean };
 
 export function DistributionView({
@@ -45,12 +41,12 @@ export function DistributionView({
         <Zap className="size-6 text-gold" />
         <h1 className="text-xl font-bold text-foreground">التوزيع التلقائي الذكي</h1>
       </div>
-      {/* المالك فقط: مرشّحو السحب + الأتمتة + السويتشين + الحاجز التاريخي */}
-      {isOwner && !config.autoSweepEnabled && <CandidatesPanel candidates={candidates} />}
-      {isOwner && <AutoPilotPanel config={config} />}
-      {isOwner && <SwitchesPanel switches={switches} lastCron={lastCron} />}
-      {isOwner && <SweepCutoffPanel sweepCutoffAt={sweepCutoffAt} />}
+      {/* قسمان بترتيب المالك: «التوزيع» ثم «السحب التلقائي»، وتحتهما أدوات المالك والمراقبة */}
       <SettingsPanel config={config} employees={employees} />
+      {isOwner && <AutoPilotPanel config={config} />}
+      {isOwner && !config.autoSweepEnabled && <CandidatesPanel candidates={candidates} />}
+      {isOwner && <SweepCutoffPanel sweepCutoffAt={sweepCutoffAt} />}
+      {isOwner && <SwitchesPanel switches={switches} lastCron={lastCron} />}
       <MonitorPanel board={board} />
     </div>
   );
@@ -183,8 +179,8 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
 
   return (
     <div className="glass space-y-4 rounded-2xl border border-gold/30 p-6">
-      <div className="flex items-center gap-1.5 font-semibold text-foreground">
-        <Zap className="size-4 text-gold" /> الأتمتة الكاملة — قرارك وحدك
+      <div className="flex items-center gap-1.5 text-base font-bold text-foreground">
+        <Repeat className="size-5 text-gold" /> السحب التلقائي
       </div>
 
       {/* السحب التلقائي للمتأخر */}
@@ -195,22 +191,42 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
               السحب التلقائي للمتأخر: <span className={sweepOn ? "text-orange-300" : "text-muted-foreground"}>{sweepOn ? "شغال" : "متوقف"}</span>
             </div>
             <p className="mt-1 text-xs leading-6 text-muted-foreground">
-              شغال: العميل الجديد اللي عدّى مهلته بلا أي تواصل يُسحب ويُعاد توزيعه بالدور آليًا — بنفس الحصانات
-              الحالية بلا تخفيف (متابعة واحدة، تواصل مسجّل، مرحلة تقدّمت، إسناد يدوي، الحاجز التاريخي، سقف الدورات)
-              وعلى عملاء بركة التوزيع التلقائي فقط.
+              شغال: العميل الموزّع تلقائيًا (مرحلة «جديد»، صفر تواصل) اللي عدّى مهلته يُنذَر موظفه ثم يُسحب
+              ويُعاد توزيعه آليًا — بنفس الحصانات كلها بلا تخفيف، والموزّع يدويًا منك ما يُسحب أبدًا.
               <br />متوقف: يظل «اقتراحًا» بانتظار موافقتك لكل حالة (الوضع القديم).
             </p>
           </div>
           <input type="checkbox" checked={sweepOn} onChange={(e) => setSweepOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
         </div>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <NumField label="مهلة السحب (دقيقة)" value={timeoutMin} onChange={setTimeoutMin} min={1} max={10080}
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <NumField label="مهلة البقاء (دقيقة)" desc="كم يجلس العميل عند الموظف بلا أي تواصل قبل ما يبدأ مسار السحب"
+            value={timeoutMin} onChange={setTimeoutMin} min={1} max={10080}
             hint={timeoutMin < 60 ? `${toArabicDigits(timeoutMin)} دقيقة` : `≈ ${toArabicDigits(Math.round((timeoutMin / 60) * 10) / 10)} ساعة`} />
-          {sweepOn && timeoutMin < 60 && (
-            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">أرضية الأمان مع السحب التلقائي: ٦٠ دقيقة على الأقل.</p>
-          )}
+          <NumField label="إنذار قبل السحب (دقيقة)" desc="قبل انقضاء المهلة بهذي الدقائق: إشعار للموظف + وميض أحمر على العميل بقائمته"
+            value={warnMin} onChange={setWarnMin} min={1} max={120} hint={`«بينتقل منك خلال ${toArabicDigits(warnMin)} دقايق»`} />
+          <NumField label="بداية نافذة السحب" desc="السحب يشتغل من هذي الساعة فقط (بتوقيت الرياض)"
+            value={sweepStart} onChange={setSweepStart} min={0} max={23} hint={hourHint(sweepStart)} />
+          <NumField label="نهاية نافذة السحب" desc="بعدها ما يُسحب أحد حتى اليوم التالي"
+            value={sweepEnd} onChange={setSweepEnd} min={0} max={23} hint={hourHint(sweepEnd)} />
         </div>
+        {sweepOn && timeoutMin < 60 && (
+          <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">أرضية الأمان مع السحب التلقائي: ٦٠ دقيقة على الأقل.</p>
+        )}
+        {warnMin >= timeoutMin && (
+          <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">الإنذار لازم يكون أقصر من المهلة نفسها.</p>
+        )}
       </label>
+
+      {/* طريقة إعادة توزيع المسحوب */}
+      <div className="space-y-2 rounded-xl border border-border p-4">
+        <div className="text-sm font-medium text-foreground">طريقة إعادة توزيع المسحوب</div>
+        <p className="text-xs text-muted-foreground">المسحوب يُسند فورًا لموظف آخر بهذي الطريقة — ودائمًا باستثناء الموظف المسحوب منه.</p>
+        <div className="flex flex-wrap gap-2">
+          <Seg active={pullMode === "ROTATION"} onClick={() => setPullMode("ROTATION")} label="بالترتيب" desc="التالي في الدور (الافتراضي)" />
+          <Seg active={pullMode === "LEAST_LOADED"} onClick={() => setPullMode("LEAST_LOADED")} label="الأقل حملًا" desc="من عنده عملاء أقل" />
+          <Seg active={pullMode === "MOST_ACTIVE"} onClick={() => setPullMode("MOST_ACTIVE")} label="الأكثر نشاطًا اليوم" desc="من سجّل متابعات أكثر" />
+        </div>
+      </div>
 
       {/* إعادة توزيع مسحوبي «لم يتم الرد» */}
       <label className={`block cursor-pointer rounded-xl border p-4 transition-colors ${redistOn ? "border-cyan-400 bg-cyan-500/10" : "border-border hover:border-cyan-500/30"}`}>
@@ -380,10 +396,8 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
   const [togglePending, setTogglePending] = useState(false);
   const [startHour, setStartHour] = useState(config.distStartHour);
   const [endHour, setEndHour] = useState(config.distEndHour);
-  const [timeout, setTimeoutMin] = useState(config.distTimeoutMin);
   const [presence, setPresence] = useState(config.distPresenceMin);
   const [initialMode, setInitialMode] = useState(config.distInitialMode);
-  const [reassignMode, setReassignMode] = useState(config.distReassignMode);
   const [order, setOrder] = useState<string[]>(config.order);
   // حوكمة الدفعات والسقوف (٠ = بلا سقف/الكل)
   const [receiveGap, setReceiveGap] = useState(config.distReceiveGapMin);
@@ -418,8 +432,9 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
         sweepWarnMin: config.sweepWarnMin, sweepStartHour: config.sweepStartHour, sweepEndHour: config.sweepEndHour,
         distReceiveGapMin: receiveGap,
         distStartHour: startHour, distEndHour: endHour,
-        distTimeoutMin: timeout, distPresenceMin: presence,
-        distInitialMode: initialMode, distReassignMode: reassignMode, order,
+        // المهلة وطريقة إعادة توزيع المسحوب صارتا بقسم «السحب التلقائي» — تمريرهما كما هما.
+        distTimeoutMin: config.distTimeoutMin, distPresenceMin: presence,
+        distInitialMode: initialMode, distReassignMode: config.distReassignMode, order,
         distBatchSize: batchSize > 0 ? batchSize : null,
         distPerEmployeePerWindow: perWindow > 0 ? perWindow : null,
         distWindowMin: windowMin,
@@ -459,6 +474,9 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
 
   return (
     <div className="glass space-y-5 rounded-2xl p-6">
+      <div className="flex items-center gap-1.5 text-base font-bold text-foreground">
+        <Users2 className="size-5 text-gold" /> التوزيع
+      </div>
       {/* المفتاح الرئيسي — كبير وواضح، حفظ فوري، والإعدادات الفعّالة تحته مباشرة */}
       <div className={`space-y-4 rounded-2xl border-2 p-5 transition-colors ${on ? "border-green-400/60 bg-green-500/10" : "border-red-500/40 bg-red-500/5"}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -494,21 +512,13 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
       </div>
 
       <div className={on ? "space-y-5" : "space-y-5 opacity-50"}>
-        {/* نافذة العمل + المهلة */}
+        {/* نافذة العمل + فاصل الاستقبال + التواجد — كل حقل بوصف سطر واحد يشرح أثره */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <NumField label="بداية النافذة (ساعة)" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
-          <NumField label="نهاية النافذة (ساعة)" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
-          <NumField label="مهلة السحب (دقيقة)" value={timeout} onChange={setTimeoutMin} min={1} max={10080} hint={timeout < 60 ? `${toArabicDigits(timeout)} دقيقة` : `≈ ${toArabicDigits(Math.round(timeout / 60))} ساعة`} />
-          <NumField label="حد التواجد (دقيقة)" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
+          <NumField label="بداية نافذة العمل" desc="التوزيع يبدأ من هذي الساعة (بتوقيت الرياض)" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
+          <NumField label="نهاية نافذة العمل" desc="بعدها ما يُوزَّع أحد حتى اليوم التالي" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
+          <NumField label="فاصل الاستقبال (دقيقة)" desc="الموظف يستقبل عميلًا واحدًا آليًا كل هذي الدقائق — ما ينزل عليه اثنان دفعة وحدة" value={receiveGap} onChange={setReceiveGap} min={0} max={1440} hint={receiveGap === 0 ? "بلا فاصل" : `عميل كل ${toArabicDigits(receiveGap)} دقيقة`} />
+          <NumField label="حد التواجد (دقيقة)" desc="من ما فتح النظام خلال هذي المدة يُتخطّى بالدور" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
         </div>
-
-        {/* تحذير مهلة قصيرة — لا يمنع الحفظ، مجرّد تنبيه لعواقب القيمة المختارة. */}
-        {timeout < SHORT_TIMEOUT_WARN_MIN && (
-          <p className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs leading-6 text-warning">
-            ⚠️ مهلة أقل من ساعتين قد تسحب عملاء من موظفين اتصلوا هاتفيًا ولم يسجّلوا.
-            السحب لا يقع تلقائيًا — يمرّ بموافقتك.
-          </p>
-        )}
 
         {/* حوكمة الدفعات والسقوف — تمنع رمي كل غير الموزّعين دفعة واحدة */}
         <div className="space-y-2 rounded-xl border border-gold/25 bg-gold/5 p-3">
@@ -528,21 +538,14 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
           </div>
         </div>
 
-        {/* طريقة التوزيع الأولي */}
+        {/* طريقة التوزيع — ثلاث طرق */}
         <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-foreground"><Users2 className="size-4 text-gold" /> طريقة التوزيع الأولي</div>
-          <div className="flex gap-2">
-            <Seg active={initialMode === "ROUND_ROBIN"} onClick={() => setInitialMode("ROUND_ROBIN")} label="دوري ثابت" desc="١→٢→٣→١" />
-            <Seg active={initialMode === "LEAST_LOADED"} onClick={() => setInitialMode("LEAST_LOADED")} label="الأقل عملاءً" desc="متوازن" />
-          </div>
-        </div>
-
-        {/* طريقة إعادة التوجيه */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-foreground"><Repeat className="size-4 text-gold" /> طريقة إعادة التوجيه عند التقصير</div>
-          <div className="flex gap-2">
-            <Seg active={reassignMode === "MOST_ACTIVE"} onClick={() => setReassignMode("MOST_ACTIVE")} label="الأكثر نشاطًا اليوم" desc="أكثر متابعات" />
-            <Seg active={reassignMode === "ROTATION"} onClick={() => setReassignMode("ROTATION")} label="التالي في الدور" desc="بالترتيب" />
+          <div className="flex items-center gap-1.5 text-sm font-medium text-foreground"><Users2 className="size-4 text-gold" /> طريقة التوزيع</div>
+          <p className="text-xs text-muted-foreground">كيف يختار النظام الموظف المستلم للعميل الجديد.</p>
+          <div className="flex flex-wrap gap-2">
+            <Seg active={initialMode === "ROUND_ROBIN"} onClick={() => setInitialMode("ROUND_ROBIN")} label="بالترتيب" desc="١→٢→٣→١ (دوري ثابت)" />
+            <Seg active={initialMode === "LEAST_LOADED"} onClick={() => setInitialMode("LEAST_LOADED")} label="الأقل حملًا" desc="من عنده عملاء أقل" />
+            <Seg active={initialMode === "MOST_ACTIVE"} onClick={() => setInitialMode("MOST_ACTIVE")} label="الأكثر نشاطًا اليوم" desc="من سجّل متابعات أكثر" />
           </div>
         </div>
 
@@ -775,12 +778,14 @@ function hourHint(h: number): string {
   return `${toArabicDigits(h12)} ${period}`;
 }
 
-function NumField({ label, value, onChange, min, max, hint }: {
-  label: string; value: number; onChange: (n: number) => void; min: number; max: number; hint?: string;
+function NumField({ label, desc, value, onChange, min, max, hint }: {
+  label: string; desc?: string; value: number; onChange: (n: number) => void; min: number; max: number; hint?: string;
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium text-foreground">{label}</span>
+      {/* وصف سطر واحد يشرح أثر الإعداد — المالك يفهم كل رقم بدون سؤال. */}
+      {desc && <span className="block text-[0.7rem] leading-5 text-muted-foreground">{desc}</span>}
       <input
         type="number" dir="ltr" value={value} min={min} max={max}
         onChange={(e) => onChange(Number(e.target.value))}
