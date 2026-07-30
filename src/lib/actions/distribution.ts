@@ -88,6 +88,31 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
 
 function clampHour(n: number) { return Math.min(23, Math.max(0, Math.round(n))); }
 
+/**
+ * المفتاح الرئيسي «التوزيع التلقائي: شغال/متوقف» — حفظ فوري مستقل عن بقية الإعدادات
+ * (يقرأ ويكتب Settings.autoDistribute). التشغيل يشترط وجود موظفين في الدور.
+ */
+export async function setAutoDistribute(on: boolean): Promise<ActionResult> {
+  try {
+    const user = await requireManager();
+    if (on) {
+      const s = await prisma.settings.findUnique({ where: { id: "singleton" }, select: { distOrder: true } });
+      if (!s || s.distOrder.length === 0) {
+        return { ok: false, error: "أضف موظفًا واحدًا على الأقل لجدول الدور قبل تشغيل التوزيع" };
+      }
+    }
+    await prisma.settings.update({ where: { id: "singleton" }, data: { autoDistribute: on } });
+    await logAudit(prisma, {
+      userId: user.id, action: "settings.autoDistribute", entity: "settings", entityId: "singleton",
+      summary: on ? "شغّل التوزيع التلقائي (المفتاح الرئيسي)" : "أوقف التوزيع التلقائي (المفتاح الرئيسي)",
+    });
+    revalidatePath("/distribution");
+    return { ok: true, message: on ? "التوزيع التلقائي صار شغالًا" : "التوزيع التلقائي توقّف" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
 /** رقم موجب أو null — الصفر والسالب والفارغ كلها «بلا سقف». */
 function posOrNull(v: number | null | undefined): number | null {
   const n = Math.round(Number(v) || 0);

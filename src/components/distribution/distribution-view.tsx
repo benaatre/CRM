@@ -12,7 +12,7 @@ import { isInitialReason, INITIAL_FRESH } from "@/lib/transfer-mode";
 import { stageLabels } from "@/lib/labels";
 import type { LeadStage } from "@prisma/client";
 import {
-  updateDistributionConfig, runSweepNow, updateDailyAssignCaps,
+  updateDistributionConfig, runSweepNow, updateDailyAssignCaps, setAutoDistribute,
   approveSweepPull, dismissSweepCandidate, dismissAllSweepCandidates,
   updateSweepCutoff, protectAllCurrentFromSweep,
   type DistConfig, type DistEmployee, type LastCron, type SweepCandidateRow,
@@ -288,7 +288,9 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [on, setOn] = useState(config.autoDistribute);
+  // المفتاح الرئيسي يُحفظ فورًا (setAutoDistribute) — القيمة من الخادم مباشرة لا من state محلي.
+  const on = config.autoDistribute;
+  const [togglePending, setTogglePending] = useState(false);
   const [startHour, setStartHour] = useState(config.distStartHour);
   const [endHour, setEndHour] = useState(config.distEndHour);
   const [timeout, setTimeoutMin] = useState(config.distTimeoutMin);
@@ -342,16 +344,62 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
     });
   }
 
+  // المفتاح الرئيسي: حفظ فوري + تحديث من الخادم.
+  function toggleMaster() {
+    setError(null); setMsg(null); setTogglePending(true);
+    startTransition(async () => {
+      const res = await setAutoDistribute(!on);
+      if (!res.ok) setError(res.error ?? "صار خطأ");
+      else setMsg(res.message ?? "تم");
+      setTogglePending(false);
+      router.refresh();
+    });
+  }
+
+  // ملخّص الإعدادات الفعّالة (مقروء تحت المفتاح مباشرة) — نفس القيم القابلة للتعديل أدناه.
+  const cappedCount = employees.filter((e) => (e.dailyAssignCap ?? 0) > 0).length;
+  const summary: { label: string; value: string }[] = [
+    { label: "كمية الدفعة", value: (config.distBatchSize ?? 0) > 0 ? `${toArabicDigits(config.distBatchSize!)} عميل/دورة` : "الكل دفعة واحدة" },
+    { label: "الفاصل الزمني", value: `كل ${toArabicDigits(config.distWindowMin)} دقيقة${(config.distPerEmployeePerWindow ?? 0) > 0 ? ` — بحد ${toArabicDigits(config.distPerEmployeePerWindow!)} للموظف` : ""}` },
+    { label: "نافذة العمل", value: config.distStartHour === config.distEndHour ? "على مدار اليوم" : `${hourHint(config.distStartHour)} → ${hourHint(config.distEndHour)}` },
+    { label: "السقف اليومي", value: cappedCount > 0 ? `مضبوط لـ${toArabicDigits(cappedCount)} موظف (بجدول الدور)` : "بلا سقف يومي" },
+  ];
+
   return (
     <div className="glass space-y-5 rounded-2xl p-6">
-      {/* المفتاح الرئيسي */}
-      <label className="flex items-center justify-between rounded-xl border border-border p-4">
-        <div>
-          <div className="font-semibold text-foreground">تشغيل التوزيع التلقائي</div>
-          <div className="text-xs text-muted-foreground">يوزّع العملاء الجدد على الموظفين ويعيد توجيه المتأخرين تلقائيًا</div>
+      {/* المفتاح الرئيسي — كبير وواضح، حفظ فوري، والإعدادات الفعّالة تحته مباشرة */}
+      <div className={`space-y-4 rounded-2xl border-2 p-5 transition-colors ${on ? "border-green-400/60 bg-green-500/10" : "border-red-500/40 bg-red-500/5"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Power className={`size-7 ${on ? "text-green-300" : "text-red-300"}`} />
+            <div>
+              <div className="text-lg font-bold text-foreground">
+                التوزيع التلقائي: <span className={on ? "text-green-300" : "text-red-300"}>{on ? "شغال" : "متوقف"}</span>
+              </div>
+              <div className="text-xs text-muted-foreground">يوزّع العملاء الجدد على الموظفين حسب الإعدادات أدناه</div>
+            </div>
+          </div>
+          <button
+            onClick={toggleMaster}
+            disabled={togglePending}
+            aria-pressed={on}
+            className={`min-h-11 rounded-xl border px-6 py-2.5 text-sm font-bold transition-colors disabled:opacity-50 ${on
+              ? "border-red-500/40 text-red-300 hover:bg-red-500/15"
+              : "border-green-400/60 bg-green-500/25 text-green-200 hover:bg-green-500/30"}`}
+          >
+            {togglePending ? "لحظة…" : on ? "أوقفه" : "شغّله الآن"}
+          </button>
         </div>
-        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="size-6 accent-[var(--gold)]" />
-      </label>
+        {/* الإعدادات الفعّالة — مقروءة بلمحة، وتعديلها من الحقول بالأسفل مباشرة */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {summary.map((s) => (
+            <div key={s.label} className="rounded-xl border border-border bg-card/60 px-3 py-2">
+              <div className="text-[11px] text-muted-foreground">{s.label}</div>
+              <div className="text-sm font-medium text-foreground">{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className={on ? "space-y-5" : "space-y-5 opacity-50"}>
         {/* نافذة العمل + المهلة */}
