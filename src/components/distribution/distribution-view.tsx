@@ -195,20 +195,16 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
         <input type="checkbox" checked={sweepOn} onChange={(e) => setSweepOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
       </label>
 
-      {/* الحقول بصف مضغوط بالتسلسل الزمني للدورة: المهلة ← الإنذار ← نافذة السحب (زوج متجاور) */}
-      <div className="grid grid-cols-2 items-start gap-2 lg:grid-cols-4">
+      {/* الحقول بصف مضغوط بالتسلسل الزمني للدورة: المهلة ← الإنذار ← نافذة السحب (زوج متجاور) —
+          الشبكة تمدّ البطاقات (stretch) وكلها ببنية أسطر محجوزة فتتساوى ارتفاعًا وإطارًا */}
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <NumField label="مهلة البقاء (دقيقة)" desc="بلا أي تواصل قبل بدء مسار السحب"
           value={timeoutMin} onChange={setTimeoutMin} min={1} max={10080}
           hint={timeoutMin < 60 ? `${toArabicDigits(timeoutMin)} دقيقة` : `≈ ${toArabicDigits(Math.round((timeoutMin / 60) * 10) / 10)} ساعة`} />
         <NumField label="إنذار قبل السحب (دقيقة)" desc="إشعار للموظف + وميض أحمر بقائمته"
           value={warnMin} onChange={setWarnMin} min={1} max={120} hint={`«بينتقل منك خلال ${toArabicDigits(warnMin)} دقايق»`} />
-        <div className="col-span-2 space-y-1 rounded-lg border border-border/60 bg-card/40 p-2">
-          <div className="text-[0.7rem] text-muted-foreground">نافذة السحب (بتوقيت الرياض) — من ← إلى</div>
-          <div className="grid grid-cols-2 gap-2">
-            <NumField label="من الساعة" value={sweepStart} onChange={setSweepStart} min={0} max={23} hint={hourHint(sweepStart)} />
-            <NumField label="إلى الساعة" value={sweepEnd} onChange={setSweepEnd} min={0} max={23} hint={hourHint(sweepEnd)} />
-          </div>
-        </div>
+        <HourPairField label="نافذة السحب" desc="السحب يشتغل داخل هذي الساعات فقط (بتوقيت الرياض)"
+          start={sweepStart} end={sweepEnd} onStart={setSweepStart} onEnd={setSweepEnd} />
       </div>
       {sweepOn && timeoutMin < 60 && (
         <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">أرضية الأمان مع السحب التلقائي: ٦٠ دقيقة على الأقل.</p>
@@ -446,17 +442,12 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
       </div>
 
       <div className={on ? "space-y-5" : "space-y-5 opacity-50"}>
-        {/* فاصل الاستقبال + التواجد + نافذة العمل (زوج متجاور) — كل حقل بوصف سطر يشرح أثره */}
-        <div className="grid grid-cols-2 items-start gap-2 lg:grid-cols-4">
+        {/* فاصل الاستقبال + التواجد + نافذة العمل (زوج متجاور) — نفس شبكة قسم السحب حرفيًا */}
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <NumField label="فاصل الاستقبال (دقيقة)" desc="عميل واحد آليًا لكل موظف كل هذي الدقائق" value={receiveGap} onChange={setReceiveGap} min={0} max={1440} hint={receiveGap === 0 ? "بلا فاصل" : `عميل كل ${toArabicDigits(receiveGap)} دقيقة`} />
           <NumField label="حد التواجد (دقيقة)" desc="من ما فتح النظام خلالها يُتخطّى بالدور" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
-          <div className="col-span-2 space-y-1 rounded-lg border border-border/60 bg-card/40 p-2">
-            <div className="text-[0.7rem] text-muted-foreground">نافذة العمل (بتوقيت الرياض) — من ← إلى</div>
-            <div className="grid grid-cols-2 gap-2">
-              <NumField label="من الساعة" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
-              <NumField label="إلى الساعة" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
-            </div>
-          </div>
+          <HourPairField label="نافذة العمل" desc="التوزيع يشتغل داخل هذي الساعات فقط (بتوقيت الرياض)"
+            start={startHour} end={endHour} onStart={setStartHour} onEnd={setEndHour} />
         </div>
 
         {/* حوكمة الدفعات والسقوف — تمنع رمي كل غير الموزّعين دفعة واحدة */}
@@ -731,21 +722,52 @@ function hourHint(h: number): string {
   return `${toArabicDigits(h12)} ${period}`;
 }
 
+/**
+ * حقل رقمي ببطاقة موحّدة البنية: تسمية (سطر مقصوص) → حقل → وصف (سطر محجوز مقصوص) →
+ * تلميح (سطر محجوز). الحجز الثابت للسطور — حتى الفارغة — هو ما يضمن تساوي ارتفاع
+ * كل بطاقات الشبكة وإطاراتها مهما تفاوتت أطوال النصوص (سبب التفاوت السابق).
+ */
 function NumField({ label, desc, value, onChange, min, max, hint }: {
   label: string; desc?: string; value: number; onChange: (n: number) => void; min: number; max: number; hint?: string;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="block text-xs font-medium leading-4 text-foreground">{label}</span>
+    <label className="flex h-full flex-col rounded-lg border border-border/60 bg-card/40 p-2">
+      <span className="truncate text-xs font-medium leading-4 text-foreground" title={label}>{label}</span>
       <input
         type="number" dir="ltr" value={value} min={min} max={max}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="select-base w-full"
+        className="select-base mt-1 w-full"
       />
-      {/* وصف سطر واحد يشرح أثر الإعداد — المالك يفهم كل رقم بدون سؤال. */}
-      {desc && <span className="block text-[0.68rem] leading-4 text-muted-foreground">{desc}</span>}
-      {hint && <span className="block text-[0.7rem] leading-4 text-gold/80">{hint}</span>}
+      {/* وصف سطر واحد يشرح أثر الإعداد — محجوز الارتفاع حتى لو غاب. */}
+      <span className="mt-1 min-h-4 truncate text-[0.68rem] leading-4 text-muted-foreground" title={desc}>{desc ?? " "}</span>
+      <span className="mt-0.5 min-h-4 truncate text-[0.7rem] leading-4 text-gold/80">{hint ?? " "}</span>
     </label>
+  );
+}
+
+/**
+ * زوج ساعتَي نافذة (من ← إلى) داخل إطار مشترك واحد — بنفس بنية بطاقة NumField الأربع
+ * سطور حرفيًا (تسمية → حقلان → وصف محجوز → تلميحان محجوزان) فيتطابق الارتفاع مع الشبكة.
+ */
+function HourPairField({ label, desc, start, end, onStart, onEnd }: {
+  label: string; desc: string; start: number; end: number;
+  onStart: (n: number) => void; onEnd: (n: number) => void;
+}) {
+  return (
+    <div className="col-span-2 flex h-full flex-col rounded-lg border border-border/60 bg-card/40 p-2">
+      <span className="truncate text-xs font-medium leading-4 text-foreground" title={label}>{label} — من ← إلى</span>
+      <div className="mt-1 grid grid-cols-2 gap-2">
+        <input aria-label={`${label} — من الساعة`} type="number" dir="ltr" value={start} min={0} max={23}
+          onChange={(e) => onStart(Number(e.target.value))} className="select-base w-full" />
+        <input aria-label={`${label} — إلى الساعة`} type="number" dir="ltr" value={end} min={0} max={23}
+          onChange={(e) => onEnd(Number(e.target.value))} className="select-base w-full" />
+      </div>
+      <span className="mt-1 min-h-4 truncate text-[0.68rem] leading-4 text-muted-foreground" title={desc}>{desc}</span>
+      <div className="mt-0.5 grid grid-cols-2 gap-2">
+        <span className="min-h-4 truncate text-[0.7rem] leading-4 text-gold/80">من: {hourHint(start)}</span>
+        <span className="min-h-4 truncate text-[0.7rem] leading-4 text-gold/80">إلى: {hourHint(end)}</span>
+      </div>
+    </div>
   );
 }
 
