@@ -42,24 +42,24 @@ function DistributeDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<UnarchiveMode>("asis");
+  // الوضعان الموحّدان (نفس ثنائية التحويل بكل النظام): كجديد (_fresh بالتصفير الكامل
+  // والإخفاء) / بمتابعاته (_full بسجله كاملًا) — عبر distributeDuplicateLead الموحّد.
+  const [mode, setMode] = useState<UnarchiveMode>("freshKeepEmployee");
   const [to, setTo] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const needsEmployee = mode === "asis" || mode === "freshKeepEmployee";
-  const canConfirm = !pending && (!needsEmployee || !!to);
+  const canConfirm = !pending && !!to;
 
   const options: { value: UnarchiveMode; label: string; desc: string }[] = [
-    { value: "asis", label: "وزّعه بتحديثاته", desc: "ينقله للموظف المختار — المرحلة والمتابعات محفوظة كما هي." },
-    { value: "freshKeepEmployee", label: "وزّعه كجديد لموظف", desc: "يرجّع المرحلة «جديد» ويُسنده للموظف المختار. المتابعات محفوظة." },
-    { value: "freshUnassigned", label: "وزّعه كجديد غير موزّع", desc: "يرجّع المرحلة «جديد» ويشيله من الموظف — يروح حوض «غير موزّعين». المتابعات محفوظة." },
+    { value: "freshKeepEmployee", label: "كعميل جديد", desc: "يصله نظيفًا تمامًا: مرحلة «جديد»، بلا تاريخ ظاهر ولا مواعيد قديمة — والسجل الكامل محفوظ لك." },
+    { value: "asis", label: "بمتابعاته", desc: "ينقله بحالته كاملة — المرحلة والمتابعات ظاهرة للموظف المستلم." },
   ];
 
   function confirm() {
     setError(null);
     startTransition(async () => {
-      const res = await distributeDuplicateLead(leadId, mode, needsEmployee ? to : null);
+      const res = await distributeDuplicateLead(leadId, mode, to);
       if (!res.ok) { setError(res.error ?? "صار خطأ"); return; }
       onClose();
       router.refresh();
@@ -85,12 +85,10 @@ function DistributeDialog({
             ))}
           </div>
 
-          {needsEmployee && (
-            <select value={to} onChange={(e) => setTo(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold">
-              <option value="">اختر الموظف…</option>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
-          )}
+          <select value={to} onChange={(e) => setTo(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-gold">
+            <option value="">اختر الموظف…</option>
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
 

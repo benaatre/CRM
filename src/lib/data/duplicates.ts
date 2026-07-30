@@ -3,142 +3,148 @@ import "server-only";
 import type { LeadStage, FollowUpResult, Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-guards";
-import { dedupeKey } from "@/lib/phone-dupe";
-
-export type DupFollowUp = { result: FollowUpResult; createdAt: Date; note: string | null };
+import { dedupeKey, LIVE_ROWS_ONLY } from "@/lib/phone-dupe";
+import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
 
 export type DupMember = {
   id: string;
   name: string;
+  phone: string;              // الصيغة المخزّنة الأصلية (للتواصل)
   createdAt: Date;
   stage: LeadStage;
+  assignedToId: string | null;
   assignedToName: string | null;
-  lastContact: Date | null;
   channel: Channel;           // القناة (الإعلان الخشن)
   sourceName: string | null;  // المصدر المهيكل أو نص المصدر
-  followups: DupFollowUp[];
+  lastFollowUp: { result: FollowUpResult; createdAt: Date } | null;
+  /** انضاف اليوم (بتوقيت الرياض) — شارة «جديد اليوم». */
+  addedToday: boolean;
 };
 
 export type DupGroup = {
-  phone: string;          // الجوال المطبّع (05XXXXXXXX)
-  duplicateCount: number; // عدد السجلات بنفس الرقم
-  firstAddedAt: Date;     // أقدم createdAt في المجموعة
-  employees: string[];    // الموظفون المميّزون على السجلات
-  hasBooked: boolean;     // أي سجل RESERVED/CLOSED_WON
-  members: DupMember[];   // مرتّبة بالأقدم أولًا
+  key: string;            // آخر ٩ أرقام (مفتاح التجميع)
+  phone: string;          // صيغة أقدم سجل — عنوان المجموعة
+  duplicateCount: number; // عدد السجلات الحيّة بنفس الرقم
+  firstAddedAt: Date;     // أقدم إضافة (مع مين مكرر)
+  lastAddedAt: Date;      // أحدث إضافة — ترتيب المجموعات
+  /** فيها سجل «محجوز» (RESERVED) — تحذير «مكرر مع محجوز!»: محجوبة عن التوزيع التلقائي والقرار للمالك. */
+  hasReserved: boolean;
+  /** انضاف لها سجل اليوم (بتوقيت الرياض) — فلتر «اليوم» وعدّاده. */
+  newToday: boolean;
+  members: DupMember[];   // مرتّبة بالأقدم أولًا (يتضح مع مين المكرر)
 };
 
-export type DuplicatesData = { active: DupGroup[]; booked: DupGroup[] };
-
-// «محجوز/مباع» — وجود أيّها في المجموعة يعني العميل حجز/اشترى.
-const BOOKED_STAGES: LeadStage[] = ["RESERVED", "CLOSED_WON"];
+export type DuplicatesData = {
+  groups: DupGroup[];       // الأحدث إضافةً أولًا
+  totalGroups: number;
+  newTodayGroups: number;
+};
 
 /**
- * العملاء المكررون = سجلات Lead بنفس رقم الجوال (count > 1). مدير/مالك فقط.
- *
- * التجميع على آخر ٩ أرقام (dedupeKey) — يعالج الصيغ المختلطة المخزّنة (يدوي خام،
- * استيراد مطبّع، +966/966/بمسافات) فتتجمّع كلها كرقم واحد. العرض يبقى بالصيغة المخزّنة
- * الأصلية (للتواصل). Prisma لا يدعم groupBy على تعبير (آخر ٩)، فنجلب ونجمّع بالكود.
+ * العملاء المكررون — مجموعات الصفوف **الحيّة** (غير مؤرشف + مرحلة غير مقفولة) التي
+ * يتشارك فيها سجلان فأكثر نفس آخر-٩ أرقام. نفس شرط LIVE_ROWS_ONLY الذي يحجب بهم
+ * التوزيع التلقائي (duplicateLeadIds) حرفيًا — فما يظهر بالصفحة هو ما يُحجَب بالمحرك،
+ * ويشمل ذلك «مكرر مع محجوز» (RESERVED حيّ): يظهر بشارة تحذير والقرار للمالك يدويًا.
+ * حلّ المجموعة (توزيع/أرشفة حتى يبقى صف حيّ واحد) يفكّ الحجب تلقائيًا.
  */
 export async function getDuplicateLeads(): Promise<DuplicatesData> {
   const user = await requireUser();
-  if (user.role !== "OWNER") return { active: [], booked: [] }; // المالك فقط
+  if (user.role !== "OWNER") return { groups: [], totalGroups: 0, newTodayGroups: 0 };
 
-  // ١) كل العملاء بالحقول اللازمة (بلا سقف — فحص شامل للمكررات). استعلام واحد.
+  // ١) الصفوف الحيّة بالحقول اللازمة — استعلام واحد، وPrisma لا يدعم groupBy على تعبير
+  //    (آخر ٩) فنجمّع بالذاكرة.
   const leads = await prisma.lead.findMany({
+    where: LIVE_ROWS_ONLY,
     select: {
-      id: true, name: true, phone: true, createdAt: true, stage: true, lastContact: true,
-      channel: true, source: true,
+      id: true, name: true, phone: true, createdAt: true, stage: true,
+      channel: true, source: true, assignedToId: true,
       assignedTo: { select: { name: true } },
       leadSource: { select: { name: true } },
     },
   });
 
-  // ٢) تجميع على آخر ٩ أرقام (dedupeKey). الأرقام الأقصر من ٩ تُتجاهَل (غير صالحة).
   type Row = (typeof leads)[number];
-  const groups = new Map<string, Row[]>();
+  const byKey = new Map<string, Row[]>();
   for (const l of leads) {
     const key = dedupeKey(l.phone);
     if (!key) continue;
-    const arr = groups.get(key);
+    const arr = byKey.get(key);
     if (arr) arr.push(l);
-    else groups.set(key, [l]);
+    else byKey.set(key, [l]);
   }
-  const dupEntries = [...groups.entries()].filter(([, arr]) => arr.length > 1);
-  if (dupEntries.length === 0) return { active: [], booked: [] };
+  const dupEntries = [...byKey.entries()].filter(([, arr]) => arr.length > 1);
+  if (dupEntries.length === 0) return { groups: [], totalGroups: 0, newTodayGroups: 0 };
 
-  // ٣) متابعات سجلات المكررين فقط — استعلام واحد مجمّع (بلا N+1).
+  // ٢) آخر متابعة لكل سجل مكرر — استعلام واحد مجمّع (الأحدث أولًا، نلتقط الأولى لكل عميل).
   const dupIds = dupEntries.flatMap(([, arr]) => arr.map((l) => l.id));
   const fus = await prisma.followUp.findMany({
     where: { leadId: { in: dupIds } },
-    select: { leadId: true, result: true, createdAt: true, note: true },
-    orderBy: { createdAt: "asc" },
+    select: { leadId: true, result: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
   });
-  const fuByLead = new Map<string, DupFollowUp[]>();
-  for (const f of fus) {
-    const list = fuByLead.get(f.leadId) ?? [];
-    list.push({ result: f.result, createdAt: f.createdAt, note: f.note });
-    fuByLead.set(f.leadId, list);
-  }
+  const lastFuByLead = new Map<string, { result: FollowUpResult; createdAt: Date }>();
+  for (const f of fus) if (!lastFuByLead.has(f.leadId)) lastFuByLead.set(f.leadId, { result: f.result, createdAt: f.createdAt });
 
-  // ٤) بناء المجموعات + التصنيف حسب hasBooked.
-  const build = (arr: Row[]): DupGroup => {
+  const todayStart = dayStartKSA(new Date());
+  const build = ([key, arr]: [string, Row[]]): DupGroup => {
     const sorted = arr.slice().sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const members: DupMember[] = sorted.map((l) => ({
       id: l.id,
       name: l.name,
+      phone: l.phone,
       createdAt: l.createdAt,
       stage: l.stage,
+      assignedToId: l.assignedToId,
       assignedToName: l.assignedTo?.name ?? null,
-      lastContact: l.lastContact,
       channel: l.channel,
       sourceName: l.leadSource?.name ?? l.source ?? null,
-      followups: fuByLead.get(l.id) ?? [],
+      lastFollowUp: lastFuByLead.get(l.id) ?? null,
+      addedToday: l.createdAt >= todayStart,
     }));
-    const employees = [...new Set(members.map((m) => m.assignedToName).filter((n): n is string => !!n))];
     return {
-      phone: sorted[0].phone, // الصيغة المخزّنة الأصلية (أقدم سجل) — للتواصل
+      key,
+      phone: sorted[0].phone,
       duplicateCount: members.length,
       firstAddedAt: members[0].createdAt,
-      employees,
-      hasBooked: arr.some((l) => BOOKED_STAGES.includes(l.stage)),
+      lastAddedAt: members[members.length - 1].createdAt,
+      hasReserved: sorted.some((l) => l.stage === "RESERVED"),
+      newToday: members.some((m) => m.addedToday),
       members,
     };
   };
 
-  const all = dupEntries
-    .map(([, arr]) => build(arr))
-    .sort((a, b) => b.duplicateCount - a.duplicateCount || a.firstAddedAt.getTime() - b.firstAddedAt.getTime());
-
+  // ترتيب المجموعات: الأحدث إضافةً أولًا.
+  const groups = dupEntries.map(build).sort((a, b) => b.lastAddedAt.getTime() - a.lastAddedAt.getTime());
   return {
-    active: all.filter((g) => !g.hasBooked),
-    booked: all.filter((g) => g.hasBooked),
+    groups,
+    totalGroups: groups.length,
+    newTodayGroups: groups.filter((g) => g.newToday).length,
   };
 }
+
+/** نافذة فلتر «آخر ٧ أيام» — يستخدمها العميل على lastAddedAt. */
+export const DUP_WEEK_MS = 7 * DAY_MS;
 
 // م-٥: كاش ٦٠ ثانية — الشارة تُحسب في layout المالك مع كل تنقّل/refresh وكانت تمسح الجدول كاملًا.
 const BADGE_CACHE_MS = 60_000;
 let badgeCache: { at: number; count: number } | null = null;
 
 /**
- * عدّاد خفيف لشارة التنقّل: عدد مجموعات المكررين «النشطة» (count>1 بلا سجل محجوز/مباع).
- * استعلام واحد (phone, stage) + تجميع بالذاكرة + كاش ٦٠ث. يُستدعى للمدير فقط (التنقّل managerOnly).
+ * عدّاد شارة التنقّل: عدد مجموعات المكررين المعروضة بالصفحة — **نفس منطقها حرفيًا**
+ * (صفوف حيّة، مجموعات >١، شاملًا «مكرر مع محجوز» — كانت مستثناة فيمرّ الحجب بصمت).
+ * استعلام واحد (phone) + تجميع بالذاكرة + كاش ٦٠ث. تُستدعى للمالك فقط.
  */
 export async function activeDuplicateGroupCount(): Promise<number> {
   if (badgeCache && Date.now() - badgeCache.at < BADGE_CACHE_MS) return badgeCache.count;
-  const leads = await prisma.lead.findMany({ select: { phone: true, stage: true } });
-  const byKey = new Map<string, LeadStage[]>();
+  const leads = await prisma.lead.findMany({ where: LIVE_ROWS_ONLY, select: { phone: true } });
+  const byKey = new Map<string, number>();
   for (const l of leads) {
     const k = dedupeKey(l.phone);
     if (!k) continue;
-    const arr = byKey.get(k);
-    if (arr) arr.push(l.stage);
-    else byKey.set(k, [l.stage]);
+    byKey.set(k, (byKey.get(k) ?? 0) + 1);
   }
   let count = 0;
-  for (const stages of byKey.values()) {
-    if (stages.length > 1 && !stages.some((s) => BOOKED_STAGES.includes(s))) count++;
-  }
+  for (const n of byKey.values()) if (n > 1) count++;
   badgeCache = { at: Date.now(), count };
   return count;
 }

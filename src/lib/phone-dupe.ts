@@ -16,7 +16,8 @@ const DUP_WINDOW_MS = 48 * 60 * 60 * 1000;
  * لاستعلامَي Prisma مباشرةً، فلا نصّ مكرَّر يمكن أن ينحرف أحد طرفيه عن الآخر.
  */
 const DEAD_STAGES: LeadStage[] = ["CLOSED_LOST", "CLOSED_WON"];
-const LIVE_ROWS_ONLY = { isArchived: false, stage: { notIn: DEAD_STAGES } } as const;
+/** مُصدَّر: صفحة المكررين تبني مجموعاتها على الصفوف الحيّة نفسها فلا يفترق العرض عن الحجب. */
+export const LIVE_ROWS_ONLY = { isArchived: false, stage: { notIn: DEAD_STAGES } } as const;
 
 /**
  * مفتاح التطبيع للمقارنة فقط (لا يُخزَّن، لا يمسّ normalizePhone العامة):
