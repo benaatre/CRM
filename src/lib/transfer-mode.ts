@@ -61,6 +61,13 @@ export function redistributeReason(mode: TransferMode): string {
 export const MANUAL_UNARCHIVE_FRESH = "manual_unarchive_fresh";
 
 /**
+ * ===== إعادة التوزيع الآلي لمسحوبي «لم يتم الرد» (الحزمة ب) =====
+ * المسحوب آليًا لعدم الرد يُعاد توزيعه بنفس الدورة على موظف آخر «كجديد» — اللاحقة
+ * _fresh تفعّل إخفاء السجل عن المستلم (visibility.ts) والسجل كامل للمالك/الأدمن.
+ */
+export const AUTO_REDISTRIBUTE_FRESH = "auto_redistribute_fresh";
+
+/**
  * ===== التوزيع التلقائي (المحرك) =====
  * لا إنسان يُسأل، فالقرار مشتق: من يحمل متابعات سابقة يُوزَّع «كجديد» (سجله يُخفى عن
  * الموظف المستلم ويبقى كاملًا للمالك)، ومن لا تاريخ له يبقى `initial` كما كان.

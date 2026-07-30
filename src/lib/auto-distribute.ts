@@ -6,10 +6,10 @@ import { ActivityType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notify, ownerIds } from "@/lib/notify";
 import { logAudit } from "@/lib/audit";
-import { emitNotification, emitLeadAssignedBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
+import { emitNotification, emitLeadAssignedBatch, emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
-import { initialReason } from "@/lib/transfer-mode";
+import { initialReason, AUTO_REDISTRIBUTE_FRESH } from "@/lib/transfer-mode";
 import { dayStartKSA, ksaHourOf } from "@/lib/ksa-time";
 import { atLimitUserIds } from "@/lib/dist-limits";
 
@@ -667,7 +667,11 @@ export type PullbackResult = {
   scanned: number;
   warned: number;
   pulled: number;
+  /** «الحزمة ب»: كم مسحوبًا أُعيد توزيعه آليًا (كجديد) بنفس الدورة. */
+  redistributed: number;
   capped: number;
+  /** الدورة تخطّت العمل كله (المفتاح الرئيسي مطفأ / خارج نافذة العمل). */
+  skipped?: string;
   error?: string;
 };
 
@@ -712,6 +716,15 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
   }
   const cap = noResponseCap();
   try {
+    // «الحزمة ب» (ثغرة ب): الخضوع للمفتاح الرئيسي ونافذة العمل — نفس بوابات محرّك التوزيع،
+    // فلا سحب ولا إنذار خارج ساعات العمل أو والمفتاح مطفأ.
+    const dist = await getDistSettings(prisma);
+    if (!dist.autoDistribute) {
+      return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, redistributed: 0, capped: 0, skipped: "التوزيع التلقائي متوقّف (المفتاح الرئيسي)" };
+    }
+    if (!isWithinWindow(dist.distStartHour, dist.distEndHour, now)) {
+      return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, redistributed: 0, capped: 0, skipped: "خارج نافذة العمل" };
+    }
     const owners = await ownerIds(prisma);
 
     // مرشّحون: موزّعون لموظف فعلي، غير مؤرشفين, مراحل عدم الرد، دون سقف الدورات، غير محصّنين يدويًا.
@@ -726,6 +739,11 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         stage: { in: [...NO_RESPONSE_STAGES] },
         reassignCount: { lt: MAX_REASSIGNS },
         manualAssignedAt: null,
+        // «الحزمة ب» (ثغرة أ): القاعدة القاطعة — من هو خارج بركة التوزيع التلقائي لا يمسّه المحرك.
+        ...IN_AUTO_POOL,
+        // «الحزمة ب» (ثغرة ج): موعد زيارة مستقبلي = تحرّك حقيقي مع العميل — محمي من السحب
+        // حتى لو مرحلته ATTEMPTED (زيارة مثبتة أهم من عدّاد «لم يرد»).
+        OR: [{ visitAt: null }, { visitAt: { lte: now } }],
       },
       select: { id: true, name: true, assignedToId: true, assignedAt: true },
     });
@@ -733,7 +751,7 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     // تصعيد المستنفدين للمالك — شامل المسحوبين العالقين في الحوض (كل دورة، مع dedup الإشعار).
     await escalateCappedLeads();
 
-    if (candidates.length === 0) return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, capped: 0 };
+    if (candidates.length === 0) return { ok: true, mode, scanned: 0, warned: 0, pulled: 0, redistributed: 0, capped: 0 };
 
     // متابعات كل عميل (نتيجة + وقت) لحساب «لم يرد» فقط (دفعة واحدة، بلا N+1).
     // م-٥: العدّاد يحتسب ما بعد آخر إسناد فقط (§١أ) — فنحصر الجلب بما بعد أقدم assignedAt
@@ -785,6 +803,19 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     const batchId = randomUUID();
     const affected = new Map<string, number>(); // fromUserId → عدد المسحوبين منه
 
+    // «الحزمة ب»: إعادة التوزيع الآلي للمسحوبين — بالدور مع استثناء المسحوب منه، «كجديد».
+    const redistributeOn = dist.autoRedistributeEnabled;
+    const available = redistributeOn ? await availableParticipants(prisma, dist, now) : [];
+    let pointer = dist.distPointer;
+    let redistributed = 0;
+    const freshBuckets = new Map<string, LeadAssignedBucket>(); // إشعار المستلمين مجمّعًا
+    const nameIds = [...new Set([...targets.map((t) => t.from), ...available])];
+    const empNames = new Map(
+      nameIds.length
+        ? (await prisma.user.findMany({ where: { id: { in: nameIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name])
+        : [],
+    );
+
     for (const t of targets) {
       if (mode === "dry-run") {
         console.info(
@@ -794,6 +825,24 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         affected.set(t.from, (affected.get(t.from) ?? 0) + 1);
         continue;
       }
+      // §٣: سبب السحب — EXHAUSTED (count≥حد السحب: تابع والعميل ما رد) أو NEGLECT (انتهت المهلة بلا متابعة كافية).
+      const reason = t.fu >= config.immunityCap ? "no_response_exhausted" : "no_response_neglect";
+      // بركة «تعذّر الوصول» تبقى كما هي: المستنفد من موظفَين مختلفَين (بعد هذا السحب) للمالك
+      // وحده — لا يُعاد توزيعه آليًا أبدًا.
+      let unreachable = false;
+      if (redistributeOn && reason === "no_response_exhausted") {
+        const prior = await prisma.reassignment.findMany({
+          where: { leadId: t.id, reason: "no_response_exhausted", toUserId: null, fromUserId: { not: null } },
+          select: { fromUserId: true },
+        });
+        const pullers = new Set(prior.map((r) => r.fromUserId as string));
+        pullers.add(t.from);
+        unreachable = pullers.size >= 2;
+      }
+      // المستلم بالدور الثابت مع استثناء المسحوب منه — قد لا يوجد بديل فيبقى بالحوض.
+      const picked = redistributeOn && !unreachable
+        ? pickRotation(dist.distOrder, new Set(available), pointer, t.from)
+        : null;
       // حارس تزامن: لا نسحب إلا إذا كان لا يزال مُسندًا لنفس الموظف (count===1). غير ذلك → تخطٍّ صامت.
       const done = await prisma.$transaction(async (tx) => {
         const res = await tx.lead.updateMany({
@@ -801,26 +850,56 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
           data: { assignedToId: null, assignedAt: null, contactedAt: null, reassignCount: { increment: 1 } },
         });
         if (res.count !== 1) return false;
-        // §٣: سبب السحب — EXHAUSTED (count≥حد السحب: تابع والعميل ما رد) أو NEGLECT (انتهت المهلة بلا متابعة كافية).
-        const reason = t.fu >= config.immunityCap ? "no_response_exhausted" : "no_response_neglect";
         await tx.reassignment.create({ data: { leadId: t.id, fromUserId: t.from, toUserId: null, reason } });
+        // قاعدة العرض: نشاط محايد — قد يراه موظف لاحق بملف العميل، فلا «تلقائي/سحب» فيه.
         await tx.activity.create({
-          data: { leadId: t.id, userId: null, type: ActivityType.ASSIGNMENT, note: "سُحب تلقائيًا — لم يتم الرد على العميل" },
+          data: { leadId: t.id, userId: null, type: ActivityType.ASSIGNMENT, note: "انتقل العميل من موظفه السابق" },
         });
-        await notify(tx, [t.from], "lead_lost", "انسحب منك عميل",
-          `${t.name} — عدّى مهلته بلا رد فانسحب منك. بادر بعملائك بسرعة.`, `/leads/${t.id}`);
+        // ١) المسحوب منه — صياغة لبقة: العميل «انتقل»، بلا أي ذكر لسحب آلي.
+        await notify(tx, [t.from], "lead_lost", "انتقل عميل من عندك",
+          `العميل ${t.name} انتقل من عندك. بادر ببقية عملائك بسرعة.`, "/leads");
         // سجل تدقيق لكل سحب: batchId · leadId · fromUserId · المتابعات · أيام التأخير · السبب.
         await logAudit(tx, {
           userId: null, action: "lead.no_response.autoPulled", entity: "lead", entityId: t.id,
-          summary: `[batch=${batchId}] سحب تلقائي · العميل=${t.id} · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=${reason}`,
+          summary: `[batch=${batchId}] سحب تلقائي · العميل=${t.id} · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=${reason}${picked ? ` · أُعيد توزيعه إلى=${picked.userId} (كجديد)` : unreachable ? " · تعذّر الوصول (للمالك)" : " · رجع للحوض"}`,
         });
+        // «الحزمة ب»: إعادة التوزيع فورًا بنفس المعاملة — «كجديد» (ولادة كاملة FRESH_RESET_DATA،
+        // السجل القديم محفوظ للمالك ومخفي عن المستلم بلاحقة _fresh).
+        if (picked) {
+          await assignLead(tx, t.id, picked.userId, {
+            manual: false, reason: AUTO_REDISTRIBUTE_FRESH, fromUserId: t.from, now,
+            extraData: { ...FRESH_RESET_DATA },
+          });
+        }
         return true;
       });
       if (!done) continue;
-      await notify(prisma, owners, "no_response.pulled", "عميل انسحب لعدم الرد",
-        `${t.name} — انسحب من الموظف لعدم الرد. متاح للتوزيع من «لم يتم الرد».`, "/no-response");
+      if (picked) {
+        pointer = picked.pointer;
+        redistributed++;
+        const b = freshBuckets.get(picked.userId);
+        if (b) b.count++;
+        else freshBuckets.set(picked.userId, { userId: picked.userId, count: 1, sampleLeadId: t.id, sampleName: t.name });
+      }
+      // ٣) المالك — التفاصيل الكاملة (السبب، من، إلى): المصطلحات الفنية للمالك حصرًا.
+      const reasonLabel = reason === "no_response_exhausted" ? "استنفاد محاولات (تابع وما رد)" : "تقصير (انتهت المهلة بلا متابعة كافية)";
+      const destLabel = picked
+        ? `إلى ${empNames.get(picked.userId) ?? "موظف"} (كجديد)`
+        : unreachable ? "إلى بركة «تعذّر الوصول» — قرارها لك" : "إلى حوض غير الموزّعين";
+      await notify(prisma, owners, "no_response.pulled", "سحب تلقائي: عدم رد",
+        `${t.name}: من ${empNames.get(t.from) ?? "موظف"} ${destLabel} — السبب: ${reasonLabel}`,
+        picked ? `/leads/${t.id}` : "/no-response");
       pulled++;
       affected.set(t.from, (affected.get(t.from) ?? 0) + 1);
+    }
+
+    // ٢) المستلمون — إشعار مجمّع بصيغة «عميل جديد وصلك» (fresh: بلا أي إيحاء بتاريخ قديم).
+    if (mode === "live" && freshBuckets.size > 0) {
+      await emitTransferredLeadsBatch([...freshBuckets.values()], "fresh");
+    }
+    // مؤشّر الدور تقدّم مع إعادة التوزيع — نثبّته للدورة القادمة.
+    if (mode === "live" && redistributeOn && pointer !== dist.distPointer) {
+      await prisma.settings.update({ where: { id: "singleton" }, data: { distPointer: pointer } });
     }
 
     // ملخّص الدورة في سجل التدقيق: batchId · العدد الكلي · المؤجّل · الموظفون المتأثرون.
@@ -830,7 +909,7 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       const who = [...affected.entries()].map(([id, n]) => `${nameById.get(id) ?? id}:${n}`).join(" · ");
       await logAudit(prisma, {
         userId: null, action: "lead.no_response.autoPullBatch", entity: "lead", entityId: batchId,
-        summary: `دورة سحب تلقائي [batch=${batchId}] · المسحوبون=${pulled} · مؤجّل للسقف=${deferred} · الموظفون=${who}`,
+        summary: `دورة سحب تلقائي [batch=${batchId}] · المسحوبون=${pulled} · أُعيد توزيعهم=${redistributed} · مؤجّل للسقف=${deferred} · الموظفون=${who}`,
       });
     }
     if (deferred > 0) {
@@ -857,8 +936,8 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       for (const count of warnBuckets.values()) warned += count;
     }
 
-    return { ok: true, mode, scanned: candidates.length, warned, pulled, capped };
+    return { ok: true, mode, scanned: candidates.length, warned, pulled, redistributed, capped };
   } catch (e) {
-    return { ok: false, mode, scanned: 0, warned: 0, pulled: 0, capped: 0, error: (e as Error).message };
+    return { ok: false, mode, scanned: 0, warned: 0, pulled: 0, redistributed: 0, capped: 0, error: (e as Error).message };
   }
 }
