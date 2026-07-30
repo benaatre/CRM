@@ -164,12 +164,17 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
   const [sweepOn, setSweepOn] = useState(config.autoSweepEnabled);
   const [redistOn, setRedistOn] = useState(config.autoRedistributeEnabled);
   const [timeoutMin, setTimeoutMin] = useState(config.distTimeoutMin);
+  const [warnMin, setWarnMin] = useState(config.sweepWarnMin);
+  const [sweepStart, setSweepStart] = useState(config.sweepStartHour);
+  const [sweepEnd, setSweepEnd] = useState(config.sweepEndHour);
+  const [pullMode, setPullMode] = useState<DistConfig["distReassignMode"]>(config.distReassignMode);
 
   function save() {
     setMsg(null); setError(null);
     startTransition(async () => {
       const res = await updateAutoPilotConfig({
         autoSweepEnabled: sweepOn, autoRedistributeEnabled: redistOn, distTimeoutMin: timeoutMin,
+        sweepWarnMin: warnMin, sweepStartHour: sweepStart, sweepEndHour: sweepEnd, distReassignMode: pullMode,
       });
       if (res.ok) { setMsg(res.message ?? "تم"); router.refresh(); }
       else setError(res.error ?? "صار خطأ");
@@ -381,6 +386,7 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
   const [reassignMode, setReassignMode] = useState(config.distReassignMode);
   const [order, setOrder] = useState<string[]>(config.order);
   // حوكمة الدفعات والسقوف (٠ = بلا سقف/الكل)
+  const [receiveGap, setReceiveGap] = useState(config.distReceiveGapMin);
   const [batchSize, setBatchSize] = useState(config.distBatchSize ?? 0);
   const [perWindow, setPerWindow] = useState(config.distPerEmployeePerWindow ?? 0);
   const [windowMin, setWindowMin] = useState(config.distWindowMin);
@@ -409,6 +415,8 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
       const res = await updateDistributionConfig({
         autoDistribute: on,
         autoSweepEnabled: config.autoSweepEnabled, autoRedistributeEnabled: config.autoRedistributeEnabled,
+        sweepWarnMin: config.sweepWarnMin, sweepStartHour: config.sweepStartHour, sweepEndHour: config.sweepEndHour,
+        distReceiveGapMin: receiveGap,
         distStartHour: startHour, distEndHour: endHour,
         distTimeoutMin: timeout, distPresenceMin: presence,
         distInitialMode: initialMode, distReassignMode: reassignMode, order,

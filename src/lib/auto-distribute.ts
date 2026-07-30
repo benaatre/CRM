@@ -87,6 +87,13 @@ export type DistSettings = {
   autoSweepEnabled: boolean;
   /** «الحزمة ب»: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد) بنفس الدورة. */
   autoRedistributeEnabled: boolean;
+  /** إنذار ما قبل السحب: قبل انقضاء المهلة بهذه الدقائق (إشعار + وميض أحمر). */
+  sweepWarnMin: number;
+  /** «فاصل الاستقبال»: عميل واحد آليًا لكل موظف كل هذه الدقائق (٠ = بلا فاصل). */
+  distReceiveGapMin: number;
+  /** نافذة السحب التلقائي المستقلة عن نافذة التوزيع (بتوقيت الرياض). */
+  sweepStartHour: number;
+  sweepEndHour: number;
   distStartHour: number;
   distEndHour: number;
   distTimeoutMin: number;
@@ -103,6 +110,7 @@ export type DistSettings = {
 
 const DIST_SELECT = {
   autoDistribute: true, autoSweepEnabled: true, autoRedistributeEnabled: true,
+  sweepWarnMin: true, distReceiveGapMin: true, sweepStartHour: true, sweepEndHour: true,
   distStartHour: true, distEndHour: true, distTimeoutMin: true,
   distPresenceMin: true, distOrder: true, distPointer: true, distInitialMode: true, distReassignMode: true,
   sweepCutoffAt: true,

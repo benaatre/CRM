@@ -15,12 +15,19 @@ export type DistConfig = {
   autoSweepEnabled: boolean;
   /** «الحزمة ب»: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد) — للمالك. */
   autoRedistributeEnabled: boolean;
+  /** إنذار ما قبل السحب بالدقائق (إشعار للموظف + وميض أحمر بالقائمة). */
+  sweepWarnMin: number;
+  /** «فاصل الاستقبال»: عميل واحد آليًا لكل موظف كل هذه الدقائق (٠ = بلا فاصل). */
+  distReceiveGapMin: number;
+  /** نافذة السحب التلقائي المستقلة (بتوقيت الرياض). */
+  sweepStartHour: number;
+  sweepEndHour: number;
   distStartHour: number;
   distEndHour: number;
   distTimeoutMin: number;
   distPresenceMin: number;
-  distInitialMode: "ROUND_ROBIN" | "LEAST_LOADED";
-  distReassignMode: "MOST_ACTIVE" | "ROTATION";
+  distInitialMode: "ROUND_ROBIN" | "LEAST_LOADED" | "MOST_ACTIVE";
+  distReassignMode: "ROTATION" | "LEAST_LOADED" | "MOST_ACTIVE";
   /** حوكمة التوزيع — null = بلا سقف / بلا تحديد دفعة. */
   distBatchSize: number | null;
   distPerEmployeePerWindow: number | null;
@@ -46,6 +53,7 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
     where: { id: "singleton" }, update: {}, create: { id: "singleton" },
     select: {
       autoDistribute: true, autoSweepEnabled: true, autoRedistributeEnabled: true,
+      sweepWarnMin: true, distReceiveGapMin: true, sweepStartHour: true, sweepEndHour: true,
       distStartHour: true, distEndHour: true, distTimeoutMin: true,
       distPresenceMin: true, distOrder: true, distInitialMode: true, distReassignMode: true,
       lastCronAt: true, lastCronDistributed: true, lastCronReassigned: true, sweepCutoffAt: true,
@@ -68,6 +76,10 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
       autoDistribute: s.autoDistribute,
       autoSweepEnabled: s.autoSweepEnabled,
       autoRedistributeEnabled: s.autoRedistributeEnabled,
+      sweepWarnMin: s.sweepWarnMin,
+      distReceiveGapMin: s.distReceiveGapMin,
+      sweepStartHour: s.sweepStartHour,
+      sweepEndHour: s.sweepEndHour,
       distStartHour: s.distStartHour,
       distEndHour: s.distEndHour,
       distTimeoutMin: s.distTimeoutMin,
@@ -150,8 +162,11 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
       return { ok: false, error: "مهلة السحب لازم دقيقة واحدة على الأقل" };
     }
     const presence = Math.max(0, Math.round(input.distPresenceMin ?? 30));
-    const initialMode = input.distInitialMode === "LEAST_LOADED" ? "LEAST_LOADED" : "ROUND_ROBIN";
-    const reassignMode = input.distReassignMode === "ROTATION" ? "ROTATION" : "MOST_ACTIVE";
+    // طرق التوزيع الثلاث (بالترتيب / الأقل حملًا / الأكثر نشاطًا) — أي قيمة أخرى = الافتراضي.
+    const initialMode = ["LEAST_LOADED", "MOST_ACTIVE"].includes(input.distInitialMode) ? input.distInitialMode : "ROUND_ROBIN";
+    const reassignMode = ["LEAST_LOADED", "MOST_ACTIVE"].includes(input.distReassignMode) ? input.distReassignMode : "ROTATION";
+    // «فاصل الاستقبال» — صفر = بلا فاصل، وسقف تقني ٢٤ ساعة.
+    const receiveGap = Math.min(1440, Math.max(0, Math.round(input.distReceiveGapMin ?? 10)));
 
     await prisma.settings.update({
       where: { id: "singleton" },
@@ -163,6 +178,7 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
         distPresenceMin: presence,
         distInitialMode: initialMode,
         distReassignMode: reassignMode,
+        distReceiveGapMin: receiveGap,
         distOrder: order,
         // حوكمة الدفعات والسقوف — الصفر/السالب/الفارغ كلها «بلا سقف» (null).
         distBatchSize: posOrNull(input.distBatchSize),
@@ -188,6 +204,13 @@ export async function updateAutoPilotConfig(input: {
   autoSweepEnabled: boolean;
   autoRedistributeEnabled: boolean;
   distTimeoutMin: number;
+  /** دقائق إنذار ما قبل السحب (١–١٢٠). */
+  sweepWarnMin: number;
+  /** نافذة السحب التلقائي (بتوقيت الرياض). */
+  sweepStartHour: number;
+  sweepEndHour: number;
+  /** طريقة إعادة توزيع المسحوب: بالترتيب (الافتراضي) / الأقل حملًا / الأكثر نشاطًا. */
+  distReassignMode: "ROTATION" | "LEAST_LOADED" | "MOST_ACTIVE";
 }): Promise<ActionResult> {
   try {
     const user = await requireRole("OWNER");
@@ -197,20 +220,28 @@ export async function updateAutoPilotConfig(input: {
     if (input.autoSweepEnabled && timeout < 60) {
       return { ok: false, error: "مع السحب التلقائي، المهلة ما تنزل عن ٦٠ دقيقة (أرضية أمان)" };
     }
+    const warn = Math.round(input.sweepWarnMin || 0);
+    if (warn < 1 || warn > 120) return { ok: false, error: "دقائق الإنذار بين ١ و١٢٠" };
+    if (warn >= timeout) return { ok: false, error: "الإنذار لازم يكون أقصر من المهلة نفسها" };
+    const reassignMode = ["LEAST_LOADED", "MOST_ACTIVE"].includes(input.distReassignMode) ? input.distReassignMode : "ROTATION";
     await prisma.settings.update({
       where: { id: "singleton" },
       data: {
         autoSweepEnabled: !!input.autoSweepEnabled,
         autoRedistributeEnabled: !!input.autoRedistributeEnabled,
         distTimeoutMin: timeout,
+        sweepWarnMin: warn,
+        sweepStartHour: clampHour(input.sweepStartHour),
+        sweepEndHour: clampHour(input.sweepEndHour),
+        distReassignMode: reassignMode,
       },
     });
     await logAudit(prisma, {
       userId: user.id, action: "settings.autoPilot", entity: "settings", entityId: "singleton",
-      summary: `إعدادات الأتمتة: السحب التلقائي=${input.autoSweepEnabled ? "شغال" : "متوقف"} · إعادة توزيع المسحوبين=${input.autoRedistributeEnabled ? "شغال" : "متوقف"} · المهلة=${timeout}د`,
+      summary: `إعدادات السحب: تلقائي=${input.autoSweepEnabled ? "شغال" : "متوقف"} · إعادة توزيع المسحوبين=${input.autoRedistributeEnabled ? "شغال" : "متوقف"} · المهلة=${timeout}د · الإنذار=${warn}د · النافذة=${clampHour(input.sweepStartHour)}→${clampHour(input.sweepEndHour)} · الطريقة=${reassignMode}`,
     });
     revalidatePath("/distribution");
-    return { ok: true, message: "حُفظت إعدادات الأتمتة" };
+    return { ok: true, message: "حُفظت إعدادات السحب التلقائي" };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
