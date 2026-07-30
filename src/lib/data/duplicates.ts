@@ -4,7 +4,7 @@ import type { LeadStage, FollowUpResult, Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-guards";
 import { dedupeKey, LIVE_ROWS_ONLY } from "@/lib/phone-dupe";
-import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
+import { dayStartKSA } from "@/lib/ksa-time";
 
 export type DupMember = {
   id: string;
@@ -121,9 +121,6 @@ export async function getDuplicateLeads(): Promise<DuplicatesData> {
     newTodayGroups: groups.filter((g) => g.newToday).length,
   };
 }
-
-/** نافذة فلتر «آخر ٧ أيام» — يستخدمها العميل على lastAddedAt. */
-export const DUP_WEEK_MS = 7 * DAY_MS;
 
 // م-٥: كاش ٦٠ ثانية — الشارة تُحسب في layout المالك مع كل تنقّل/refresh وكانت تمسح الجدول كاملًا.
 const BADGE_CACHE_MS = 60_000;

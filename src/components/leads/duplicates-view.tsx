@@ -7,13 +7,15 @@ import { AlertTriangle, Copy } from "lucide-react";
 import { formatDate, toArabicDigits } from "@/lib/format";
 import { stageLabels, stageColor, followUpResultLabels, channelLabels } from "@/lib/labels";
 import type { DuplicatesData, DupGroup, DupMember } from "@/lib/data/duplicates";
-import { DUP_WEEK_MS } from "@/lib/data/duplicates";
 import { pullDuplicateLead, archiveDuplicateLead } from "@/lib/actions/leads";
 import { FilterChip } from "./filter-chip";
 import { DistributeDupButton } from "./distribute-dup-dialog";
 
 type Employee = { id: string; name: string };
 type RangeFilter = "all" | "today" | "week";
+
+// نافذة «آخر ٧ أيام» — متدحرجة على lastAddedAt (فلترة عرض فقط، لا صلاحيات).
+const DUP_WEEK_MS = 7 * 24 * 3_600_000;
 
 /**
  * صفحة «العملاء المكررون» — جدول واحد بروح جدول العملاء الرئيسي:
