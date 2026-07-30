@@ -174,49 +174,53 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
   }
 
   return (
-    <div className="glass space-y-4 rounded-2xl border border-gold/30 p-6">
+    <div className="glass space-y-3 rounded-2xl border border-gold/30 p-6">
       <div className="flex items-center gap-1.5 text-base font-bold text-foreground">
         <Repeat className="size-5 text-gold" /> السحب التلقائي
       </div>
 
-      {/* السحب التلقائي للمتأخر */}
-      <label className={`block cursor-pointer rounded-xl border p-4 transition-colors ${sweepOn ? "border-orange-400 bg-orange-500/10" : "border-border hover:border-orange-500/30"}`}>
-        <div className="flex items-center justify-between gap-3">
+      {/* مفتاح التشغيل وحالته — بارزان أعلى القسم بأخضر/أحمر نظام الألوان */}
+      <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 transition-colors ${sweepOn ? "border-green-400/60 bg-green-500/10" : "border-red-500/40 bg-red-500/5"}`}>
+        <div className="flex items-center gap-2.5">
+          <Power className={`size-5 shrink-0 ${sweepOn ? "text-green-300" : "text-red-300"}`} />
           <div>
-            <div className="font-semibold text-foreground">
-              السحب التلقائي للمتأخر: <span className={sweepOn ? "text-orange-300" : "text-muted-foreground"}>{sweepOn ? "شغال" : "متوقف"}</span>
+            <div className="font-bold text-foreground">
+              السحب التلقائي للمتأخر: <span className={sweepOn ? "text-green-300" : "text-red-300"}>{sweepOn ? "شغال" : "متوقف"}</span>
             </div>
-            <p className="mt-1 text-xs leading-6 text-muted-foreground">
-              شغال: العميل الموزّع تلقائيًا (مرحلة «جديد»، صفر تواصل) اللي عدّى مهلته يُنذَر موظفه ثم يُسحب
-              ويُعاد توزيعه آليًا — بنفس الحصانات كلها بلا تخفيف، والموزّع يدويًا منك ما يُسحب أبدًا.
-              <br />متوقف: يظل «اقتراحًا» بانتظار موافقتك لكل حالة (الوضع القديم).
+            <p className="text-[0.7rem] leading-5 text-muted-foreground">
+              شغال: المتأخر يُنذَر ثم يُسحب ويُعاد توزيعه آليًا (بالحصانات كلها — والموزّع يدويًا منك ما يُسحب أبدًا) · متوقف: اقتراح بانتظار موافقتك.
             </p>
           </div>
-          <input type="checkbox" checked={sweepOn} onChange={(e) => setSweepOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <NumField label="مهلة البقاء (دقيقة)" desc="كم يجلس العميل عند الموظف بلا أي تواصل قبل ما يبدأ مسار السحب"
-            value={timeoutMin} onChange={setTimeoutMin} min={1} max={10080}
-            hint={timeoutMin < 60 ? `${toArabicDigits(timeoutMin)} دقيقة` : `≈ ${toArabicDigits(Math.round((timeoutMin / 60) * 10) / 10)} ساعة`} />
-          <NumField label="إنذار قبل السحب (دقيقة)" desc="قبل انقضاء المهلة بهذي الدقائق: إشعار للموظف + وميض أحمر على العميل بقائمته"
-            value={warnMin} onChange={setWarnMin} min={1} max={120} hint={`«بينتقل منك خلال ${toArabicDigits(warnMin)} دقايق»`} />
-          <NumField label="بداية نافذة السحب" desc="السحب يشتغل من هذي الساعة فقط (بتوقيت الرياض)"
-            value={sweepStart} onChange={setSweepStart} min={0} max={23} hint={hourHint(sweepStart)} />
-          <NumField label="نهاية نافذة السحب" desc="بعدها ما يُسحب أحد حتى اليوم التالي"
-            value={sweepEnd} onChange={setSweepEnd} min={0} max={23} hint={hourHint(sweepEnd)} />
-        </div>
-        {sweepOn && timeoutMin < 60 && (
-          <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">أرضية الأمان مع السحب التلقائي: ٦٠ دقيقة على الأقل.</p>
-        )}
-        {warnMin >= timeoutMin && (
-          <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">الإنذار لازم يكون أقصر من المهلة نفسها.</p>
-        )}
+        <input type="checkbox" checked={sweepOn} onChange={(e) => setSweepOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
       </label>
 
-      {/* طريقة إعادة توزيع المسحوب */}
-      <div className="space-y-2 rounded-xl border border-border p-4">
+      {/* الحقول بصف مضغوط بالتسلسل الزمني للدورة: المهلة ← الإنذار ← نافذة السحب (زوج متجاور) */}
+      <div className="grid grid-cols-2 items-start gap-2 lg:grid-cols-4">
+        <NumField label="مهلة البقاء (دقيقة)" desc="بلا أي تواصل قبل بدء مسار السحب"
+          value={timeoutMin} onChange={setTimeoutMin} min={1} max={10080}
+          hint={timeoutMin < 60 ? `${toArabicDigits(timeoutMin)} دقيقة` : `≈ ${toArabicDigits(Math.round((timeoutMin / 60) * 10) / 10)} ساعة`} />
+        <NumField label="إنذار قبل السحب (دقيقة)" desc="إشعار للموظف + وميض أحمر بقائمته"
+          value={warnMin} onChange={setWarnMin} min={1} max={120} hint={`«بينتقل منك خلال ${toArabicDigits(warnMin)} دقايق»`} />
+        <div className="col-span-2 space-y-1 rounded-lg border border-border/60 bg-card/40 p-2">
+          <div className="text-[0.7rem] text-muted-foreground">نافذة السحب (بتوقيت الرياض) — من ← إلى</div>
+          <div className="grid grid-cols-2 gap-2">
+            <NumField label="من الساعة" value={sweepStart} onChange={setSweepStart} min={0} max={23} hint={hourHint(sweepStart)} />
+            <NumField label="إلى الساعة" value={sweepEnd} onChange={setSweepEnd} min={0} max={23} hint={hourHint(sweepEnd)} />
+          </div>
+        </div>
+      </div>
+      {sweepOn && timeoutMin < 60 && (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">أرضية الأمان مع السحب التلقائي: ٦٠ دقيقة على الأقل.</p>
+      )}
+      {warnMin >= timeoutMin && (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">الإنذار لازم يكون أقصر من المهلة نفسها.</p>
+      )}
+
+      {/* طريقة إعادة توزيع المسحوب — مباشرة تحت الحقول */}
+      <div className="space-y-1.5">
         <div className="text-sm font-medium text-foreground">طريقة إعادة توزيع المسحوب</div>
-        <p className="text-xs text-muted-foreground">المسحوب يُسند فورًا لموظف آخر بهذي الطريقة — ودائمًا باستثناء الموظف المسحوب منه.</p>
+        <p className="text-[0.7rem] text-muted-foreground">يُسند فورًا لموظف آخر بهذي الطريقة — ودائمًا باستثناء الموظف المسحوب منه.</p>
         <div className="flex flex-wrap gap-2">
           <Seg active={pullMode === "ROTATION"} onClick={() => setPullMode("ROTATION")} label="بالترتيب" desc="التالي في الدور (الافتراضي)" />
           <Seg active={pullMode === "LEAST_LOADED"} onClick={() => setPullMode("LEAST_LOADED")} label="الأقل حملًا" desc="من عنده عملاء أقل" />
@@ -224,28 +228,23 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
         </div>
       </div>
 
-      {/* إعادة توزيع مسحوبي «لم يتم الرد» */}
-      <label className={`block cursor-pointer rounded-xl border p-4 transition-colors ${redistOn ? "border-cyan-400 bg-cyan-500/10" : "border-border hover:border-cyan-500/30"}`}>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-semibold text-foreground">
-              إعادة توزيع المسحوبين آليًا: <span className={redistOn ? "text-cyan-300" : "text-muted-foreground"}>{redistOn ? "شغال" : "متوقف"}</span>
-            </div>
-            <p className="mt-1 text-xs leading-6 text-muted-foreground">
-              شغال: المسحوب من «لم يتم الرد» يُعاد توزيعه فورًا بنفس الدورة على موظف آخر (بالدور، مع استثناء
-              الموظف السابق) ويصله «كعميل جديد» — سجله القديم محفوظ لك كاملًا ومخفي عنه.
-              <br />متوقف: يرجع لحوض غير الموزّعين كما كان. وفي الحالتين: «تعذّر الوصول» (المستنفد من موظفين
-              اثنين) يبقى لك وحدك — ما يُعاد توزيعه آليًا أبدًا.
-            </p>
+      {/* إعادة توزيع مسحوبي «لم يتم الرد» (المنشور) */}
+      <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${redistOn ? "border-cyan-400 bg-cyan-500/10" : "border-border hover:border-cyan-500/30"}`}>
+        <div>
+          <div className="font-semibold text-foreground">
+            إعادة توزيع مسحوبي «لم يتم الرد»: <span className={redistOn ? "text-cyan-300" : "text-muted-foreground"}>{redistOn ? "شغال" : "متوقف"}</span>
           </div>
-          <input type="checkbox" checked={redistOn} onChange={(e) => setRedistOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
+          <p className="text-[0.7rem] leading-5 text-muted-foreground">
+            شغال: يُوزَّع فورًا على موظف آخر «كعميل جديد» (سجله محفوظ لك ومخفي عنه) · متوقف: يرجع للحوض. و«تعذّر الوصول» يبقى لك وحدك دائمًا.
+          </p>
         </div>
+        <input type="checkbox" checked={redistOn} onChange={(e) => setRedistOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
       </label>
 
       {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
       {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
       <button onClick={save} disabled={pending} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-        {pending ? "جارٍ الحفظ…" : "حفظ إعدادات الأتمتة"}
+        {pending ? "جارٍ الحفظ…" : "حفظ إعدادات السحب التلقائي"}
       </button>
     </div>
   );
@@ -447,12 +446,17 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
       </div>
 
       <div className={on ? "space-y-5" : "space-y-5 opacity-50"}>
-        {/* نافذة العمل + فاصل الاستقبال + التواجد — كل حقل بوصف سطر واحد يشرح أثره */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <NumField label="بداية نافذة العمل" desc="التوزيع يبدأ من هذي الساعة (بتوقيت الرياض)" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
-          <NumField label="نهاية نافذة العمل" desc="بعدها ما يُوزَّع أحد حتى اليوم التالي" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
-          <NumField label="فاصل الاستقبال (دقيقة)" desc="الموظف يستقبل عميلًا واحدًا آليًا كل هذي الدقائق — ما ينزل عليه اثنان دفعة وحدة" value={receiveGap} onChange={setReceiveGap} min={0} max={1440} hint={receiveGap === 0 ? "بلا فاصل" : `عميل كل ${toArabicDigits(receiveGap)} دقيقة`} />
-          <NumField label="حد التواجد (دقيقة)" desc="من ما فتح النظام خلال هذي المدة يُتخطّى بالدور" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
+        {/* فاصل الاستقبال + التواجد + نافذة العمل (زوج متجاور) — كل حقل بوصف سطر يشرح أثره */}
+        <div className="grid grid-cols-2 items-start gap-2 lg:grid-cols-4">
+          <NumField label="فاصل الاستقبال (دقيقة)" desc="عميل واحد آليًا لكل موظف كل هذي الدقائق" value={receiveGap} onChange={setReceiveGap} min={0} max={1440} hint={receiveGap === 0 ? "بلا فاصل" : `عميل كل ${toArabicDigits(receiveGap)} دقيقة`} />
+          <NumField label="حد التواجد (دقيقة)" desc="من ما فتح النظام خلالها يُتخطّى بالدور" value={presence} onChange={setPresence} min={0} max={1440} hint={presence === 0 ? "بلا شرط تواجد" : undefined} />
+          <div className="col-span-2 space-y-1 rounded-lg border border-border/60 bg-card/40 p-2">
+            <div className="text-[0.7rem] text-muted-foreground">نافذة العمل (بتوقيت الرياض) — من ← إلى</div>
+            <div className="grid grid-cols-2 gap-2">
+              <NumField label="من الساعة" value={startHour} onChange={setStartHour} min={0} max={23} hint={hourHint(startHour)} />
+              <NumField label="إلى الساعة" value={endHour} onChange={setEndHour} min={0} max={23} hint={hourHint(endHour)} />
+            </div>
+          </div>
         </div>
 
         {/* حوكمة الدفعات والسقوف — تمنع رمي كل غير الموزّعين دفعة واحدة */}
@@ -463,7 +467,7 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
           <p className="text-xs text-muted-foreground">
             صفر = بلا حد. حجم الدفعة يحدّد كم عميلًا يُوزَّع في الدورة الواحدة، والسقف يحدّ ما يستقبله الموظف داخل النافذة.
           </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <NumField label="حجم الدفعة (عميل/دورة)" value={batchSize} onChange={setBatchSize} min={0} max={500}
               hint={batchSize === 0 ? "الكل دفعة واحدة" : `${toArabicDigits(batchSize)} في الدورة`} />
             <NumField label="سقف الموظف في النافذة" value={perWindow} onChange={setPerWindow} min={0} max={100}
@@ -731,16 +735,16 @@ function NumField({ label, desc, value, onChange, min, max, hint }: {
   label: string; desc?: string; value: number; onChange: (n: number) => void; min: number; max: number; hint?: string;
 }) {
   return (
-    <label className="block space-y-1.5">
-      <span className="text-xs font-medium text-foreground">{label}</span>
-      {/* وصف سطر واحد يشرح أثر الإعداد — المالك يفهم كل رقم بدون سؤال. */}
-      {desc && <span className="block text-[0.7rem] leading-5 text-muted-foreground">{desc}</span>}
+    <label className="block space-y-1">
+      <span className="block text-xs font-medium leading-4 text-foreground">{label}</span>
       <input
         type="number" dir="ltr" value={value} min={min} max={max}
         onChange={(e) => onChange(Number(e.target.value))}
         className="select-base w-full"
       />
-      {hint && <span className="block text-[0.7rem] text-gold/80">{hint}</span>}
+      {/* وصف سطر واحد يشرح أثر الإعداد — المالك يفهم كل رقم بدون سؤال. */}
+      {desc && <span className="block text-[0.68rem] leading-4 text-muted-foreground">{desc}</span>}
+      {hint && <span className="block text-[0.7rem] leading-4 text-gold/80">{hint}</span>}
     </label>
   );
 }
