@@ -21,7 +21,7 @@ import { atLimitUserIds } from "@/lib/dist-limits";
  * الثلاثة في lib/actions/distribution.ts تمسح manualAssignedAt عند الإدخال).
  */
 export const IN_AUTO_POOL = { autoPoolAt: { not: null } } as const;
-import { MAX_REASSIGNS, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
+import { MAX_REASSIGNS, MIN_AUTO_SWEEP_TIMEOUT_MIN, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
 import { getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats } from "./no-response-escalation";
 
 // نعيد تصدير الحد الأدنى للمهلة (تستورده أكشنات التوزيع من هنا) — مصدره الوحدة النقية.
@@ -83,6 +83,10 @@ function isWithinWindow(startHour: number, endHour: number, now: Date): boolean 
 
 export type DistSettings = {
   autoDistribute: boolean;
+  /** «الحزمة ب»: السحب التلقائي للمتأخر — يحوّل pass السحب من «اقتراح للمالك» إلى تنفيذ آلي. */
+  autoSweepEnabled: boolean;
+  /** «الحزمة ب»: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد) بنفس الدورة. */
+  autoRedistributeEnabled: boolean;
   distStartHour: number;
   distEndHour: number;
   distTimeoutMin: number;
@@ -98,7 +102,8 @@ export type DistSettings = {
 };
 
 const DIST_SELECT = {
-  autoDistribute: true, distStartHour: true, distEndHour: true, distTimeoutMin: true,
+  autoDistribute: true, autoSweepEnabled: true, autoRedistributeEnabled: true,
+  distStartHour: true, distEndHour: true, distTimeoutMin: true,
   distPresenceMin: true, distOrder: true, distPointer: true, distInitialMode: true, distReassignMode: true,
   sweepCutoffAt: true,
   distBatchSize: true, distPerEmployeePerWindow: true, distWindowMin: true,
@@ -392,12 +397,16 @@ async function escalateCappedLeads(): Promise<void> {
 }
 
 /**
- * pass السحب (قاعدة ٥ — اقتراح لا تنفيذ): يرشّح المتأخرين للمالك بدل ما يسحبهم. يطبّق شبكة
- * الأمان الكاملة عبر sweepEligible (النقي)، سقف ٥ لكل نداء، ولوق إجباري، ثم يكتب SweepCandidate
- * (upsert) ويشعر المالك بعدد الجدد. لا ينقل أي عميل — النقل بضغطة المالك (executeSweepPull) فقط.
- * يرجّع عدد المرشّحين الجدد + المفحوصين.
+ * pass السحب: افتراضيًا «اقتراح لا تنفيذ» (قاعدة ٥) — يكتب SweepCandidate والنقل بضغطة المالك فقط.
+ * «الحزمة ب»: مع Settings.autoSweepEnabled يتحوّل لتنفيذ آلي (autoExecuteSweep) — نفس الاستعلام
+ * ونفس حصانات sweepEligible حرفيًا بدون أي تخفيف، مع أرضية أمان ٦٠ دقيقة للمهلة.
+ * سقف ٥ لكل نداء ولوق إجباري في المسارين. يرجّع عدد المرشّحين/المسحوبين + المفحوصين.
  */
 async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: Set<string>): Promise<{ proposed: number; checked: number; skipped?: string }> {
+  // «الحزمة ب»: أرضية الأمان تسري على مسار التنفيذ الآلي فقط — الاقتراح اليدوي بلا أرضية كما كان.
+  const effective = settings.autoSweepEnabled
+    ? { ...settings, distTimeoutMin: Math.max(MIN_AUTO_SWEEP_TIMEOUT_MIN, settings.distTimeoutMin) }
+    : settings;
   // استعلام تقريبي على القاعدة (للأداء) يعكس قواعد الحماية الدائمة؛ الحكم النهائي بـ sweepEligible.
   const loosest = new Date(now.getTime() - NEW_LEAD_TIMEOUT_MIN * 60_000);
   const overdueRaw = await prisma.lead.findMany({
@@ -424,11 +433,14 @@ async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: S
   await escalateCappedLeads();
 
   // الحكم النهائي بالدالة النقية (مصدر الحقيقة). hasFollowUp=false لأن الاستعلام صفّى ذوي المتابعات.
-  const overdue = overdueRaw.filter((l) => sweepEligible({ ...l, hasFollowUp: false }, settings, now));
+  const overdue = overdueRaw.filter((l) => sweepEligible({ ...l, hasFollowUp: false }, effective, now));
   if (overdue.length === 0) return { proposed: 0, checked: 0 };
 
   // سقف مطلق: لا أكثر من ٥ مرشّحين في نداء الكرون الواحد.
   const candidates = overdue.slice(0, SWEEP_CAP);
+
+  // «الحزمة ب»: السحب التلقائي مفعّل → تنفيذ آلي بدل الاقتراح (نفس المرشّحين حرفيًا).
+  if (settings.autoSweepEnabled) return autoExecuteSweep(settings, effective, candidates, now);
 
   let proposed = 0; // الجدد فقط (لإشعار المالك)
   for (const lead of candidates) {
@@ -455,6 +467,76 @@ async function runReassignSweepPass(settings: DistSettings, now: Date, dupIds: S
   }
 
   return { proposed, checked: candidates.length };
+}
+
+/**
+ * «الحزمة ب»: تنفيذ السحب آليًا (autoSweepEnabled) — بدل كتابة SweepCandidate وانتظار الموافقة.
+ * المرشّحون وصلوا من نفس استعلام runReassignSweepPass وحصانات sweepEligible بلا أي تخفيف،
+ * ومحصورون بالبركة (autoPoolAt != null في الاستعلام) — الموزَّع يدويًا لا يصله هذا المسار أبدًا.
+ * المستقبِل بالدور الثابت (round-robin) على المتواجدين مع استثناء الموظف المسحوب منه.
+ * قاعدة العرض: نشاط وإشعارات الموظفين بلا أي «تلقائي/سحب» — التفاصيل الفنية للمالك والتدقيق فقط.
+ */
+async function autoExecuteSweep(
+  settings: DistSettings,
+  effective: DistSettings,
+  targets: { id: string; assignedToId: string | null; name: string; assignedAt: Date | null; createdAt: Date; reassignCount: number }[],
+  now: Date,
+): Promise<{ proposed: number; checked: number; skipped?: string }> {
+  if (targets.length === 0) return { proposed: 0, checked: 0 };
+  const present = await presentParticipants(prisma, settings, now);
+  if (present.length === 0) return { proposed: 0, checked: targets.length, skipped: "ما فيه موظف متواجد للاستقبال" };
+  const owners = await ownerIds(prisma);
+  const involved = [...new Set([...present, ...targets.map((t) => t.assignedToId).filter(Boolean) as string[]])];
+  const users = await prisma.user.findMany({ where: { id: { in: involved } }, select: { id: true, name: true } });
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+  let pointer = settings.distPointer;
+  let pulled = 0;
+  for (const lead of targets) {
+    const from = lead.assignedToId as string;
+    const picked = pickRotation(settings.distOrder, new Set(present), pointer, from);
+    if (!picked) { console.info(`[sweep][auto] skip lead=${lead.id} — لا بديل متاح غير موظفه الحالي`); continue; }
+    const target = picked.userId;
+    const tmin = leadTimeoutMin(lead, effective, now);
+    // لوق إجباري قبل كل سحب آلي: leadId · من · إلى · المهلة المطبّقة.
+    console.info(`[sweep][auto] pull lead=${lead.id} from=${from} to=${target} reason=timeout_auto(${tmin}min)`);
+    const done = await prisma.$transaction(async (tx) => {
+      // حارس تزامن: لا سحب إلا إذا كان لا يزال مُسندًا لنفس الموظف.
+      const ok = await assignLead(tx, lead.id, target, {
+        manual: false, reason: "timeout_auto", fromUserId: from, now,
+        guardWhere: { assignedToId: from },
+        extraData: { reassignCount: { increment: 1 } },
+      });
+      if (!ok) return false;
+      // نشاط محايد — يظهر بملف العميل لموظفه الجديد، فلا «تلقائي/سحب» فيه.
+      await tx.activity.create({ data: { leadId: lead.id, userId: null, type: ActivityType.ASSIGNMENT, note: "انتقل العميل لموظف جديد" } });
+      await tx.sweepCandidate.deleteMany({ where: { leadId: lead.id } });
+      // ١) الموظف المسحوب منه — صياغة لبقة (لا يعرف أن النظام سحب آليًا).
+      await notify(tx, [from], "lead_lost", "انتقل عميل من عندك",
+        `العميل ${lead.name} انتقل من عندك. بادر ببقية عملائك بسرعة.`, "/leads");
+      // ٢) الموظف المستلم.
+      await emitNotification({
+        eventKey: "lead_reassigned", assignedUserId: target, title: "عميل جديد وصلك",
+        body: `${lead.name} — توزّع عليك، تواصل معه بسرعة`, link: `/leads/${lead.id}`,
+      }, tx);
+      // ٣) المالك — التفاصيل الكاملة (السبب، من، إلى).
+      await notify(tx, owners, "dist.auto_sweep", "سحب تلقائي: متأخر أُعيد توزيعه",
+        `${lead.name}: من ${nameById.get(from) ?? "موظف"} إلى ${nameById.get(target) ?? "موظف"} — السبب: تجاوز مهلة التواصل (${tmin} دقيقة) بلا أي تواصل مسجّل`, `/leads/${lead.id}`);
+      await logAudit(tx, {
+        userId: null, action: "lead.sweep.autoPulled", entity: "lead", entityId: lead.id,
+        summary: `سحب تلقائي بالمهلة · العميل=${lead.id} · من=${from} · إلى=${target} · المهلة=${tmin}د · reason=timeout_auto`,
+      });
+      return true;
+    });
+    if (!done) continue;
+    pointer = picked.pointer;
+    pulled++;
+  }
+  if (pointer !== settings.distPointer) {
+    await prisma.settings.update({ where: { id: "singleton" }, data: { distPointer: pointer } });
+    settings.distPointer = pointer;
+  }
+  return { proposed: pulled, checked: targets.length };
 }
 
 /**
@@ -526,7 +608,9 @@ export async function runDistributionPasses(now: Date = new Date()): Promise<Dis
 
     const settings = await getDistSettings(prisma);
     const initialOn = initialDistributeOn();
-    const sweepOn = reassignSweepOn();
+    // «الحزمة ب»: مفتاح المالك autoSweepEnabled يشغّل pass السحب بنفسه (تنفيذًا آليًا)،
+    // وسويتش env وحده = وضع الاقتراح اليدوي القديم كما هو.
+    const sweepOn = reassignSweepOn() || settings.autoSweepEnabled;
     const within = isWithinWindow(settings.distStartHour, settings.distEndHour, now);
     // شرط القاعدة + النافذة فوق السويتشين (لا يُكسَر autoDistribute).
     const gateSkip = !settings.autoDistribute ? "التوزيع التلقائي متوقّف (القاعدة)" : !within ? "خارج نافذة العمل" : null;

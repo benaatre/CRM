@@ -13,6 +13,7 @@ import { stageLabels } from "@/lib/labels";
 import type { LeadStage } from "@prisma/client";
 import {
   updateDistributionConfig, runSweepNow, updateDailyAssignCaps, setAutoDistribute,
+  updateAutoPilotConfig,
   approveSweepPull, dismissSweepCandidate, dismissAllSweepCandidates,
   updateSweepCutoff, protectAllCurrentFromSweep,
   type DistConfig, type DistEmployee, type LastCron, type SweepCandidateRow,
@@ -44,8 +45,9 @@ export function DistributionView({
         <Zap className="size-6 text-gold" />
         <h1 className="text-xl font-bold text-foreground">التوزيع التلقائي الذكي</h1>
       </div>
-      {/* المالك فقط: مرشّحو السحب + السويتشين + الحاجز التاريخي */}
-      {isOwner && <CandidatesPanel candidates={candidates} />}
+      {/* المالك فقط: مرشّحو السحب + الأتمتة + السويتشين + الحاجز التاريخي */}
+      {isOwner && !config.autoSweepEnabled && <CandidatesPanel candidates={candidates} />}
+      {isOwner && <AutoPilotPanel config={config} />}
       {isOwner && <SwitchesPanel switches={switches} lastCron={lastCron} />}
       {isOwner && <SweepCutoffPanel sweepCutoffAt={sweepCutoffAt} />}
       <SettingsPanel config={config} employees={employees} />
@@ -148,6 +150,86 @@ function CandidatesPanel({ candidates }: { candidates: SweepCandidateRow[] }) {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ===================== «الحزمة ب»: إعدادات الأتمتة — المالك فقط =====================
+
+function AutoPilotPanel({ config }: { config: DistConfig }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [sweepOn, setSweepOn] = useState(config.autoSweepEnabled);
+  const [redistOn, setRedistOn] = useState(config.autoRedistributeEnabled);
+  const [timeoutMin, setTimeoutMin] = useState(config.distTimeoutMin);
+
+  function save() {
+    setMsg(null); setError(null);
+    startTransition(async () => {
+      const res = await updateAutoPilotConfig({
+        autoSweepEnabled: sweepOn, autoRedistributeEnabled: redistOn, distTimeoutMin: timeoutMin,
+      });
+      if (res.ok) { setMsg(res.message ?? "تم"); router.refresh(); }
+      else setError(res.error ?? "صار خطأ");
+    });
+  }
+
+  return (
+    <div className="glass space-y-4 rounded-2xl border border-gold/30 p-6">
+      <div className="flex items-center gap-1.5 font-semibold text-foreground">
+        <Zap className="size-4 text-gold" /> الأتمتة الكاملة — قرارك وحدك
+      </div>
+
+      {/* السحب التلقائي للمتأخر */}
+      <label className={`block cursor-pointer rounded-xl border p-4 transition-colors ${sweepOn ? "border-orange-400 bg-orange-500/10" : "border-border hover:border-orange-500/30"}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold text-foreground">
+              السحب التلقائي للمتأخر: <span className={sweepOn ? "text-orange-300" : "text-muted-foreground"}>{sweepOn ? "شغال" : "متوقف"}</span>
+            </div>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              شغال: العميل الجديد اللي عدّى مهلته بلا أي تواصل يُسحب ويُعاد توزيعه بالدور آليًا — بنفس الحصانات
+              الحالية بلا تخفيف (متابعة واحدة، تواصل مسجّل، مرحلة تقدّمت، إسناد يدوي، الحاجز التاريخي، سقف الدورات)
+              وعلى عملاء بركة التوزيع التلقائي فقط.
+              <br />متوقف: يظل «اقتراحًا» بانتظار موافقتك لكل حالة (الوضع القديم).
+            </p>
+          </div>
+          <input type="checkbox" checked={sweepOn} onChange={(e) => setSweepOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
+        </div>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <NumField label="مهلة السحب (دقيقة)" value={timeoutMin} onChange={setTimeoutMin} min={1} max={10080}
+            hint={timeoutMin < 60 ? `${toArabicDigits(timeoutMin)} دقيقة` : `≈ ${toArabicDigits(Math.round((timeoutMin / 60) * 10) / 10)} ساعة`} />
+          {sweepOn && timeoutMin < 60 && (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">أرضية الأمان مع السحب التلقائي: ٦٠ دقيقة على الأقل.</p>
+          )}
+        </div>
+      </label>
+
+      {/* إعادة توزيع مسحوبي «لم يتم الرد» */}
+      <label className={`block cursor-pointer rounded-xl border p-4 transition-colors ${redistOn ? "border-cyan-400 bg-cyan-500/10" : "border-border hover:border-cyan-500/30"}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold text-foreground">
+              إعادة توزيع المسحوبين آليًا: <span className={redistOn ? "text-cyan-300" : "text-muted-foreground"}>{redistOn ? "شغال" : "متوقف"}</span>
+            </div>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              شغال: المسحوب من «لم يتم الرد» يُعاد توزيعه فورًا بنفس الدورة على موظف آخر (بالدور، مع استثناء
+              الموظف السابق) ويصله «كعميل جديد» — سجله القديم محفوظ لك كاملًا ومخفي عنه.
+              <br />متوقف: يرجع لحوض غير الموزّعين كما كان. وفي الحالتين: «تعذّر الوصول» (المستنفد من موظفين
+              اثنين) يبقى لك وحدك — ما يُعاد توزيعه آليًا أبدًا.
+            </p>
+          </div>
+          <input type="checkbox" checked={redistOn} onChange={(e) => setRedistOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
+        </div>
+      </label>
+
+      {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
+      <button onClick={save} disabled={pending} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+        {pending ? "جارٍ الحفظ…" : "حفظ إعدادات الأتمتة"}
+      </button>
     </div>
   );
 }
@@ -325,7 +407,9 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
     setMsg(null); setError(null);
     startTransition(async () => {
       const res = await updateDistributionConfig({
-        autoDistribute: on, distStartHour: startHour, distEndHour: endHour,
+        autoDistribute: on,
+        autoSweepEnabled: config.autoSweepEnabled, autoRedistributeEnabled: config.autoRedistributeEnabled,
+        distStartHour: startHour, distEndHour: endHour,
         distTimeoutMin: timeout, distPresenceMin: presence,
         distInitialMode: initialMode, distReassignMode: reassignMode, order,
         distBatchSize: batchSize > 0 ? batchSize : null,

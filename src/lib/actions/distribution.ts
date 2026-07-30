@@ -11,6 +11,10 @@ export type ActionResult = { ok: boolean; error?: string; message?: string };
 
 export type DistConfig = {
   autoDistribute: boolean;
+  /** «الحزمة ب»: السحب التلقائي للمتأخر (تنفيذ آلي بدل الاقتراح) — للمالك. */
+  autoSweepEnabled: boolean;
+  /** «الحزمة ب»: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد) — للمالك. */
+  autoRedistributeEnabled: boolean;
   distStartHour: number;
   distEndHour: number;
   distTimeoutMin: number;
@@ -41,7 +45,8 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
   const s = await prisma.settings.upsert({
     where: { id: "singleton" }, update: {}, create: { id: "singleton" },
     select: {
-      autoDistribute: true, distStartHour: true, distEndHour: true, distTimeoutMin: true,
+      autoDistribute: true, autoSweepEnabled: true, autoRedistributeEnabled: true,
+      distStartHour: true, distEndHour: true, distTimeoutMin: true,
       distPresenceMin: true, distOrder: true, distInitialMode: true, distReassignMode: true,
       lastCronAt: true, lastCronDistributed: true, lastCronReassigned: true, sweepCutoffAt: true,
       distBatchSize: true, distPerEmployeePerWindow: true, distWindowMin: true,
@@ -61,6 +66,8 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
   return {
     config: {
       autoDistribute: s.autoDistribute,
+      autoSweepEnabled: s.autoSweepEnabled,
+      autoRedistributeEnabled: s.autoRedistributeEnabled,
       distStartHour: s.distStartHour,
       distEndHour: s.distEndHour,
       distTimeoutMin: s.distTimeoutMin,
@@ -167,6 +174,43 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
     });
     revalidatePath("/distribution");
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * «الحزمة ب»: إعدادات الأتمتة — للمالك حصرًا (تنفيذ آلي بلا موافقات لاحقة، فقرارها له وحده):
+ *   autoSweepEnabled: السحب التلقائي للمتأخر (يستبدل الاقتراح اليدوي) + أرضية مهلة ٦٠ دقيقة.
+ *   autoRedistributeEnabled: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد).
+ */
+export async function updateAutoPilotConfig(input: {
+  autoSweepEnabled: boolean;
+  autoRedistributeEnabled: boolean;
+  distTimeoutMin: number;
+}): Promise<ActionResult> {
+  try {
+    const user = await requireRole("OWNER");
+    const timeout = Math.round(input.distTimeoutMin || 0);
+    if (!Number.isInteger(timeout) || timeout < 1) return { ok: false, error: "المهلة لازم دقيقة واحدة على الأقل" };
+    // أرضية أمان: مع التنفيذ الآلي ما فيه موافقة لاحقة تصحّح مهلة متهورة.
+    if (input.autoSweepEnabled && timeout < 60) {
+      return { ok: false, error: "مع السحب التلقائي، المهلة ما تنزل عن ٦٠ دقيقة (أرضية أمان)" };
+    }
+    await prisma.settings.update({
+      where: { id: "singleton" },
+      data: {
+        autoSweepEnabled: !!input.autoSweepEnabled,
+        autoRedistributeEnabled: !!input.autoRedistributeEnabled,
+        distTimeoutMin: timeout,
+      },
+    });
+    await logAudit(prisma, {
+      userId: user.id, action: "settings.autoPilot", entity: "settings", entityId: "singleton",
+      summary: `إعدادات الأتمتة: السحب التلقائي=${input.autoSweepEnabled ? "شغال" : "متوقف"} · إعادة توزيع المسحوبين=${input.autoRedistributeEnabled ? "شغال" : "متوقف"} · المهلة=${timeout}د`,
+    });
+    revalidatePath("/distribution");
+    return { ok: true, message: "حُفظت إعدادات الأتمتة" };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }
