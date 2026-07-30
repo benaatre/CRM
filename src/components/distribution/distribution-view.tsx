@@ -715,10 +715,7 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
                     <td className="px-4 py-2.5 text-muted-foreground">{r.fromName ?? "—"}</td>
                     <td className="px-4 py-2.5 text-foreground">{r.toName ?? "—"}</td>
                     <td className="px-4 py-2.5">
-                      {/* عائلة الإسناد الأولي: initial و initial_fresh (الأخير لمسترد بتاريخ سابق). */}
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${isInitialReason(r.reason) ? "bg-info/15 text-info" : "bg-warning/15 text-warning"}`}>
-                        {r.reason === INITIAL_FRESH ? "إسناد أولي (كجديد)" : isInitialReason(r.reason) ? "إسناد أولي" : "تأخّر تواصل"}
-                      </span>
+                      <LogReasonChip reason={r.reason} />
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{formatDateTime(r.createdAt)}</td>
                   </tr>
@@ -730,6 +727,33 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
       </div>
     </div>
   );
+}
+
+/**
+ * شارة سبب سجل إعادات التوجيه — الصفحة للمالك/المدير حصرًا فالتسميات الفنية («تلقائي/سحب»)
+ * مسموحة هنا (قاعدة العرض: الموظف لا يرى هذه المصطلحات أبدًا في شاشاته).
+ */
+function LogReasonChip({ reason }: { reason: string }) {
+  // عائلة الإسناد الأولي: initial و initial_fresh (الأخير لمسترد بتاريخ سابق).
+  if (isInitialReason(reason)) {
+    return <span className="rounded-full bg-info/15 px-2 py-0.5 text-xs text-info">{reason === INITIAL_FRESH ? "إسناد أولي (كجديد)" : "إسناد أولي"}</span>;
+  }
+  const auto: Record<string, string> = {
+    timeout_auto: "سحب تلقائي (مهلة)",
+    auto_redistribute_fresh: "إعادة توزيع تلقائي (كجديد)",
+    no_response_neglect: "سحب تلقائي (عدم رد — تقصير)",
+    no_response_exhausted: "سحب تلقائي (عدم رد — استنفاد)",
+  };
+  if (auto[reason]) {
+    return <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs text-orange-300">{auto[reason]}</span>;
+  }
+  if (reason === "to_auto_pool") {
+    return <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs text-gold">تحويل للبركة</span>;
+  }
+  if (reason.startsWith("manual")) {
+    return <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{reason.endsWith("_fresh") ? "يدوي (كجديد)" : "يدوي"}</span>;
+  }
+  return <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs text-warning">تأخّر تواصل</span>;
 }
 
 // ===================== عناصر مساعدة =====================

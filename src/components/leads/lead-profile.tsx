@@ -438,9 +438,14 @@ function AiTab({ leadId, phone }: { leadId: string; phone: string }) {
 }
 
 // ===== سجل التحويلات (للمالك فقط) =====
+// تبويب «سجل التحويلات» للمالك حصرًا (الصلاحية من الخادم) — التسميات الفنية هنا مسموحة.
 const REASON_LABELS: Record<string, string> = {
   initial: "إسناد أولي",
+  initial_fresh: "إسناد أولي — كعميل جديد (السجل مخفي)",
   timeout: "سحب بعد تأخّر التواصل",
+  timeout_auto: "سحب تلقائي — تأخّر التواصل (الحزمة ب)",
+  auto_redistribute_fresh: "إعادة توزيع تلقائي بعد سحب عدم الرد — كعميل جديد",
+  to_auto_pool: "تحويل لبركة التوزيع التلقائي",
   no_response: "سحب — لم يتم الرد",
   no_response_neglect: "سحب — تقصير (انتهت المهلة)",
   no_response_exhausted: "سحب — استنفاد محاولات (تابع وما رد)",
