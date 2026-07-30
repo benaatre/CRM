@@ -445,6 +445,67 @@ export async function distributeDuplicateLead(
 }
 
 /**
+ * سحب سجل مكرر من موظفه — للمالك فقط (صفحة المكررين): يرجع «غير موزّع» فورًا.
+ * يبقى محجوبًا عن التوزيع التلقائي ما دام مكررًا (duplicateLeadIds) — التوزيع من الصفحة حصريًا.
+ */
+export async function pullDuplicateLead(leadId: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (user.role !== "OWNER") return { ok: false, error: "سحب المكرر للمالك فقط" };
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true, assignedToId: true } });
+    if (!lead) return { ok: false, error: "العميل غير موجود" };
+    if (!lead.assignedToId) return { ok: false, error: "العميل غير موزّع أصلًا" };
+    const from = lead.assignedToId;
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({
+        where: { id: leadId },
+        data: { assignedToId: null, assignedAt: null, contactedAt: null },
+      });
+      await tx.reassignment.create({ data: { leadId, fromUserId: from, toUserId: null, reason: "manual_pull" } });
+      // قاعدة العرض: نشاط محايد بلا «سحب» (قد يراه موظف لاحق بملف العميل).
+      await tx.activity.create({ data: { leadId, userId: user.id, type: ActivityType.ASSIGNMENT, note: "انتقل العميل من موظفه السابق" } });
+      await logAudit(tx, {
+        userId: user.id, action: "lead.duplicate.pulled", entity: "lead", entityId: leadId,
+        summary: `سحب سجل مكرر من موظفه — العميل=${leadId} · من=${from}`,
+      });
+    });
+    revalidateLeads();
+    revalidatePath("/leads/duplicates");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * «حذف» سجل مكرر = أرشفة بسبب «مكرر» — لا حذف فعلي (المتابعات والسجل محفوظان).
+ * المؤرشف يخرج من الصفوف الحيّة (LIVE_ROWS_ONLY) فيفكّ حجبَه عن أخيه الحيّ تلقائيًا
+ * في duplicateLeadIds — بلا أي خطوة إضافية.
+ */
+export async function archiveDuplicateLead(leadId: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    if (user.role !== "OWNER") return { ok: false, error: "أرشفة المكرر للمالك فقط" };
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, name: true, isArchived: true } });
+    if (!lead) return { ok: false, error: "العميل غير موجود" };
+    if (lead.isArchived) return { ok: false, error: "مؤرشف أصلًا" };
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({ where: { id: leadId }, data: { isArchived: true } });
+      await tx.activity.create({ data: { leadId, userId: user.id, type: ActivityType.NOTE, note: "أُرشف كسجل مكرر" } });
+      await logAudit(tx, {
+        userId: user.id, action: "lead.duplicate.archived", entity: "lead", entityId: leadId,
+        summary: `أرشفة سجل مكرر — العميل=${leadId} (${lead.name})`,
+      });
+    });
+    revalidateLeads();
+    revalidatePath("/leads/duplicates");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
  * الخطوة ٣ج: تبديل كشف سجل عميل موزَّع «كجديد» — للمالك فقط.
  * يكتب AuditLog بنوع REVEAL_HISTORY (كشف) أو HIDE_HISTORY (إعادة إخفاء) بالتناوب؛
  * shouldHideHistory يقرأ الأحدث ويقرّر. يرجّع الحالة الجديدة لعرضها فورًا.
