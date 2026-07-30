@@ -211,7 +211,7 @@ function parseDays(raw: string | undefined): number[] {
 // رغم ضبطه صح. التفسير الآن مرن: true/1/on/yes بأي حالة أحرف + trim، وأي قيمة أخرى = معطّل.
 const TRUTHY = new Set(["true", "1", "on", "yes"]);
 
-/** تفسير مفتاح التفعيل بمرونة — مُصدَّر ليستخدمه فحص البيئة (/api/env-check). */
+/** تفسير مفتاح التفعيل بمرونة (true/1/on/yes بأي حالة أحرف). */
 export function parsePullEnabled(raw: string | undefined): boolean {
   return TRUTHY.has((raw ?? "").trim().toLowerCase());
 }

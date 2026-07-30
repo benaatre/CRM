@@ -1,6 +1,5 @@
 import { requireManager } from "@/lib/auth-guards";
 import { getDistributionConfig, getSweepCandidates } from "@/lib/actions/distribution";
-import { initialDistributeOn, reassignSweepOn } from "@/lib/auto-distribute";
 import { getDistributionBoard } from "@/lib/data/distribution";
 import { getSourcesAndLinks, getSheetSourcesPanel } from "@/lib/data/sources";
 import { getActivityReport } from "@/lib/data/activity-report";
@@ -31,13 +30,11 @@ export default async function DistributionPage({
     // «مصادر العملاء» (شيتات المزامنة) — للمالك فقط، انتقلت هنا من الإعدادات.
     isOwner ? getSheetSourcesPanel() : Promise.resolve(null),
   ]);
-  // حالة السويتشين من env (عرض فقط) — تُقرأ على الخادم.
-  const switches = { initialOn: initialDistributeOn(), reassignOn: reassignSweepOn() };
   return (
     <>
       <AutoRefresh seconds={30} />
       <DistributionView
-        config={config} employees={employees} board={board} switches={switches}
+        config={config} employees={employees} board={board}
         lastCron={lastCron} isOwner={isOwner} sweepCutoffAt={sweepCutoffAt} candidates={candidates}
       />
       {/* تقرير النشاط — المالك فقط (الجلب والفرض على الخادم) */}

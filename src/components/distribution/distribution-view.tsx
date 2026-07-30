@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Zap, Clock, Users2, ArrowUp, ArrowDown, Plus, X,
-  CheckCircle2, AlertTriangle, RefreshCw, Repeat, ShieldAlert, Power,
+  CheckCircle2, AlertTriangle, RefreshCw, Repeat, Power,
   ShieldCheck, CalendarClock, Hand, UserCheck, Layers,
 } from "lucide-react";
 import { toArabicDigits, formatDateTime } from "@/lib/format";
@@ -21,15 +21,12 @@ import {
 import type { DistributionBoard } from "@/lib/data/distribution";
 import { ManageEmployeeAvailability } from "@/components/availability/manage-availability";
 
-export type DistSwitches = { initialOn: boolean; reassignOn: boolean };
-
 export function DistributionView({
-  config, employees, board, switches, lastCron, isOwner, sweepCutoffAt, candidates,
+  config, employees, board, lastCron, isOwner, sweepCutoffAt, candidates,
 }: {
   config: DistConfig;
   employees: DistEmployee[];
   board: DistributionBoard;
-  switches: DistSwitches;
   lastCron: LastCron;
   isOwner: boolean;
   sweepCutoffAt: Date;
@@ -46,8 +43,7 @@ export function DistributionView({
       {isOwner && <AutoPilotPanel config={config} />}
       {isOwner && !config.autoSweepEnabled && <CandidatesPanel candidates={candidates} />}
       {isOwner && <SweepCutoffPanel sweepCutoffAt={sweepCutoffAt} />}
-      {isOwner && <SwitchesPanel switches={switches} lastCron={lastCron} />}
-      <MonitorPanel board={board} />
+      <MonitorPanel board={board} lastCron={lastCron} />
     </div>
   );
 }
@@ -319,69 +315,8 @@ function toLocalInput(d: Date): string {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 
-// ===================== لوحة السويتشين (عرض فقط من env) — المالك فقط =====================
-
-function SwitchesPanel({ switches, lastCron }: { switches: DistSwitches; lastCron: LastCron }) {
-  return (
-    <div className="glass space-y-4 rounded-2xl p-6">
-      <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-        <Power className="size-4 text-gold" /> مفاتيح دورة الكرون (من إعدادات الخادم — عرض فقط)
-      </div>
-
-      {/* سويتش التوزيع الأولي */}
-      <div className="flex items-start justify-between gap-3 rounded-xl border border-border p-4">
-        <div>
-          <div className="font-semibold text-foreground">التوزيع الأولي</div>
-          <div className="text-xs text-muted-foreground">يوزّع العملاء غير الموزّعين والجدد على الموظفين.</div>
-          <div className="mt-1 text-[0.7rem] text-muted-foreground/70 ltr:text-left" dir="ltr">AUTO_INITIAL_DISTRIBUTE</div>
-        </div>
-        <SwitchPill on={switches.initialOn} />
-      </div>
-
-      {/* سويتش السحب التلقائي + تحذير أحمر */}
-      <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
-        <div>
-          <div className="flex items-center gap-1.5 font-semibold text-foreground">
-            <ShieldAlert className="size-4 text-destructive" /> السحب التلقائي (إعادة توجيه المتأخرين)
-          </div>
-          <div className="mt-1 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive">
-            ينقل العملاء من موظف لآخر إذا ما تسجّل تواصل في النظام خلال المهلة.
-          </div>
-          <div className="mt-1 text-[0.7rem] text-muted-foreground/70" dir="ltr">AUTO_REASSIGN_SWEEP</div>
-        </div>
-        <SwitchPill on={switches.reassignOn} danger />
-      </div>
-
-      {/* بطاقة آخر دورة كرون */}
-      <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
-        <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Clock className="size-3.5 text-gold" /> آخر دورة كرون
-        </div>
-        {lastCron.at ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-foreground">
-            <span>{formatDateTime(lastCron.at)}</span>
-            <span className="text-muted-foreground">وزّع <b className="text-gold">{toArabicDigits(lastCron.distributed)}</b></span>
-            <span className="text-muted-foreground">سحب <b className="text-gold">{toArabicDigits(lastCron.reassigned)}</b></span>
-          </div>
-        ) : (
-          <div className="text-muted-foreground">ما فيه دورة كرون مسجّلة بعد.</div>
-        )}
-      </div>
-
-      <p className="text-center text-[0.7rem] text-muted-foreground">ترخيص فال (REGA): {toArabicDigits("1200021029")}</p>
-    </div>
-  );
-}
-
-function SwitchPill({ on, danger }: { on: boolean; danger?: boolean }) {
-  const onColor = danger ? "bg-destructive/15 text-destructive" : "bg-success/15 text-success";
-  return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${on ? onColor : "bg-secondary text-muted-foreground"}`}>
-      <span className={`size-2 rounded-full ${on ? (danger ? "bg-destructive" : "bg-success") : "bg-muted-foreground/40"}`} />
-      {on ? "مُفعّل" : "مطفأ"}
-    </span>
-  );
-}
+// (حُذفت بطاقة «مفاتيح دورة الكرون» — كانت أداة تشخيص مؤقتة لسويتشات env؛ بطاقة «آخر دورة
+//  كرون» وسطر ترخيص فال انتقلا للوحة المراقبة أدناه.)
 
 // ===================== لوحة الإعدادات =====================
 
@@ -606,7 +541,7 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
 
 // ===================== لوحة المراقبة =====================
 
-function MonitorPanel({ board }: { board: DistributionBoard }) {
+function MonitorPanel({ board, lastCron }: { board: DistributionBoard; lastCron: LastCron }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
@@ -630,6 +565,20 @@ function MonitorPanel({ board }: { board: DistributionBoard }) {
         </button>
       </div>
       {msg && <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">{msg}</p>}
+
+      {/* آخر دورة كرون (انتقلت من بطاقة المفاتيح المحذوفة) */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Clock className="size-3.5 text-gold" /> آخر دورة كرون:</span>
+        {lastCron.at ? (
+          <>
+            <span className="text-foreground">{formatDateTime(lastCron.at)}</span>
+            <span className="text-muted-foreground">وزّع <b className="text-gold">{toArabicDigits(lastCron.distributed)}</b></span>
+            <span className="text-muted-foreground">سحب <b className="text-gold">{toArabicDigits(lastCron.reassigned)}</b></span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">ما فيه دورة مسجّلة بعد.</span>
+        )}
+      </div>
 
       {/* بطاقات الإحصاء — «موزّع اليوم» مقسوم: تلقائي (البركة) بارز · يدوي رمادي */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
