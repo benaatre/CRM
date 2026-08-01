@@ -6,6 +6,7 @@ import {
   getUnreachableLeads, type NoResponseSort,
 } from "@/lib/data/no-response";
 import { getNoResponseConfig } from "@/lib/no-response-escalation";
+import { prisma } from "@/lib/prisma";
 import { NoResponseView } from "@/components/no-response/no-response-view";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export default async function NoResponsePage({
   const sortRaw = one(sp.sort) as NoResponseSort;
   const sort = SORTS.includes(sortRaw) ? sortRaw : "recent";
 
-  const [summary, pool, employeeLoads, exhausted, undoBatches, needsReview, neverContacted, unreachable] = await Promise.all([
+  const [summary, pool, employeeLoads, exhausted, undoBatches, needsReview, neverContacted, unreachable, settings] = await Promise.all([
     getPendingPullByEmployee(),
     getPoolBySourceEmployee(),
     getActiveEmployeeLoads(),
@@ -37,6 +38,8 @@ export default async function NoResponsePage({
     getNeedsReview(),
     getNeverContactedLeads(),
     getUnreachableLeads(),
+    // مصير المسحوب من هذه الصفحة — مفتاحه هنا الآن (كان بلوحة /distribution).
+    prisma.settings.findUnique({ where: { id: "singleton" }, select: { autoRedistributeEnabled: true } }),
   ]);
 
   return (
@@ -51,6 +54,7 @@ export default async function NoResponsePage({
       unreachable={unreachable}
       filters={{ q, emp: prevEmp, rounds: rounds ?? 0, sort }}
       config={getNoResponseConfig()}
+      redistributeEnabled={settings?.autoRedistributeEnabled ?? false}
     />
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Zap, Clock, Users2, ArrowUp, ArrowDown, Plus, X,
@@ -155,7 +156,6 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sweepOn, setSweepOn] = useState(config.autoSweepEnabled);
-  const [redistOn, setRedistOn] = useState(config.autoRedistributeEnabled);
   const [timeoutMin, setTimeoutMin] = useState(config.distTimeoutMin);
   const [warnMin, setWarnMin] = useState(config.sweepWarnMin);
   const [sweepStart, setSweepStart] = useState(config.sweepStartHour);
@@ -166,7 +166,7 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
     setMsg(null); setError(null);
     startTransition(async () => {
       const res = await updateAutoPilotConfig({
-        autoSweepEnabled: sweepOn, autoRedistributeEnabled: redistOn, distTimeoutMin: timeoutMin,
+        autoSweepEnabled: sweepOn, distTimeoutMin: timeoutMin,
         sweepWarnMin: warnMin, sweepStartHour: sweepStart, sweepEndHour: sweepEnd, distReassignMode: pullMode,
       });
       if (res.ok) { setMsg(res.message ?? "تم"); router.refresh(); }
@@ -225,18 +225,13 @@ function AutoPilotPanel({ config }: { config: DistConfig }) {
         </div>
       </div>
 
-      {/* إعادة توزيع مسحوبي «لم يتم الرد» (المنشور) */}
-      <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${redistOn ? "border-cyan-400 bg-cyan-500/10" : "border-border hover:border-cyan-500/30"}`}>
-        <div>
-          <div className="font-semibold text-foreground">
-            إعادة توزيع مسحوبي «لم يتم الرد»: <span className={redistOn ? "text-cyan-300" : "text-muted-foreground"}>{redistOn ? "شغال" : "متوقف"}</span>
-          </div>
-          <p className="text-[0.7rem] leading-5 text-muted-foreground">
-            شغال: يُوزَّع فورًا على موظف آخر «كعميل جديد» (سجله محفوظ لك ومخفي عنه) · متوقف: يرجع للحوض. و«تعذّر الوصول» يبقى لك وحدك دائمًا.
-          </p>
-        </div>
-        <input type="checkbox" checked={redistOn} onChange={(e) => setRedistOn(e.target.checked)} className="size-6 shrink-0 accent-[var(--gold)]" />
-      </label>
+      {/*
+        مفتاح «إعادة توزيع مسحوبي لم يتم الرد» انتقل لصفحته: دورته دورة التصعيد
+        بالأيام لا دورة الدقائق للمتأخرين الجدد، وخلطهما بلوحة واحدة كان يربك.
+      */}
+      <Link href="/no-response" className="block text-xs text-muted-foreground transition-colors hover:text-gold">
+        إعدادات سحب عدم الرد بصفحتها ←
+      </Link>
 
       {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
       {msg && <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{msg}</p>}
@@ -359,7 +354,7 @@ function SettingsPanel({ config, employees }: { config: DistConfig; employees: D
     startTransition(async () => {
       const res = await updateDistributionConfig({
         autoDistribute: on,
-        autoSweepEnabled: config.autoSweepEnabled, autoRedistributeEnabled: config.autoRedistributeEnabled,
+        autoSweepEnabled: config.autoSweepEnabled,
         sweepWarnMin: config.sweepWarnMin, sweepStartHour: config.sweepStartHour, sweepEndHour: config.sweepEndHour,
         distReceiveGapMin: receiveGap,
         distStartHour: startHour, distEndHour: endHour,
