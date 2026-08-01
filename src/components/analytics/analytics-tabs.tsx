@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toArabicDigits } from "@/lib/format";
 import type { AnalyticsData } from "@/lib/data/analytics";
+import { Clip } from "@/components/ui/clip";
 
 type Team = AnalyticsData["team"];
 
@@ -67,28 +68,28 @@ export function EmployeeKpis({ team }: { team: Team }) {
 
       {/* جدول سطح المكتب */}
       <div className="hidden scroll-x rounded-xl border border-border md:block">
-        <table className="w-full min-w-[760px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <table className="crm-table min-w-[760px] text-sm">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">الموظف</th>
-              <th className="px-4 py-3 font-medium">العملاء المعيّنون</th>
-              <th className="px-4 py-3 font-medium">المتابعات</th>
-              <th className="px-4 py-3 font-medium">الزيارات</th>
-              <th className="px-4 py-3 font-medium">الحجوزات</th>
-              <th className="px-4 py-3 font-medium">معدل التحويل</th>
-              <th className="px-4 py-3 font-medium">الهدف الشهري</th>
+              <th className="w-[8rem] px-4 py-3 font-medium">العملاء المعيّنون</th>
+              <th className="w-[6rem] px-4 py-3 font-medium">المتابعات</th>
+              <th className="w-[5.5rem] px-4 py-3 font-medium">الزيارات</th>
+              <th className="w-[5.5rem] px-4 py-3 font-medium">الحجوزات</th>
+              <th className="w-[7rem] px-4 py-3 font-medium">معدل التحويل</th>
+              <th className="w-[12rem] px-4 py-3 font-medium">الهدف الشهري</th>
             </tr>
           </thead>
           <tbody>
             {team.map((t) => (
               <tr key={t.id} className="border-t border-border hover:bg-secondary/30">
-                <td className="px-4 py-3 font-medium text-foreground">{t.name}</td>
-                <td className="px-4 py-3 text-muted-foreground">{toArabicDigits(t.assigned)}</td>
-                <td className="px-4 py-3 text-muted-foreground">{toArabicDigits(t.followups)}</td>
-                <td className="px-4 py-3 text-muted-foreground">{toArabicDigits(t.visits)}</td>
-                <td className="px-4 py-3 text-muted-foreground">{toArabicDigits(t.bookings)}</td>
-                <td className="px-4 py-3 text-gold">{toArabicDigits(t.conversion)}٪</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 font-medium text-foreground"><Clip title={t.name}>{t.name}</Clip></td>
+                <td className="cell-keep px-4 py-3 text-muted-foreground">{toArabicDigits(t.assigned)}</td>
+                <td className="cell-keep px-4 py-3 text-muted-foreground">{toArabicDigits(t.followups)}</td>
+                <td className="cell-keep px-4 py-3 text-muted-foreground">{toArabicDigits(t.visits)}</td>
+                <td className="cell-keep px-4 py-3 text-muted-foreground">{toArabicDigits(t.bookings)}</td>
+                <td className="cell-keep px-4 py-3 text-gold">{toArabicDigits(t.conversion)}٪</td>
+                <td className="cell-keep px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
                       <div className="h-full rounded-full bg-gold" style={{ width: `${Math.min(t.progress ?? 0, 100)}%` }} />

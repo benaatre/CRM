@@ -8,6 +8,7 @@ import {
 import { formatCurrencyFull, toArabicDigits } from "@/lib/format";
 import { fetchProjectFinance, fetchAllProjectsFinance } from "@/lib/actions/analytics";
 import type { ProjectFinance, ProjectFinanceRow, AllProjectsFinanceRow } from "@/lib/data/analytics";
+import { Clip } from "@/components/ui/clip";
 
 const ALL = "__ALL__";
 
@@ -112,29 +113,40 @@ function SingleProject({ d }: { d: ProjectFinance }) {
           <p className="py-6 text-center text-muted-foreground">ما فيه وحدات مباعة أو محجوزة في هذا المشروع.</p>
         ) : (
           <div className="scroll-x rounded-xl border border-border">
-            <table className="w-full min-w-[1040px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+            {/* أعمدة المبالغ بعرض ثابت يكفيها كاملة — المال لا يُقصّ أبدًا؛ القصّ على النصوص فقط */}
+            <table className="crm-table min-w-[1360px] text-sm">
               <thead className="bg-secondary/40 text-muted-foreground">
                 <tr>
-                  {["رقم الوحدة", "الدور", "اسم العميل", "جوال العميل", "الهوية/الإقامة", "السعر الأصلي", "باع بكم", "الخصم", "نسبة الخصم", "طريقة الدفع", "الموظف البائع", "الحالة"].map((h) => (
-                    <th key={h} className="px-3 py-2.5 font-medium">{h}</th>
+                  {([
+                    ["رقم الوحدة", "w-[6rem]"], ["الدور", "w-[5rem]"], ["اسم العميل", ""],
+                    ["جوال العميل", "w-[7rem]"], ["الهوية/الإقامة", "w-[9rem]"],
+                    ["السعر الأصلي", "w-[7.5rem]"], ["باع بكم", "w-[7.5rem]"], ["الخصم", "w-[7rem]"],
+                    ["نسبة الخصم", "w-[5.5rem]"], ["طريقة الدفع", ""], ["الموظف البائع", ""],
+                    ["الحالة", "w-[8rem]"],
+                  ] as const).map(([h, w]) => (
+                    <th key={h} className={`${w} px-3 py-2.5 font-medium`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {d.rows.map((r, i) => (
                   <tr key={i} className={`border-t border-border ${i % 2 ? "bg-secondary/20" : ""} hover:bg-secondary/40`}>
-                    <td className="px-3 py-2.5 font-medium text-foreground" dir="ltr">{r.unitNumber}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{r.floorLevel ? floorLabels[r.floorLevel] : (r.floor ?? "—")}</td>
-                    <td className="px-3 py-2.5 text-foreground">{r.leadName ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground" dir="ltr">{r.leadPhone ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground" dir="ltr">{r.nationalId ? `${r.nationality === "RESIDENT" ? "إقامة" : "هوية"} ${r.nationalId}` : "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{formatCurrencyFull(r.originalPrice)}</td>
-                    <td className="px-3 py-2.5 font-medium text-gold">{formatCurrencyFull(r.soldPrice)}</td>
-                    <td className="px-3 py-2.5 text-warning">{r.discount > 0 ? formatCurrencyFull(r.discount) : "—"}</td>
-                    <td className="px-3 py-2.5 text-warning">{r.discount > 0 ? `${toArabicDigits(r.discountPct)}٪` : "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{paymentMethodLabels[r.paymentMethod]}{r.bankName ? ` · ${bankLabels[r.bankName]}` : ""}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{r.sellerName ?? "—"}</td>
-                    <td className="px-3 py-2.5"><StatusChip stage={r.stage} /></td>
+                    <td className="cell-keep px-3 py-2.5 font-medium text-foreground" dir="ltr">{r.unitNumber}</td>
+                    <td className="cell-keep px-3 py-2.5 text-muted-foreground">{r.floorLevel ? floorLabels[r.floorLevel] : (r.floor ?? "—")}</td>
+                    <td className="px-3 py-2.5 text-foreground"><Clip title={r.leadName ?? undefined}>{r.leadName ?? "—"}</Clip></td>
+                    <td className="cell-keep px-3 py-2.5 text-muted-foreground" dir="ltr">{r.leadPhone ?? "—"}</td>
+                    <td className="cell-keep px-3 py-2.5 text-muted-foreground" dir="ltr">{r.nationalId ? `${r.nationality === "RESIDENT" ? "إقامة" : "هوية"} ${r.nationalId}` : "—"}</td>
+                    <td className="cell-keep px-3 py-2.5 text-muted-foreground">{formatCurrencyFull(r.originalPrice)}</td>
+                    <td className="cell-keep px-3 py-2.5 font-medium text-gold">{formatCurrencyFull(r.soldPrice)}</td>
+                    <td className="cell-keep px-3 py-2.5 text-warning">{r.discount > 0 ? formatCurrencyFull(r.discount) : "—"}</td>
+                    <td className="cell-keep px-3 py-2.5 text-warning">{r.discount > 0 ? `${toArabicDigits(r.discountPct)}٪` : "—"}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">
+                      <Clip title={`${paymentMethodLabels[r.paymentMethod]}${r.bankName ? ` · ${bankLabels[r.bankName]}` : ""}`}>
+                        {paymentMethodLabels[r.paymentMethod]}{r.bankName ? ` · ${bankLabels[r.bankName]}` : ""}
+                      </Clip>
+                    </td>
+                    <td className="px-3 py-2.5 text-muted-foreground"><Clip title={r.sellerName ?? undefined}>{r.sellerName ?? "—"}</Clip></td>
+                    <td className="cell-keep px-3 py-2.5"><StatusChip stage={r.stage} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -160,27 +172,32 @@ function AllProjectsComparison({ rows }: { rows: AllProjectsFinanceRow[] }) {
   return (
     <Block title="مقارنة كل المشاريع">
       <div className="scroll-x rounded-xl border border-border">
-        <table className="w-full min-w-[920px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <table className="crm-table min-w-[1180px] text-sm">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
-              {["المشروع", "قيمة الطرح", "عدد الوحدات", "المباع", "نسبة الإنجاز", "إجمالي المبيعات", "إجمالي الخصم", "نسبة الخصم", "المحصّل", "المتبقّي"].map((h) => (
-                <th key={h} className="px-3 py-2.5 font-medium">{h}</th>
+              {([
+                ["المشروع", ""], ["قيمة الطرح", "w-[8rem]"], ["عدد الوحدات", "w-[6rem]"],
+                ["المباع", "w-[5rem]"], ["نسبة الإنجاز", "w-[6.5rem]"], ["إجمالي المبيعات", "w-[8.5rem]"],
+                ["إجمالي الخصم", "w-[8rem]"], ["نسبة الخصم", "w-[6rem]"], ["المحصّل", "w-[8rem]"],
+                ["المتبقّي", "w-[8rem]"],
+              ] as const).map(([h, w]) => (
+                <th key={h} className={`${w} px-3 py-2.5 font-medium`}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={r.projectId} className={`border-t border-border ${i % 2 ? "bg-secondary/20" : ""} hover:bg-secondary/40`}>
-                <td className="px-3 py-2.5 font-medium text-foreground">{r.projectName}</td>
-                <td className="px-3 py-2.5 text-muted-foreground">{formatCurrencyFull(r.listValue)}</td>
-                <td className="px-3 py-2.5 text-muted-foreground">{toArabicDigits(r.unitsTotal)}</td>
-                <td className="px-3 py-2.5 text-info">{toArabicDigits(r.sold)}</td>
-                <td className="px-3 py-2.5 text-gold">{toArabicDigits(r.completionPct)}٪</td>
-                <td className="px-3 py-2.5 text-success">{formatCurrencyFull(r.totalSales)}</td>
-                <td className="px-3 py-2.5 text-warning">{formatCurrencyFull(r.totalDiscount)}</td>
-                <td className="px-3 py-2.5 text-warning">{toArabicDigits(r.discountPct)}٪</td>
-                <td className="px-3 py-2.5 text-foreground">{formatCurrencyFull(r.collected)}</td>
-                <td className="px-3 py-2.5 text-destructive">{formatCurrencyFull(r.remaining)}</td>
+                <td className="px-3 py-2.5 font-medium text-foreground"><Clip title={r.projectName}>{r.projectName}</Clip></td>
+                <td className="cell-keep px-3 py-2.5 text-muted-foreground">{formatCurrencyFull(r.listValue)}</td>
+                <td className="cell-keep px-3 py-2.5 text-muted-foreground">{toArabicDigits(r.unitsTotal)}</td>
+                <td className="cell-keep px-3 py-2.5 text-info">{toArabicDigits(r.sold)}</td>
+                <td className="cell-keep px-3 py-2.5 text-gold">{toArabicDigits(r.completionPct)}٪</td>
+                <td className="cell-keep px-3 py-2.5 text-success">{formatCurrencyFull(r.totalSales)}</td>
+                <td className="cell-keep px-3 py-2.5 text-warning">{formatCurrencyFull(r.totalDiscount)}</td>
+                <td className="cell-keep px-3 py-2.5 text-warning">{toArabicDigits(r.discountPct)}٪</td>
+                <td className="cell-keep px-3 py-2.5 text-foreground">{formatCurrencyFull(r.collected)}</td>
+                <td className="cell-keep px-3 py-2.5 text-destructive">{formatCurrencyFull(r.remaining)}</td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">ما فيه مشاريع.</td></tr>}

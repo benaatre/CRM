@@ -2,20 +2,43 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Copy } from "lucide-react";
 import { formatDate, toArabicDigits } from "@/lib/format";
 import { stageLabels, stageColor, followUpResultLabels, channelLabels } from "@/lib/labels";
 import type { DuplicatesData, DupGroup, DupMember } from "@/lib/data/duplicates";
 import { pullDuplicateLead, archiveDuplicateLead } from "@/lib/actions/leads";
+import { Clip } from "@/components/ui/clip";
 import { FilterChip } from "./filter-chip";
+import { DateRangeChip } from "./date-range-chip";
 import { DistributeDupButton } from "./distribute-dup-dialog";
 
 type Employee = { id: string; name: string };
-type RangeFilter = "all" | "today" | "week";
 
 // نافذة «آخر ٧ أيام» — متدحرجة على lastAddedAt (فلترة عرض فقط، لا صلاحيات).
 const DUP_WEEK_MS = 7 * 24 * 3_600_000;
+
+/**
+ * يقرّر إن كانت المجموعة داخل الفلتر الزمني — المرجع دائمًا **أحدث إضافة فيها**
+ * (lastAddedAt)، أي «متى تجدّد هذا التكرار» لا متى بدأ.
+ */
+function inRange(
+  g: DupGroup,
+  range: string,
+  from: string,
+  to: string,
+  weekCutoff: number,
+): boolean {
+  const t = new Date(g.lastAddedAt).getTime();
+  if (range === "today") return g.newToday;
+  if (range === "week") return t >= weekCutoff;
+  if (from || to) {
+    // النطاق شامل للطرفين: «من» من أول اليوم، و«إلى» لآخر لحظة فيه.
+    if (from && t < new Date(`${from}T00:00:00`).getTime()) return false;
+    if (to && t > new Date(`${to}T23:59:59.999`).getTime()) return false;
+  }
+  return true;
+}
 
 /**
  * صفحة «العملاء المكررون» — جدول واحد بروح جدول العملاء الرئيسي:
@@ -23,12 +46,31 @@ const DUP_WEEK_MS = 7 * 24 * 3_600_000;
  * ثم صفوف سجلاتها بأفعال مباشرة (توزيع بالوضعين / سحب / حذف=أرشفة كمكرر).
  */
 export function DuplicatesView({ data, employees }: { data: DuplicatesData; employees: Employee[] }) {
-  const [range, setRange] = useState<RangeFilter>("all");
+  const router = useRouter();
+  const pathname = usePathname(); // لا مسار مكتوب بالثابت — الشريحة تعمل حيثما رُكّب المكوّن
+  const params = useSearchParams();
+  const range = params.get("range") ?? "";
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const customActive = !range && (!!from || !!to);
+
+  // الشرائح تنعكس بالرابط — الحالة قابلة للمشاركة والرجوع بزر المتصفح.
+  function go(next: { range?: string; from?: string; to?: string }) {
+    const p = new URLSearchParams();
+    const r = next.range ?? range;
+    if (r) p.set("range", r);
+    else {
+      const f = next.from ?? from;
+      const t = next.to ?? to;
+      if (f) p.set("from", f);
+      if (t) p.set("to", t);
+    }
+    const s = p.toString();
+    router.push(s ? `${pathname}?${s}` : pathname);
+  }
+
   const weekCutoff = Date.now() - DUP_WEEK_MS;
-  const shown = data.groups.filter((g) =>
-    range === "all" ? true
-      : range === "today" ? g.newToday
-        : new Date(g.lastAddedAt).getTime() >= weekCutoff);
+  const shown = data.groups.filter((g) => inRange(g, range, from, to, weekCutoff));
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -52,14 +94,19 @@ export function DuplicatesView({ data, employees }: { data: DuplicatesData; empl
         </div>
       </header>
 
-      {/* الفلاتر الزمنية */}
+      {/* الفلاتر الزمنية — أربع شرائح على مرجع واحد: تاريخ أحدث إضافة في المجموعة */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <FilterChip active={range === "all"} onClick={() => setRange("all")}
-          className={chip(range === "all")}>الكل ({toArabicDigits(data.totalGroups)})</FilterChip>
-        <FilterChip active={range === "today"} onClick={() => setRange("today")}
+        <FilterChip active={!range && !customActive} onClick={() => go({ range: "", from: "", to: "" })}
+          className={chip(!range && !customActive)}>الكل ({toArabicDigits(data.totalGroups)})</FilterChip>
+        <FilterChip active={range === "today"} onClick={() => go({ range: "today" })}
           className={chip(range === "today")}>اليوم ({toArabicDigits(data.newTodayGroups)})</FilterChip>
-        <FilterChip active={range === "week"} onClick={() => setRange("week")}
+        <FilterChip active={range === "week"} onClick={() => go({ range: "week" })}
           className={chip(range === "week")}>آخر ٧ أيام</FilterChip>
+        <DateRangeChip
+          from={from} to={to} active={customActive}
+          onChange={(next) => go({ range: "", ...next })}
+          fromLabel="المكررون — من تاريخ" toLabel="المكررون — إلى تاريخ"
+        />
       </div>
 
       {data.totalGroups === 0 ? (
@@ -72,17 +119,22 @@ export function DuplicatesView({ data, employees }: { data: DuplicatesData; empl
         </p>
       ) : (
         <div className="scroll-x rounded-2xl border border-border bg-card">
-          <table className="w-full min-w-[1000px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          {/*
+            الأعمدة القصيرة المحدّدة (جوال · تاريخ · مرحلة · أفعال) تأخذ عرضها الثابت،
+            والأعمدة النصية بلا عرض فتتقاسم الباقي بالتساوي وتقصّ ما زاد.
+            تحت min-w يبدأ التمرير الأفقي السلس بدل ما تُدفع الأعمدة خارج الحاوية.
+          */}
+          <table className="crm-table min-w-[980px] text-sm">
             <thead className="bg-secondary/40 text-muted-foreground">
               <tr>
                 <th className="px-3 py-3 font-medium">الاسم</th>
-                <th className="px-3 py-3 font-medium">الجوال</th>
+                <th className="w-[7rem] px-3 py-3 font-medium">الجوال</th>
                 <th className="px-3 py-3 font-medium">المصدر/الإعلان</th>
-                <th className="px-3 py-3 font-medium">تاريخ الإضافة</th>
+                <th className="w-[6.5rem] px-3 py-3 font-medium">تاريخ الإضافة</th>
                 <th className="px-3 py-3 font-medium">الموظف</th>
-                <th className="px-3 py-3 font-medium">المرحلة</th>
+                <th className="w-[6.5rem] px-3 py-3 font-medium">المرحلة</th>
                 <th className="px-3 py-3 font-medium">آخر متابعة</th>
-                <th className="px-3 py-3 font-medium">أفعال</th>
+                <th className="w-[12.5rem] px-3 py-3 font-medium">أفعال</th>
               </tr>
             </thead>
             <tbody>
@@ -105,7 +157,8 @@ function GroupRows({ group, employees }: { group: DupGroup; employees: Employee[
       {/* صف رأس المجموعة */}
       <tr className={`border-t-2 ${group.hasReserved ? "border-destructive/40 bg-destructive/[0.07]" : "border-gold/25 bg-gold/[0.05]"}`}>
         <td colSpan={8} className="px-3 py-2.5">
-          <span className="inline-flex flex-wrap items-center gap-2">
+          {/* رأس المجموعة يلتف بدل ما يمدّ الجدول: شارة «مكرر مع محجوز» وحدها سطر كامل */}
+          <span className="flex flex-wrap items-center gap-2">
             {group.hasReserved
               ? <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden />
               : <Copy className="size-4 shrink-0 text-gold" aria-hidden />}
@@ -152,32 +205,45 @@ function MemberRow({ m, group, employees }: { m: DupMember; group: DupGroup; emp
 
   return (
     <tr className="border-t border-border transition-colors hover:bg-secondary/40">
+      {/* الاسم — عمود حرج: سطر واحد يُقصّ بأناقة، والتلميح يعطي الاسم كاملًا */}
       <td className="px-3 py-2.5">
-        <span className="inline-flex items-center gap-1.5">
-          <Link href={`/leads/${m.id}`} className="font-medium text-foreground hover:text-gold" title="فتح الملف">{m.name}</Link>
+        <span className="flex items-center gap-1.5">
+          <Link href={`/leads/${m.id}`} title={m.name} className="min-w-0 flex-1 truncate font-medium text-foreground hover:text-gold">{m.name}</Link>
           {m.addedToday && (
             <span
-              className="rounded-full border border-orange-500/30 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold text-orange-300"
+              className="cell-keep shrink-0 rounded-full border border-orange-500/30 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold text-orange-300"
               title={oldestOther ? `مكرر مع: ${oldestOther.name} (${formatDate(oldestOther.createdAt)})` : undefined}
             >جديد اليوم</span>
           )}
         </span>
         {error && <div className="mt-1 text-[10px] text-destructive">{error}</div>}
       </td>
-      <td className="px-3 py-2.5 text-gold" dir="ltr">{m.phone}</td>
+      {/* الجوال — عمود حرج: لا ينكسر ولا يُقصّ أبدًا */}
+      <td className="cell-keep px-3 py-2.5 text-gold" dir="ltr">{m.phone}</td>
       <td className="px-3 py-2.5">
-        <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs text-gold">{channelLabels[m.channel]}</span>
-        {m.sourceName && <span className="mr-1.5 text-xs text-muted-foreground">{m.sourceName}</span>}
+        <span className="flex items-center gap-1.5">
+          <span className="cell-keep shrink-0 rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs text-gold">{channelLabels[m.channel]}</span>
+          {m.sourceName && <Clip className="min-w-0 flex-1 text-xs text-muted-foreground" title={m.sourceName}>{m.sourceName}</Clip>}
+        </span>
       </td>
-      <td className="px-3 py-2.5 text-muted-foreground">{formatDate(m.createdAt)}</td>
-      <td className="px-3 py-2.5 text-foreground">{m.assignedToName ?? <span className="text-muted-foreground">غير موزّع</span>}</td>
-      <td className="px-3 py-2.5">
+      <td className="cell-keep px-3 py-2.5 text-muted-foreground">{formatDate(m.createdAt)}</td>
+      <td className="px-3 py-2.5 text-foreground">
+        {m.assignedToName
+          ? <Clip title={m.assignedToName}>{m.assignedToName}</Clip>
+          : <span className="cell-keep text-muted-foreground">غير موزّع</span>}
+      </td>
+      <td className="cell-keep px-3 py-2.5">
         <span className={`rounded-full border px-2 py-0.5 text-xs ${stageColor[m.stage]}`}>{stageLabels[m.stage]}</span>
       </td>
       <td className="px-3 py-2.5 text-xs text-muted-foreground">
-        {m.lastFollowUp ? `${followUpResultLabels[m.lastFollowUp.result]} · ${formatDate(m.lastFollowUp.createdAt)}` : "—"}
+        {m.lastFollowUp
+          ? <Clip title={`${followUpResultLabels[m.lastFollowUp.result]} · ${formatDate(m.lastFollowUp.createdAt)}`}>
+              {followUpResultLabels[m.lastFollowUp.result]} · {formatDate(m.lastFollowUp.createdAt)}
+            </Clip>
+          : "—"}
       </td>
-      <td className="px-3 py-2.5">
+      {/* الأفعال — عمود حرج: لا ينكمش ولا يُقصّ (آخر ما يتنازل) */}
+      <td className="cell-keep px-3 py-2.5">
         <div className="flex items-center gap-1.5">
           <DistributeDupButton leadId={m.id} leadName={m.name} employees={employees} />
           {m.assignedToId && (

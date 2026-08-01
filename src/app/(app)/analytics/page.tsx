@@ -87,27 +87,27 @@ export default async function AnalyticsPage() {
         )}
 
         {a.finance.perProject.length > 0 && (
-          <div className="mt-5 overflow-x-auto">
-            <table className="w-full text-right text-sm">
+          <div className="scroll-x mt-5">
+            <table className="crm-table min-w-[720px] text-sm">
               <thead className="text-muted-foreground">
                 <tr>
                   <th className="py-2 font-medium">المشروع</th>
-                  <th className="py-2 font-medium">الأساسي</th>
-                  <th className="py-2 font-medium">بعد الخصم</th>
-                  <th className="py-2 font-medium">محصّل</th>
-                  <th className="py-2 font-medium">متبقّي</th>
-                  <th className="py-2 font-medium">محجوز</th>
+                  <th className="w-[7.5rem] py-2 font-medium">الأساسي</th>
+                  <th className="w-[7.5rem] py-2 font-medium">بعد الخصم</th>
+                  <th className="w-[7.5rem] py-2 font-medium">محصّل</th>
+                  <th className="w-[7.5rem] py-2 font-medium">متبقّي</th>
+                  <th className="w-[7.5rem] py-2 font-medium">محجوز</th>
                 </tr>
               </thead>
               <tbody>
                 {a.finance.perProject.map((p) => (
                   <tr key={p.projectId} className="border-t border-border">
-                    <td className="py-2 font-medium text-foreground">{p.projectName}</td>
-                    <td className="py-2 text-muted-foreground">{formatCurrencyFull(p.basePrice)}</td>
-                    <td className="py-2 text-gold">{formatCurrencyFull(p.afterDiscount)}</td>
-                    <td className="py-2 text-success">{formatCurrencyFull(p.collected)}</td>
-                    <td className="py-2 text-destructive">{formatCurrencyFull(p.notCollected)}</td>
-                    <td className="py-2 text-info">{formatCurrencyFull(p.reservedValue)}</td>
+                    <td className="py-2 font-medium text-foreground"><span className="block truncate" title={p.projectName}>{p.projectName}</span></td>
+                    <td className="cell-keep py-2 text-muted-foreground">{formatCurrencyFull(p.basePrice)}</td>
+                    <td className="cell-keep py-2 text-gold">{formatCurrencyFull(p.afterDiscount)}</td>
+                    <td className="cell-keep py-2 text-success">{formatCurrencyFull(p.collected)}</td>
+                    <td className="cell-keep py-2 text-destructive">{formatCurrencyFull(p.notCollected)}</td>
+                    <td className="cell-keep py-2 text-info">{formatCurrencyFull(p.reservedValue)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -197,23 +197,23 @@ export default async function AnalyticsPage() {
           </div>
         </div>
         {a.attendance.perEmployee.some((e) => e.visited + e.noShow > 0) && (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-right text-sm">
+          <div className="scroll-x mt-4">
+            <table className="crm-table min-w-[380px] text-sm">
               <thead className="text-muted-foreground">
                 <tr>
                   <th className="py-2 font-medium">الموظف</th>
-                  <th className="py-2 font-medium">زار</th>
-                  <th className="py-2 font-medium">ما حضر</th>
-                  <th className="py-2 font-medium">النسبة</th>
+                  <th className="w-[4.5rem] py-2 font-medium">زار</th>
+                  <th className="w-[5.5rem] py-2 font-medium">ما حضر</th>
+                  <th className="w-[5rem] py-2 font-medium">النسبة</th>
                 </tr>
               </thead>
               <tbody>
                 {a.attendance.perEmployee.filter((e) => e.visited + e.noShow > 0).map((e) => (
                   <tr key={e.id} className="border-t border-border">
-                    <td className="py-2 font-medium text-foreground">{e.name}</td>
-                    <td className="py-2 text-success">{toArabicDigits(e.visited)}</td>
-                    <td className="py-2 text-destructive">{toArabicDigits(e.noShow)}</td>
-                    <td className="py-2 text-gold">{e.ratePct != null ? `${toArabicDigits(e.ratePct)}٪` : "—"}</td>
+                    <td className="py-2 font-medium text-foreground"><span className="block truncate" title={e.name}>{e.name}</span></td>
+                    <td className="cell-keep py-2 text-success">{toArabicDigits(e.visited)}</td>
+                    <td className="cell-keep py-2 text-destructive">{toArabicDigits(e.noShow)}</td>
+                    <td className="cell-keep py-2 text-gold">{e.ratePct != null ? `${toArabicDigits(e.ratePct)}٪` : "—"}</td>
                   </tr>
                 ))}
               </tbody>

@@ -12,6 +12,7 @@ import {
   type DistributeOpts, type PullGroupCategory,
 } from "@/lib/actions/no-response";
 import { bulkArchive } from "@/lib/actions/leads";
+import { Clip } from "@/components/ui/clip";
 
 type Employee = { id: string; name: string };
 type Filters = { q: string; emp: string; rounds: number; sort: NoResponseSort };
@@ -138,16 +139,16 @@ export function NoResponseView({
           </h2>
           <p className="mb-3 text-xs text-muted-foreground">سُحبوا بسبب استنفاد المحاولات من موظفَين متعاقبَين أو أكثر — مستبعدون من كل توزيع تلقائي.</p>
           <div className="scroll-x rounded-xl border border-border bg-card">
-            <table className="w-full min-w-[420px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+            <table className="crm-table min-w-[420px] text-sm">
               <thead className="bg-secondary/40 text-xs text-muted-foreground">
-                <tr><th className="px-4 py-3 font-medium">العميل</th><th className="px-3 py-3 font-medium">آخر موظف</th><th className="px-3 py-3 text-center font-medium">موظفون متعاقبون</th></tr>
+                <tr><th className="px-4 py-3 font-medium">العميل</th><th className="px-3 py-3 font-medium">آخر موظف</th><th className="w-[9rem] px-3 py-3 text-center font-medium">موظفون متعاقبون</th></tr>
               </thead>
               <tbody>
                 {unreachable.map((u) => (
                   <tr key={u.id} className="border-t border-border">
-                    <td className="px-4 py-3 font-medium text-foreground">{u.name}</td>
-                    <td className="px-3 py-3 text-muted-foreground">{u.lastEmployee ?? "—"}</td>
-                    <td className="px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(u.exhaustedEmployees)}</td>
+                    <td className="px-4 py-3 font-medium text-foreground"><Clip title={u.name}>{u.name}</Clip></td>
+                    <td className="px-3 py-3 text-muted-foreground"><Clip title={u.lastEmployee ?? undefined}>{u.lastEmployee ?? "—"}</Clip></td>
+                    <td className="cell-keep px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(u.exhaustedEmployees)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -184,14 +185,14 @@ export function NoResponseView({
           <AlertTriangle className="size-4" /> يُسحب الآن (تجاوزوا مهلتهم)
         </h2>
         <div className="scroll-x rounded-2xl border border-destructive/30 bg-card">
-          <table className="w-full min-w-[820px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <table className="crm-table min-w-[820px] text-sm">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-medium">الموظف</th>
-                {AGE_COLS.map((c) => <th key={c.bucket} className="px-3 py-3 text-center font-medium">{c.label}</th>)}
-                <th className="px-3 py-3 text-center font-medium">أقدم تأخير</th>
-                <th className="px-3 py-3 text-center font-medium">الإجمالي</th>
-                <th className="px-3 py-3 font-medium">إجراء</th>
+                {AGE_COLS.map((c) => <th key={c.bucket} className="w-[6.5rem] px-3 py-3 text-center font-medium">{c.label}</th>)}
+                <th className="w-[6.5rem] px-3 py-3 text-center font-medium">أقدم تأخير</th>
+                <th className="w-[5rem] px-3 py-3 text-center font-medium">الإجمالي</th>
+                <th className="w-[7rem] px-3 py-3 font-medium">إجراء</th>
               </tr>
             </thead>
             <tbody>
@@ -199,14 +200,14 @@ export function NoResponseView({
                 <tr><td colSpan={AGE_COLS.length + 4} className="px-4 py-8 text-center text-muted-foreground">ما فيه من يُسحب الآن.</td></tr>
               ) : overdueEmps.map((e) => (
                 <tr key={e.id} className="border-t border-border">
-                  <td className="px-4 py-3 font-medium text-foreground">{e.name}</td>
+                  <td className="px-4 py-3 font-medium text-foreground"><Clip title={e.name}>{e.name}</Clip></td>
                   {AGE_COLS.map((c) => (
                     <AgePullCell key={c.bucket} value={e.byAge[c.bucket]} chipCls={c.chip}
                       onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: c.bucket, count: e.byAge[c.bucket] })} pending={pending} />
                   ))}
-                  <td className="px-3 py-3 text-center font-medium text-muted-foreground">{e.oldestOverdueDays > 0 ? `${toArabicDigits(e.oldestOverdueDays)} يوم` : "—"}</td>
-                  <td className="px-3 py-3 text-center font-bold text-destructive">{formatCount(e.totalOverdue)}</td>
-                  <td className="px-3 py-3">
+                  <td className="cell-keep px-3 py-3 text-center font-medium text-muted-foreground">{e.oldestOverdueDays > 0 ? `${toArabicDigits(e.oldestOverdueDays)} يوم` : "—"}</td>
+                  <td className="cell-keep px-3 py-3 text-center font-bold text-destructive">{formatCount(e.totalOverdue)}</td>
+                  <td className="cell-keep px-3 py-3">
                     <PullBtn label="اسحب الكل" disabled={pending} onClick={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "overdue_all", count: e.totalOverdue })} />
                   </td>
                 </tr>
@@ -222,13 +223,13 @@ export function NoResponseView({
           <AlertTriangle className="size-4" /> بانتظار السحب (لم يبلغوا الحد — سحبهم قرار يدوي)
         </h2>
         <div className="scroll-x rounded-2xl border border-gold/30 bg-card">
-          <table className="w-full min-w-[720px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <table className="crm-table min-w-[720px] text-sm">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-medium">الموظف</th>
-                {PENDING_COLS.map((c) => <th key={c.cat} className="px-3 py-3 text-center font-medium">{c.label}</th>)}
-                <th className="px-3 py-3 text-center font-medium">الإجمالي</th>
-                <th className="px-3 py-3 font-medium">إجراء</th>
+                {PENDING_COLS.map((c) => <th key={c.cat} className="w-[7.5rem] px-3 py-3 text-center font-medium">{c.label}</th>)}
+                <th className="w-[5rem] px-3 py-3 text-center font-medium">الإجمالي</th>
+                <th className="w-[7rem] px-3 py-3 font-medium">إجراء</th>
               </tr>
             </thead>
             <tbody>
@@ -236,13 +237,13 @@ export function NoResponseView({
                 <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">ما فيه أحد بانتظار السحب.</td></tr>
               ) : pendingEmps.map((e) => (
                 <tr key={e.id} className="border-t border-border">
-                  <td className="px-4 py-3 font-medium text-foreground">{e.name}</td>
+                  <td className="px-4 py-3 font-medium text-foreground"><Clip title={e.name}>{e.name}</Clip></td>
                   {PENDING_COLS.map((c) => (
                     <NumPullCell key={c.cat} value={e.byCategory[c.cat].warning} tone="gold"
                       onPull={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: c.pull, count: e.byCategory[c.cat].warning })} pending={pending} />
                   ))}
-                  <td className="px-3 py-3 text-center font-bold text-gold">{formatCount(e.totalWarning)}</td>
-                  <td className="px-3 py-3">
+                  <td className="cell-keep px-3 py-3 text-center font-bold text-gold">{formatCount(e.totalWarning)}</td>
+                  <td className="cell-keep px-3 py-3">
                     <PullBtn label="اسحب الكل" disabled={pending} onClick={() => setPullAsk({ employeeId: e.id, employeeName: e.name, category: "pending_all", count: e.totalWarning })} />
                   </td>
                 </tr>
@@ -265,13 +266,13 @@ export function NoResponseView({
           >وزّع الكل ({toArabicDigits(poolTotal)})</button>
         </div>
         <div className="scroll-x rounded-2xl border border-border bg-card">
-          <table className="w-full min-w-[720px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <table className="crm-table min-w-[720px] text-sm">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-medium">الموظف المسحوب منه</th>
-                <th className="px-3 py-3 text-center font-medium">العدد</th>
-                {CATEGORY_ORDER.map((c) => <th key={c} className="px-3 py-3 text-center font-medium">{CATEGORY_LABEL[c]}</th>)}
-                <th className="px-3 py-3 font-medium">إجراء</th>
+                <th className="w-[4.5rem] px-3 py-3 text-center font-medium">العدد</th>
+                {CATEGORY_ORDER.map((c) => <th key={c} className="w-[6.5rem] px-3 py-3 text-center font-medium">{CATEGORY_LABEL[c]}</th>)}
+                <th className="w-[6rem] px-3 py-3 font-medium">إجراء</th>
               </tr>
             </thead>
             <tbody>
@@ -280,18 +281,20 @@ export function NoResponseView({
               ) : poolGroups.map((g) => (
                 <tr key={g.employeeId} className="border-t border-border">
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {g.employee}
-                    {g.exhausted > 0 && (
-                      <span className="mr-2 rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive" title="سُحبوا ٣ مرات — لا يوزّعهم إلا التوزيع الاستثنائي">
-                        مستنفد ×{toArabicDigits(g.exhausted)}
-                      </span>
-                    )}
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="min-w-0 max-w-full truncate" title={g.employee}>{g.employee}</span>
+                      {g.exhausted > 0 && (
+                        <span className="cell-keep rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive" title="سُحبوا ٣ مرات — لا يوزّعهم إلا التوزيع الاستثنائي">
+                          مستنفد ×{toArabicDigits(g.exhausted)}
+                        </span>
+                      )}
+                    </span>
                   </td>
-                  <td className="px-3 py-3 text-center font-bold text-gold">{formatCount(g.count)}</td>
+                  <td className="cell-keep px-3 py-3 text-center font-bold text-gold">{formatCount(g.count)}</td>
                   {CATEGORY_ORDER.map((c) => (
-                    <td key={c} className="px-3 py-3 text-center text-muted-foreground">{g.byFollowup[c] > 0 ? toArabicDigits(g.byFollowup[c]) : "—"}</td>
+                    <td key={c} className="cell-keep px-3 py-3 text-center text-muted-foreground">{g.byFollowup[c] > 0 ? toArabicDigits(g.byFollowup[c]) : "—"}</td>
                   ))}
-                  <td className="px-3 py-3">
+                  <td className="cell-keep px-3 py-3">
                     <button
                       onClick={() => setDist({ count: g.count, sourceEmpIds: [g.employeeId], sourceEmployeeId: g.employeeId, leadIds: g.leadIds, who: g.employee })}
                       disabled={pending}
@@ -380,7 +383,7 @@ function PullBtn({ label, onClick, disabled }: { label: string; onClick: () => v
 function NumPullCell({ value, tone, onPull, pending }: { value: number; tone: "danger" | "gold"; onPull: () => void; pending: boolean }) {
   const color = tone === "danger" ? "text-destructive" : "text-gold";
   return (
-    <td className="px-3 py-3 text-center">
+    <td className="cell-keep px-3 py-3 text-center">
       {value === 0 ? (
         <span className="text-muted-foreground">—</span>
       ) : (
@@ -397,7 +400,7 @@ function NumPullCell({ value, tone, onPull, pending }: { value: number; tone: "d
 // خانة فترة عمر «يُسحب الآن»: رقم كشارة ملوّنة (تدرّج حسب العمر) + زر «اسحب» لتلك الفئة.
 function AgePullCell({ value, chipCls, onPull, pending }: { value: number; chipCls: string; onPull: () => void; pending: boolean }) {
   return (
-    <td className="px-3 py-3 text-center">
+    <td className="cell-keep px-3 py-3 text-center">
       {value === 0 ? (
         <span className="text-muted-foreground">—</span>
       ) : (
@@ -435,22 +438,22 @@ function NumbersPanel({ summary }: { summary: PendingPullSummary }) {
         <p className="py-6 text-center text-sm text-muted-foreground">كل شي تحت السيطرة.</p>
       ) : (
         <div className="scroll-x">
-          <table className="w-full min-w-[520px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          <table className="crm-table min-w-[520px] text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">الموظف</th>
-                <th className="px-3 py-2 text-center font-medium">تحذير (٢٤س)</th>
-                <th className="px-3 py-2 text-center font-medium">تقصير</th>
-                <th className="px-3 py-2 text-center font-medium">استنفاد محاولات</th>
+                <th className="w-[7rem] px-3 py-2 text-center font-medium">تحذير (٢٤س)</th>
+                <th className="w-[5rem] px-3 py-2 text-center font-medium">تقصير</th>
+                <th className="w-[9rem] px-3 py-2 text-center font-medium">استنفاد محاولات</th>
               </tr>
             </thead>
             <tbody>
               {summary.employees.map((e) => (
                 <tr key={e.id} className="border-t border-border">
-                  <td className="px-3 py-2.5 font-medium text-foreground">{e.name}</td>
-                  <td className="px-3 py-2.5 text-center text-gold">{e.totalWarning > 0 ? toArabicDigits(e.totalWarning) : "—"}</td>
-                  <td className="px-3 py-2.5 text-center text-destructive">{e.overdueNeglect > 0 ? toArabicDigits(e.overdueNeglect) : "—"}</td>
-                  <td className="px-3 py-2.5 text-center font-bold text-destructive">{e.overdueExhausted > 0 ? toArabicDigits(e.overdueExhausted) : "—"}</td>
+                  <td className="px-3 py-2.5 font-medium text-foreground"><Clip title={e.name}>{e.name}</Clip></td>
+                  <td className="cell-keep px-3 py-2.5 text-center text-gold">{e.totalWarning > 0 ? toArabicDigits(e.totalWarning) : "—"}</td>
+                  <td className="cell-keep px-3 py-2.5 text-center text-destructive">{e.overdueNeglect > 0 ? toArabicDigits(e.overdueNeglect) : "—"}</td>
+                  <td className="cell-keep px-3 py-2.5 text-center font-bold text-destructive">{e.overdueExhausted > 0 ? toArabicDigits(e.overdueExhausted) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -476,25 +479,25 @@ function NeverContactedPanel({ rows, pending, onNudge, onPull }: {
       </h2>
       <p className="mb-3 text-xs text-muted-foreground">مُسند + صفر متابعات بعد الإسناد + ٣+ أيام — الموظف يوصله تنبيه تلقائي عند اليوم الثالث، والقرار هنا لك: نبّهه مرة ثانية أو اسحب العميل للحوض.</p>
       <div className="scroll-x rounded-xl border border-border bg-card">
-        <table className="w-full min-w-[640px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <table className="crm-table min-w-[640px] text-sm">
           <thead className="bg-secondary/40 text-xs text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">العميل</th>
               <th className="px-3 py-3 font-medium">الموظف</th>
-              <th className="px-3 py-3 text-center font-medium">منذ الإسناد</th>
-              <th className="px-3 py-3 font-medium">إجراء</th>
+              <th className="w-[6.5rem] px-3 py-3 text-center font-medium">منذ الإسناد</th>
+              <th className="w-[15rem] px-3 py-3 font-medium">إجراء</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-border">
                 <td className="px-4 py-3">
-                  <a href={`/leads/${r.id}`} className="font-medium text-foreground hover:text-gold">{r.name}</a>
-                  <div className="text-xs text-muted-foreground" dir="ltr">{r.phone}</div>
+                  <a href={`/leads/${r.id}`} title={r.name} className="block truncate font-medium text-foreground hover:text-gold">{r.name}</a>
+                  <div className="cell-keep text-xs text-muted-foreground" dir="ltr">{r.phone}</div>
                 </td>
-                <td className="px-3 py-3 text-muted-foreground">{r.employeeName}</td>
-                <td className="px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(r.days)} يوم</td>
-                <td className="px-3 py-3">
+                <td className="px-3 py-3 text-muted-foreground"><Clip title={r.employeeName}>{r.employeeName}</Clip></td>
+                <td className="cell-keep px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(r.days)} يوم</td>
+                <td className="cell-keep px-3 py-3">
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => onNudge(r.id)} disabled={pending}
                       className="flex items-center gap-1 rounded-lg border border-gold/50 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40">
@@ -591,22 +594,22 @@ function ExhaustedPanel({ rows, pending, onDistribute, onArchive }: {
       </h2>
       <p className="mb-3 text-xs text-muted-foreground">بلغوا سقف الدورات وعلقوا في الحوض — لا يوزّعهم النظام تلقائيًا. وزّعهم استثنائيًا (تجاوز السقف) أو أرشفهم.</p>
       <div className="scroll-x rounded-xl border border-border bg-card">
-        <table className="w-full min-w-[560px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <table className="crm-table min-w-[560px] text-sm">
           <thead className="bg-secondary/40 text-xs text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">العميل</th>
-              <th className="px-3 py-3 text-center font-medium">الدورات</th>
+              <th className="w-[5rem] px-3 py-3 text-center font-medium">الدورات</th>
               <th className="px-3 py-3 font-medium">آخر موظف</th>
-              <th className="px-3 py-3 font-medium">إجراء</th>
+              <th className="w-[15rem] px-3 py-3 font-medium">إجراء</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-border">
-                <td className="px-4 py-3 font-medium text-foreground">{r.name}</td>
-                <td className="px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(r.reassignCount)}</td>
-                <td className="px-3 py-3 text-muted-foreground">{r.lastEmployee ?? "—"}</td>
-                <td className="px-3 py-3">
+                <td className="px-4 py-3 font-medium text-foreground"><Clip title={r.name}>{r.name}</Clip></td>
+                <td className="cell-keep px-3 py-3 text-center font-bold text-destructive">{toArabicDigits(r.reassignCount)}</td>
+                <td className="px-3 py-3 text-muted-foreground"><Clip title={r.lastEmployee ?? undefined}>{r.lastEmployee ?? "—"}</Clip></td>
+                <td className="cell-keep px-3 py-3">
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => onDistribute(r)} disabled={pending}
                       className="flex items-center gap-1 rounded-lg border border-gold/50 bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40">

@@ -20,6 +20,7 @@ import {
 } from "@/lib/actions/distribution";
 import type { DistributionBoard } from "@/lib/data/distribution";
 import { ManageEmployeeAvailability } from "@/components/availability/manage-availability";
+import { Clip } from "@/components/ui/clip";
 
 export function DistributionView({
   config, employees, board, lastCron, isOwner, sweepCutoffAt, candidates,
@@ -95,30 +96,30 @@ function CandidatesPanel({ candidates }: { candidates: SweepCandidateRow[] }) {
         </p>
       ) : (
         <div className="scroll-x">
-          <table className="w-full text-right text-sm">
+          <table className="crm-table min-w-[880px] text-sm">
             <thead className="bg-secondary/50 text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2.5 font-medium">العميل</th>
                 <th className="px-3 py-2.5 font-medium">الموظف الحالي</th>
-                <th className="px-3 py-2.5 font-medium">وقت الإسناد</th>
-                <th className="px-3 py-2.5 font-medium">آخر نشاط</th>
-                <th className="px-3 py-2.5 font-medium">السبب</th>
-                <th className="px-3 py-2.5 font-medium">القرار</th>
+                <th className="w-[9rem] px-3 py-2.5 font-medium">وقت الإسناد</th>
+                <th className="w-[9rem] px-3 py-2.5 font-medium">آخر نشاط</th>
+                <th className="w-[9rem] px-3 py-2.5 font-medium">السبب</th>
+                <th className="w-[13rem] px-3 py-2.5 font-medium">القرار</th>
               </tr>
             </thead>
             <tbody>
               {candidates.map((c) => (
                 <tr key={c.id} className="border-t border-border">
-                  <td className="px-3 py-2.5 text-foreground">{c.leadName}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{c.fromName ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{c.assignedAt ? formatDateTime(c.assignedAt) : "—"}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{c.lastActivityAt ? formatDateTime(c.lastActivityAt) : "—"}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 text-foreground"><Clip title={c.leadName}>{c.leadName}</Clip></td>
+                  <td className="px-3 py-2.5 text-muted-foreground"><Clip title={c.fromName ?? undefined}>{c.fromName ?? "—"}</Clip></td>
+                  <td className="cell-keep px-3 py-2.5 text-muted-foreground">{c.assignedAt ? formatDateTime(c.assignedAt) : "—"}</td>
+                  <td className="cell-keep px-3 py-2.5 text-muted-foreground">{c.lastActivityAt ? formatDateTime(c.lastActivityAt) : "—"}</td>
+                  <td className="cell-keep px-3 py-2.5">
                     <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs text-warning">
                       تأخّر تواصل{c.timeoutMin ? ` (${toArabicDigits(Math.round(c.timeoutMin / 60))}س)` : ""}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="cell-keep px-3 py-2.5">
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => act(() => approveSweepPull(c.id), c.id)}
@@ -601,33 +602,33 @@ function MonitorPanel({ board, lastCron }: { board: DistributionBoard; lastCron:
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">ما تم توزيع عملاء تلقائيًا اليوم بعد.</p>
         ) : (
           <div className="scroll-x">
-            <table className="w-full text-right text-sm">
+            <table className="crm-table min-w-[860px] text-sm">
               <thead className="bg-secondary/50 text-xs text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">العميل</th>
                   <th className="px-4 py-2.5 font-medium">الموظف الحالي</th>
-                  <th className="px-4 py-2.5 font-medium">وقت الإسناد</th>
-                  <th className="px-4 py-2.5 font-medium">الحالة</th>
-                  <th className="px-4 py-2.5 font-medium">مرات التوجيه</th>
-                  <th className="px-4 py-2.5 font-medium">المرحلة</th>
+                  <th className="w-[9rem] px-4 py-2.5 font-medium">وقت الإسناد</th>
+                  <th className="w-[7.5rem] px-4 py-2.5 font-medium">الحالة</th>
+                  <th className="w-[6.5rem] px-4 py-2.5 font-medium">مرات التوجيه</th>
+                  <th className="w-[8rem] px-4 py-2.5 font-medium">المرحلة</th>
                 </tr>
               </thead>
               <tbody>
                 {board.todayLeads.map((l) => (
                   <tr key={l.id} className="border-t border-border">
                     <td className="px-4 py-2.5 text-foreground">
-                      <span className="inline-flex items-center gap-1.5">
-                        {l.name}
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="min-w-0 max-w-full truncate" title={l.name}>{l.name}</span>
                         {l.inAutoPool ? (
-                          <span className="rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-bold text-gold" title="من بركة التوزيع التلقائي">تلقائي</span>
+                          <span className="cell-keep rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-bold text-gold" title="من بركة التوزيع التلقائي">تلقائي</span>
                         ) : (
-                          <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground" title="إسناد يدوي — خارج البركة">يدوي</span>
+                          <span className="cell-keep rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground" title="إسناد يدوي — خارج البركة">يدوي</span>
                         )}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{l.employeeName ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{l.assignedAt ? formatDateTime(l.assignedAt) : "—"}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 text-muted-foreground"><Clip title={l.employeeName ?? undefined}>{l.employeeName ?? "—"}</Clip></td>
+                    <td className="cell-keep px-4 py-2.5 text-muted-foreground">{l.assignedAt ? formatDateTime(l.assignedAt) : "—"}</td>
+                    <td className="cell-keep px-4 py-2.5">
                       {l.contacted ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs text-success"><CheckCircle2 className="size-3.5" /> تواصَل</span>
                       ) : l.overdue ? (
@@ -636,8 +637,8 @@ function MonitorPanel({ board, lastCron }: { board: DistributionBoard; lastCron:
                         <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs text-warning"><Clock className="size-3.5" /> ينتظر</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{toArabicDigits(l.reassignCount)}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{stageLabels[l.stage as LeadStage] ?? l.stage}</td>
+                    <td className="cell-keep px-4 py-2.5 text-muted-foreground">{toArabicDigits(l.reassignCount)}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground"><Clip>{stageLabels[l.stage as LeadStage] ?? l.stage}</Clip></td>
                   </tr>
                 ))}
               </tbody>
@@ -653,26 +654,26 @@ function MonitorPanel({ board, lastCron }: { board: DistributionBoard; lastCron:
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">ما فيه إعادات توجيه اليوم.</p>
         ) : (
           <div className="scroll-x">
-            <table className="w-full text-right text-sm">
+            <table className="crm-table min-w-[760px] text-sm">
               <thead className="bg-secondary/50 text-xs text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">العميل</th>
                   <th className="px-4 py-2.5 font-medium">من</th>
                   <th className="px-4 py-2.5 font-medium">إلى</th>
-                  <th className="px-4 py-2.5 font-medium">السبب</th>
-                  <th className="px-4 py-2.5 font-medium">الوقت</th>
+                  <th className="w-[10rem] px-4 py-2.5 font-medium">السبب</th>
+                  <th className="w-[9rem] px-4 py-2.5 font-medium">الوقت</th>
                 </tr>
               </thead>
               <tbody>
                 {board.log.map((r) => (
                   <tr key={r.id} className="border-t border-border">
-                    <td className="px-4 py-2.5 text-foreground">{r.leadName}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.fromName ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-foreground">{r.toName ?? "—"}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 text-foreground"><Clip title={r.leadName}>{r.leadName}</Clip></td>
+                    <td className="px-4 py-2.5 text-muted-foreground"><Clip title={r.fromName ?? undefined}>{r.fromName ?? "—"}</Clip></td>
+                    <td className="px-4 py-2.5 text-foreground"><Clip title={r.toName ?? undefined}>{r.toName ?? "—"}</Clip></td>
+                    <td className="cell-keep px-4 py-2.5">
                       <LogReasonChip reason={r.reason} />
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{formatDateTime(r.createdAt)}</td>
+                    <td className="cell-keep px-4 py-2.5 text-muted-foreground">{formatDateTime(r.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -131,28 +131,29 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
         <p className="text-sm text-muted-foreground">ما فيه مصادر بعد — أضف أول شيت فوق.</p>
       ) : (
         <div className="scroll-x rounded-xl border border-border">
-          <table className="w-full min-w-[760px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+          {/* عمود «المصدر» يحمل صندوق قرار المزامنة — عرض واسع ثابت ومحتواه يلتف داخله */}
+          <table className="crm-table min-w-[1010px] text-sm">
             <thead className="bg-secondary/40 text-xs text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 font-medium">المصدر</th>
-                <th className="px-3 py-3 font-medium">القناة</th>
-                <th className="px-3 py-3 text-center font-medium">عملاء اليوم</th>
-                <th className="px-3 py-3 text-center font-medium">المؤشر</th>
-                <th className="px-3 py-3 font-medium">آخر مزامنة</th>
-                <th className="px-3 py-3 font-medium">إجراء</th>
+                <th className="w-[24rem] px-4 py-3 font-medium">المصدر</th>
+                <th className="w-[6rem] px-3 py-3 font-medium">القناة</th>
+                <th className="w-[7rem] px-3 py-3 text-center font-medium">عملاء اليوم</th>
+                <th className="w-[5rem] px-3 py-3 text-center font-medium">المؤشر</th>
+                <th className="w-[9rem] px-3 py-3 font-medium">آخر مزامنة</th>
+                <th className="w-[12rem] px-3 py-3 font-medium">إجراء</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={`border-t border-border ${r.isActive ? "" : "opacity-60"}`}>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-foreground">{r.sourceName}</div>
+                    <div className="truncate font-medium text-foreground" title={r.sourceName}>{r.sourceName}</div>
                     {r.lastSyncStatus === "error" && r.lastSyncError && (
-                      <div className="mt-0.5 max-w-64 truncate text-xs text-destructive" title={r.lastSyncError}>آخر خطأ: {r.lastSyncError}</div>
+                      <div className="mt-0.5 truncate text-xs text-destructive" title={r.lastSyncError}>آخر خطأ: {r.lastSyncError}</div>
                     )}
                     {/* حد أمان أول مزامنة: شيت مليان — لا إدخال حتى يقرر المالك (ثلاثة خيارات) */}
                     {r.lastSyncStatus === "pending_choice" && (
-                      <div className="mt-1.5 max-w-md rounded-lg border border-warning/40 bg-warning/10 p-2">
+                      <div className="mt-1.5 max-w-full rounded-lg border border-warning/40 bg-warning/10 p-2">
                         <div className="mb-1.5 text-xs font-medium text-warning">⚠️ {r.lastSyncError ?? "الشيت مليان — ابدأ من آخر صف بدل البداية؟"}</div>
                         <div className="flex flex-wrap gap-1.5">
                           <button type="button" disabled={pending} onClick={() => { if (window.confirm("متأكد؟ سيُدخل الشيت كاملًا من أول صف (على دفعات ٥٠ كل دورة).")) run(() => approveFullSync(r.id)); }} className="rounded-lg border border-warning/50 bg-warning/15 px-2.5 py-1 text-[11px] font-medium text-warning hover:bg-warning/25 disabled:opacity-40">زامن الكل</button>
@@ -170,8 +171,8 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-3"><span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-foreground">{channelLabels[r.channel]}</span></td>
-                  <td className="px-3 py-3 text-center">
+                  <td className="cell-keep px-3 py-3"><span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-foreground">{channelLabels[r.channel]}</span></td>
+                  <td className="cell-keep px-3 py-3 text-center">
                     <div className="font-bold text-gold">{toArabicDigits(r.todayCount)}</div>
                     {/* عدّادات التحليل: قواعد · AI · مراجعة */}
                     {(r.ruleCount + r.aiCount + r.reviewCount) > 0 && (
@@ -180,12 +181,12 @@ export function SheetSourcesPanel({ rows }: { rows: SheetSourcePanelRow[] }) {
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-3 text-center text-muted-foreground" title="آخر صف مُعالج — القراءة تكمل من بعده">{toArabicDigits(r.lastRowSynced)}</td>
-                  <td className="px-3 py-3 text-xs text-muted-foreground">
+                  <td className="cell-keep px-3 py-3 text-center text-muted-foreground" title="آخر صف مُعالج — القراءة تكمل من بعده">{toArabicDigits(r.lastRowSynced)}</td>
+                  <td className="cell-keep px-3 py-3 text-xs text-muted-foreground">
                     {r.lastSyncAt ? formatDateTime(r.lastSyncAt) : "لسة ما زامن"}
                     {r.lastSyncStatus === "success" && <span className="mr-1 text-success">✓</span>}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="cell-keep px-3 py-3">
                     <div className="flex items-center gap-1.5">
                       <button type="button" disabled={pending} onClick={() => run(() => toggleSheetLink(r.id, !r.isActive))} className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-40 ${r.isActive ? "border-warning/50 bg-warning/10 text-warning hover:bg-warning/20" : "border-success/50 bg-success/10 text-success hover:bg-success/20"}`}>
                         {r.isActive ? "إيقاف" : "تفعيل"}
