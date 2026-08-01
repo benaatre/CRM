@@ -9,9 +9,11 @@ import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseCo
 import {
   warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch, undoPull,
   nudgeNeverContacted, pullNeverContacted, updateNoResponseRedistribute,
+  updateNoResponseRedistMode, updateNoContactPull,
   type DistributeOpts, type PullGroupCategory,
 } from "@/lib/actions/no-response";
 import { bulkArchive } from "@/lib/actions/leads";
+import type { RedistMode } from "@/lib/transfer-mode";
 import { Clip } from "@/components/ui/clip";
 
 type Employee = { id: string; name: string };
@@ -38,7 +40,7 @@ type DistAsk = { count: number; sourceEmpIds: string[]; sourceEmployeeId: string
 
 export function NoResponseView({
   summary, pool, employeeLoads, exhausted, undoBatches, needsReview, neverContacted, unreachable, filters, config,
-  redistributeEnabled,
+  redistributeEnabled, redistMode, noContact,
 }: {
   summary: PendingPullSummary;
   pool: PoolSourceGroup[];
@@ -52,6 +54,10 @@ export function NoResponseView({
   config: NoResponseConfig;
   /** Settings.autoRedistributeEnabled — مصير العميل بعد سحبه من هذه الصفحة. */
   redistributeEnabled: boolean;
+  /** وضع الاستلام عند إعادة التوزيع الآلي: بدون متابعات | ببياناته. */
+  redistMode: RedistMode;
+  /** إعداد سحب «صامتي التواصل» تلقائيًا. */
+  noContact: { enabled: boolean; days: number; includeManual: boolean };
 }) {
   const employees: Employee[] = employeeLoads.map((e) => ({ id: e.id, name: e.name }));
   const router = useRouter();
@@ -123,8 +129,10 @@ export function NoResponseView({
         <span className="font-medium">حالة النظام: {summary.live ? "مفعّل — السحب التلقائي يعمل" : "معاينة (dry-run) — لا سحب تلقائي حتى التفعيل"}</span>
       </div>
 
-      {/* مصير المسحوب من هذه الصفحة — أبرز إعداد فيها، فوق كل اللوحات */}
-      <RedistributeSwitch enabled={redistributeEnabled} />
+      {/* إعدادا الأتمتة — أبرز ما في الصفحة، فوق كل اللوحات:
+          مَن يُسحب (صامتو التواصل) ثم إلى أين يذهب المسحوب (المفتاح + وضع الاستلام). */}
+      <NoContactPullPanel initial={noContact} />
+      <RedistributeSwitch enabled={redistributeEnabled} mode={redistMode} />
 
 
       {/* تراجع عن آخر سحب (آخر ٢٤ ساعة) */}
@@ -167,10 +175,12 @@ export function NoResponseView({
       {/* بحاجة لمراجعة — للمالك فقط، عرض بلا سحب */}
       <NeedsReviewPanel data={needsReview} />
 
-      {/* نظام «لم يُتواصل» — النقطة العمياء: مُسند + صفر متابعات بعد الإسناد + ٣+ أيام */}
+      {/* نظام «لم يُتواصل» — النقطة العمياء: مُسند + صفر متابعات بعد الإسناد + ٣+ أيام.
+          الأزرار تبقى حتى مع الأتمتة: تدخّل فوري بلا انتظار الدورة والسقف. */}
       <NeverContactedPanel
         rows={neverContacted}
         pending={pending}
+        auto={noContact.enabled ? { days: noContact.days, includeManual: noContact.includeManual } : null}
         onNudge={(id) => run(() => nudgeNeverContacted(id))}
         onPull={(id) => run(() => pullNeverContacted(id))}
       />
@@ -474,9 +484,14 @@ function NumbersPanel({ summary }: { summary: PendingPullSummary }) {
 // لوحة التراجع عن السحب — دفعات آخر ٢٤ ساعة فيها عملاء لا يزالون في الحوض.
 // لوحة «بحاجة لمراجعة» — للمالك فقط (الصفحة نفسها OWNER-only)، عرض تشخيصي بلا أزرار سحب.
 // لوحة نظام «لم يُتواصل» — قائمة كاملة (العميل + الموظف + الأيام) بالأقدم أولًا مع أزرار:
-// تنبيه الموظف (إشعار بالصوت) · سحب فوري للحوض (NEGLECT). لا سحب تلقائيًا — القرار للمالك.
-function NeverContactedPanel({ rows, pending, onNudge, onPull }: {
-  rows: NeverContactedRow[]; pending: boolean; onNudge: (id: string) => void; onPull: (id: string) => void;
+// تنبيه الموظف (إشعار بالصوت) · سحب فوري للحوض (NEGLECT).
+// auto != null ⟵ الأتمتة شغّالة: القائمة تصير مراقبة لا مهمة يدوية، والأزرار تبقى للتدخّل الفوري.
+function NeverContactedPanel({ rows, pending, auto, onNudge, onPull }: {
+  rows: NeverContactedRow[];
+  pending: boolean;
+  auto: { days: number; includeManual: boolean } | null;
+  onNudge: (id: string) => void;
+  onPull: (id: string) => void;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -484,7 +499,15 @@ function NeverContactedPanel({ rows, pending, onNudge, onPull }: {
       <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-destructive">
         <PhoneMissed className="size-4" /> لم يُتواصل معهم إطلاقًا ({toArabicDigits(rows.length)})
       </h2>
-      <p className="mb-3 text-xs text-muted-foreground">مُسند + صفر متابعات بعد الإسناد + ٣+ أيام — الموظف يوصله تنبيه تلقائي عند اليوم الثالث، والقرار هنا لك: نبّهه مرة ثانية أو اسحب العميل للحوض.</p>
+      {auto ? (
+        <p className="mb-3 rounded-lg border border-green-400/40 bg-green-500/10 px-3 py-2 text-xs text-green-200">
+          السحب التلقائي شغّال: من يتجاوز {toArabicDigits(auto.days)} أيام بلا تواصل يُنبَّه موظفه قبل السحب بيوم ثم يُسحب — بالسقف نفسه (٥ لكل دورة)، فالقائمة تتصفّى تدريجيًا.
+          {auto.includeManual ? " ويشمل ذلك الموزّعين يدويًا." : " والموزَّعون يدويًا مستثنون (مفتاح شمولهم مطفأ)."}
+          {" "}والأزرار تحت للتدخّل الفوري بلا انتظار الدورة.
+        </p>
+      ) : (
+        <p className="mb-3 text-xs text-muted-foreground">مُسند + صفر متابعات بعد الإسناد + ٣+ أيام — الموظف يوصله تنبيه تلقائي عند اليوم الثالث، والقرار هنا لك: نبّهه مرة ثانية أو اسحب العميل للحوض.</p>
+      )}
       <div className="scroll-x rounded-xl border border-border bg-card">
         <table className="crm-table min-w-[640px] text-sm">
           <thead className="bg-secondary/40 text-xs text-muted-foreground">
@@ -647,10 +670,11 @@ function ExhaustedPanel({ rows, pending, onDistribute, onArchive }: {
  * يحفظ فورًا عند التبديل (مفتاح واحد لا نموذج) بنفس نمط الشريط الملوّن: أخضر شغال /
  * أحمر متوقف.
  */
-function RedistributeSwitch({ enabled }: { enabled: boolean }) {
+function RedistributeSwitch({ enabled, mode }: { enabled: boolean; mode: RedistMode }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [on, setOn] = useState(enabled);
+  const [m, setM] = useState<RedistMode>(mode);
   const [error, setError] = useState<string | null>(null);
 
   function toggle(next: boolean) {
@@ -659,6 +683,18 @@ function RedistributeSwitch({ enabled }: { enabled: boolean }) {
     startTransition(async () => {
       const res = await updateNoResponseRedistribute(next);
       if (!res.ok) { setOn(!next); setError(res.error ?? "صار خطأ"); }
+      router.refresh();
+    });
+  }
+
+  function pickMode(next: RedistMode) {
+    if (next === m) return;
+    const prev = m;
+    setM(next);
+    setError(null);
+    startTransition(async () => {
+      const res = await updateNoResponseRedistMode(next);
+      if (!res.ok) { setM(prev); setError(res.error ?? "صار خطأ"); }
       router.refresh();
     });
   }
@@ -684,7 +720,134 @@ function RedistributeSwitch({ enabled }: { enabled: boolean }) {
           className="size-6 shrink-0 accent-[var(--gold)] disabled:opacity-50"
         />
       </label>
+
+      {/* وضع الاستلام — يظهر مع تشغيل المفتاح فقط (بلا إعادة توزيع لا معنى للوضع) */}
+      {on && (
+        <div className="mt-2 rounded-xl border border-border bg-card/60 px-4 py-3">
+          <div className="mb-2 text-xs font-medium text-foreground">وضع استلام المسحوب:</div>
+          <div className="flex flex-wrap gap-2">
+            <ModeBtn
+              active={m === "fresh"} disabled={pending} onClick={() => pickMode("fresh")}
+              label="كعميل جديد — بدون متابعات"
+              desc="يبدأ من الصفر: بلا متابعات ولا تاريخ ظاهر. السجل الكامل يبقى لك."
+            />
+            <ModeBtn
+              active={m === "full"} disabled={pending} onClick={() => pickMode("full")}
+              label="كعميل جديد — ببياناته"
+              desc="المرحلة ترجع «جديد» والعدّاد يبدأ، لكن متابعاته وتاريخه ظاهرة للمستلم."
+            />
+          </div>
+          <p className="mt-2 text-[0.7rem] text-muted-foreground">
+            يسري على كل ما يُسحب آليًا من هالصفحة. التوزيع اليدوي من الحوض يبقى باختياره لكل دفعة.
+          </p>
+        </div>
+      )}
       {error && <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+    </section>
+  );
+}
+
+/** زر وضع — بطاقة مضغوطة بعنوان ووصف، والمفعّل بإطار ذهبي وعلامة ✓. */
+function ModeBtn({
+  active, disabled, onClick, label, desc,
+}: { active: boolean; disabled: boolean; onClick: () => void; label: string; desc: string }) {
+  return (
+    <button
+      onClick={onClick} disabled={disabled} aria-pressed={active}
+      className={`flex-1 basis-64 rounded-xl border px-3 py-2.5 text-right transition-colors disabled:opacity-50 ${active ? "border-gold bg-gold/15" : "border-border hover:border-gold/40"}`}
+    >
+      <div className={`flex items-center gap-1.5 text-sm font-medium ${active ? "text-gold" : "text-foreground"}`}>
+        {active && <span aria-hidden className="text-[0.85em] font-bold leading-none">✓</span>}
+        {label}
+      </div>
+      <p className="mt-0.5 text-[0.7rem] leading-5 text-muted-foreground">{desc}</p>
+    </button>
+  );
+}
+
+/**
+ * سحب «صامتي التواصل» تلقائيًا — المفتاح + المهلة + شمول الموزّعين يدويًا.
+ *
+ * صامت التواصل = مُسند وما سُجّلت له ولا متابعة منذ استلامه. عدّاد «لم يرد» عنده صفر
+ * فهو خارج جدول التصعيد بنيويًا مهما طال الإهمال — كان يُعرض بلوحة يدوية أسفل الصفحة
+ * ولا تمسّه الدورة. مفعّلًا: يدخل نفس الدورة (تنبيه قبل يوم ← سحب ← إعادة توزيع).
+ *
+ * الحفظ بزر صريح لا فوريًا (بخلاف مفتاح إعادة التوزيع): ثلاثة حقول مترابطة، وتغيير
+ * المهلة وحدها بلا تأكيد قد يبدّل مصير عشرات العملاء بضغطة سهم واحدة.
+ */
+function NoContactPullPanel({ initial }: { initial: { enabled: boolean; days: number; includeManual: boolean } }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [on, setOn] = useState(initial.enabled);
+  const [days, setDays] = useState(String(initial.days));
+  const [manual, setManual] = useState(initial.includeManual);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = on !== initial.enabled || Number(days) !== initial.days || manual !== initial.includeManual;
+
+  function save() {
+    setMsg(null); setError(null);
+    startTransition(async () => {
+      const res = await updateNoContactPull({ enabled: on, days: Number(days) || 0, includeManual: manual });
+      if (res.ok) { setMsg(res.message ?? "تم"); router.refresh(); }
+      else setError(res.error ?? "صار خطأ");
+    });
+  }
+
+  return (
+    <section className="mb-4">
+      <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 transition-colors ${on ? "border-green-400/60 bg-green-500/10" : "border-red-500/40 bg-red-500/5"}`}>
+        <div className="flex items-center gap-2.5">
+          <Power className={`size-5 shrink-0 ${on ? "text-green-300" : "text-red-300"}`} />
+          <div>
+            <div className="font-bold text-foreground">
+              سحب صامتي التواصل تلقائيًا: <span className={on ? "text-green-300" : "text-red-300"}>{on ? "شغال" : "متوقف"}</span>
+            </div>
+            <p className="text-[0.7rem] leading-5 text-muted-foreground">
+              العميل المُسند اللي ما سُجّلت له ولا متابعة: شغال = يدخل نفس دورة السحب — تنبيه للموظف قبل السحب بيوم، ثم سحب، ثم توزيع على موظف ثاني ·
+              متوقف = تنبيه وأزرار يدوية فقط (السلوك الحالي).
+            </p>
+          </div>
+        </div>
+        <input
+          type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)}
+          className="size-6 shrink-0 accent-[var(--gold)]"
+        />
+      </label>
+
+      <div className="mt-2 flex flex-wrap items-end gap-4 rounded-xl border border-border bg-card/60 px-4 py-3">
+        <label className="space-y-1">
+          <span className="block text-xs text-muted-foreground">المهلة قبل السحب (أيام)</span>
+          <input
+            value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))}
+            inputMode="numeric" dir="ltr"
+            className="w-24 rounded-lg border border-border bg-background px-3 py-2 text-center text-sm text-foreground outline-none focus:border-gold"
+          />
+          <span className="block text-[0.7rem] text-muted-foreground">التنبيه قبلها بيوم</span>
+        </label>
+
+        <label className="flex max-w-md cursor-pointer items-start gap-2">
+          <input
+            type="checkbox" checked={manual} onChange={(e) => setManual(e.target.checked)}
+            className="mt-0.5 size-5 shrink-0 accent-[var(--gold)]"
+          />
+          <span>
+            <span className="block text-sm font-medium text-foreground">يشمل الموزّعين يدويًا</span>
+            <span className="block text-[0.7rem] leading-5 text-muted-foreground">
+              الموزَّع بيدك محميّ من السحب التلقائي دائمًا. فعّل هذا الخيار لو تبي حتى هؤلاء يُسحبون إذا سكت عنهم الموظف — ينطبق على صامتي التواصل وحدهم.
+            </span>
+          </span>
+        </label>
+
+        <button
+          onClick={save} disabled={pending || !dirty}
+          className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >{pending ? "جارٍ الحفظ…" : "حفظ"}</button>
+      </div>
+
+      {error && <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+      {msg && <p className="mt-2 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">{msg}</p>}
     </section>
   );
 }
