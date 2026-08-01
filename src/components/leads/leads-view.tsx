@@ -21,6 +21,7 @@ import {
 import type { UnarchiveMode } from "@/lib/actions/leads";
 import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmployeeLoads } from "@/lib/actions/team";
 import { admitToAutoPool } from "@/lib/actions/distribution";
+import { Clip } from "@/components/ui/clip";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { FilterChip } from "./filter-chip";
 import { NewLeadDialog } from "./new-lead-dialog";
@@ -283,22 +284,30 @@ export function LeadsView({
 
       {/* الجدول (سطح المكتب) */}
       <div className="hidden scroll-x rounded-2xl border border-border bg-card md:block">
-        <table className="w-full min-w-[1100px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        {/*
+          نفس قاعدة الجداول الموحّدة: عرض ثابت للأعمدة القصيرة، والنصية (الاسم · الموظف)
+          تتقاسم الباقي وتقصّ ما زاد بتلميح. ١٣ عمودًا تحتاج min-w أعلى — تحتها تمرير.
+        */}
+        {/*
+          أولوية العرض للأعمدة الحرجة: الاسم يأخذ أوسع نصيب، والجوال والأفعال بعرض
+          يكفي محتواهما كاملًا — والتقليم يقع على الأعمدة الوصفية (طريقة/هدف الشراء).
+        */}
+        <table className="crm-table min-w-[1136px] text-sm">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
-              <th className="px-3 py-3"><input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={toggleSelectAll} aria-label="تحديد الكل" title="تحديد / إلغاء تحديد الكل" /></th>
-              <th className="px-3 py-3 font-medium">#</th>
-              <th className="px-4 py-3 font-medium">الاسم</th>
-              <th className="px-4 py-3 font-medium">الجوال</th>
-              <th className="px-4 py-3 font-medium">{isManager ? "تاريخ الإضافة" : "الاستلام"}</th>
-              <th className="px-4 py-3 font-medium">{tab === "hidden" ? "آخر موظف مسؤول" : "الموظف"}</th>
-              <th className="px-4 py-3 font-medium">طريقة الشراء</th>
-              <th className="px-4 py-3 font-medium">هدف الشراء</th>
-              <th className="px-4 py-3 font-medium">المرحلة الحالية</th>
-              <th className="px-4 py-3 font-medium">المتابعات</th>
-              <th className="px-4 py-3 font-medium">أول تواصل</th>
-              <th className="px-3 py-3 font-medium">خيارات</th>
-              <th className="px-3 py-3"></th>
+              <th className="w-[2.5rem] px-3 py-3"><input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={toggleSelectAll} aria-label="تحديد الكل" title="تحديد / إلغاء تحديد الكل" /></th>
+              <th className="w-[2.25rem] px-3 py-3 font-medium">#</th>
+              <th className="w-[10.5rem] px-3 py-3 font-medium">الاسم</th>
+              <th className="w-[6.5rem] px-3 py-3 font-medium">الجوال</th>
+              <th className="w-[6rem] px-3 py-3 font-medium">{isManager ? "تاريخ الإضافة" : "الاستلام"}</th>
+              <th className="w-[8.5rem] px-3 py-3 font-medium">{tab === "hidden" ? "آخر موظف مسؤول" : "الموظف"}</th>
+              <th className="w-[5.5rem] px-3 py-3 font-medium">طريقة الشراء</th>
+              <th className="w-[5rem] px-3 py-3 font-medium">هدف الشراء</th>
+              <th className="w-[7rem] px-3 py-3 font-medium">المرحلة الحالية</th>
+              <th className="w-[4rem] px-3 py-3 font-medium">المتابعات</th>
+              <th className="w-[5rem] px-3 py-3 font-medium">أول تواصل</th>
+              <th className="w-[4.5rem] px-3 py-3 font-medium">خيارات</th>
+              <th className="w-[3.75rem] px-3 py-3"></th>
             </tr>
           </thead>
           <tbody>
@@ -307,22 +316,37 @@ export function LeadsView({
             ) : (
               pageRows.map((l, i) => (
                 <tr key={l.id} className="border-t border-border transition-colors hover:bg-secondary/40">
-                  <td className="px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
-                  <td className="px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground"><span className="inline-flex items-center gap-1.5">{l.name}<TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} /><SweepCountdown info={l.sweepPull} manager={isManager} />{!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}{l.waiting && <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}{l.marketer && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}</span></td>
-                  <td className="px-4 py-3 text-gold" dir="ltr">{l.phone}</td>
-                  {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
-                  <td className="px-4 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{l.assignedTo?.name ?? "غير موزّع"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
-                      {l.stale && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning" title="مهتم بلا متابعة من ٧ أيام — بعد ١٤ يومًا ينزل تلقائيًا «موعد لاحق»">راكد</span>}
+                  <td className="cell-keep px-3 py-3"><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} /></td>
+                  <td className="cell-keep px-3 py-3 text-muted-foreground">{toArabicDigits((curPage - 1) * PAGE_SIZE + i + 1)}</td>
+                  {/*
+                    الاسم — عمود حرج: الاسم يُقصّ بتلميح، والشارات تلتف داخل الخلية بدل
+                    ما تتمدّد فوق العمود المجاور (هذا كان مصدر «الأسماء ماكلة بعضها»).
+                  */}
+                  <td className="px-3 py-3 font-medium text-foreground">
+                    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                      <span className="min-w-0 max-w-full truncate" title={l.name}>{l.name}</span>
+                      <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} /><TransferBadge show={l.manualTransferred} /><SweepCountdown info={l.sweepPull} manager={isManager} />{!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}{l.waiting && <span className={`cell-keep rounded-full border px-2 py-0.5 text-[10px] font-bold ${WAITING_TONE.chip}`} title="آخر متابعة: في الانتظار">في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}</span>}{l.marketer && <span className="cell-keep rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive">مسوّق</span>}{l.inAutoPool && <span className="cell-keep rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold" title="داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه">تلقائي</span>}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="cell-keep px-3 py-3 text-gold" dir="ltr">{l.phone}</td>
+                  {/* الموظف يشوف «استلمته منذ ٣ أيام» بدل تاريخ دخول النظام (المحجوب عنه على الخادم). */}
+                  <td className="cell-keep px-3 py-3 text-muted-foreground">{l.createdAt ? formatDate(l.createdAt) : `استلمته ${daysAgoLabel(l.daysWaiting)}`}</td>
+                  <td className="px-3 py-3 text-muted-foreground">
+                    <Clip title={l.assignedTo?.name ?? "غير موزّع"}>{l.assignedTo?.name ?? "غير موزّع"}</Clip>
+                  </td>
+                  <td className="px-3 py-3 text-muted-foreground">
+                    <Clip title={l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : undefined}>{l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "—"}</Clip>
+                  </td>
+                  <td className="px-3 py-3 text-muted-foreground">
+                    <Clip title={l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : undefined}>{l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : "—"}</Clip>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span className={`cell-keep inline-block rounded-full border px-2 py-0.5 text-xs ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
+                      {l.stale && <span className="cell-keep rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning" title="مهتم بلا متابعة من ٧ أيام — بعد ١٤ يومًا ينزل تلقائيًا «موعد لاحق»">راكد</span>}
+                    </span>
+                  </td>
+                  <td className="cell-keep px-3 py-3">
                     {l.followUpsCount > 0 ? (
                       <button onClick={() => setFuLead(l)} className="rounded-lg border border-border px-2.5 py-1 text-xs text-gold hover:bg-gold/10">
                         {toArabicDigits(l.followUpsCount)}
@@ -331,8 +355,9 @@ export function LeadsView({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{l.firstContactDate ? formatDate(l.firstContactDate) : "—"}</td>
-                  <td className="relative px-3 py-3">
+                  <td className="cell-keep px-3 py-3 text-muted-foreground">{l.firstContactDate ? formatDate(l.firstContactDate) : "—"}</td>
+                  {/* الخيارات + فتح — عمودا أفعال: لا ينكمشان ولا يُقصّان */}
+                  <td className="cell-keep relative px-3 py-3">
                     {isManager ? (
                       <button onClick={() => setMenuFor(menuFor === l.id ? null : l.id)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground">خيارات</button>
                     ) : <span className="text-xs text-muted-foreground/50">—</span>}
@@ -342,7 +367,7 @@ export function LeadsView({
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="cell-keep px-3 py-3">
                     <Link href={`/leads/${l.id}`} className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-gold/40 hover:text-gold" title="فتح الملف">فتح</Link>
                   </td>
                 </tr>
