@@ -874,7 +874,10 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       reassignCount: { lt: MAX_REASSIGNS },
       // «الحزمة ب» (ثغرة ج): موعد زيارة مستقبلي = تحرّك حقيقي مع العميل — محمي من السحب
       // حتى لو مرحلته ATTEMPTED (زيارة مثبتة أهم من عدّاد «لم يرد»).
-      OR: [{ visitAt: null }, { visitAt: { lte: now } }],
+      //
+      // داخل AND عمدًا لا كـOR مباشر: الباب الثاني يضيف شرط OR خاصًّا به، ومفتاحان بنفس
+      // الاسم في كائن واحد يدهس أحدهما الآخر بصمت — فتضيع حصانة الزيارة بلا أي خطأ ظاهر.
+      AND: [{ OR: [{ visitAt: null }, { visitAt: { lte: now } }] }],
     };
 
     const noContact = {
