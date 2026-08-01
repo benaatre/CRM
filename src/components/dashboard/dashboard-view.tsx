@@ -320,26 +320,26 @@ export function DashboardView({ data }: { data: DashboardData }) {
       {data.manager && data.teamFollowupsToday.length > 0 && (
         <Section title="متابعات اليوم للفريق" hint="مواعيد اليوم لكل موظف: تمّت · باقية · فائتة">
           <div className="scroll-x -mx-1 px-1">
-            <table className="w-full min-w-[520px] text-right text-sm">
+            <table className="crm-table min-w-[520px] text-sm">
               <thead className="text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">الموظف</th>
-                  <th className="px-3 py-2 text-center font-medium">مواعيد اليوم</th>
-                  <th className="px-3 py-2 text-center font-medium">تمّت</th>
-                  <th className="px-3 py-2 text-center font-medium">باقية</th>
-                  <th className="px-3 py-2 text-center font-medium">فائتة</th>
+                  <th className="w-[7rem] px-3 py-2 text-center font-medium">مواعيد اليوم</th>
+                  <th className="w-[4.5rem] px-3 py-2 text-center font-medium">تمّت</th>
+                  <th className="w-[4.5rem] px-3 py-2 text-center font-medium">باقية</th>
+                  <th className="w-[4.5rem] px-3 py-2 text-center font-medium">فائتة</th>
                 </tr>
               </thead>
               <tbody>
                 {data.teamFollowupsToday.map((r) => (
                   <tr key={r.id} className="border-t border-border">
-                    <td className="px-3 py-2.5 font-medium text-foreground">{r.name}</td>
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-3 py-2.5 font-medium text-foreground"><span className="block truncate" title={r.name}>{r.name}</span></td>
+                    <td className="cell-keep px-3 py-2.5 text-center">
                       <Link href={`/leads?emps=${r.id}`} className="font-bold text-foreground hover:text-gold">{toArabicDigits(r.total)}</Link>
                     </td>
-                    <td className="px-3 py-2.5 text-center text-success">{toArabicDigits(r.done)}</td>
-                    <td className="px-3 py-2.5 text-center text-gold">{toArabicDigits(r.remaining)}</td>
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="cell-keep px-3 py-2.5 text-center text-success">{toArabicDigits(r.done)}</td>
+                    <td className="cell-keep px-3 py-2.5 text-center text-gold">{toArabicDigits(r.remaining)}</td>
+                    <td className="cell-keep px-3 py-2.5 text-center">
                       {r.missed > 0 ? (
                         <Link href={`/leads?emps=${r.id}&sort=oldest`} className="font-bold text-destructive hover:underline">{toArabicDigits(r.missed)}</Link>
                       ) : (

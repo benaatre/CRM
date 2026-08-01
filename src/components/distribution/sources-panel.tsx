@@ -59,13 +59,13 @@ export function SourcesPanel({ sources }: { sources: SourceRow[] }) {
         )}
 
         <div className="scroll-x rounded-xl border border-border">
-          <table className="w-full text-right text-sm">
+          <table className="crm-table min-w-[420px] text-sm">
             <thead className="bg-secondary/50 text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 font-medium">المصدر</th>
-                <th className="px-4 py-2.5 font-medium">عملاء</th>
-                <th className="px-4 py-2.5 font-medium">روابط</th>
-                <th className="px-4 py-2.5 font-medium"></th>
+                <th className="w-[5rem] px-4 py-2.5 font-medium">عملاء</th>
+                <th className="w-[5rem] px-4 py-2.5 font-medium">روابط</th>
+                <th className="w-[3.5rem] px-4 py-2.5 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -74,12 +74,14 @@ export function SourcesPanel({ sources }: { sources: SourceRow[] }) {
                 return (
                   <tr key={s.id} className="border-t border-border">
                     <td className="px-4 py-2.5 text-foreground">
-                      {s.name}
-                      {s.isDefault && <span className="mr-2 rounded-full bg-secondary px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">افتراضي</span>}
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="min-w-0 max-w-full truncate" title={s.name}>{s.name}</span>
+                        {s.isDefault && <span className="cell-keep rounded-full bg-secondary px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">افتراضي</span>}
+                      </span>
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{toArabicDigits(s.leadCount)}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{toArabicDigits(s.linkCount)}</td>
-                    <td className="px-4 py-2.5 text-left">
+                    <td className="cell-keep px-4 py-2.5 text-muted-foreground">{toArabicDigits(s.leadCount)}</td>
+                    <td className="cell-keep px-4 py-2.5 text-muted-foreground">{toArabicDigits(s.linkCount)}</td>
+                    <td className="cell-keep px-4 py-2.5 text-left">
                       <button
                         onClick={() => run(() => deleteSource(s.id))}
                         disabled={pending || linked}

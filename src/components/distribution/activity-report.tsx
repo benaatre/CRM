@@ -5,6 +5,7 @@ import { useTransition } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toArabicDigits, formatDateTime } from "@/lib/format";
 import type { ActivityReport } from "@/lib/data/activity-report";
+import { Clip } from "@/components/ui/clip";
 
 type Mode = "today" | "all" | "day";
 
@@ -51,12 +52,12 @@ export function ActivityReportView({
 
       {/* جدول الموظفين — الأعمدة الأساسية فقط */}
       <div className="scroll-x rounded-2xl border border-border bg-card">
-        <table className="w-full min-w-[360px] text-right text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <table className="crm-table min-w-[360px] text-sm">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
               <th className="px-3 py-2.5 font-medium">الموظف</th>
-              <th className="px-3 py-2.5 font-medium">استقبل</th>
-              <th className="px-3 py-2.5 font-medium">تأخّر / فات منه</th>
+              <th className="w-[5rem] px-3 py-2.5 font-medium">استقبل</th>
+              <th className="w-[9rem] px-3 py-2.5 font-medium">تأخّر / فات منه</th>
             </tr>
           </thead>
           <tbody>
@@ -65,9 +66,9 @@ export function ActivityReportView({
             ) : (
               data.rows.map((r) => (
                 <tr key={r.id} className="border-t border-border hover:bg-secondary/40">
-                  <td className="px-3 py-2.5 font-medium text-foreground">{r.name}</td>
-                  <td className="px-3 py-2.5 text-info">{toArabicDigits(r.received)}</td>
-                  <td className={`px-3 py-2.5 font-medium ${r.lateLost > 0 ? "text-destructive" : "text-muted-foreground"}`}>{toArabicDigits(r.lateLost)}</td>
+                  <td className="px-3 py-2.5 font-medium text-foreground"><Clip title={r.name}>{r.name}</Clip></td>
+                  <td className="cell-keep px-3 py-2.5 text-info">{toArabicDigits(r.received)}</td>
+                  <td className={`cell-keep px-3 py-2.5 font-medium ${r.lateLost > 0 ? "text-destructive" : "text-muted-foreground"}`}>{toArabicDigits(r.lateLost)}</td>
                 </tr>
               ))
             )}
