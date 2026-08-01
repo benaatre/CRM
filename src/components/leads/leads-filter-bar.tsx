@@ -9,6 +9,7 @@ import { DEFAULT_LEAD_SORT, INTEREST_UMBRELLA, VISIT_FILTER_STAGES, collapseStag
 import type { LeadFilterValues, LeadSort } from "@/lib/lead-filters";
 import { stageFilterChip, toneFilterChip, WAITING_TONE, BANK_TONE, STAGE_TONES } from "@/lib/stage-colors";
 import { FilterChip } from "./filter-chip";
+import { DateRangeChip } from "./date-range-chip";
 
 type Employee = { id: string; name: string };
 
@@ -194,22 +195,12 @@ export function LeadsFilterBar({
           <FilterChip active={!filters.range && !customRangeActive} onClick={() => go({ range: "", from: "", to: "" })} className={chipAll(!filters.range && !customRangeActive)}>الكل</FilterChip>
           <FilterChip active={filters.range === "week"} onClick={() => go({ range: "week", from: "", to: "" })} className={chipAll(filters.range === "week")}>هذا الأسبوع</FilterChip>
           <FilterChip active={filters.range === "next"} onClick={() => go({ range: "next", from: "", to: "" })} className={chipAll(filters.range === "next")}>الأسبوع الجاي</FilterChip>
-          <span className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors ${customRangeActive ? "border-gold bg-gold/15" : "border-border"}`}>
-            {/* نفس معاملة الشرائح: ✓ عند تفعيل النطاق المخصّص (المكوّن للأزرار — هذا حقلا تاريخ) */}
-            {customRangeActive && <span aria-hidden className="text-[0.85em] font-bold leading-none text-gold">✓</span>}
-            <span className="text-muted-foreground">من</span>
-            <input
-              type="date" value={filters.from} dir="ltr" aria-label="من تاريخ"
-              onChange={(e) => go({ range: "", from: e.target.value })}
-              className="bg-transparent text-xs text-foreground outline-none [color-scheme:dark]"
-            />
-            <span className="text-muted-foreground">إلى</span>
-            <input
-              type="date" value={filters.to} dir="ltr" aria-label="إلى تاريخ"
-              onChange={(e) => go({ range: "", to: e.target.value })}
-              className="bg-transparent text-xs text-foreground outline-none [color-scheme:dark]"
-            />
-          </span>
+          <DateRangeChip
+            from={filters.from}
+            to={filters.to}
+            active={customRangeActive}
+            onChange={(next) => go({ range: "", ...next })}
+          />
         </div>
       )}
 

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Copy } from "lucide-react";
 import { formatDate, toArabicDigits } from "@/lib/format";
 import { stageLabels, stageColor, followUpResultLabels, channelLabels } from "@/lib/labels";
@@ -10,13 +10,35 @@ import type { DuplicatesData, DupGroup, DupMember } from "@/lib/data/duplicates"
 import { pullDuplicateLead, archiveDuplicateLead } from "@/lib/actions/leads";
 import { Clip } from "@/components/ui/clip";
 import { FilterChip } from "./filter-chip";
+import { DateRangeChip } from "./date-range-chip";
 import { DistributeDupButton } from "./distribute-dup-dialog";
 
 type Employee = { id: string; name: string };
-type RangeFilter = "all" | "today" | "week";
 
 // نافذة «آخر ٧ أيام» — متدحرجة على lastAddedAt (فلترة عرض فقط، لا صلاحيات).
 const DUP_WEEK_MS = 7 * 24 * 3_600_000;
+
+/**
+ * يقرّر إن كانت المجموعة داخل الفلتر الزمني — المرجع دائمًا **أحدث إضافة فيها**
+ * (lastAddedAt)، أي «متى تجدّد هذا التكرار» لا متى بدأ.
+ */
+function inRange(
+  g: DupGroup,
+  range: string,
+  from: string,
+  to: string,
+  weekCutoff: number,
+): boolean {
+  const t = new Date(g.lastAddedAt).getTime();
+  if (range === "today") return g.newToday;
+  if (range === "week") return t >= weekCutoff;
+  if (from || to) {
+    // النطاق شامل للطرفين: «من» من أول اليوم، و«إلى» لآخر لحظة فيه.
+    if (from && t < new Date(`${from}T00:00:00`).getTime()) return false;
+    if (to && t > new Date(`${to}T23:59:59.999`).getTime()) return false;
+  }
+  return true;
+}
 
 /**
  * صفحة «العملاء المكررون» — جدول واحد بروح جدول العملاء الرئيسي:
@@ -24,12 +46,31 @@ const DUP_WEEK_MS = 7 * 24 * 3_600_000;
  * ثم صفوف سجلاتها بأفعال مباشرة (توزيع بالوضعين / سحب / حذف=أرشفة كمكرر).
  */
 export function DuplicatesView({ data, employees }: { data: DuplicatesData; employees: Employee[] }) {
-  const [range, setRange] = useState<RangeFilter>("all");
+  const router = useRouter();
+  const pathname = usePathname(); // لا مسار مكتوب بالثابت — الشريحة تعمل حيثما رُكّب المكوّن
+  const params = useSearchParams();
+  const range = params.get("range") ?? "";
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const customActive = !range && (!!from || !!to);
+
+  // الشرائح تنعكس بالرابط — الحالة قابلة للمشاركة والرجوع بزر المتصفح.
+  function go(next: { range?: string; from?: string; to?: string }) {
+    const p = new URLSearchParams();
+    const r = next.range ?? range;
+    if (r) p.set("range", r);
+    else {
+      const f = next.from ?? from;
+      const t = next.to ?? to;
+      if (f) p.set("from", f);
+      if (t) p.set("to", t);
+    }
+    const s = p.toString();
+    router.push(s ? `${pathname}?${s}` : pathname);
+  }
+
   const weekCutoff = Date.now() - DUP_WEEK_MS;
-  const shown = data.groups.filter((g) =>
-    range === "all" ? true
-      : range === "today" ? g.newToday
-        : new Date(g.lastAddedAt).getTime() >= weekCutoff);
+  const shown = data.groups.filter((g) => inRange(g, range, from, to, weekCutoff));
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -53,14 +94,19 @@ export function DuplicatesView({ data, employees }: { data: DuplicatesData; empl
         </div>
       </header>
 
-      {/* الفلاتر الزمنية */}
+      {/* الفلاتر الزمنية — أربع شرائح على مرجع واحد: تاريخ أحدث إضافة في المجموعة */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <FilterChip active={range === "all"} onClick={() => setRange("all")}
-          className={chip(range === "all")}>الكل ({toArabicDigits(data.totalGroups)})</FilterChip>
-        <FilterChip active={range === "today"} onClick={() => setRange("today")}
+        <FilterChip active={!range && !customActive} onClick={() => go({ range: "", from: "", to: "" })}
+          className={chip(!range && !customActive)}>الكل ({toArabicDigits(data.totalGroups)})</FilterChip>
+        <FilterChip active={range === "today"} onClick={() => go({ range: "today" })}
           className={chip(range === "today")}>اليوم ({toArabicDigits(data.newTodayGroups)})</FilterChip>
-        <FilterChip active={range === "week"} onClick={() => setRange("week")}
+        <FilterChip active={range === "week"} onClick={() => go({ range: "week" })}
           className={chip(range === "week")}>آخر ٧ أيام</FilterChip>
+        <DateRangeChip
+          from={from} to={to} active={customActive}
+          onChange={(next) => go({ range: "", ...next })}
+          fromLabel="المكررون — من تاريخ" toLabel="المكررون — إلى تاريخ"
+        />
       </div>
 
       {data.totalGroups === 0 ? (
