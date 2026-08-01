@@ -8,6 +8,7 @@ import { roleLabel } from "@/lib/labels";
 import { toArabicDigits, lastSeenAgo } from "@/lib/format";
 import type { TeamData } from "@/lib/data/team";
 import { addEmployee, distributeUnassigned, toggleEmployeeActive } from "@/lib/actions/team";
+import { Clip } from "@/components/ui/clip";
 import { ModeChoiceRow } from "@/components/leads/transfer-mode-dialog";
 import type { TransferMode } from "@/lib/transfer-mode";
 import { ImportDialog } from "./import-dialog";
@@ -127,30 +128,30 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
 
       {/* الجدول (سطح المكتب) */}
       <div className="hidden scroll-x rounded-2xl border border-border bg-card md:block">
-        <table className="w-full text-right text-sm">
+        <table className="crm-table min-w-[900px] text-sm">
           <thead className="bg-secondary/40 text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">الاسم</th>
-              <th className="px-4 py-3 font-medium">الجوال</th>
-              <th className="px-4 py-3 font-medium">الدور</th>
-              <th className="px-4 py-3 font-medium">عملاء</th>
-              <th className="px-4 py-3 font-medium">مقفول</th>
-              <th className="px-4 py-3 font-medium">الهدف</th>
-              <th className="px-4 py-3 font-medium">النشاط</th>
-              <th className="px-4 py-3 font-medium">آخر ظهور</th>
-              <th className="px-4 py-3 font-medium">الحالة</th>
+              <th className="w-[7.5rem] px-4 py-3 font-medium">الجوال</th>
+              <th className="w-[6rem] px-4 py-3 font-medium">الدور</th>
+              <th className="w-[4.5rem] px-4 py-3 font-medium">عملاء</th>
+              <th className="w-[4.5rem] px-4 py-3 font-medium">مقفول</th>
+              <th className="w-[4.5rem] px-4 py-3 font-medium">الهدف</th>
+              <th className="w-[8rem] px-4 py-3 font-medium">النشاط</th>
+              <th className="w-[7.5rem] px-4 py-3 font-medium">آخر ظهور</th>
+              <th className="w-[10rem] px-4 py-3 font-medium">الحالة</th>
             </tr>
           </thead>
           <tbody>
             {data.members.map((m) => (
               <tr key={m.id} onClick={() => setEditEmp(m.id)} className={`cursor-pointer border-t border-border transition-colors hover:bg-secondary/40 ${m.active ? "" : "opacity-50"}`}>
-                <td className="px-4 py-3 font-medium text-foreground">{m.name}</td>
-                <td className="px-4 py-3 text-muted-foreground" dir="ltr">{m.phone ?? "—"}</td>
-                <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${roleBadge[m.role]}`}>{roleLabel(m.role)}</span></td>
-                <td className="px-4 py-3 text-muted-foreground">{toArabicDigits(m.total)}</td>
-                <td className="px-4 py-3 text-success">{toArabicDigits(m.closed)}</td>
-                <td className="px-4 py-3 text-gold">{m.target > 0 ? toArabicDigits(m.target) : "—"}</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 font-medium text-foreground"><Clip title={m.name}>{m.name}</Clip></td>
+                <td className="cell-keep px-4 py-3 text-muted-foreground" dir="ltr">{m.phone ?? "—"}</td>
+                <td className="cell-keep px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${roleBadge[m.role]}`}>{roleLabel(m.role)}</span></td>
+                <td className="cell-keep px-4 py-3 text-muted-foreground">{toArabicDigits(m.total)}</td>
+                <td className="cell-keep px-4 py-3 text-success">{toArabicDigits(m.closed)}</td>
+                <td className="cell-keep px-4 py-3 text-gold">{m.target > 0 ? toArabicDigits(m.target) : "—"}</td>
+                <td className="cell-keep px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
                       <div className="h-full rounded-full bg-gold" style={{ width: `${m.activityRate}%` }} />
@@ -158,14 +159,14 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
                     <span className="text-xs text-muted-foreground">{toArabicDigits(m.activityRate)}٪</span>
                   </div>
                 </td>
-                <td className="px-4 py-3">
+                <td className="cell-keep px-4 py-3">
                   {m.online ? (
-                    <span className="flex items-center gap-1.5 text-success"><span className="size-2 rounded-full bg-success" /> متصل الآن</span>
+                    <span className="flex items-center gap-1.5 text-success"><span className="size-2 shrink-0 rounded-full bg-success" /> متصل الآن</span>
                   ) : (
                     <span className="text-xs text-muted-foreground">{lastSeenAgo(m.lastSeenAt)}</span>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className="cell-keep px-4 py-3">
                   {m.role === "EMPLOYEE" ? (
                     <div className="flex flex-col items-start gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => setActive(m.id, !m.active)} disabled={pending} className={`rounded-full px-2 py-0.5 text-xs ${m.active ? "bg-success/10 text-success" : "bg-secondary text-muted-foreground"}`}>
