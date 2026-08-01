@@ -62,10 +62,28 @@ export const MANUAL_UNARCHIVE_FRESH = "manual_unarchive_fresh";
 
 /**
  * ===== إعادة التوزيع الآلي لمسحوبي «لم يتم الرد» (الحزمة ب) =====
- * المسحوب آليًا لعدم الرد يُعاد توزيعه بنفس الدورة على موظف آخر «كجديد» — اللاحقة
- * _fresh تفعّل إخفاء السجل عن المستلم (visibility.ts) والسجل كامل للمالك/الأدمن.
+ * المسحوب آليًا لعدم الرد يُعاد توزيعه بنفس الدورة على موظف آخر، بأحد وضعين يختارهما
+ * المالك (Settings.noResponseRedistMode) — الفرق **عرضٌ لا حذف**، والسجل كامل للمالك
+ * والأدمن في الحالتين:
+ *   _fresh → «بدون متابعات»: ولادة كاملة (FRESH_RESET_DATA) والسجل مخفي عن المستلم.
+ *   _full  → «ببياناته»: المرحلة تصير NEW والعدّاد يبدأ، لكن متابعاته وتاريخه ظاهرة له.
+ * الفرق التقني الوحيد في الإخفاء هو اللاحقة: visibility.ts يخفي على endsWith("_fresh").
  */
 export const AUTO_REDISTRIBUTE_FRESH = "auto_redistribute_fresh";
+export const AUTO_REDISTRIBUTE_FULL = "auto_redistribute_full";
+
+/** وضع إعادة توزيع مسحوبي «لم يتم الرد» — مصدر الحقيقة للقيمتين المسموحتين. */
+export type RedistMode = "fresh" | "full";
+
+/** يقرأ الوضع من نص الإعداد بأمان (أي قيمة غير معروفة ⟵ الوضع الافتراضي «بدون متابعات»). */
+export function parseRedistMode(raw: string | null | undefined): RedistMode {
+  return raw === "full" ? "full" : "fresh";
+}
+
+/** سبب الإسناد لإعادة التوزيع الآلي حسب الوضع. */
+export function autoRedistributeReason(mode: RedistMode): string {
+  return mode === "full" ? AUTO_REDISTRIBUTE_FULL : AUTO_REDISTRIBUTE_FRESH;
+}
 
 /**
  * ===== التوزيع التلقائي (المحرك) =====

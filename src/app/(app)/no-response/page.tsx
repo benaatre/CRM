@@ -5,7 +5,8 @@ import {
   getExhaustedPoolLeads, getUndoablePullBatches, getNeedsReview, getNeverContactedLeads,
   getUnreachableLeads, type NoResponseSort,
 } from "@/lib/data/no-response";
-import { getNoResponseConfig } from "@/lib/no-response-escalation";
+import { getNoResponseConfig, DEFAULT_NO_CONTACT_DAYS } from "@/lib/no-response-escalation";
+import { parseRedistMode } from "@/lib/transfer-mode";
 import { prisma } from "@/lib/prisma";
 import { NoResponseView } from "@/components/no-response/no-response-view";
 
@@ -38,8 +39,14 @@ export default async function NoResponsePage({
     getNeedsReview(),
     getNeverContactedLeads(),
     getUnreachableLeads(),
-    // مصير المسحوب من هذه الصفحة — مفتاحه هنا الآن (كان بلوحة /distribution).
-    prisma.settings.findUnique({ where: { id: "singleton" }, select: { autoRedistributeEnabled: true } }),
+    // إعدادات هذه الصفحة: مصير المسحوب (المفتاح + الوضع) وسحب صامتي التواصل.
+    prisma.settings.findUnique({
+      where: { id: "singleton" },
+      select: {
+        autoRedistributeEnabled: true, noResponseRedistMode: true,
+        noContactPullEnabled: true, noContactPullDays: true, noContactIncludeManual: true,
+      },
+    }),
   ]);
 
   return (
@@ -55,6 +62,12 @@ export default async function NoResponsePage({
       filters={{ q, emp: prevEmp, rounds: rounds ?? 0, sort }}
       config={getNoResponseConfig()}
       redistributeEnabled={settings?.autoRedistributeEnabled ?? false}
+      redistMode={parseRedistMode(settings?.noResponseRedistMode)}
+      noContact={{
+        enabled: settings?.noContactPullEnabled ?? false,
+        days: settings?.noContactPullDays ?? DEFAULT_NO_CONTACT_DAYS,
+        includeManual: settings?.noContactIncludeManual ?? false,
+      }}
     />
   );
 }

@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { ActivityType } from "@prisma/client";
+import { ActivityType, LeadStage } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notify, ownerIds } from "@/lib/notify";
 import { logAudit } from "@/lib/audit";
@@ -10,7 +10,7 @@ import { emitNotification, emitLeadAssignedBatch, emitTransferredLeadsBatch, typ
 import { ensureNotificationDefaults } from "@/lib/data/notifications-config";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
-import { initialReason, AUTO_REDISTRIBUTE_FRESH } from "@/lib/transfer-mode";
+import { initialReason, autoRedistributeReason, parseRedistMode } from "@/lib/transfer-mode";
 import { dayStartKSA, ksaHourOf } from "@/lib/ksa-time";
 import { atLimitUserIds, receiveGapBlockedIds } from "@/lib/dist-limits";
 
@@ -23,7 +23,10 @@ import { atLimitUserIds, receiveGapBlockedIds } from "@/lib/dist-limits";
  */
 export const IN_AUTO_POOL = { autoPoolAt: { not: null } } as const;
 import { MAX_REASSIGNS, MIN_AUTO_SWEEP_TIMEOUT_MIN, NEW_LEAD_TIMEOUT_MIN, leadTimeoutMin, sweepEligible } from "./sweep-eligibility";
-import { getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats } from "./no-response-escalation";
+import {
+  getNoResponseConfig, noResponseBaseline, noResponseState, warnMessage, noAnswerStats,
+  noContactState, noContactWarnMessage,
+} from "./no-response-escalation";
 
 // نعيد تصدير الحد الأدنى للمهلة (تستورده أكشنات التوزيع من هنا) — مصدره الوحدة النقية.
 // (لا إعادة تصدير لأرضية المهلة — أُلغيت الأرضية نهائيًا؛ القيمة من الإعدادات مباشرة.)
@@ -86,8 +89,16 @@ export type DistSettings = {
   autoDistribute: boolean;
   /** «الحزمة ب»: السحب التلقائي للمتأخر — يحوّل pass السحب من «اقتراح للمالك» إلى تنفيذ آلي. */
   autoSweepEnabled: boolean;
-  /** «الحزمة ب»: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد) بنفس الدورة. */
+  /** «الحزمة ب»: إعادة توزيع مسحوبي «لم يتم الرد» آليًا بنفس الدورة. */
   autoRedistributeEnabled: boolean;
+  /** وضع إعادة التوزيع: "fresh" (بدون متابعات) | "full" (ببياناته). */
+  noResponseRedistMode: string;
+  /** سحب «صامتي التواصل» تلقائيًا (مُسند + صفر متابعات بعد الإسناد). */
+  noContactPullEnabled: boolean;
+  /** مهلة صامت التواصل بالأيام قبل السحب (التنبيه قبلها بيوم). */
+  noContactPullDays: number;
+  /** يشمل الموزّعين يدويًا — لصامتي التواصل وحدهم، بقرار صريح من المالك. */
+  noContactIncludeManual: boolean;
   /** إنذار ما قبل السحب: قبل انقضاء المهلة بهذه الدقائق (إشعار + وميض أحمر). */
   sweepWarnMin: number;
   /** «فاصل الاستقبال»: عميل واحد آليًا لكل موظف كل هذه الدقائق (٠ = بلا فاصل). */
@@ -111,6 +122,8 @@ export type DistSettings = {
 
 const DIST_SELECT = {
   autoDistribute: true, autoSweepEnabled: true, autoRedistributeEnabled: true,
+  noResponseRedistMode: true,
+  noContactPullEnabled: true, noContactPullDays: true, noContactIncludeManual: true,
   sweepWarnMin: true, distReceiveGapMin: true, sweepStartHour: true, sweepEndHour: true,
   distStartHour: true, distEndHour: true, distTimeoutMin: true,
   distPresenceMin: true, distOrder: true, distPointer: true, distInitialMode: true, distReassignMode: true,
@@ -850,24 +863,96 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
 
     // مرشّحون: موزّعون لموظف فعلي، غير مؤرشفين, مراحل عدم الرد، دون سقف الدورات، غير محصّنين يدويًا.
     // ملاحظة: لا حاجز sweepCutoffAt هنا — نظام «لم يتم الرد» مستقلّ، حاجزه الاختياري ACTIVATION في الـbaseline.
+    // الحصانات المشتركة بين البابين — أي تعديل هنا يسري على المسارين معًا.
+    const commonWhere = {
+      assignedToId: { not: null },
+      // §١د: وحّد شرط الموظف مع اللوحة (getPendingPullByEmployee) — موظف مبيعات فعّال غير معطّل.
+      // يُضيّق نطاق السحب (يستثني المُسندين لمالك/مدير أو موظف معطّل) — لا يوسّعه.
+      assignedTo: { role: "EMPLOYEE" as const, active: true },
+      isArchived: false,
+      stage: { in: [...NO_RESPONSE_STAGES] },
+      reassignCount: { lt: MAX_REASSIGNS },
+      // «الحزمة ب» (ثغرة ج): موعد زيارة مستقبلي = تحرّك حقيقي مع العميل — محمي من السحب
+      // حتى لو مرحلته ATTEMPTED (زيارة مثبتة أهم من عدّاد «لم يرد»).
+      //
+      // داخل AND عمدًا لا كـOR مباشر: الباب الثاني يضيف شرط OR خاصًّا به، ومفتاحان بنفس
+      // الاسم في كائن واحد يدهس أحدهما الآخر بصمت — فتضيع حصانة الزيارة بلا أي خطأ ظاهر.
+      AND: [{ OR: [{ visitAt: null }, { visitAt: { lte: now } }] }],
+    };
+
+    const noContact = {
+      enabled: dist.noContactPullEnabled,
+      days: dist.noContactPullDays,
+      includeManual: dist.noContactIncludeManual,
+    };
+
     const candidates = await prisma.lead.findMany({
       where: {
-        assignedToId: { not: null },
-        // §١د: وحّد شرط الموظف مع اللوحة (getPendingPullByEmployee) — موظف مبيعات فعّال غير معطّل.
-        // يُضيّق نطاق السحب (يستثني المُسندين لمالك/مدير أو موظف معطّل) — لا يوسّعه.
-        assignedTo: { role: "EMPLOYEE", active: true },
-        isArchived: false,
-        stage: { in: [...NO_RESPONSE_STAGES] },
-        reassignCount: { lt: MAX_REASSIGNS },
+        ...commonWhere,
         manualAssignedAt: null,
         // «الحزمة ب» (ثغرة أ): القاعدة القاطعة — من هو خارج بركة التوزيع التلقائي لا يمسّه المحرك.
         ...IN_AUTO_POOL,
-        // «الحزمة ب» (ثغرة ج): موعد زيارة مستقبلي = تحرّك حقيقي مع العميل — محمي من السحب
-        // حتى لو مرحلته ATTEMPTED (زيارة مثبتة أهم من عدّاد «لم يرد»).
-        OR: [{ visitAt: null }, { visitAt: { lte: now } }],
       },
       select: { id: true, name: true, assignedToId: true, assignedAt: true },
     });
+
+    /*
+     * ===== أبواب مسار «صامت التواصل» =====
+     *
+     * الباب الأول أعلاه (بركة + غير موزَّع يدويًا) يخدم المسارين. لكن المتراكم الحقيقي
+     * لا يمرّ منه: العملاء الذين سبقوا ميزة البركة (autoPoolAt أُضيف 2026-07-26) لم
+     * يُختَموا بها قط، فـ autoPoolAt عندهم null — لا لأن أحدًا استثناهم، بل لأنهم أقدم
+     * من الحقل. فبقيت لوحة «لم يُتواصل معهم إطلاقًا» تعرضهم بلا أن تمسّهم الدورة أبدًا.
+     *
+     * فبابان إضافيان **لصامتي التواصل وحدهم**:
+     *   ب) خارج البركة وغير موزَّع يدويًا — يفتح مع مفتاح صامتي التواصل نفسه.
+     *   ج) موزَّع يدويًا — لا يفتح إلا بالإعداد الصريح noContactIncludeManual.
+     *
+     * ولماذا استعلامات منفصلة لا تخفيف للباب الأول: حصانة manualAssignedAt وقاعدة
+     * البركة تبقيان على **المصنَّفين** (من لهم متابعات «لم يرد») كما كانتا حرفيًا —
+     * تخفيف الشرط في استعلام واحد كان سيفتح مسار التصعيد على الموزّعين يدويًا أيضًا،
+     * وهو توسيع لم يطلبه أحد.
+     *
+     * وحارس مزدوج في الحلقة: من يصل من البابين ب/ج ولديه متابعة واحدة يُتخطّى (fu > 0).
+     *
+     * ⚠️ أثر جانبي مقصود ومعروف: المسحوب من هذين البابين يبقى خارج البركة بعد سحبه.
+     * فإن كانت إعادة التوزيع الآلية مطفأة، يستقرّ في حوض «لم يتم الرد» بانتظار توزيعك
+     * اليدوي (وهو يعمل بلا اشتراط بركة) — لا يلتقطه التوزيع الأولي التلقائي. لم نختمه
+     * بالبركة تلقائيًا عمدًا: إدخال ١١٧ عميلًا قديمًا لأتمتة التوزيع قرارٌ لك لا أثر جانبي.
+     */
+    const outsidePoolSilent = noContact.enabled
+      ? await prisma.lead.findMany({
+          where: { ...commonWhere, manualAssignedAt: null, autoPoolAt: null },
+          select: { id: true, name: true, assignedToId: true, assignedAt: true },
+        })
+      : [];
+
+    const manualSilent = noContact.enabled && noContact.includeManual
+      ? await prisma.lead.findMany({
+          where: { ...commonWhere, manualAssignedAt: { not: null } },
+          select: { id: true, name: true, assignedToId: true, assignedAt: true },
+        })
+      : [];
+
+    // دمج بلا تكرار (الأبواب الثلاثة متنافية بالشرط، والحارس احتياط).
+    const seenIds = new Set(candidates.map((c) => c.id));
+    const silentOnly = [...outsidePoolSilent, ...manualSilent];
+    for (const l of silentOnly) if (!seenIds.has(l.id)) { candidates.push(l); seenIds.add(l.id); }
+    /** من دخل من البابين ب/ج — مؤهَّل لمسار صامت التواصل وحده، لا للتصعيد المصنَّف. */
+    const silentOnlyIds = new Set(silentOnly.map((l) => l.id));
+
+    /*
+     * مسار واحد لكل عميل: من عليه ترشيح سحب متأخرين نشط (SweepCandidate) يخرج من مسار
+     * صامتي التواصل. وجود الصف يعني قرارًا معلّقًا أمام المالك في لوحة التوزيع؛ وسحبه من
+     * هنا كان يترك الترشيح يتيمًا يشير لعميل ما عاد عند صاحبه، ويزدوج على الموظف إنذاران
+     * لنفس العميل من نظامين. الصف يُحذف عند التنفيذ أو «اترك عنده»، فالاستثناء يزول معه.
+     *
+     * لا نستثني «المؤهَّل للسحب» بلا ترشيح: لو كان نظام المتأخرين مطفأً أصلًا (الافتراضي)
+     * لما وُجد ترشيح قط، فيصير الاستثناء ثقبًا دائمًا يُفلت فئة كاملة من النظامين معًا.
+     */
+    const sweepClaimedIds = new Set(
+      (await prisma.sweepCandidate.findMany({ select: { leadId: true } })).map((c) => c.leadId),
+    );
 
     // تصعيد المستنفدين للمالك — شامل المسحوبين العالقين في الحوض (كل دورة، مع dedup الإشعار).
     await escalateCappedLeads();
@@ -896,18 +981,43 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     const capped = 0; // §١: لم يعد هناك مفهوم «محصّن» — count≥حد السحب صار overdue فورًا لا immune.
     // إنذارات مجمّعة: مفتاح = `${userId}|${noAnswerCount}` → عدد العملاء في هذي الفئة.
     const warnBuckets = new Map<string, number>();
+    // تنبيهات صامتي التواصل — فردية باسم العميل (لا تجميع: الرسالة نفسها تسمّيه).
+    const noContactWarns: { leadId: string; name: string; to: string }[] = [];
     // مرشّحو السحب (overdue): نجمعهم أولًا، ثم نرتّب بالأقدم تأخّرًا، ثم نطبّق السقف.
-    type OverdueTarget = { id: string; name: string; from: string; fu: number; daysSince: number };
+    type OverdueTarget = { id: string; name: string; from: string; fu: number; daysSince: number; noContact?: boolean };
     const overdue: OverdueTarget[] = [];
 
     for (const l of candidates) {
       const stats = noAnswerStats(fuByLead.get(l.id) ?? [], l.assignedAt); // §١أ: عدّاد ما بعد آخر إسناد
       if (!stats.included) continue; // آخر متابعة نتيجتها ليست «لم يرد» → رد العميل → خارج النظام
       const fu = stats.noAnswerCount;
+
+      // ===== مسار صامت التواصل: صفر متابعات «لم يرد» بعد الإسناد =====
+      // ملاحظة دقيقة: fu=0 يشمل حالتين — بلا أي متابعة، أو له متابعات نتيجتها الأخيرة
+      // «لم يرد» بعدد صفر (مستحيل منطقيًا). فنشترط الخلوّ الفعلي من المتابعات بعد الإسناد.
+      if (fu === 0) {
+        if (!noContact.enabled) continue; // مطفأ ⟵ السلوك القديم حرفيًا: خارج النظام
+        if (!l.assignedAt) continue;      // بلا تاريخ إسناد لا مرجع زمني — «بحاجة لمراجعة»
+        // مسار واحد لكل عميل: نظام سحب المتأخرين يملكه الآن (ترشيح معلّق أمام المالك).
+        if (sweepClaimedIds.has(l.id)) continue;
+        const after = (fuByLead.get(l.id) ?? []).filter((f) => f.createdAt > (l.assignedAt as Date));
+        if (after.length > 0) continue;   // له متابعة بعد الإسناد ⟵ ليس صامتًا
+        const daysSince = (now.getTime() - l.assignedAt.getTime()) / (24 * 3_600_000);
+        const { state } = noContactState(daysSince, noContact.days);
+        if (state === "grace") continue;
+        if (state === "overdue") overdue.push({ id: l.id, name: l.name, from: l.assignedToId as string, fu: 0, daysSince, noContact: true });
+        else noContactWarns.push({ leadId: l.id, name: l.name, to: l.assignedToId as string });
+        continue;
+      }
+
+      // ===== مسار التصعيد المصنَّف (fu ≥ ١) — كما كان حرفيًا =====
+      // حارس البابين ب/ج: من دخل بتوسعة صامتي التواصل لا يُسحب إلا صامتًا؛ حصانة
+      // البركة و manualAssignedAt تبقيان كاملتين على هذا المسار.
+      if (silentOnlyIds.has(l.id)) continue;
       const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
       const { state, daysSince } = noResponseState(fu, baseline, now, config);
 
-      if (state === "out" || state === "grace") continue; // count=0 خارج النظام · grace ضمن المهلة (لا إنذار بعد)
+      if (state === "out" || state === "grace") continue; // grace ضمن المهلة (لا إنذار بعد)
       if (state === "overdue") overdue.push({ id: l.id, name: l.name, from: l.assignedToId as string, fu, daysSince });
       else { // warning (آخر ٢٤س قبل السحب) → إنذار مجمّع
         const key = `${l.assignedToId}|${fu}`;
@@ -927,6 +1037,14 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     // «الحزمة ب»: إعادة التوزيع الآلي للمسحوبين — بطريقة المالك مع استثناء المسحوب منه، «كجديد».
     // «فاصل الاستقبال» + one-per-cycle يسريان هنا كذلك (مسار آلي).
     const redistributeOn = dist.autoRedistributeEnabled;
+    // وضع الاستلام يختاره المالك مرة واحدة ويسري على مساري السحب معًا (المصنَّفون وصامتو التواصل).
+    const redistMode = parseRedistMode(dist.noResponseRedistMode);
+    const redistReason = autoRedistributeReason(redistMode);
+    // «ببياناته»: المرحلة تصير NEW والعدّاد يبدأ، لكن المتابعات والتاريخ تبقى ظاهرة للمستلم
+    // (لا FRESH_RESET) — نفس ما يفعله التوزيع اليدوي «بمحتواه» من الحوض.
+    const redistExtra = redistMode === "full"
+      ? { stage: LeadStage.NEW, nextFollowup: null }
+      : { ...FRESH_RESET_DATA };
     const available = redistributeOn
       ? await withoutReceiveGap(await availableParticipants(prisma, dist, now), dist, now)
       : [];
@@ -950,8 +1068,11 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         affected.set(t.from, (affected.get(t.from) ?? 0) + 1);
         continue;
       }
-      // §٣: سبب السحب — EXHAUSTED (count≥حد السحب: تابع والعميل ما رد) أو NEGLECT (انتهت المهلة بلا متابعة كافية).
-      const reason = t.fu >= config.immunityCap ? "no_response_exhausted" : "no_response_neglect";
+      // §٣: سبب السحب — EXHAUSTED (count≥حد السحب: تابع والعميل ما رد) أو NEGLECT (انتهت المهلة
+      // بلا متابعة كافية). وصامت التواصل سببه NEGLECT دائمًا: لا محاولات ليستنفدها.
+      const reason = t.noContact
+        ? "no_response_neglect"
+        : t.fu >= config.immunityCap ? "no_response_exhausted" : "no_response_neglect";
       // بركة «تعذّر الوصول» تبقى كما هي: المستنفد من موظفَين مختلفَين (بعد هذا السحب) للمالك
       // وحده — لا يُعاد توزيعه آليًا أبدًا.
       let unreachable = false;
@@ -986,14 +1107,14 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         // سجل تدقيق لكل سحب: batchId · leadId · fromUserId · المتابعات · أيام التأخير · السبب.
         await logAudit(tx, {
           userId: null, action: "lead.no_response.autoPulled", entity: "lead", entityId: t.id,
-          summary: `[batch=${batchId}] سحب تلقائي · العميل=${t.id} · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=${reason}${picked ? ` · أُعيد توزيعه إلى=${picked.userId} (كجديد)` : unreachable ? " · تعذّر الوصول (للمالك)" : " · رجع للحوض"}`,
+          summary: `[batch=${batchId}] سحب تلقائي · العميل=${t.id} · from=${t.from} · متابعات=${t.fu} · تأخّر=${Math.floor(t.daysSince)}ي · سبب=${reason}${t.noContact ? " · مسار=صامت التواصل" : ""}${picked ? ` · أُعيد توزيعه إلى=${picked.userId} (${redistMode === "full" ? "ببياناته" : "بدون متابعات"})` : unreachable ? " · تعذّر الوصول (للمالك)" : " · رجع للحوض"}`,
         });
-        // «الحزمة ب»: إعادة التوزيع فورًا بنفس المعاملة — «كجديد» (ولادة كاملة FRESH_RESET_DATA،
-        // السجل القديم محفوظ للمالك ومخفي عن المستلم بلاحقة _fresh).
+        // «الحزمة ب»: إعادة التوزيع فورًا بنفس المعاملة، بالوضع الذي اختاره المالك:
+        // «بدون متابعات» (ولادة كاملة + سجل مخفي) أو «ببياناته» (NEW مع بقاء السجل ظاهرًا).
         if (picked) {
           await assignLead(tx, t.id, picked.userId, {
-            manual: false, reason: AUTO_REDISTRIBUTE_FRESH, fromUserId: t.from, now,
-            extraData: { ...FRESH_RESET_DATA },
+            manual: false, reason: redistReason, fromUserId: t.from, now,
+            extraData: { ...redistExtra },
           });
         }
         return true;
@@ -1008,9 +1129,11 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         else freshBuckets.set(picked.userId, { userId: picked.userId, count: 1, sampleLeadId: t.id, sampleName: t.name });
       }
       // ٣) المالك — التفاصيل الكاملة (السبب، من، إلى): المصطلحات الفنية للمالك حصرًا.
-      const reasonLabel = reason === "no_response_exhausted" ? "استنفاد محاولات (تابع وما رد)" : "تقصير (انتهت المهلة بلا متابعة كافية)";
+      const reasonLabel = t.noContact
+        ? `صامت تواصل (${Math.floor(t.daysSince)} يوم بلا ولا متابعة)`
+        : reason === "no_response_exhausted" ? "استنفاد محاولات (تابع وما رد)" : "تقصير (انتهت المهلة بلا متابعة كافية)";
       const destLabel = picked
-        ? `إلى ${empNames.get(picked.userId) ?? "موظف"} (كجديد)`
+        ? `إلى ${empNames.get(picked.userId) ?? "موظف"} (${redistMode === "full" ? "ببياناته" : "بدون متابعات"})`
         : unreachable ? "إلى بركة «تعذّر الوصول» — قرارها لك" : "إلى حوض غير الموزّعين";
       await notify(prisma, owners, "no_response.pulled", "سحب تلقائي: عدم رد",
         `${t.name}: من ${empNames.get(t.from) ?? "موظف"} ${destLabel} — السبب: ${reasonLabel}`,
@@ -1019,9 +1142,10 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       affected.set(t.from, (affected.get(t.from) ?? 0) + 1);
     }
 
-    // ٢) المستلمون — إشعار مجمّع بصيغة «عميل جديد وصلك» (fresh: بلا أي إيحاء بتاريخ قديم).
+    // ٢) المستلمون — إشعار مجمّع بصيغة تطابق الوضع: «كعملاء جدد» بلا تاريخ (fresh)
+    //    أو «بمحتواهم» فيراجع المستلم متابعاتهم (withHistory) — لا نوحي بتصفيرٍ لم يقع.
     if (mode === "live" && freshBuckets.size > 0) {
-      await emitTransferredLeadsBatch([...freshBuckets.values()], "fresh");
+      await emitTransferredLeadsBatch([...freshBuckets.values()], redistMode === "full" ? "withHistory" : "fresh");
     }
     // مؤشّر الدور تقدّم مع إعادة التوزيع — نثبّته للدورة القادمة.
     if (mode === "live" && redistributeOn && pointer !== dist.distPointer) {
@@ -1058,8 +1182,21 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
         await notify(prisma, [userId], "no_response.warn", "متابعة مطلوبة", warnMessage(fu, count), link);
         warned += count;
       }
+      // تنبيه صامت التواصل — فردي باسم العميل، ورابطه ملفه (فالمطلوب فعل واحد محدّد).
+      // dedup يومي بنفس نمط الإنذارات: مفتاح التمييز هو الرابط (ملف العميل).
+      for (const w of noContactWarns) {
+        const link = `/leads/${w.leadId}`;
+        const already = await prisma.notification.findFirst({
+          where: { type: "no_response.warn", userId: w.to, link, createdAt: { gte: todayStart } },
+          select: { id: true },
+        });
+        if (already) continue;
+        await notify(prisma, [w.to], "no_response.warn", "تواصل مع العميل", noContactWarnMessage(w.name), link);
+        warned++;
+      }
     } else {
       for (const count of warnBuckets.values()) warned += count;
+      warned += noContactWarns.length;
     }
 
     return { ok: true, mode, scanned: candidates.length, warned, pulled, redistributed, capped };

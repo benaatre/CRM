@@ -12,7 +12,7 @@ import { notify } from "@/lib/notify";
 import { emitNotification, emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
 import { NO_RESPONSE_STAGES, unreachableLeadIds } from "@/lib/auto-distribute";
 import { assignLead, FRESH_RESET_DATA } from "@/lib/assignment";
-import { MANUAL_REDISTRIBUTE_FRESH, MANUAL_REDISTRIBUTE_FULL } from "@/lib/transfer-mode";
+import { MANUAL_REDISTRIBUTE_FRESH, MANUAL_REDISTRIBUTE_FULL, parseRedistMode, type RedistMode } from "@/lib/transfer-mode";
 import {
   warnMessage, getNoResponseConfig, noResponseBaseline, noResponseState, noAnswerStats, overdueAgeBucket,
   type EscalationCategory, type OverdueAgeBucket,
@@ -618,6 +618,58 @@ export async function updateNoResponseRedistribute(enabled: boolean): Promise<Ac
     revalidatePath("/no-response");
     revalidatePath("/distribution"); // السطر المختصر باللوحة يعكس الحالة نفسها
     return { ok: true, message: enabled ? "شغّالة: المسحوب يُوزَّع فورًا كعميل جديد" : "متوقفة: المسحوب يرجع لغير الموزّعين" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/**
+ * وضع استلام المسحوب — «بدون متابعات» (fresh) أو «ببياناته» (full). للمالك فقط.
+ * يسري على كل مسارات إعادة التوزيع الآلي لعدم الرد (المصنَّفون وصامتو التواصل).
+ * التوزيع اليدوي من الحوض يبقى بخياره لكل دفعة — قرار صريح لا يُدهس بإعداد عام.
+ */
+export async function updateNoResponseRedistMode(mode: RedistMode): Promise<ActionResult> {
+  try {
+    const actor = await requireOwner();
+    const value = parseRedistMode(mode);
+    await prisma.settings.upsert({
+      where: { id: "singleton" },
+      update: { noResponseRedistMode: value },
+      create: { id: "singleton", noResponseRedistMode: value },
+    });
+    await logAudit(prisma, {
+      userId: actor.id, action: "settings.noResponseRedistMode", entity: "settings", entityId: "singleton",
+      summary: `وضع استلام المسحوب=${value === "full" ? "ببياناته" : "بدون متابعات"}`,
+    });
+    revalidatePath("/no-response");
+    return { ok: true, message: value === "full" ? "المسحوب يوصل ببياناته" : "المسحوب يوصل بدون متابعات" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+/** إعداد سحب «صامتي التواصل» — المفتاح + المهلة بالأيام + شمول الموزّعين يدويًا. للمالك فقط. */
+export async function updateNoContactPull(input: {
+  enabled: boolean;
+  days: number;
+  includeManual: boolean;
+}): Promise<ActionResult> {
+  try {
+    const actor = await requireOwner();
+    const days = Math.round(Number(input.days) || 0);
+    // أرضية يوم واحد: مهلة صفر تعني سحبًا لحظة الإسناد — بلا فرصة تواصل أصلًا.
+    if (days < 1 || days > 60) return { ok: false, error: "المهلة بين يوم واحد و٦٠ يومًا" };
+    await prisma.settings.upsert({
+      where: { id: "singleton" },
+      update: { noContactPullEnabled: !!input.enabled, noContactPullDays: days, noContactIncludeManual: !!input.includeManual },
+      create: { id: "singleton", noContactPullEnabled: !!input.enabled, noContactPullDays: days, noContactIncludeManual: !!input.includeManual },
+    });
+    await logAudit(prisma, {
+      userId: actor.id, action: "settings.noContactPull", entity: "settings", entityId: "singleton",
+      summary: `سحب صامتي التواصل=${input.enabled ? "شغال" : "متوقف"} · المهلة=${days} يوم · يشمل الموزّعين يدويًا=${input.includeManual ? "نعم" : "لا"}`,
+    });
+    revalidatePath("/no-response");
+    return { ok: true, message: input.enabled ? `شغّال — السحب بعد ${days} أيام بلا تواصل` : "متوقف — تنبيه وأزرار يدوية فقط" };
   } catch (e) {
     return { ok: false, error: toUserError(e) };
   }

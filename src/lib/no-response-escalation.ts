@@ -128,6 +128,55 @@ export function noResponseState(
   return { state, daysSince, pullDay, warnDay };
 }
 
+// ===================== مسار «صامت التواصل» (صفر متابعات بعد الإسناد) =====================
+//
+// عميل مُسند لم تُسجَّل له متابعة واحدة منذ استلامه. عدّاد «لم يرد» عنده صفر، فهو خارج
+// جدول التصعيد أعلاه («out») مهما طال الإهمال — وهذي كانت النقطة العمياء: يُعرض للمالك
+// بلوحة يدوية ولا تمسّه دورة السحب أبدًا.
+//
+// مساره مستقل ومهلته واحدة يضبطها المالك بالأيام (لا جدول متدرّج — لا يوجد عدّاد يتدرّج
+// عليه)، والتنبيه قبل السحب بيوم كامل تمامًا كنظيره في التصعيد (warnDay = pullDay − ١).
+
+export const DEFAULT_NO_CONTACT_DAYS = 3;
+
+/** إعداد مسار صامت التواصل — مصدره أعمدة Settings (لا env، بخلاف بقية إعدادات هذا الملف). */
+export type NoContactConfig = {
+  enabled: boolean;
+  /** مهلة السحب بالأيام منذ الإسناد. */
+  days: number;
+  /** يشمل الموزّعين يدويًا (يتخطّى manualAssignedAt والبركة) — لصامتي التواصل وحدهم. */
+  includeManual: boolean;
+};
+
+export const DEFAULT_NO_CONTACT_CONFIG: NoContactConfig = {
+  enabled: false,
+  days: DEFAULT_NO_CONTACT_DAYS,
+  includeManual: false,
+};
+
+/**
+ * حالة صامت التواصل حسب الأيام منذ الإسناد:
+ *   daysSince ≥ pullDay      → overdue (يُسحب الآن)
+ *   daysSince ≥ pullDay − ١  → warning (تنبيه «تواصل معه وإلا ينتقل»)
+ *   غير ذلك                  → grace
+ * مهلة يوم واحد تعني warnDay = ٠: التنبيه من لحظة الإسناد، والسحب بعد يوم — سلوك مقصود
+ * لا حالة شاذة (المالك يضبط المهلة، والأرضية التقنية يوم واحد في طبقة الحفظ).
+ */
+export function noContactState(
+  daysSince: number,
+  days: number = DEFAULT_NO_CONTACT_DAYS,
+): { state: Exclude<NoResponseState, "out">; pullDay: number; warnDay: number } {
+  const pullDay = Math.max(1, Math.floor(days) || DEFAULT_NO_CONTACT_DAYS);
+  const warnDay = Math.max(0, pullDay - 1);
+  const state = daysSince >= pullDay ? "overdue" : daysSince >= warnDay ? "warning" : "grace";
+  return { state, pullDay, warnDay };
+}
+
+/** نص تنبيه صامت التواصل — باسم العميل صراحةً (تنبيه فردي لا مجمّع، فالاسم متاح ومفيد). */
+export function noContactWarnMessage(leadName: string): string {
+  return `تواصل مع العميل ${leadName} وإلا ينتقل لموظف ثاني.`;
+}
+
 // ===================== فئات العرض (البانر + لوحة الأرقام) =====================
 // خمس فئات تطابق أعمدة لوحة الأرقام: بلا رد · تابع مرة · تابع مرتين · تابع ٣+ · محصّن.
 
