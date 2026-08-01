@@ -897,35 +897,62 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
     });
 
     /*
-     * الباب الثاني — «يشمل الموزّعين يدويًا»، لصامتي التواصل وحدهم وبقرار صريح من المالك.
+     * ===== أبواب مسار «صامت التواصل» =====
      *
-     * لماذا استعلام منفصل لا تخفيف للشرط الأول: حصانة manualAssignedAt وقاعدة البركة
-     * تحميان **المصنّفين** (من لهم متابعات «لم يرد») كما كانتا حرفيًا. تخفيف الشرط في
-     * الاستعلام الواحد كان سيفتح السحب على الموزّعين يدويًا في مسار التصعيد كذلك —
-     * توسيعٌ لم يطلبه أحد. وبما أن manualAssignedAt != null يعني خارج البركة دائمًا
-     * (الثابت في رأس الملف)، فشمول الموزّعين يدويًا يقتضي تخطّي القاعدتين معًا لهؤلاء
-     * وحدهم — وهذا هو الباب الوحيد في المحرك الذي يفعل ذلك.
+     * الباب الأول أعلاه (بركة + غير موزَّع يدويًا) يخدم المسارين. لكن المتراكم الحقيقي
+     * لا يمرّ منه: العملاء الذين سبقوا ميزة البركة (autoPoolAt أُضيف 2026-07-26) لم
+     * يُختَموا بها قط، فـ autoPoolAt عندهم null — لا لأن أحدًا استثناهم، بل لأنهم أقدم
+     * من الحقل. فبقيت لوحة «لم يُتواصل معهم إطلاقًا» تعرضهم بلا أن تمسّهم الدورة أبدًا.
      *
-     * وحارس مزدوج: من يصل من هذا الباب ولديه متابعة واحدة يُتخطّى في الحلقة (fu > 0).
+     * فبابان إضافيان **لصامتي التواصل وحدهم**:
+     *   ب) خارج البركة وغير موزَّع يدويًا — يفتح مع مفتاح صامتي التواصل نفسه.
+     *   ج) موزَّع يدويًا — لا يفتح إلا بالإعداد الصريح noContactIncludeManual.
+     *
+     * ولماذا استعلامات منفصلة لا تخفيف للباب الأول: حصانة manualAssignedAt وقاعدة
+     * البركة تبقيان على **المصنَّفين** (من لهم متابعات «لم يرد») كما كانتا حرفيًا —
+     * تخفيف الشرط في استعلام واحد كان سيفتح مسار التصعيد على الموزّعين يدويًا أيضًا،
+     * وهو توسيع لم يطلبه أحد.
+     *
+     * وحارس مزدوج في الحلقة: من يصل من البابين ب/ج ولديه متابعة واحدة يُتخطّى (fu > 0).
+     *
+     * ⚠️ أثر جانبي مقصود ومعروف: المسحوب من هذين البابين يبقى خارج البركة بعد سحبه.
+     * فإن كانت إعادة التوزيع الآلية مطفأة، يستقرّ في حوض «لم يتم الرد» بانتظار توزيعك
+     * اليدوي (وهو يعمل بلا اشتراط بركة) — لا يلتقطه التوزيع الأولي التلقائي. لم نختمه
+     * بالبركة تلقائيًا عمدًا: إدخال ١١٧ عميلًا قديمًا لأتمتة التوزيع قرارٌ لك لا أثر جانبي.
      */
-    const manualNoContact = noContact.enabled && noContact.includeManual
+    const outsidePoolSilent = noContact.enabled
       ? await prisma.lead.findMany({
-          where: {
-            ...commonWhere,
-            // المستثنون من الباب الأول لهذين السببين وحدهما.
-            OR: [{ manualAssignedAt: { not: null } }, { autoPoolAt: null }],
-            // صامت التواصل تعريفًا: ولا متابعة إطلاقًا. (المتابعة الأقدم من الإسناد
-            // تُفحص في الحلقة عبر noAnswerStats — هنا نضيّق النطاق فقط.)
-            followUps: { none: {} },
-          },
+          where: { ...commonWhere, manualAssignedAt: null, autoPoolAt: null },
           select: { id: true, name: true, assignedToId: true, assignedAt: true },
         })
       : [];
 
-    // دمج بلا تكرار (الاستعلامان متنافيان بالشرط، والحارس احتياط).
+    const manualSilent = noContact.enabled && noContact.includeManual
+      ? await prisma.lead.findMany({
+          where: { ...commonWhere, manualAssignedAt: { not: null } },
+          select: { id: true, name: true, assignedToId: true, assignedAt: true },
+        })
+      : [];
+
+    // دمج بلا تكرار (الأبواب الثلاثة متنافية بالشرط، والحارس احتياط).
     const seenIds = new Set(candidates.map((c) => c.id));
-    for (const l of manualNoContact) if (!seenIds.has(l.id)) { candidates.push(l); seenIds.add(l.id); }
-    const viaManualOptIn = new Set(manualNoContact.map((l) => l.id));
+    const silentOnly = [...outsidePoolSilent, ...manualSilent];
+    for (const l of silentOnly) if (!seenIds.has(l.id)) { candidates.push(l); seenIds.add(l.id); }
+    /** من دخل من البابين ب/ج — مؤهَّل لمسار صامت التواصل وحده، لا للتصعيد المصنَّف. */
+    const silentOnlyIds = new Set(silentOnly.map((l) => l.id));
+
+    /*
+     * مسار واحد لكل عميل: من عليه ترشيح سحب متأخرين نشط (SweepCandidate) يخرج من مسار
+     * صامتي التواصل. وجود الصف يعني قرارًا معلّقًا أمام المالك في لوحة التوزيع؛ وسحبه من
+     * هنا كان يترك الترشيح يتيمًا يشير لعميل ما عاد عند صاحبه، ويزدوج على الموظف إنذاران
+     * لنفس العميل من نظامين. الصف يُحذف عند التنفيذ أو «اترك عنده»، فالاستثناء يزول معه.
+     *
+     * لا نستثني «المؤهَّل للسحب» بلا ترشيح: لو كان نظام المتأخرين مطفأً أصلًا (الافتراضي)
+     * لما وُجد ترشيح قط، فيصير الاستثناء ثقبًا دائمًا يُفلت فئة كاملة من النظامين معًا.
+     */
+    const sweepClaimedIds = new Set(
+      (await prisma.sweepCandidate.findMany({ select: { leadId: true } })).map((c) => c.leadId),
+    );
 
     // تصعيد المستنفدين للمالك — شامل المسحوبين العالقين في الحوض (كل دورة، مع dedup الإشعار).
     await escalateCappedLeads();
@@ -971,6 +998,8 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       if (fu === 0) {
         if (!noContact.enabled) continue; // مطفأ ⟵ السلوك القديم حرفيًا: خارج النظام
         if (!l.assignedAt) continue;      // بلا تاريخ إسناد لا مرجع زمني — «بحاجة لمراجعة»
+        // مسار واحد لكل عميل: نظام سحب المتأخرين يملكه الآن (ترشيح معلّق أمام المالك).
+        if (sweepClaimedIds.has(l.id)) continue;
         const after = (fuByLead.get(l.id) ?? []).filter((f) => f.createdAt > (l.assignedAt as Date));
         if (after.length > 0) continue;   // له متابعة بعد الإسناد ⟵ ليس صامتًا
         const daysSince = (now.getTime() - l.assignedAt.getTime()) / (24 * 3_600_000);
@@ -982,8 +1011,9 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       }
 
       // ===== مسار التصعيد المصنَّف (fu ≥ ١) — كما كان حرفيًا =====
-      // حارس الباب الثاني: من دخل بشمول «الموزّعين يدويًا» لا يُسحب إلا صامتًا.
-      if (viaManualOptIn.has(l.id)) continue;
+      // حارس البابين ب/ج: من دخل بتوسعة صامتي التواصل لا يُسحب إلا صامتًا؛ حصانة
+      // البركة و manualAssignedAt تبقيان كاملتين على هذا المسار.
+      if (silentOnlyIds.has(l.id)) continue;
       const baseline = noResponseBaseline(l.assignedAt, stats.lastNoAnswerAt, config.activationDate);
       const { state, daysSince } = noResponseState(fu, baseline, now, config);
 

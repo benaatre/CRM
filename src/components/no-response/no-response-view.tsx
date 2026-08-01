@@ -503,6 +503,7 @@ function NeverContactedPanel({ rows, pending, auto, onNudge, onPull }: {
         <p className="mb-3 rounded-lg border border-green-400/40 bg-green-500/10 px-3 py-2 text-xs text-green-200">
           السحب التلقائي شغّال: من يتجاوز {toArabicDigits(auto.days)} أيام بلا تواصل يُنبَّه موظفه قبل السحب بيوم ثم يُسحب — بالسقف نفسه (٥ لكل دورة)، فالقائمة تتصفّى تدريجيًا.
           {auto.includeManual ? " ويشمل ذلك الموزّعين يدويًا." : " والموزَّعون يدويًا مستثنون (مفتاح شمولهم مطفأ)."}
+          {" "}ومن عليه إنذار سحب متأخرين نشط يتولّاه ذاك المسار وحده.
           {" "}والأزرار تحت للتدخّل الفوري بلا انتظار الدورة.
         </p>
       ) : (
@@ -836,6 +837,7 @@ function NoContactPullPanel({ initial }: { initial: { enabled: boolean; days: nu
             <span className="block text-sm font-medium text-foreground">يشمل الموزّعين يدويًا</span>
             <span className="block text-[0.7rem] leading-5 text-muted-foreground">
               الموزَّع بيدك محميّ من السحب التلقائي دائمًا. فعّل هذا الخيار لو تبي حتى هؤلاء يُسحبون إذا سكت عنهم الموظف — ينطبق على صامتي التواصل وحدهم.
+              (العملاء القدام الخارجون من بركة التوزيع مشمولون بالمفتاح الأساسي بلا حاجة لهذا الخيار.)
             </span>
           </span>
         </label>
