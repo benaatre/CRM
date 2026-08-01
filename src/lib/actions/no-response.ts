@@ -591,6 +591,38 @@ export async function distributePoolGroup(sourceEmployeeId: string, opts: Distri
   }
 }
 
+/**
+ * مفتاح «إعادة توزيع مسحوبي لم يتم الرد» — للمالك فقط.
+ *
+ * يكتب نفس العمود `Settings.autoRedistributeEnabled` الذي يقرأه المحرك
+ * (auto-distribute.ts — `dist.autoRedistributeEnabled` في مسار runNoResponsePullback).
+ * السلوك الخلفي لم يتغيّر إطلاقًا؛ انتقل مكان التحكّم فقط: كان ضمن لوحة «السحب
+ * التلقائي» في /distribution (دورة الدقائق للمتأخرين الجدد) وهو في الحقيقة يخص
+ * دورة نظام «لم يتم الرد» (التصعيد بالأيام) — فصار هنا.
+ *
+ * أكشن مستقل بحقل واحد عمدًا: لوحة /distribution ما عادت ترسل هذا الحقل، فلا يمكن
+ * لحفظ إعدادات السحب أن يدهس قيمته (ولا العكس).
+ */
+export async function updateNoResponseRedistribute(enabled: boolean): Promise<ActionResult> {
+  try {
+    const actor = await requireOwner();
+    await prisma.settings.upsert({
+      where: { id: "singleton" },
+      update: { autoRedistributeEnabled: !!enabled },
+      create: { id: "singleton", autoRedistributeEnabled: !!enabled },
+    });
+    await logAudit(prisma, {
+      userId: actor.id, action: "settings.noResponseRedistribute", entity: "settings", entityId: "singleton",
+      summary: `إعادة توزيع مسحوبي «لم يتم الرد»=${enabled ? "شغال" : "متوقف"}`,
+    });
+    revalidatePath("/no-response");
+    revalidatePath("/distribution"); // السطر المختصر باللوحة يعكس الحالة نفسها
+    return { ok: true, message: enabled ? "شغّالة: المسحوب يُوزَّع فورًا كعميل جديد" : "متوقفة: المسحوب يرجع لغير الموزّعين" };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
 // نافذة التراجع عن السحب — آخر ٢٤ ساعة فقط.
 const UNDO_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PULL_BATCH_ACTIONS = ["lead.no_response.autoPullBatch", "lead.no_response.manualPullBatch"];

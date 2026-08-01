@@ -13,8 +13,8 @@ export type DistConfig = {
   autoDistribute: boolean;
   /** «الحزمة ب»: السحب التلقائي للمتأخر (تنفيذ آلي بدل الاقتراح) — للمالك. */
   autoSweepEnabled: boolean;
-  /** «الحزمة ب»: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد) — للمالك. */
-  autoRedistributeEnabled: boolean;
+  // autoRedistributeEnabled ليس هنا عمدًا: تحكّمه انتقل لصفحة «لم يتم الرد»، فهذه
+  // اللوحة لا تقرأه ولا تكتبه — لا سبيل لأن تدهسه حفظةٌ من هنا.
   /** إنذار ما قبل السحب بالدقائق (إشعار للموظف + وميض أحمر بالقائمة). */
   sweepWarnMin: number;
   /** «فاصل الاستقبال»: عميل واحد آليًا لكل موظف كل هذه الدقائق (٠ = بلا فاصل). */
@@ -52,7 +52,7 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
   const s = await prisma.settings.upsert({
     where: { id: "singleton" }, update: {}, create: { id: "singleton" },
     select: {
-      autoDistribute: true, autoSweepEnabled: true, autoRedistributeEnabled: true,
+      autoDistribute: true, autoSweepEnabled: true,
       sweepWarnMin: true, distReceiveGapMin: true, sweepStartHour: true, sweepEndHour: true,
       distStartHour: true, distEndHour: true, distTimeoutMin: true,
       distPresenceMin: true, distOrder: true, distInitialMode: true, distReassignMode: true,
@@ -75,7 +75,6 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
     config: {
       autoDistribute: s.autoDistribute,
       autoSweepEnabled: s.autoSweepEnabled,
-      autoRedistributeEnabled: s.autoRedistributeEnabled,
       sweepWarnMin: s.sweepWarnMin,
       distReceiveGapMin: s.distReceiveGapMin,
       sweepStartHour: s.sweepStartHour,
@@ -198,11 +197,13 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
 /**
  * «الحزمة ب»: إعدادات الأتمتة — للمالك حصرًا (تنفيذ آلي بلا موافقات لاحقة، فقرارها له وحده):
  *   autoSweepEnabled: السحب التلقائي للمتأخر (يستبدل الاقتراح اليدوي) + أرضية مهلة ٦٠ دقيقة.
- *   autoRedistributeEnabled: إعادة توزيع مسحوبي «لم يتم الرد» آليًا (كجديد).
+ *
+ * ملاحظة: `autoRedistributeEnabled` لم يعد يُكتب من هنا — انتقل تحكّمه لصفحة «لم يتم
+ * الرد» (دورته دورتها) عبر `updateNoResponseRedistribute`. حذفُه من هذه الحمولة مقصود:
+ * لو بقي لدهسته كل حفظة لإعدادات السحب بقيمة لوحة لا تملكه.
  */
 export async function updateAutoPilotConfig(input: {
   autoSweepEnabled: boolean;
-  autoRedistributeEnabled: boolean;
   distTimeoutMin: number;
   /** دقائق إنذار ما قبل السحب (١–١٢٠). */
   sweepWarnMin: number;
@@ -228,7 +229,6 @@ export async function updateAutoPilotConfig(input: {
       where: { id: "singleton" },
       data: {
         autoSweepEnabled: !!input.autoSweepEnabled,
-        autoRedistributeEnabled: !!input.autoRedistributeEnabled,
         distTimeoutMin: timeout,
         sweepWarnMin: warn,
         sweepStartHour: clampHour(input.sweepStartHour),
@@ -238,7 +238,7 @@ export async function updateAutoPilotConfig(input: {
     });
     await logAudit(prisma, {
       userId: user.id, action: "settings.autoPilot", entity: "settings", entityId: "singleton",
-      summary: `إعدادات السحب: تلقائي=${input.autoSweepEnabled ? "شغال" : "متوقف"} · إعادة توزيع المسحوبين=${input.autoRedistributeEnabled ? "شغال" : "متوقف"} · المهلة=${timeout}د · الإنذار=${warn}د · النافذة=${clampHour(input.sweepStartHour)}→${clampHour(input.sweepEndHour)} · الطريقة=${reassignMode}`,
+      summary: `إعدادات السحب: تلقائي=${input.autoSweepEnabled ? "شغال" : "متوقف"} · المهلة=${timeout}د · الإنذار=${warn}د · النافذة=${clampHour(input.sweepStartHour)}→${clampHour(input.sweepEndHour)} · الطريقة=${reassignMode}`,
     });
     revalidatePath("/distribution");
     return { ok: true, message: "حُفظت إعدادات السحب التلقائي" };

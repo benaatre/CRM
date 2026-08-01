@@ -2,13 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X, Undo2, Archive } from "lucide-react";
+import { PhoneMissed, AlertTriangle, SlidersHorizontal, BellRing, UserMinus, Share2, X, Undo2, Archive, Power } from "lucide-react";
 import { formatCount, toArabicDigits } from "@/lib/format";
 import type { NoResponseSort, PendingPullSummary, PoolSourceGroup, EmployeeLoad, ExhaustedRow, UndoableBatch, NeedsReview, NeverContactedRow, UnreachableRow } from "@/lib/data/no-response";
 import { CATEGORY_ORDER, CATEGORY_LABEL, DEFAULT_IMMUNITY_CAP, type NoResponseConfig, type EscalationCategory, type OverdueAgeBucket } from "@/lib/no-response-escalation";
 import {
   warnAllEmployees, pullGroup, distributePoolGroup, distributeNoResponseBatch, undoPull,
-  nudgeNeverContacted, pullNeverContacted,
+  nudgeNeverContacted, pullNeverContacted, updateNoResponseRedistribute,
   type DistributeOpts, type PullGroupCategory,
 } from "@/lib/actions/no-response";
 import { bulkArchive } from "@/lib/actions/leads";
@@ -38,6 +38,7 @@ type DistAsk = { count: number; sourceEmpIds: string[]; sourceEmployeeId: string
 
 export function NoResponseView({
   summary, pool, employeeLoads, exhausted, undoBatches, needsReview, neverContacted, unreachable, filters, config,
+  redistributeEnabled,
 }: {
   summary: PendingPullSummary;
   pool: PoolSourceGroup[];
@@ -49,6 +50,8 @@ export function NoResponseView({
   unreachable: UnreachableRow[];
   filters: Filters;
   config: NoResponseConfig;
+  /** Settings.autoRedistributeEnabled — مصير العميل بعد سحبه من هذه الصفحة. */
+  redistributeEnabled: boolean;
 }) {
   const employees: Employee[] = employeeLoads.map((e) => ({ id: e.id, name: e.name }));
   const router = useRouter();
@@ -119,6 +122,10 @@ export function NoResponseView({
         <span className={`inline-block size-2 rounded-full ${summary.live ? "bg-success" : "bg-gold"}`} />
         <span className="font-medium">حالة النظام: {summary.live ? "مفعّل — السحب التلقائي يعمل" : "معاينة (dry-run) — لا سحب تلقائي حتى التفعيل"}</span>
       </div>
+
+      {/* مصير المسحوب من هذه الصفحة — أبرز إعداد فيها، فوق كل اللوحات */}
+      <RedistributeSwitch enabled={redistributeEnabled} />
+
 
       {/* تراجع عن آخر سحب (آخر ٢٤ ساعة) */}
       <UndoPanel batches={undoBatches} pending={pending} onUndo={(batchId) => run(() => undoPull(batchId))} />
@@ -626,6 +633,58 @@ function ExhaustedPanel({ rows, pending, onDistribute, onArchive }: {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+/**
+ * مفتاح «إعادة توزيع مسحوبي لم يتم الرد» — أبرز إعداد في هذه الصفحة.
+ *
+ * كان في لوحة «السحب التلقائي» بصفحة /distribution، وهي دورة أخرى تمامًا (دقائق،
+ * للمتأخرين الجدد) بينما هذا المفتاح يحكم مصير من يُسحب من **هنا** بعد استنفاد
+ * محاولات عدم الرد (تصعيد بالأيام). المنطق الخلفي لم يتغيّر — نفس العمود ونفس السلوك.
+ *
+ * يحفظ فورًا عند التبديل (مفتاح واحد لا نموذج) بنفس نمط الشريط الملوّن: أخضر شغال /
+ * أحمر متوقف.
+ */
+function RedistributeSwitch({ enabled }: { enabled: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [on, setOn] = useState(enabled);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(next: boolean) {
+    setOn(next); // تفاؤلي — يُرجَع عند الفشل
+    setError(null);
+    startTransition(async () => {
+      const res = await updateNoResponseRedistribute(next);
+      if (!res.ok) { setOn(!next); setError(res.error ?? "صار خطأ"); }
+      router.refresh();
+    });
+  }
+
+  return (
+    <section className="mb-4">
+      <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 transition-colors ${on ? "border-green-400/60 bg-green-500/10" : "border-red-500/40 bg-red-500/5"}`}>
+        <div className="flex items-center gap-2.5">
+          <Power className={`size-5 shrink-0 ${on ? "text-green-300" : "text-red-300"}`} />
+          <div>
+            <div className="font-bold text-foreground">
+              إعادة توزيع مسحوبي «لم يتم الرد»: <span className={on ? "text-green-300" : "text-red-300"}>{on ? "شغال" : "متوقف"}</span>
+            </div>
+            <p className="text-[0.7rem] leading-5 text-muted-foreground">
+              العميل اللي يُسحب من هالصفحة (بعد استنفاد محاولات عدم الرد): شغال = يُوزَّع فورًا على موظف آخر كعميل جديد · متوقف = يرجع لغير الموزعين وتوزعه بنفسك.
+              و«تعذّر الوصول» يبقى لك وحدك دائمًا.
+            </p>
+          </div>
+        </div>
+        <input
+          type="checkbox" checked={on} disabled={pending}
+          onChange={(e) => toggle(e.target.checked)}
+          className="size-6 shrink-0 accent-[var(--gold)] disabled:opacity-50"
+        />
+      </label>
+      {error && <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
     </section>
   );
 }
