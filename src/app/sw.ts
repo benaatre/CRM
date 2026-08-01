@@ -20,6 +20,12 @@ const runtimeCaching: RuntimeCaching[] = [
     matcher: ({ request, sameOrigin }) => sameOrigin && request.mode === "navigate",
     handler: new NetworkOnly(),
   },
+  {
+    // تنقلات App Router من العميل (RSC) تجي fetch لا navigate — بدون هذا
+    // الحاجز تسقط في كاش others من defaultCache وتحمل بيانات صفحات مصادَق عليها.
+    matcher: ({ request, sameOrigin }) => sameOrigin && request.headers.get("RSC") === "1",
+    handler: new NetworkOnly(),
+  },
   ...defaultCache, // ملفات ثابتة فقط (JS/CSS/خطوط/صور)
 ];
 
@@ -37,3 +43,22 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// وراثة مهمة الـ SW «الانتحاري» (حادثة 07-22): مسح أي كاشات لا تخص precache الحالي
+// عند كل activate. يغطي المتصفحات التي ما مرّت على الانتحاري، ويعدم كاشات الإعداد
+// القديم (apis/others/next-data…) التي كانت تحمل بيانات عملاء — الإعداد القديم كان
+// Serwist بنفس أسماء defaultCache، فالكاشات التشغيلية الجديدة بنفس الأسماء تُمسح
+// معها أيضًا وهذا مقبول: محتواها أصول ثابتة فقط ويُعاد تعبئتها تلقائيًا.
+// المحمي: precache الحالي «serwist-precache-v2» (تحقّقنا من الاسم بتشغيل cacheNames).
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((k) => !k.startsWith("serwist-") && !k.includes("precache"))
+          .map((k) => caches.delete(k)),
+      );
+    })(),
+  );
+});
