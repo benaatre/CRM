@@ -27,8 +27,11 @@ export function BottomNav() {
       aria-label="التنقّل السفلي"
       className="fixed inset-x-0 bottom-0 z-50 border-t"
       style={{
-        backgroundColor: MOBILE_COLORS.bg,
-        borderColor: "#1E1E21",
+        // --tabbar: شفاف مع ضبابية خلفية (زجاج) — مطابق للنموذج.
+        backgroundColor: MOBILE_COLORS.tabbar,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        borderColor: MOBILE_COLORS.line3,
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
