@@ -14,9 +14,16 @@ import { MobileOwnerHome } from "@/components/mobile/owner-home";
 // البيانات تتغيّر مع كل متابعة — لا تُخزَّن الصفحة.
 export const dynamic = "force-dynamic";
 
-export default async function MobileHomePage() {
+export default async function MobileHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ p?: string }>;
+}) {
   const user = await requireUser();
-  if (isManager(user.role)) return <MobileOwnerHome user={user} />;
+  if (isManager(user.role)) {
+    const sp = await searchParams;
+    return <MobileOwnerHome user={user} period={sp.p} />;
+  }
 
   /*
    * مصدر واحد محجَّم بالدور: getLeads (tab=working) — الموظف يرى عملاءه فقط عبر
