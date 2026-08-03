@@ -1,33 +1,38 @@
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 
-const bone = { backgroundColor: MOBILE_COLORS.card } as const;
+const bone = { backgroundColor: MOBILE_COLORS.card, boxSizing: "border-box" as const };
 
-/** هياكل عظمية بنفس أبعاد الشاشة الحقيقية — فلا تقفز الواجهة عند وصول البيانات. */
+/** هياكل عظمية بنفس أبعاد الرئيسية الحقيقية (ترويسة + بطاقات مجمّعة + قائمة). */
 export default function MobileHomeLoading() {
   return (
-    <div className="animate-pulse">
-      {/* الترويسة */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+    <div className="animate-pulse flex flex-col" style={{ gap: 16 }}>
+      {/* الترويسة: عنوان + جرس وصورة رمزية ٤٢ */}
+      <div className="flex items-start justify-between" style={{ padding: "0 2px" }}>
         <div className="flex-1">
-          <div className="h-4 w-40 rounded" style={bone} />
-          <div className="mt-2 h-3 w-24 rounded" style={bone} />
+          <div style={{ ...bone, height: 22, width: 170, borderRadius: 8 }} />
+          <div style={{ ...bone, height: 13, width: 110, borderRadius: 6, marginTop: 8 }} />
         </div>
-        <div className="size-[34px] shrink-0 rounded-full" style={bone} />
+        <div className="flex" style={{ gap: 9 }}>
+          <div style={{ ...bone, width: 42, height: 42, borderRadius: 14 }} />
+          <div style={{ ...bone, width: 42, height: 42, borderRadius: 21 }} />
+        </div>
       </div>
 
-      {/* العدّادات */}
-      <div className="flex gap-[7px] px-4">
+      {/* البطاقات المجمّعة */}
+      <div className="flex flex-col" style={{ gap: 11 }}>
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-[62px] flex-1 rounded-[10px]" style={bone} />
+          <div key={i} style={{ ...bone, height: 120, borderRadius: 18, opacity: 1 - i * 0.2 }} />
         ))}
       </div>
 
-      {/* القائمة */}
-      <div className="mt-5 px-4">
-        <div className="mb-2 h-3 w-20 rounded" style={bone} />
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="mb-2 h-[104px] rounded-xl" style={bone} />
-        ))}
+      {/* ابدأ بهذول */}
+      <div>
+        <div style={{ ...bone, height: 15, width: 90, borderRadius: 6, margin: "4px 2px 10px" }} />
+        <div className="flex flex-col" style={{ gap: 10 }}>
+          {[0, 1].map((i) => (
+            <div key={i} style={{ ...bone, height: 104, borderRadius: 16 }} />
+          ))}
+        </div>
       </div>
     </div>
   );

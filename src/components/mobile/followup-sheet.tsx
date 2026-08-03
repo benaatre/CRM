@@ -83,8 +83,8 @@ export function FollowupSheet({
 
   // «غير مهتم» (وكذلك رفض «ما حضر») يمرّ بالمسار المشترك مع الويب.
   const isNi = sel === "notInterested" || (sel === "noShow" && noShowChoice === "reject");
-  const showDate = !!sel && (isNi ? retry === "yes" : needsDate(sel, step) || sel === "interested" || sel === "onhold");
-  const showNote = !!sel;
+  const showDate = !!sel && sel !== "booked" && (isNi ? retry === "yes" : needsDate(sel, step) || sel === "interested" || sel === "onhold");
+  const showNote = !!sel && sel !== "booked";
 
   function submit() {
     if (!sel) return;
@@ -139,6 +139,33 @@ export function FollowupSheet({
           </button>
         ))}
       </div>
+
+      {/* «تم الحجز»: نموذج الحجز الكامل (وحدة/أسعار/دفعات) في الويب — لا نسخة مبسّطة تفوّت حقولًا مالية */}
+      {sel === "booked" && (
+        <div
+          style={{
+            boxSizing: "border-box", marginTop: 14, background: MOBILE_COLORS.bg,
+            border: `1px solid ${MOBILE_COLORS.goldBorder}`, borderRadius: 14, padding: 13,
+          }}
+        >
+          <p style={{ fontSize: 13, color: MOBILE_COLORS.textSecondary, lineHeight: 1.7 }}>
+            تسجيل الحجز يفتح نموذج الحجز الكامل (الوحدة والأسعار والدفعات) في ملف العميل على الويب.
+          </p>
+          <a
+            href={`/leads/${leadId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center justify-center"
+            style={{
+              boxSizing: "border-box", marginTop: 11, height: 48, borderRadius: 12,
+              background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
+              fontSize: 14, fontWeight: 700,
+            }}
+          >
+            افتح ملف العميل في الويب
+          </a>
+        </div>
+      )}
 
       {/* خطوة «مهتم» الاختيارية */}
       {sel === "interested" && !firstContact && (
@@ -272,7 +299,7 @@ export function FollowupSheet({
         }}>{error}</p>
       )}
 
-      {sel && (
+      {sel && sel !== "booked" && (
         <button
           type="button"
           onClick={submit}

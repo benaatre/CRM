@@ -83,6 +83,7 @@ export function MobileProfileActions({
         phone={phone}
         leadName={leadName}
         meName={meName}
+        leadId={leadId}
       />
       <FollowupSheet
         open={sheet === "fu"}

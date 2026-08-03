@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { waPhone } from "@/lib/value-normalize";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { BottomSheet } from "./bottom-sheet";
@@ -32,27 +34,86 @@ export function WaSheet({
   phone,
   leadName,
   meName,
+  leadId,
 }: {
   open: boolean;
   onClose: () => void;
   phone: string;
   leadName: string;
   meName: string;
+  /** لتسجيل الإرسال متابعةً عبر المسار القائم /api/leads/[id]/whatsapp. */
+  leadId: string;
 }) {
+  const router = useRouter();
   const wa = waPhone(phone);
   const first = leadName.trim().split(/\s+/)[0] || leadName;
   const templates = templatesFor(first, meName);
+  // بعد فتح واتساب نسأل «أرسلت؟» بدل الإغلاق الصامت — التسجيل بيد الموظف لا تخمينًا.
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const openWa = (text?: string) => {
     const url = `https://wa.me/${wa}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
     window.open(url, "_blank", "noopener,noreferrer");
+    setConfirming(true);
+  };
+
+  const close = () => {
+    setConfirming(false);
+    setSaving(false);
     onClose();
   };
+
+  // «نعم أرسلت» ⟵ المسار القائم (متابعة WHATSAPP + منع تكرار الدقيقة + جديد⟵محاولة).
+  const confirmSent = async () => {
+    setSaving(true);
+    try {
+      await fetch(`/api/leads/${leadId}/whatsapp`, { method: "POST" });
+      router.refresh();
+    } catch {
+      /* الإغلاق على أي حال — التسجيل تحسين لا شرط */
+    }
+    close();
+  };
+
+  if (open && confirming) {
+    return (
+      <BottomSheet open onClose={close} title={`أرسلت لـ${first}؟`} subtitle="نسجّلها متابعة واتساب في ملفه">
+        <div className="flex" style={{ gap: 8, marginTop: 18 }}>
+          <button
+            type="button"
+            onClick={confirmSent}
+            disabled={saving}
+            className="flex-1"
+            style={{
+              boxSizing: "border-box", height: 52, borderRadius: 14, border: "none",
+              background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
+              fontSize: 15, fontWeight: 700, opacity: saving ? 0.6 : 1,
+            }}
+          >
+            {saving ? "جارٍ التسجيل…" : "نعم، سجّلها"}
+          </button>
+          <button
+            type="button"
+            onClick={close}
+            className="flex-1"
+            style={{
+              boxSizing: "border-box", height: 52, borderRadius: 14,
+              border: `1px solid ${MOBILE_COLORS.border}`, background: "none",
+              color: MOBILE_COLORS.textSecondary, fontSize: 15, fontWeight: 600,
+            }}
+          >
+            لا
+          </button>
+        </div>
+      </BottomSheet>
+    );
+  }
 
   return (
     <BottomSheet
       open={open}
-      onClose={onClose}
+      onClose={close}
       title={`واتساب — ${first}`}
       subtitle="تنرسل من واتساب جوالك"
       maxHeight="80%"
