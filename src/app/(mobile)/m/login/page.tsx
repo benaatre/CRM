@@ -40,9 +40,10 @@ export default async function MobileLoginPage() {
             height={88}
             priority
             className="rounded-2xl"
+            style={{ filter: "drop-shadow(0 10px 30px rgba(203,164,94,.22))" }}
           />
-          <p className="mt-4 text-sm" style={{ color: MOBILE_COLORS.textSecondary }}>
-            نظام إدارة المبيعات — سجّل دخولك للمتابعة
+          <p className="mt-4 text-sm" style={{ color: MOBILE_COLORS.textMuted }}>
+            إدارة العملاء والمبيعات
           </p>
         </div>
 

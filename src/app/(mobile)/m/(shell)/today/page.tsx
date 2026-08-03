@@ -5,6 +5,8 @@ import { getLeads } from "@/lib/data/leads";
 import { buildAgenda, STALE_DAYS } from "@/lib/mobile-agenda";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits, waitingBasisOf } from "@/lib/mobile-format";
+import { channelLabel } from "@/lib/labels";
+import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
 import { MobileLeadCard } from "@/components/mobile/lead-card";
 import { MobileChips } from "@/components/mobile/chips";
 
@@ -18,7 +20,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "calls", label: "اتصالات" },
 ];
 
-type Group = { title: string; color: string; items: LeadRow[]; late: boolean; reason: (l: LeadRow) => string };
+type Group = {
+  title: string;
+  color: string;
+  items: LeadRow[];
+  late: boolean;
+  /** سطر السياق أسفل الاسم (نمط النموذج: «كان المفروض أمس · مشروع ٨٠»). */
+  reason: (l: LeadRow) => string;
+  /** الوقت مكان شارة المرحلة (يمين البطاقة في RTL) بلونه — نمط النموذج. */
+  trailing: (l: LeadRow) => { text: string; color: string };
+};
 
 export default async function MobileTodayPage({
   searchParams,
@@ -40,7 +51,8 @@ export default async function MobileTodayPage({
       color: MOBILE_STATUS.danger.fg,
       items: overdueRecent,
       late: true,
-      reason: (l) => `كان موعدها ${fmtDate(l.nextFollowup!)}`,
+      reason: (l) => `كان المفروض ${relDay(l.nextFollowup!)} · ${channelLabel(l.channel)}`,
+      trailing: (l) => ({ text: fmtShort(l.nextFollowup!), color: MOBILE_STATUS.danger.fg }),
     });
   }
   if (tab === "all" || tab === "visits") {
@@ -49,7 +61,8 @@ export default async function MobileTodayPage({
       color: MOBILE_COLORS.gold,
       items: visitsToday,
       late: false,
-      reason: (l) => `زيارة ${fmtTime(l.visitAt!)}`,
+      reason: (l) => `زيارة${l.projectName ? ` · ${l.projectName}` : ""} · ${channelLabel(l.channel)}`,
+      trailing: (l) => ({ text: fmtTime(l.visitAt!), color: MOBILE_COLORS.gold }),
     });
   }
   if (tab === "all" || tab === "calls") {
@@ -58,7 +71,8 @@ export default async function MobileTodayPage({
       color: MOBILE_COLORS.textSecondary,
       items: dueToday,
       late: false,
-      reason: (l) => `الموعد ${fmtTime(l.nextFollowup!)}`,
+      reason: (l) => `اتصال · ${channelLabel(l.channel)}`,
+      trailing: (l) => ({ text: fmtTime(l.nextFollowup!), color: MOBILE_COLORS.gold }),
     });
   }
 
@@ -93,6 +107,7 @@ export default async function MobileTodayPage({
                     lead={l}
                     late={g.late}
                     reason={g.reason(l)}
+                    trailing={g.trailing(l)}
                     waitingBasis={waitingBasisOf(l)}
                   />
                 ))}
@@ -122,7 +137,8 @@ export default async function MobileTodayPage({
                     key={l.id}
                     lead={l}
                     late
-                    reason={`كان موعدها ${fmtDate(l.nextFollowup!)}`}
+                    reason={`كان المفروض ${relDay(l.nextFollowup!)} · ${channelLabel(l.channel)}`}
+                    trailing={{ text: fmtShort(l.nextFollowup!), color: MOBILE_STATUS.danger.fg }}
                     waitingBasis={waitingBasisOf(l)}
                   />
                 ))}
@@ -144,4 +160,18 @@ function fmtDate(d: Date): string {
   return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
     timeZone: "Asia/Riyadh", day: "numeric", month: "short",
   }).format(d);
+}
+/** «أمس ٤:٠٠» لمتأخر الأمس، وتاريخ قصير لما قبله — عرض فقط (الحدود من buildAgenda). */
+function fmtShort(d: Date): string {
+  const days = Math.floor((dayStartKSA().getTime() - dayStartKSA(d).getTime()) / DAY_MS);
+  if (days === 1) return `أمس ${fmtTime(d)}`;
+  return fmtDate(d);
+}
+/** «أمس» / «قبل ٣ أيام» — لسطر السياق. */
+function relDay(d: Date): string {
+  const days = Math.floor((dayStartKSA().getTime() - dayStartKSA(d).getTime()) / DAY_MS);
+  if (days <= 1) return "أمس";
+  if (days === 2) return "قبل يومين";
+  if (days <= 10) return `قبل ${toArabicDigits(days)} أيام`;
+  return `قبل ${toArabicDigits(days)} يومًا`;
 }

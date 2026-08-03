@@ -120,20 +120,33 @@ export function MobileLoginForm({
             placeholder="الرمز أو كلمة المرور"
             disabled={noUsers}
             className={`${fieldClass} text-center`}
-            style={fieldStyle}
+            style={{
+              ...fieldStyle,
+              // حالة الخطأ كما في النموذج: حد أحمر على الحقل نفسه.
+              ...(state?.error ? { borderColor: "#E24B4A" } : {}),
+            }}
           />
         </div>
 
         {state?.error ? (
-          <p
-            className="rounded-lg px-3 py-2 text-center text-sm"
-            style={{ backgroundColor: "#2A0E0E", color: "#F7C1C1" }}
-          >
+          <p className="flex items-center" style={{ fontSize: 12, color: "#F7C1C1", gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ stroke: "#E24B4A", flex: "none" }} strokeWidth="2" aria-hidden>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7.5v5M12 16h.01" />
+            </svg>
             {state.error}
           </p>
         ) : null}
 
         <SubmitButton />
+
+        {/* إعادة التعيين تتم بدعوة إيميل من المدير (/reset-pin?token=…) — لا مسار ذاتي، فالنص إرشاد لا رابط ميت. */}
+        <p
+          className="text-center"
+          style={{ marginTop: 4, fontSize: 13, color: MOBILE_COLORS.gold, minHeight: 44, lineHeight: "44px" }}
+        >
+          نسيت الرمز؟ اطلب من مديرك رابط إعادة التعيين
+        </p>
       </form>
     </div>
   );
