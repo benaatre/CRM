@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
-import { getLeads, getNotContactedCount, type LeadRow } from "@/lib/data/leads";
+import { getLeads, type LeadRow } from "@/lib/data/leads";
 import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
+import { buildAgenda } from "@/lib/mobile-agenda";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
-import { greeting, toArabicDigits } from "@/lib/mobile-format";
+import { greeting, toArabicDigits, waitingBasisOf } from "@/lib/mobile-format";
 import { MobileStatTile } from "@/components/mobile/stat-tile";
 import { MobileLeadCard } from "@/components/mobile/lead-card";
 
@@ -31,42 +32,23 @@ export default async function MobileHomePage() {
    * مصدر واحد محجَّم بالدور: getLeads (tab=working) — الموظف يرى عملاءه فقط عبر
    * scopeForUser، والتبويب يستبعد المؤرشف والمحجوز/المقفول أصلًا.
    * تجنّبنا getDashboard عمدًا: محجّمة لكنها ~١٥ استعلامًا (قمع + مشاعر + فريق)
-   * لا تحتاجها هذي الشاشة. وعدّاد «لم يتم التواصل» من دالته المعتمدة نفسها
-   * التي تغذّي شارة الويب — فلا يظهر رقمان مختلفان للشيء ذاته.
+   * لا تحتاجها هذي الشاشة.
    */
-  const [leads, notContacted] = await Promise.all([
-    getLeads({ tab: "working", sort: "activity" }),
-    getNotContactedCount(),
-  ]);
+  const leads = await getLeads({ tab: "working", sort: "activity" });
 
   const now = new Date();
-  const dayStart = dayStartKSA(now);
-  const dayEnd = new Date(dayStart.getTime() + DAY_MS);
-
-  /*
-   * «متابعات اليوم» = مواعيد اليوم وحدها. لوحة الويب تجمع المتأخر مع اليوم تحت
-   * الاسم نفسه، فيقرأ الموظف ١٠٩ ويظن أن كلها اليوم بينما ٧٢ متراكمة من أيام
-   * سابقة. هنا نفصلهما: الرقم لليوم، والمتراكم شارة حمراء صريحة.
-   */
-  const dueToday = leads.filter(
-    (l) => l.nextFollowup && l.nextFollowup >= dayStart && l.nextFollowup < dayEnd,
-  );
-  const overdue = leads.filter((l) => l.nextFollowup && l.nextFollowup < dayStart);
-  // «لم يرد» = مرحلة ATTEMPTED ليطابق ما يفتحه الرابط (/m/leads?stage=ATTEMPTED).
-  const notAnswered = leads.filter((l) => l.stage === "ATTEMPTED");
+  // كل التقسيم الزمني من المصدر المشترك — لا منطق تاريخ في هذي الصفحة.
+  const { dueToday, overdueRecent, overdueOld, visitsToday, notContacted, notAnswered } =
+    buildAgenda(leads, now);
+  const overdueCount = overdueRecent.length + overdueOld.length;
 
   /*
    * «ابدأ بهذول» بحصص لا بأولوية صارمة: التسلسل الصارم (كل المتأخر ثم الزيارات
    * ثم الجدد) كان يجوّع الفئتين الأخريين — ٧٢ متأخرًا تملأ الخمسة دائمًا، فتظهر
    * كلها بزر ذهبي واحد. الحصص تضمن ظهور زيارة اليوم والعميل الجديد.
    */
-  const lateSorted = leads
-    .filter((l) => l.nextFollowup && l.nextFollowup < now)
-    .sort((a, b) => a.nextFollowup!.getTime() - b.nextFollowup!.getTime()); // الأقدم تأخّرًا أولًا
-  const visitToday = leads
-    .filter((l) => l.visitAt && l.visitAt >= dayStart && l.visitAt < dayEnd)
-    .sort((a, b) => a.visitAt!.getTime() - b.visitAt!.getTime());
-  const freshUntouched = leads.filter((l) => l.stage === "NEW" && !l.lastContact);
+  const lateSorted = [...overdueRecent, ...dueToday.filter((l) => l.nextFollowup! < now), ...overdueOld];
+  const freshUntouched = notContacted.filter((l) => !l.lastContact);
 
   const TOP_MAX = 5;
   const seen = new Set<string>();
@@ -87,15 +69,16 @@ export default async function MobileHomePage() {
   };
 
   // زيارة اليوم أولًا: موعد مثبَّت بساعة لا يُؤجَّل، بخلاف متابعة انزاحت.
-  take(visitToday, 2, false, (l) => `زيارة اليوم ${fmtTime(l.visitAt!)}`);
+  take(visitsToday, 2, false, (l) => `زيارة اليوم ${fmtTime(l.visitAt!)}`);
   take(lateSorted, 2, true, (l) => overdueLabel(l.nextFollowup!, now));
   take(freshUntouched, 1, false, () => "جديد — ما تواصلت معه");
   // ما بقي من مقاعد يملأه الأشد إلحاحًا (المتأخر) ثم الجدد.
   take(lateSorted, TOP_MAX, true, (l) => overdueLabel(l.nextFollowup!, now));
   take(freshUntouched, TOP_MAX, false, () => "جديد — ما تواصلت معه");
 
-  // مهام اليوم = مواعيد اليوم + زيارات اليوم + المتراكم المتأخر (بلا تكرار عميل).
-  const taskIds = new Set([...dueToday, ...visitToday, ...overdue].map((l) => l.id));
+  // مهام اليوم = مواعيد اليوم وحدها — نفس رقم عدّاد «متابعات اليوم» بالضبط.
+  // (المتراكم له شارته الحمراء المنفصلة، فضمّه هنا كان يعطي رقمين للشيء نفسه.)
+  const taskCount = dueToday.length;
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
 
   return (
@@ -107,7 +90,7 @@ export default async function MobileHomePage() {
             {greeting(now)}، {firstName}
           </div>
           <div className="mt-0.5 text-xs" style={{ color: MOBILE_COLORS.textMuted }}>
-            عندك {toArabicDigits(taskIds.size)} {taskWord(taskIds.size)} اليوم
+            عندك {toArabicDigits(taskCount)} {taskWord(taskCount)} اليوم
           </div>
         </div>
         <div
@@ -122,7 +105,7 @@ export default async function MobileHomePage() {
       {/* ===== العدّادات ===== */}
       <div className="flex gap-[7px] px-4">
         <MobileStatTile
-          count={notContacted}
+          count={notContacted.length}
           label="لم يتم التواصل"
           href="/m/new"
           bg={MOBILE_STATUS.danger.bg}
@@ -140,7 +123,7 @@ export default async function MobileHomePage() {
           label="متابعات اليوم"
           href="/m/today"
           countColor={MOBILE_COLORS.gold}
-          badge={overdue.length ? `${toArabicDigits(overdue.length)} متأخرة` : undefined}
+          badge={overdueCount ? `${toArabicDigits(overdueCount)} متأخرة` : undefined}
         />
       </div>
 
@@ -169,6 +152,7 @@ export default async function MobileHomePage() {
                   lead={item.lead}
                   late={item.late}
                   reason={item.reason}
+                  waitingBasis={waitingBasisOf(item.lead)}
                 />
               ))}
             </div>

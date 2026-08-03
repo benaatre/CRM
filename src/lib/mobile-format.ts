@@ -15,14 +15,40 @@ export function greeting(date: Date = new Date()): string {
 }
 
 /**
- * «معك من …» — مدّة بقاء العميل مع الموظف بصياغة عربية سليمة
- * (مفرد/مثنّى/جمع قلّة/تمييز مفرد منصوب) لا بقالب واحد جامد.
+ * أساس عدّاد الانتظار: `daysWaiting` تُحسب من آخر تواصل إن وُجد وكان أحدث من
+ * الإسناد، وإلا من الإسناد (lib/assignment.ts:waitingSince). فالنص لازم يتبع
+ * الأساس — «معك من اليوم» لعميل تواصلت معه اليوم وهو معك من شهور نصٌّ كاذب.
  */
-export function waitingLabel(days: number): string {
+export type WaitingBasis = "contact" | "assign";
+
+export function waitingBasisOf(lead: {
+  lastContact: Date | null;
+  assignedAt: Date | null;
+}): WaitingBasis {
+  if (!lead.lastContact) return "assign";
+  if (lead.assignedAt && lead.lastContact <= lead.assignedAt) return "assign";
+  return "contact";
+}
+
+/** عدد الأيام بصياغة عربية سليمة (مفرد/مثنّى/جمع قلّة/تمييز مفرد منصوب). */
+function daysPhrase(d: number, one: string, two: string, few: string, many: string): string {
+  if (d === 1) return one;
+  if (d === 2) return two;
+  if (d <= 10) return `${toArabicDigits(d)} ${few}`;
+  return `${toArabicDigits(d)} ${many}`;
+}
+
+/**
+ * نص عدّاد الانتظار — يتبع أساسه لا يخمّنه:
+ * `contact` ⟵ «آخر تواصل اليوم / قبل ٣ أيام» · `assign` ⟵ «معك من اليوم / ٣ أيام».
+ */
+export function waitingLabel(days: number, basis: WaitingBasis = "assign"): string {
   const d = Math.max(0, Math.floor(days));
+  if (basis === "contact") {
+    if (d === 0) return "آخر تواصل اليوم";
+    if (d === 1) return "آخر تواصل أمس";
+    return `آخر تواصل قبل ${daysPhrase(d, "يوم", "يومين", "أيام", "يومًا")}`;
+  }
   if (d === 0) return "معك من اليوم";
-  if (d === 1) return "معك من يوم";
-  if (d === 2) return "معك من يومين";
-  if (d <= 10) return `معك من ${toArabicDigits(d)} أيام`;
-  return `معك من ${toArabicDigits(d)} يومًا`;
+  return `معك من ${daysPhrase(d, "يوم", "يومين", "أيام", "يومًا")}`;
 }

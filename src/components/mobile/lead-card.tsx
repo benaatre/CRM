@@ -7,7 +7,7 @@ import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import { channelLabel, stageLabel } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
-import { waitingLabel } from "@/lib/mobile-format";
+import { waitingLabel, type WaitingBasis } from "@/lib/mobile-format";
 
 /**
  * الحد الأدنى الذي تحتاجه البطاقة — `LeadRow` يحققه بنيويًا، فتُمرَّر صفوف
@@ -37,12 +37,15 @@ export function MobileLeadCard({
   lead,
   late = false,
   reason,
+  waitingBasis = "assign",
 }: {
   lead: MobileLeadCardLead;
   /** متأخر (فات موعده) — يصبغ زر الاتصال ذهبيًا مملوءًا. */
   late?: boolean;
   /** سطر سبب اختياري («زيارة اليوم ٤:٣٠» مثلًا) يظهر بدل السطر الثانوي. */
   reason?: string;
+  /** أساس عدّاد الانتظار — تحسبه الصفحة من lastContact/assignedAt ولا يُخمَّن هنا. */
+  waitingBasis?: WaitingBasis;
 }) {
   const wa = waPhone(lead.phone);
   // الأزرار روابط حقيقية (tel:/wa.me) — فلا نضع البطاقة كـ<a> حولها (تعشيق روابط
@@ -99,7 +102,7 @@ export function MobileLeadCard({
           className="truncate"
           style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, marginTop: 5 }}
         >
-          {reason ?? `${waitingLabel(lead.daysWaiting)} · ${channelLabel(lead.channel)}`}
+          {reason ?? `${waitingLabel(lead.daysWaiting, waitingBasis)} · ${channelLabel(lead.channel)}`}
         </div>
       </div>
 
