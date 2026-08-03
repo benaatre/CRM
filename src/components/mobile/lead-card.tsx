@@ -38,6 +38,7 @@ export function MobileLeadCard({
   late = false,
   reason,
   waitingBasis = "assign",
+  trailing,
 }: {
   lead: MobileLeadCardLead;
   /** متأخر (فات موعده) — يصبغ زر الاتصال ذهبيًا مملوءًا. */
@@ -46,6 +47,11 @@ export function MobileLeadCard({
   reason?: string;
   /** أساس عدّاد الانتظار — تحسبه الصفحة من lastContact/assignedAt ولا يُخمَّن هنا. */
   waitingBasis?: WaitingBasis;
+  /**
+   * نص يحل محل شارة المرحلة أعلى اليسار (نمط بطاقات «متابعات اليوم» في النموذج:
+   * الوقت مكان الشارة، بلونه). غيابه = شارة المرحلة كالمعتاد.
+   */
+  trailing?: { text: string; color: string };
 }) {
   const wa = waPhone(lead.phone);
   // الأزرار روابط حقيقية (tel:/wa.me) — فلا نضع البطاقة كـ<a> حولها (تعشيق روابط
@@ -91,12 +97,21 @@ export function MobileLeadCard({
       <div className="pointer-events-none relative z-10">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 truncate text-[15px] font-semibold text-white">{lead.name}</div>
-          <span
-            className={`shrink-0 whitespace-nowrap border font-semibold ${stageChipClass[lead.stage]}`}
-            style={{ fontSize: "10.5px", padding: "4px 9px", borderRadius: 7 }}
-          >
-            {stageLabel(lead.stage)}
-          </span>
+          {trailing ? (
+            <span
+              className="shrink-0 whitespace-nowrap font-semibold"
+              style={{ fontSize: 12, color: trailing.color }}
+            >
+              {trailing.text}
+            </span>
+          ) : (
+            <span
+              className={`shrink-0 whitespace-nowrap border font-semibold ${stageChipClass[lead.stage]}`}
+              style={{ fontSize: "10.5px", padding: "4px 9px", borderRadius: 7 }}
+            >
+              {stageLabel(lead.stage)}
+            </span>
+          )}
         </div>
         <div
           className="truncate"

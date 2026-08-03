@@ -39,6 +39,19 @@ function daysPhrase(d: number, one: string, two: string, few: string, many: stri
 }
 
 /**
+ * مدة منقضية بأنسب وحدة (دقيقة/ساعة/يوم) — لسطر الرؤية «أقدمهم ينتظر من …».
+ * عرض فقط؛ لا يدخل في أي منطق.
+ */
+export function elapsedLabel(from: Date, now: Date = new Date()): string {
+  const mins = Math.max(1, Math.floor((now.getTime() - from.getTime()) / 60_000));
+  if (mins < 60) return `${toArabicDigits(mins)} دقيقة`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours === 1 ? "ساعة" : hours === 2 ? "ساعتين" : hours <= 10 ? `${toArabicDigits(hours)} ساعات` : `${toArabicDigits(hours)} ساعة`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "يوم" : days === 2 ? "يومين" : days <= 10 ? `${toArabicDigits(days)} أيام` : `${toArabicDigits(days)} يومًا`;
+}
+
+/**
  * نص عدّاد الانتظار — يتبع أساسه لا يخمّنه:
  * `contact` ⟵ «آخر تواصل اليوم / قبل ٣ أيام» · `assign` ⟵ «معك من اليوم / ٣ أيام».
  */

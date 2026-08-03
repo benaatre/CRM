@@ -1,64 +1,81 @@
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { Bell, CheckCircle2 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeads, type LeadRow } from "@/lib/data/leads";
 import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
 import { buildAgenda } from "@/lib/mobile-agenda";
+import { channelLabel } from "@/lib/labels";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
-import { greeting, toArabicDigits, waitingBasisOf } from "@/lib/mobile-format";
-import { MobileStatTile } from "@/components/mobile/stat-tile";
+import { greeting, toArabicDigits, waitingBasisOf, elapsedLabel } from "@/lib/mobile-format";
 import { MobileLeadCard } from "@/components/mobile/lead-card";
+import { UrgencyCard, type UrgencyChip } from "@/components/mobile/urgency-card";
+import { MobileOwnerHome } from "@/components/mobile/owner-home";
 
 // البيانات تتغيّر مع كل متابعة — لا تُخزَّن الصفحة.
 export const dynamic = "force-dynamic";
 
 export default async function MobileHomePage() {
   const user = await requireUser();
-
-  // لوحة المالك/المدير لها احتياجات مختلفة (بيانات الفريق) — مرحلة لاحقة.
-  if (isManager(user.role)) {
-    return (
-      <div
-        className="rounded-xl p-5 text-center"
-        style={{ backgroundColor: MOBILE_COLORS.card, color: MOBILE_COLORS.textSecondary }}
-      >
-        <h1 className="text-base font-medium text-white">لوحة المالك</h1>
-        <p className="mt-2 text-sm">قيد الإنشاء</p>
-      </div>
-    );
-  }
+  if (isManager(user.role)) return <MobileOwnerHome user={user} />;
 
   /*
    * مصدر واحد محجَّم بالدور: getLeads (tab=working) — الموظف يرى عملاءه فقط عبر
    * scopeForUser، والتبويب يستبعد المؤرشف والمحجوز/المقفول أصلًا.
-   * تجنّبنا getDashboard عمدًا: محجّمة لكنها ~١٥ استعلامًا (قمع + مشاعر + فريق)
-   * لا تحتاجها هذي الشاشة.
    */
   const leads = await getLeads({ tab: "working", sort: "activity" });
 
   const now = new Date();
   // كل التقسيم الزمني من المصدر المشترك — لا منطق تاريخ في هذي الصفحة.
-  const { dueToday, overdueRecent, overdueOld, visitsToday, notContacted, notAnswered } =
-    buildAgenda(leads, now);
+  const { dueToday, overdueRecent, overdueOld, visitsToday, notContacted } = buildAgenda(leads, now);
   const overdueCount = overdueRecent.length + overdueOld.length;
+  const taskCount = dueToday.length;
+  const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
 
-  /*
-   * «ابدأ بهذول» بحصص لا بأولوية صارمة: التسلسل الصارم (كل المتأخر ثم الزيارات
-   * ثم الجدد) كان يجوّع الفئتين الأخريين — ٧٢ متأخرًا تملأ الخمسة دائمًا، فتظهر
-   * كلها بزر ذهبي واحد. الحصص تضمن ظهور زيارة اليوم والعميل الجديد.
-   */
+  /* ===== البطاقة ١: ما تواصلت معهم (أحمر) ===== */
+  const untouchedSorted = [...notContacted].sort((a, b) => b.daysWaiting - a.daysWaiting);
+  const oldest = untouchedSorted[0];
+  const untouchedChips: UrgencyChip[] = untouchedSorted.slice(0, 4).map((l) => ({
+    name: l.name,
+    sub: `${channelLabel(l.channel)} · من ${l.assignedAt ? elapsedLabel(l.assignedAt, now) : `${toArabicDigits(l.daysWaiting)} يوم`}`,
+    dot: l.daysWaiting >= 1 ? MOBILE_STATUS.danger.base : MOBILE_STATUS.warning.base,
+    fg: l.daysWaiting >= 1 ? MOBILE_STATUS.danger.fg : MOBILE_STATUS.warning.fg,
+  }));
+
+  /* ===== البطاقة ٢: متابعات اليوم (ذهبي) ===== */
+  const followupChips: UrgencyChip[] = [
+    ...overdueRecent.slice(0, 2).map((l) => ({
+      name: l.name,
+      sub: `متأخر · ${fmtShort(l.nextFollowup!)}`,
+      dot: MOBILE_STATUS.danger.base,
+      fg: MOBILE_STATUS.danger.fg,
+    })),
+    ...dueToday.slice(0, 2).map((l) => ({
+      name: l.name,
+      sub: `اتصال · ${fmtTime(l.nextFollowup!)}`,
+      dot: MOBILE_COLORS.gold,
+      fg: MOBILE_COLORS.textPrimary,
+    })),
+  ];
+  const followupSub = [
+    overdueCount ? `${toArabicDigits(overdueCount)} متأخرة` : null,
+    dueToday[0] ? `أقرب موعد الساعة ${fmtTime(dueToday[0].nextFollowup!)}` : null,
+  ].filter(Boolean).join(" · ") || "ما عليك مواعيد اليوم";
+
+  /* ===== البطاقة ٣: زيارات اليوم (أزرق) ===== */
+  const visitChips: UrgencyChip[] = visitsToday.slice(0, 3).map((l) => ({
+    name: `زيارة — ${l.name}`,
+    sub: `${l.projectName ?? "المشروع"} · ${fmtTime(l.visitAt!)}`,
+    dot: MOBILE_STATUS.info.base,
+    fg: MOBILE_STATUS.info.fg,
+  }));
+
+  /* ===== ابدأ بهذول — حصص لا أولوية صارمة ===== */
   const lateSorted = [...overdueRecent, ...dueToday.filter((l) => l.nextFollowup! < now), ...overdueOld];
   const freshUntouched = notContacted.filter((l) => !l.lastContact);
-
   const TOP_MAX = 5;
   const seen = new Set<string>();
   const top: { lead: LeadRow; late: boolean; reason: string }[] = [];
-  const take = (
-    rows: LeadRow[],
-    quota: number,
-    isLate: boolean,
-    reasonOf: (l: LeadRow) => string,
-  ) => {
+  const take = (rows: LeadRow[], quota: number, isLate: boolean, reasonOf: (l: LeadRow) => string) => {
     let n = 0;
     for (const l of rows) {
       if (n >= quota || top.length >= TOP_MAX || seen.has(l.id)) continue;
@@ -67,75 +84,126 @@ export default async function MobileHomePage() {
       n++;
     }
   };
-
-  // زيارة اليوم أولًا: موعد مثبَّت بساعة لا يُؤجَّل، بخلاف متابعة انزاحت.
   take(visitsToday, 2, false, (l) => `زيارة اليوم ${fmtTime(l.visitAt!)}`);
   take(lateSorted, 2, true, (l) => overdueLabel(l.nextFollowup!, now));
   take(freshUntouched, 1, false, () => "جديد — ما تواصلت معه");
-  // ما بقي من مقاعد يملأه الأشد إلحاحًا (المتأخر) ثم الجدد.
   take(lateSorted, TOP_MAX, true, (l) => overdueLabel(l.nextFollowup!, now));
   take(freshUntouched, TOP_MAX, false, () => "جديد — ما تواصلت معه");
 
-  // مهام اليوم = مواعيد اليوم وحدها — نفس رقم عدّاد «متابعات اليوم» بالضبط.
-  // (المتراكم له شارته الحمراء المنفصلة، فضمّه هنا كان يعطي رقمين للشيء نفسه.)
-  const taskCount = dueToday.length;
-  const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
-
   return (
-    <div>
-      {/* ===== الترويسة ===== */}
-      <header className="flex items-center justify-between gap-3 px-4 py-3">
+    <div className="flex flex-col" style={{ gap: 16 }}>
+      {/* ===== الترويسة (النموذج: جرس ٤٢ بشارة + صورة رمزية ٤٢) ===== */}
+      <header className="flex items-start justify-between" style={{ padding: "0 2px" }}>
         <div className="min-w-0">
-          <div className="truncate text-[1.0625rem] font-medium text-white">
+          <div className="truncate" style={{ fontSize: 21, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
             {greeting(now)}، {firstName}
           </div>
-          <div className="mt-0.5 text-xs" style={{ color: MOBILE_COLORS.textMuted }}>
+          <div style={{ fontSize: 13, color: MOBILE_COLORS.textSecondary, marginTop: 4 }}>
             عندك {toArabicDigits(taskCount)} {taskWord(taskCount)} اليوم
           </div>
         </div>
-        <div
-          className="flex size-[34px] shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-          style={{ backgroundColor: "#1A1A1D", color: MOBILE_COLORS.gold }}
-          aria-hidden
-        >
-          {firstName.slice(0, 1)}
+        <div className="flex items-center" style={{ gap: 9 }}>
+          {/* الجرس: لا نظام إشعارات في الجوال بعد — الشارة = المتأخرات (رقم فعلي قابل للفعل) ويفتح متابعات اليوم. */}
+          <Link
+            href="/m/today"
+            aria-label="التنبيهات"
+            className="relative flex items-center justify-center"
+            style={{
+              boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
+              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
+            }}
+          >
+            <Bell size={19} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
+            {overdueCount > 0 && (
+              <span
+                className="absolute flex items-center justify-center"
+                style={{
+                  boxSizing: "border-box", top: -6, left: -6, minWidth: 19, height: 19,
+                  borderRadius: 10, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
+                  fontSize: 10, fontWeight: 700, padding: "0 5px",
+                  border: `2px solid ${MOBILE_COLORS.bg}`,
+                }}
+              >
+                {toArabicDigits(overdueCount)}
+              </span>
+            )}
+          </Link>
+          <div
+            className="flex items-center justify-center"
+            style={{
+              boxSizing: "border-box", width: 42, height: 42, borderRadius: 21,
+              background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`,
+              fontSize: 16, fontWeight: 600, color: MOBILE_COLORS.gold,
+            }}
+            aria-hidden
+          >
+            {firstName.slice(0, 1)}
+          </div>
         </div>
       </header>
 
-      {/* ===== العدّادات ===== */}
-      <div className="flex gap-[7px] px-4">
-        <MobileStatTile
-          count={notContacted.length}
-          label="لم يتم التواصل"
-          href="/m/new"
-          bg={MOBILE_STATUS.danger.bg}
-          countColor={MOBILE_STATUS.danger.fg}
-          labelColor="#E29A9A"
-        />
-        <MobileStatTile
-          count={notAnswered.length}
-          label="لم يرد"
-          href="/m/leads?stage=ATTEMPTED"
-          countColor={MOBILE_STATUS.warning.fg}
-        />
-        <MobileStatTile
-          count={dueToday.length}
-          label="متابعات اليوم"
+      {/* ===== البطاقات المجمّعة الثلاث ===== */}
+      <div className="flex flex-col" style={{ gap: 11 }}>
+        {notContacted.length > 0 && (
+          <UrgencyCard
+            href="/m/new"
+            title="ما تواصلت معهم"
+            count={notContacted.length}
+            cta="اقتحمهم"
+            color={MOBILE_STATUS.danger.base}
+            fg={MOBILE_STATUS.danger.fg}
+            border={MOBILE_STATUS.danger.border}
+            subColor={MOBILE_STATUS.danger.fg}
+            sub={
+              oldest?.assignedAt
+                ? `أقدمهم ينتظر من ${elapsedLabel(oldest.assignedAt, now)} — الرد السريع يرفع التحويل ٩ أضعاف`
+                : "الرد السريع يرفع التحويل ٩ أضعاف"
+            }
+            chips={untouchedChips}
+          />
+        )}
+        <UrgencyCard
           href="/m/today"
-          countColor={MOBILE_COLORS.gold}
-          badge={overdueCount ? `${toArabicDigits(overdueCount)} متأخرة` : undefined}
+          title="متابعات اليوم"
+          count={taskCount}
+          cta="خلّصها"
+          color={MOBILE_COLORS.gold}
+          fg={MOBILE_COLORS.textPrimary}
+          border={MOBILE_COLORS.goldBorder}
+          subColor={MOBILE_COLORS.textMuted}
+          sub={followupSub}
+          chips={followupChips}
         />
+        {visitsToday.length > 0 && (
+          <UrgencyCard
+            href="/m/today?t=visits"
+            title="زيارات وتنبيهات اليوم"
+            count={visitsToday.length}
+            cta="شوفها"
+            color={MOBILE_STATUS.info.base}
+            fg={MOBILE_STATUS.info.fg}
+            border={MOBILE_STATUS.info.base}
+            subColor={MOBILE_STATUS.info.fg}
+            sub={`${toArabicDigits(visitsToday.length)} ${visitsToday.length === 1 ? "زيارة" : "زيارات"} على موعد اليوم — أقربها ${fmtTime(visitsToday[0].visitAt!)}`}
+            chips={visitChips}
+          />
+        )}
       </div>
 
-      {/* ===== ابدأ بهذول ===== */}
-      <section className="mt-5 px-4">
-        <h2 className="mb-2 text-xs" style={{ color: MOBILE_COLORS.textMuted }}>
-          ابدأ بهذول
-        </h2>
+      {/* ===== ابدأ بهذول (١٥/٧٠٠ + مؤشر «ن من م») ===== */}
+      <section>
+        <div className="flex items-baseline justify-between" style={{ marginTop: 4, padding: "0 2px" }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>ابدأ بهذول</h2>
+          {taskCount > 0 && (
+            <span style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted }}>
+              {toArabicDigits(Math.min(top.length, taskCount))} من {toArabicDigits(taskCount)}
+            </span>
+          )}
+        </div>
 
         {top.length === 0 ? (
           <div
-            className="flex flex-col items-center gap-2 rounded-xl px-4 py-8 text-center"
+            className="mt-2 flex flex-col items-center gap-2 rounded-xl px-4 py-8 text-center"
             style={{ backgroundColor: MOBILE_COLORS.card }}
           >
             <CheckCircle2 className="size-8" style={{ color: MOBILE_COLORS.textMuted }} aria-hidden />
@@ -145,7 +213,7 @@ export default async function MobileHomePage() {
           </div>
         ) : (
           <>
-            <div className="flex flex-col" style={{ gap: 10 }}>
+            <div className="mt-2 flex flex-col" style={{ gap: 10 }}>
               {top.map((item) => (
                 <MobileLeadCard
                   key={item.lead.id}
@@ -191,8 +259,15 @@ function overdueLabel(due: Date, now: Date): string {
 /** وقت الرياض بصيغة عربية قصيرة (٤:٣٠ م). */
 function fmtTime(d: Date): string {
   return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
-    timeZone: "Asia/Riyadh",
-    hour: "numeric",
-    minute: "2-digit",
+    timeZone: "Asia/Riyadh", hour: "numeric", minute: "2-digit",
+  }).format(d);
+}
+
+/** «أمس ٤:٠٠» أو «٢ أغسطس» — للمتأخرات في الصفوف المصغّرة. */
+function fmtShort(d: Date): string {
+  const days = Math.floor((dayStartKSA().getTime() - dayStartKSA(d).getTime()) / DAY_MS);
+  if (days === 1) return `أمس ${fmtTime(d)}`;
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
+    timeZone: "Asia/Riyadh", day: "numeric", month: "short",
   }).format(d);
 }

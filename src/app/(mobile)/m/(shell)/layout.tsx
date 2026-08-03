@@ -1,4 +1,6 @@
-import { requireUser } from "@/lib/auth-guards";
+import { requireUser, isManager } from "@/lib/auth-guards";
+import { getLeads } from "@/lib/data/leads";
+import { buildAgenda } from "@/lib/mobile-agenda";
 import { BottomNav } from "@/components/mobile/bottom-nav";
 
 /**
@@ -9,7 +11,20 @@ import { BottomNav } from "@/components/mobile/bottom-nav";
  * في بوابة المصادقة (auth.config.ts) قبل وصول الطلب إلى هنا.
  */
 export default async function MobileShellLayout({ children }: { children: React.ReactNode }) {
-  await requireUser();
+  const user = await requireUser();
+
+  /*
+   * شارات الشريط السفلي (جدد/متابعات) — من نفس مصدر الشاشات (buildAgenda)
+   * حتى لا يظهر رقم في الشارة يخالف رقم الشاشة. للموظف فقط: أرقام المدير
+   * الجماعية ما لها معنى في شريط تنقّل شخصي.
+   */
+  let newCount = 0;
+  let todayCount = 0;
+  if (!isManager(user.role)) {
+    const agenda = buildAgenda(await getLeads({ tab: "working", sort: "activity" }));
+    newCount = agenda.notContacted.length;
+    todayCount = agenda.dueToday.length;
+  }
 
   return (
     <>
@@ -23,7 +38,7 @@ export default async function MobileShellLayout({ children }: { children: React.
       >
         {children}
       </div>
-      <BottomNav />
+      <BottomNav newCount={newCount} todayCount={todayCount} />
     </>
   );
 }
