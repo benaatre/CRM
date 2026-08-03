@@ -6,5 +6,7 @@ export const { auth: middleware } = NextAuth(authConfig);
 
 export const config = {
   // يطبّق الحماية على كل المسارات عدا الأصول الثابتة و API.
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"],
+  // نستثني ~offline (صفحة عدم الاتصال) — بلا امتداد فتحتاج استثناءً صريحًا.
+  // sw.js و /icons/* و /manifest.webmanifest تُستثنى تلقائيًا عبر قاعدة الامتداد (\\.[\\w]+$).
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|~offline|.*\\.[\\w]+$).*)"],
 };
