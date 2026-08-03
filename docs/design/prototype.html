@@ -1,0 +1,2026 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+:root{--bg:#0A0A0B;--page:#08080A;--panel:#0d0d0f;--card:#141416;--raised:#16161A;--border:#26262A;--line2:#1c1c20;--line3:#1e1e22;
+--text:#FFFFFF;--text2:#A1A1A6;--text3:#6E6E73;--dim1:#48484C;--dim2:#3a3a3e;
+--gold:#CBA45E;--gold-lt:#E2C078;--on-gold:#0A0A0B;--gold-bg:#1c1710;--gold-bd:#3a2f18;
+--bad:#E24B4A;--bad-bg:#2A0E0E;--bad-fg:#F7C1C1;--bad-bd:#5c2220;
+--ok:#639922;--ok-bg:#173404;--ok-fg:#C0DD97;--ok-bd:#2f5c0d;
+--warn:#C98A16;--warn-bg:#412402;--warn-fg:#FAC775;--warn-bd:#6b4008;
+--info:#378ADD;--info-bg:#042C53;--info-fg:#B5D4F4;
+--bez1:#2a2a2e;--bez2:#161618;--tabbar:rgba(14,14,16,.92);--glow:rgba(203,164,94,.20);--glow2:rgba(55,138,221,.14)}
+body{background:var(--page);transition:background-color .45s ease}
+body *{transition:background-color .4s ease,border-color .4s ease,color .3s ease,fill .3s ease,stroke .3s ease}
+@keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes screenIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes drift{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-30px,40px) scale(1.18)}}
+@keyframes sweep{0%{transform:translateX(-140%)}55%,100%{transform:translateX(140%)}}
+@keyframes widen{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0)}}
+@keyframes ringDash{from{stroke-dashoffset:100.5}to{stroke-dashoffset:34}}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(203,164,94,0)}50%{box-shadow:0 0 22px 0 var(--glow)}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--page);font-family:'IBM Plex Sans Arabic',system-ui,sans-serif}
+a{color:var(--gold);text-decoration:none}
+a:hover{color:var(--gold-lt)}
+*{box-sizing:border-box}
+::-webkit-scrollbar{width:0;height:0}
+@keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes skel{0%,100%{opacity:.55}50%{opacity:1}}
+</style>
+</helmet>
+<div dir="rtl" style="min-height:100vh;padding:44px 40px 80px;display:flex;flex-direction:column;align-items:center;gap:56px">
+
+<div style="display:flex;gap:36px;align-items:flex-start;justify-content:center;flex-wrap:wrap">
+
+<div style="position:relative;display:flex;flex-direction:column;gap:14px;align-items:center">
+<div style="position:absolute;top:60px;right:-70px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,var(--glow),transparent 68%);filter:blur(30px);animation:drift 16s ease-in-out infinite alternate;pointer-events:none"></div>
+<div style="position:absolute;bottom:40px;left:-80px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,var(--glow2),transparent 70%);filter:blur(34px);animation:drift 21s ease-in-out infinite alternate-reverse;pointer-events:none"></div>
+<div style="position:relative;width:413px;height:872px;border-radius:56px;background:linear-gradient(160deg,var(--bez1),var(--bez2));padding:10px;box-shadow:0 40px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.06)">
+<div style="position:relative;width:393px;height:852px;border-radius:47px;overflow:hidden;background:var(--bg);display:flex;flex-direction:column">
+
+<div style="position:absolute;top:0;right:0;left:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 26px;z-index:40;pointer-events:none">
+<span style="font-size:15px;font-weight:600;color:var(--text);letter-spacing:.3px">٩:٤١</span>
+<div style="display:flex;gap:6px;align-items:center;opacity:.95">
+<svg width="18" height="12" viewBox="0 0 18 12" style="fill:var(--text)"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1" opacity=".4"/></svg>
+<svg width="16" height="12" viewBox="0 0 16 12" fill="none" style="stroke:var(--text)" stroke-width="1.6"><path d="M1 4.2a10 10 0 0 1 14 0M3.6 6.9a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.1" style="fill:var(--text);stroke:none"/></svg>
+<svg width="26" height="12" viewBox="0 0 26 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3.2" fill="none" style="stroke:var(--text)" opacity=".45"/><rect x="2" y="2" width="16" height="8" rx="2" style="fill:var(--text)"/><path d="M23.5 4.2v3.6a2 2 0 0 0 0-3.6" style="fill:var(--text)" opacity=".45"/></svg>
+</div>
+</div>
+<div style="position:absolute;top:11px;right:50%;transform:translateX(50%);width:124px;height:34px;border-radius:20px;background:#000;z-index:45"></div>
+
+<sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:flex;flex-direction:column;padding:0 28px;animation:screenIn .4s cubic-bezier(.22,1,.36,1) both;background:var(--bg)">
+<div style="height:214px"></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:18px">
+<img src="assets/logo-lockup.png" alt="Sultan Residence — مشاريع السلطان" width="176" height="182" style="width:176px;height:auto;display:block;filter:drop-shadow(0 10px 30px rgba(203,164,94,.22));animation:riseIn .7s cubic-bezier(.22,1,.36,1) both">
+<div style="font-size:13px;color:var(--text3);margin-top:-4px">إدارة العملاء والمبيعات</div>
+</div>
+<div style="height:52px"></div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;flex-direction:column;gap:7px">
+<label style="font-size:12px;color:var(--text2)">البريد أو رقم الجوال</label>
+<div style="height:50px;border-radius:13px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;padding:0 15px;font-size:15px;color:var(--text)">abeer@sultan.sa</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<label style="font-size:12px;color:var(--text2)">الرمز السري</label>
+<div style="height:50px;border-radius:13px;background:var(--card);border:1px solid var(--bad);display:flex;align-items:center;justify-content:space-between;padding:0 15px;font-size:17px;color:var(--text);letter-spacing:5px">••••
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--text3)" stroke-width="1.7"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+</div>
+<div style="font-size:12px;color:var(--bad-fg);display:flex;align-items:center;gap:6px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="stroke:var(--bad)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h.01"/></svg>
+البيانات غير صحيحة، جرّب مرة ثانية</div>
+</div>
+</div>
+<button onClick="{{ login }}" style="margin-top:26px;height:52px;border:none;border-radius:14px;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;position:relative;overflow:hidden;transition:transform .2s,filter .2s" style-hover="transform:translateY(-1px);filter:brightness(1.06)" style-active="transform:scale(.985)" style-after="content:'';position:absolute;top:0;bottom:0;width:60%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.32),transparent);animation:sweep 3.6s ease-in-out infinite">دخول</button>
+<div style="margin-top:16px;text-align:center;font-size:13px;color:var(--gold)">نسيت الرمز؟</div>
+<div style="flex:1"></div>
+<div style="text-align:center;font-size:11px;color:var(--dim1);padding-bottom:26px">رقم فال ١٢٠٠٠٢١٠٢٩</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isEmpHome }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;overflow-y:auto;padding:64px 18px 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 2px">
+<div>
+<div style="font-size:21px;font-weight:700;color:var(--text)">صباح الخير، عبير</div>
+<div style="font-size:13px;color:var(--text2);margin-top:4px">عندك ٧ مهام اليوم</div>
+</div>
+<div style="display:flex;align-items:center;gap:9px">
+<button onClick="{{ openNotif }}" style="position:relative;width:42px;height:42px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)" style-active="transform:scale(.94)">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--text2)" stroke-width="1.8" stroke-linecap="round"><path d="M18 8.6a6 6 0 0 0-12 0c0 6-2.2 7.6-2.2 7.6h16.4S18 14.6 18 8.6z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
+<span style="position:absolute;top:-6px;left:-6px;min-width:19px;height:19px;border-radius:10px;background:var(--bad);color:#FFFFFF;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--bg);animation:pulseDot 2.2s ease-in-out infinite">{{ notifCount }}</span>
+</button>
+<div style="width:42px;height:42px;border-radius:21px;background:var(--raised);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:var(--gold)">{{ meInitial }}</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ urgency }}" as="u" hint-placeholder-count="3">
+<button onClick="{{ u.go }}" style="text-align:right;font-family:inherit;background:var(--card);border:1px solid {{ u.bd }};border-radius:18px;padding:12px 13px 13px;display:flex;flex-direction:column;gap:9px;cursor:pointer;overflow:hidden;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ u.delay }};transition:transform .25s cubic-bezier(.22,1,.36,1),border-color .25s,box-shadow .25s" style-hover="transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,0,0,.3)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="min-width:23px;height:23px;border-radius:8px;background:{{ u.color }};color:#FFFFFF;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px">{{ u.count }}</span>
+<span style="font-size:14.5px;font-weight:700;color:{{ u.fg }}">{{ u.title }}</span>
+</div>
+<span style="font-size:12px;font-weight:600;color:{{ u.color }};white-space:nowrap">{{ u.cta }} ←</span>
+</div>
+<div style="font-size:11.5px;color:{{ u.subColor }};line-height:1.6">{{ u.sub }}</div>
+<div style="display:flex;gap:8px;overflow-x:auto;width:100%;padding-bottom:2px">
+<sc-for list="{{ u.chips }}" as="c" hint-placeholder-count="3">
+<div style="flex:none;min-width:132px;background:var(--raised);border:1px solid var(--border);border-radius:13px;padding:9px 11px">
+<div style="display:flex;align-items:center;gap:6px">
+<span style="width:7px;height:7px;border-radius:4px;flex:none;background:{{ c.dot }}"></span>
+<span style="font-size:12.5px;font-weight:600;color:{{ c.fg }};white-space:nowrap">{{ c.name }}</span>
+</div>
+<div style="font-size:10.5px;color:var(--text3);margin-top:5px;white-space:nowrap">{{ c.sub }}</div>
+</div>
+</sc-for>
+</div>
+</button>
+</sc-for>
+</div>
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:4px;padding:0 2px">
+<div style="font-size:15px;font-weight:700;color:var(--text)">ابدأ بهذول</div>
+<div style="font-size:11.5px;color:var(--text3)">٥ من ٧</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ priorityLeads }}" as="l" hint-placeholder-count="4">
+<div style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px 16px 12px 13px;overflow:hidden;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ l.delay }};transition:transform .28s cubic-bezier(.22,1,.36,1),border-color .28s,box-shadow .28s" style-hover="transform:translateY(-3px);border-color:var(--gold-bd);box-shadow:0 10px 26px rgba(0,0,0,.28)">
+<div style="position:absolute;top:0;bottom:0;right:0;width:3px;background:{{ l.bar }}"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<div style="font-size:15px;font-weight:600;color:var(--text)">{{ l.name }}</div>
+<div style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:{{ l.badgeBg }};color:{{ l.badgeFg }};white-space:nowrap">{{ l.badge }}</div>
+</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:5px">{{ l.meta }}</div>
+<div style="height:1px;background:var(--border);margin:11px 0 10px"></div>
+<div style="display:flex;gap:8px">
+<button onClick="{{ l.call }}" style="flex:1;height:36px;border-radius:10px;border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;background:{{ l.callBg }};color:{{ l.callFg }}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 16.9v2.6a1.7 1.7 0 0 1-1.9 1.7 17 17 0 0 1-7.4-2.6 16.7 16.7 0 0 1-5.1-5.1A17 17 0 0 1 4 6.1 1.7 1.7 0 0 1 5.7 4.2h2.6a1.7 1.7 0 0 1 1.7 1.5c.1.8.3 1.6.6 2.4a1.7 1.7 0 0 1-.4 1.8l-1.1 1.1a13.7 13.7 0 0 0 5.1 5.1l1.1-1.1a1.7 1.7 0 0 1 1.8-.4c.8.3 1.6.5 2.4.6a1.7 1.7 0 0 1 1.5 1.7z"/></svg>
+اتصال</button>
+<button onClick="{{ l.wa }}" style="flex:1;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3.5 20.5l1.6-5A8.4 8.4 0 1 1 21 11.5z"/></svg>
+واتساب</button>
+</div>
+</div>
+</sc-for>
+</div>
+<button onClick="{{ goClients }}" style="background:none;border:none;color:var(--text3);font-family:inherit;font-size:13px;padding:10px;cursor:pointer">شوف كل العملاء ›</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ isOwnerHome }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;overflow-y:auto;padding:64px 18px 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 2px">
+<div>
+<div style="font-size:21px;font-weight:700;color:var(--text)">مرحبًا سلطان</div>
+<div style="font-size:13px;color:var(--text2);margin-top:4px">نظرة على الفريق اليوم</div>
+</div>
+<div style="display:flex;align-items:center;gap:9px">
+<button onClick="{{ openNotif }}" style="position:relative;width:42px;height:42px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)" style-active="transform:scale(.94)">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--text2)" stroke-width="1.8" stroke-linecap="round"><path d="M18 8.6a6 6 0 0 0-12 0c0 6-2.2 7.6-2.2 7.6h16.4S18 14.6 18 8.6z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
+<span style="position:absolute;top:-6px;left:-6px;min-width:19px;height:19px;border-radius:10px;background:var(--bad);color:#FFFFFF;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--bg);animation:pulseDot 2.2s ease-in-out infinite">{{ notifCount }}</span>
+</button>
+<div style="width:42px;height:42px;border-radius:21px;background:var(--raised);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--gold)">{{ meInitial }}</div>
+</div>
+</div>
+<div style="display:flex;gap:8px">
+<sc-for list="{{ periods }}" as="p" hint-placeholder-count="4">
+<button onClick="{{ p.go }}" style="flex:1;height:34px;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;background:{{ p.bg }};color:{{ p.fg }};border:1px solid {{ p.bd }}">{{ p.label }}</button>
+</sc-for>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+<div style="grid-column:span 2;background:var(--bad-bg);border:1px solid var(--bad-bd);border-radius:16px;padding:14px;display:flex;align-items:center;justify-content:space-between">
+<div>
+<div style="font-size:24px;font-weight:700;color:var(--bad-fg);line-height:1">١٤</div>
+<div style="font-size:11.5px;color:var(--bad-fg);opacity:.8;margin-top:5px">عملاء غير موزّعين</div>
+</div>
+<button style="height:38px;padding:0 16px;border-radius:10px;border:none;background:var(--bad);color:#FFFFFF;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">وزّعهم الآن</button>
+</div>
+<sc-for list="{{ ownerKpis }}" as="k" hint-placeholder-count="5">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 13px;min-height:82px;display:flex;flex-direction:column;justify-content:center;gap:5px;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ k.delay }}">
+<div style="font-size:{{ k.size }};font-weight:700;line-height:1.1;color:{{ k.color }}">{{ k.value }}</div>
+<div style="font-size:11.5px;color:var(--text2)">{{ k.label }}</div>
+</div>
+</sc-for>
+</div>
+
+<div style="font-size:15px;font-weight:700;color:var(--text);margin-top:6px;padding:0 2px">أداء الفريق</div>
+<div style="display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ team }}" as="t" hint-placeholder-count="4">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px 14px;display:flex;flex-direction:column;gap:9px;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ t.delay }};transition:transform .25s,border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:14.5px;font-weight:600;color:var(--text)">{{ t.name }}</div>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="stroke:var(--text3)" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+</div>
+<div style="font-size:11.5px;color:var(--text3)">{{ t.stats }}</div>
+<div style="display:flex;align-items:center;gap:9px">
+<div style="flex:1;height:6px;border-radius:3px;background:var(--border);overflow:hidden">
+<div style="height:100%;border-radius:3px;width:{{ t.pct }};background:{{ t.barColor }};animation:widen 1s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ t.delay }}"></div>
+</div>
+<span style="font-size:11.5px;font-weight:600;color:{{ t.barColor }}">{{ t.pctLabel }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div style="font-size:15px;font-weight:700;color:var(--text);margin-top:6px;padding:0 2px">تنبيهات تحتاج انتباه</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ alerts }}" as="a" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 13px">
+<span style="width:8px;height:8px;border-radius:5px;flex:none;background:{{ a.color }}"></span>
+<div style="flex:1;font-size:13px;color:var(--text)">{{ a.text }}</div>
+<span style="font-size:11px;color:var(--text3)">{{ a.count }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isNew }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;overflow-y:auto;padding:64px 18px 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:baseline;gap:9px;padding:0 2px">
+<div style="font-size:21px;font-weight:700;color:var(--text)">عملاء جدد</div>
+<div style="font-size:13px;font-weight:600;color:var(--bad);background:var(--bad-bg);padding:3px 9px;border-radius:8px">٦</div>
+</div>
+<div style="font-size:11.5px;color:var(--text3);padding:0 2px;margin-top:-8px">الأطول انتظارًا فوق</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ newLeads }}" as="l" hint-placeholder-count="5">
+<div style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px 16px 12px 13px;overflow:hidden;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ l.delay }};transition:transform .28s cubic-bezier(.22,1,.36,1),border-color .28s,box-shadow .28s" style-hover="transform:translateY(-3px);border-color:var(--gold-bd);box-shadow:0 10px 26px rgba(0,0,0,.28)">
+<div style="position:absolute;top:0;bottom:0;right:0;width:3px;background:{{ l.bar }}"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<div style="font-size:15px;font-weight:600;color:var(--text)">{{ l.name }}</div>
+<div style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:{{ l.badgeBg }};color:{{ l.badgeFg }};white-space:nowrap">{{ l.wait }}</div>
+</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:5px">{{ l.meta }}</div>
+<div style="height:1px;background:var(--border);margin:11px 0 10px"></div>
+<div style="display:flex;gap:8px">
+<button onClick="{{ l.call }}" style="flex:1;height:36px;border-radius:10px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">اتصال</button>
+<button onClick="{{ l.wa }}" style="flex:1;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">واتساب</button>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isFollowups }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;overflow-y:auto;padding:64px 18px 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both;display:flex;flex-direction:column;gap:14px">
+<div style="font-size:21px;font-weight:700;color:var(--text);padding:0 2px">متابعات اليوم</div>
+<div style="display:flex;gap:8px;overflow-x:auto">
+<sc-for list="{{ fuFilters }}" as="f" hint-placeholder-count="4">
+<button onClick="{{ f.go }}" style="flex:none;height:34px;padding:0 15px;border-radius:17px;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+<sc-for list="{{ fuGroups }}" as="g" hint-placeholder-count="2">
+<div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+<div style="font-size:12.5px;font-weight:700;padding:0 2px;color:{{ g.color }}">{{ g.title }}</div>
+<sc-for list="{{ g.items }}" as="t" hint-placeholder-count="2">
+<div style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px 16px 12px 13px;overflow:hidden;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;transition:transform .28s cubic-bezier(.22,1,.36,1),border-color .28s,box-shadow .28s" style-hover="transform:translateY(-3px);border-color:var(--gold-bd);box-shadow:0 10px 26px rgba(0,0,0,.28)">
+<div style="position:absolute;top:0;bottom:0;right:0;width:3px;background:{{ t.bar }}"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<div style="font-size:14.5px;font-weight:600;color:var(--text)">{{ t.title }}</div>
+<div style="font-size:12px;font-weight:600;color:{{ t.timeColor }}">{{ t.time }}</div>
+</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:5px">{{ t.sub }}</div>
+<div style="height:1px;background:var(--border);margin:11px 0 10px"></div>
+<div style="display:flex;gap:8px">
+<button onClick="{{ t.call }}" style="flex:1;height:36px;border-radius:10px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">اتصال</button>
+<button onClick="{{ t.wa }}" style="flex:1;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">واتساب</button>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-for>
+<div style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:26px 0 6px;opacity:.55">
+<svg width="34" height="34" viewBox="0 0 24 24" fill="none" style="stroke:var(--text3)" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg>
+<div style="font-size:12.5px;color:var(--text3)">باقي عليك مهمتين بس 🎉</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isClients }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:flex;flex-direction:column;padding-top:60px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="padding:0 18px 12px;display:flex;flex-direction:column;gap:11px;background:var(--bg);border-bottom:1px solid var(--border)">
+<div style="display:flex;gap:9px;align-items:center">
+<div style="flex:1;height:44px;border-radius:13px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;gap:9px;padding:0 13px">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+<span style="font-size:13.5px;color:var(--text3)">ابحث باسم أو جوال</span>
+</div>
+<button style="width:44px;height:44px;border-radius:13px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke:var(--gold)" stroke-width="1.9"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3"/></svg>
+</button>
+</div>
+<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:2px">
+<sc-for list="{{ clientFilters }}" as="f" hint-placeholder-count="6">
+<button onClick="{{ f.go }}" style="flex:none;height:32px;padding:0 13px;border-radius:16px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+</div>
+<div style="flex:1;overflow-y:auto;padding:12px 18px 96px;display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ allClients }}" as="l" hint-placeholder-count="7">
+<button onClick="{{ l.open }}" style="position:relative;text-align:right;font-family:inherit;background:var(--card);border:1px solid var(--border);border-radius:15px;padding:12px 16px 12px 13px;overflow:hidden;cursor:pointer;display:flex;align-items:center;gap:10px;animation:riseIn .45s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ l.delay }};transition:transform .25s,border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)">
+<div style="position:absolute;top:0;bottom:0;right:0;width:3px;background:{{ l.bar }}"></div>
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:var(--text)">{{ l.name }}</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:4px">{{ l.meta }}</div>
+</div>
+<div style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;white-space:nowrap;background:{{ l.badgeBg }};color:{{ l.badgeFg }}">{{ l.badge }}</div>
+</button>
+</sc-for>
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="height:66px;border-radius:15px;background:var(--card);animation:skel 1.4s ease-in-out infinite"></div>
+<div style="height:66px;border-radius:15px;background:var(--card);animation:skel 1.4s ease-in-out infinite;opacity:.6"></div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMore }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;overflow-y:auto;padding:64px 18px 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 2px">
+<div>
+<div style="font-size:21px;font-weight:700;color:var(--text)">المزيد</div>
+<div style="font-size:12.5px;color:var(--gold);margin-top:4px">حسابي والأدوات</div>
+</div>
+<div style="display:flex;align-items:center;gap:9px">
+<button style="position:relative;width:44px;height:44px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s" style-hover="transform:translateY(-2px)">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--text2)" stroke-width="1.8" stroke-linecap="round"><path d="M18 8.5a6 6 0 0 0-12 0c0 6-2.2 7.5-2.2 7.5h16.4S18 14.5 18 8.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
+<span style="position:absolute;top:-5px;left:-5px;min-width:19px;height:19px;border-radius:10px;background:var(--bad);color:#FFFFFF;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--bg);animation:pulseDot 2.2s ease-in-out infinite">{{ notifCount }}</span>
+</button>
+<div style="width:44px;height:44px;border-radius:14px;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--on-gold)">{{ meInitial }}</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:15px 15px 15px 17px;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:52px;height:52px;border-radius:16px;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--on-gold)">{{ meInitial }}</div>
+<div>
+<div style="font-size:17px;font-weight:700;color:var(--text)">{{ meName }}</div>
+<div style="font-size:12px;color:var(--gold);margin-top:4px">{{ meRole }} · {{ availLabel }}</div>
+</div>
+</div>
+<button onClick="{{ toggleAvail }}" style="width:52px;height:31px;border-radius:16px;border:none;cursor:pointer;padding:3px;display:flex;background:{{ availTrack }};transition:background-color .3s">
+<span style="width:25px;height:25px;border-radius:13px;background:#FFFFFF;box-shadow:0 2px 5px rgba(0,0,0,.3);transform:translateX({{ availX }});transition:transform .28s cubic-bezier(.34,1.56,.64,1)"></span>
+</button>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<sc-for list="{{ moreTiles }}" as="m" hint-placeholder-count="6">
+<button onClick="{{ m.go }}" style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:14px 15px 15px;min-height:124px;display:flex;flex-direction:column;justify-content:space-between;text-align:right;font-family:inherit;cursor:pointer;overflow:hidden;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ m.delay }};transition:transform .28s cubic-bezier(.22,1,.36,1),border-color .28s,box-shadow .28s" style-hover="transform:translateY(-3px);border-color:var(--gold-bd);box-shadow:0 12px 28px rgba(0,0,0,.3)">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;width:100%">
+<span style="min-width:22px;height:22px;border-radius:11px;background:var(--bad);color:#FFFFFF;font-size:10.5px;font-weight:700;display:{{ m.badgeShow }};align-items:center;justify-content:center;padding:0 6px">{{ m.badge }}</span>
+<span style="width:38px;height:38px;border-radius:12px;background:var(--gold-bg);display:flex;align-items:center;justify-content:center">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--gold)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ m.d }}"/><path d="{{ m.d2 }}"/></svg>
+</span>
+</div>
+<div>
+<div style="font-size:14.5px;font-weight:700;color:var(--text)">{{ m.label }}</div>
+<div style="font-size:11.5px;color:var(--gold);margin-top:5px">{{ m.sub }}</div>
+</div>
+</button>
+</sc-for>
+</div>
+
+<button onClick="{{ logout }}" style="min-height:52px;border-radius:16px;border:1px solid var(--bad-bd);background:var(--bad-bg);color:var(--bad);font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;transition:transform .2s,filter .2s" style-hover="filter:brightness(1.15)" style-active="transform:scale(.99)">تسجيل الخروج</button>
+<div style="text-align:center;font-size:11px;color:var(--dim1);line-height:1.9;padding:6px 0 4px">ترخيص فال (REGA) ١٢٠٠٠٢١٠٢٩<br>الإصدار ١٫٠٫٠</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isBookings }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div style="font-size:17px;font-weight:700;color:var(--text)">الحجوزات</div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ bookings }}" as="b" hint-placeholder-count="3">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:15px;font-weight:600;color:var(--text)">{{ b.name }}</div>
+<div style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:{{ b.badgeBg }};color:{{ b.badgeFg }}">{{ b.badge }}</div>
+</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:5px">{{ b.unit }}</div>
+<div style="height:1px;background:var(--border);margin:12px 0"></div>
+<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:7px"><span style="color:var(--text2)">المحصّل</span><span style="color:var(--ok-fg);font-weight:600">{{ b.paid }}</span></div>
+<div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text2)">المتبقي</span><span style="color:var(--text);font-weight:600">{{ b.rest }}</span></div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isProfile }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 0">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex;align-items:center;gap:5px;color:var(--text2);font-family:inherit;font-size:13px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke:var(--text2)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>رجوع</button>
+<button style="background:none;border:none;cursor:pointer;padding:8px;color:var(--text2);font-size:18px;line-height:1">⋯</button>
+</div>
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-top:6px">
+<div>
+<div style="font-size:21px;font-weight:700;color:var(--text)">{{ prof.name }}</div>
+<div style="font-size:12.5px;color:var(--text3);margin-top:5px">{{ prof.meta }}</div>
+</div>
+<div style="font-size:11px;font-weight:600;padding:5px 10px;border-radius:8px;background:{{ prof.badgeBg }};color:{{ prof.badgeFg }};white-space:nowrap">{{ prof.badge }}</div>
+</div>
+<div style="display:flex;gap:8px;padding:14px 0 13px">
+<button onClick="{{ prof.call }}" style="flex:1;height:42px;border-radius:11px;border:1px solid var(--border);background:var(--raised);color:var(--text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">اتصال</button>
+<button onClick="{{ prof.wa }}" style="flex:1;height:42px;border-radius:11px;border:1px solid var(--border);background:var(--raised);color:var(--text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">واتساب</button>
+<button onClick="{{ prof.log }}" style="flex:1.3;height:42px;border-radius:11px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;position:relative;overflow:hidden;transition:transform .2s,filter .2s" style-hover="filter:brightness(1.06)" style-active="transform:scale(.985)" style-after="content:'';position:absolute;top:0;bottom:0;width:60%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.32),transparent);animation:sweep 3.6s ease-in-out infinite">تسجيل متابعة</button>
+</div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:16px">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:5px 14px">
+<sc-for list="{{ prof.facts }}" as="f" hint-placeholder-count="5">
+<div style="display:flex;justify-content:space-between;align-items:center;min-height:40px;border-bottom:1px solid var(--line3);font-size:13px">
+<span style="color:var(--text3)">{{ f.k }}</span>
+<span style="color:{{ f.color }};font-weight:500">{{ f.v }}</span>
+</div>
+</sc-for>
+</div>
+<div>
+<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px">الخط الزمني</div>
+<div style="display:flex;flex-direction:column">
+<sc-for list="{{ prof.timeline }}" as="e" hint-placeholder-count="4">
+<div style="display:flex;gap:12px">
+<div style="display:flex;flex-direction:column;align-items:center;width:12px;flex:none">
+<span style="width:10px;height:10px;border-radius:6px;margin-top:4px;background:{{ e.color }}"></span>
+<span style="flex:1;width:1.5px;background:var(--border)"></span>
+</div>
+<div style="flex:1;padding-bottom:20px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+<div style="font-size:13.5px;font-weight:600;color:var(--text)">{{ e.title }}</div>
+<div style="font-size:11px;color:var(--text3);white-space:nowrap">{{ e.when }}</div>
+</div>
+<div style="font-size:12.5px;color:var(--text2);margin-top:6px;line-height:1.65;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 11px">{{ e.note }}</div>
+<div style="font-size:11px;color:var(--text3);margin-top:6px">{{ e.by }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isProjects }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">المشاريع والوحدات</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">٤ مشاريع · ٥٩٠ وحدة</div></div>
+</div>
+<div style="padding:13px 18px 0;display:flex;gap:7px">
+<sc-for list="{{ projFilters }}" as="f" hint-placeholder-count="3">
+<button onClick="{{ f.go }}" style="flex:none;height:32px;padding:0 14px;border-radius:16px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+<div style="padding:13px 18px;display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ projects }}" as="p" hint-placeholder-count="4">
+<button onClick="{{ p.go }}" style="text-align:right;font-family:inherit;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 15px;cursor:pointer;display:flex;flex-direction:column;gap:11px;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ p.delay }};transition:transform .25s,border-color .25s,box-shadow .25s" style-hover="transform:translateY(-3px);border-color:var(--gold-bd);box-shadow:0 12px 28px rgba(0,0,0,.28)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%">
+<div style="font-size:15.5px;font-weight:700;color:var(--text)">{{ p.name }}</div>
+<div style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:{{ p.badgeBg }};color:{{ p.badgeFg }}">{{ p.badge }}</div>
+</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:-6px">{{ p.district }}</div>
+<div style="display:flex;align-items:center;gap:9px;width:100%">
+<div style="flex:1;height:7px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;border-radius:4px;background:var(--gold);width:{{ p.pct }};animation:widen 1.1s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ p.delay }}"></div></div>
+<span style="font-size:11.5px;font-weight:700;color:var(--gold)">{{ p.pctLabel }} مباع</span>
+</div>
+<div style="display:flex;gap:16px;width:100%;border-top:1px solid var(--line3);padding-top:10px">
+<span style="font-size:12px;color:var(--text2)">متاح <b style="color:var(--text)">{{ p.avail }}</b></span>
+<span style="font-size:12px;color:var(--text2)">محجوز <b style="color:var(--warn-fg)">{{ p.held }}</b></span>
+<span style="font-size:12px;color:var(--text2)">مباع <b style="color:var(--ok-fg)">{{ p.sold }}</b></span>
+</div>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isProject }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:relative;height:186px;background:linear-gradient(150deg,var(--raised),var(--card));display:flex;align-items:flex-end;padding:0 18px 14px">
+<button onClick="{{ backProjects }}" style="position:absolute;top:58px;right:14px;width:38px;height:38px;border-radius:13px;background:var(--tabbar);backdrop-filter:blur(10px);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div style="position:absolute;inset:0;background:linear-gradient(to top,var(--bg) 4%,transparent 78%)"></div>
+<div style="position:relative">
+<div style="font-size:20px;font-weight:700;color:var(--text)">مشروع السلطان ٨٠</div>
+<div style="font-size:12px;color:var(--gold);margin-top:4px">ظهرة لبن · الرياض · إشغال ٥٨٪</div>
+</div>
+</div>
+<div style="display:flex;gap:8px;overflow-x:auto;padding:0 18px 14px">
+<sc-for list="{{ projStats }}" as="s" hint-placeholder-count="5">
+<div style="flex:none;min-width:88px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:11px 12px">
+<div style="font-size:18px;font-weight:700;color:{{ s.color }};line-height:1">{{ s.value }}</div>
+<div style="font-size:10.5px;color:var(--text3);margin-top:5px">{{ s.label }}</div>
+</div>
+</sc-for>
+</div>
+<div style="padding:0 18px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:7px;overflow-x:auto">
+<sc-for list="{{ unitFilters }}" as="f" hint-placeholder-count="5">
+<button onClick="{{ f.go }}" style="flex:none;height:32px;padding:0 13px;border-radius:16px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;gap:7px;overflow-x:auto">
+<sc-for list="{{ typeFilters }}" as="f" hint-placeholder-count="3">
+<button onClick="{{ f.go }}" style="flex:none;height:30px;padding:0 12px;border-radius:15px;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+</div>
+<div style="padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<sc-for list="{{ units }}" as="u" hint-placeholder-count="6">
+<button onClick="{{ u.go }}" style="text-align:right;font-family:inherit;background:{{ u.bg }};border:1px solid {{ u.bd }};border-radius:16px;padding:12px 13px;cursor:pointer;display:flex;flex-direction:column;gap:5px;animation:riseIn .45s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ u.delay }};transition:transform .22s" style-hover="transform:translateY(-2px)">
+<div style="font-size:14px;font-weight:700;color:var(--text)">{{ u.label }}</div>
+<div style="font-size:11px;color:var(--text3)">{{ u.floor }} · {{ u.area }}</div>
+<div style="font-size:12.5px;font-weight:600;color:var(--gold);margin-top:2px">{{ u.price }}</div>
+<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+<span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:6px;background:{{ u.badgeBg }};color:{{ u.badgeFg }}">{{ u.badge }}</span>
+<span style="font-size:10px;color:var(--text3)">{{ u.buyer }}</span>
+</div>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isPipeline }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">خط المبيعات</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">٩ قيد البيع · ٦٠ مباع</div></div>
+</div>
+<div style="padding:14px 18px 0;display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ funnel }}" as="f" hint-placeholder-count="5">
+<div style="display:flex;align-items:center;gap:10px;animation:riseIn .45s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ f.delay }}">
+<span style="font-size:12px;color:var(--text2);min-width:62px">{{ f.label }}</span>
+<div style="flex:1;height:12px;border-radius:6px;background:var(--card);overflow:hidden"><div style="height:100%;border-radius:6px;width:{{ f.pct }};background:{{ f.color }};animation:widen 1s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ f.delay }}"></div></div>
+<span style="font-size:12px;font-weight:700;color:{{ f.color }};min-width:26px;text-align:left">{{ f.count }}</span>
+</div>
+</sc-for>
+</div>
+<div style="padding:14px 18px 0;display:flex;gap:7px;overflow-x:auto">
+<sc-for list="{{ staffFilters }}" as="f" hint-placeholder-count="4">
+<button onClick="{{ f.go }}" style="flex:none;height:32px;padding:0 13px;border-radius:16px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+<sc-for list="{{ pipeGroups }}" as="g" hint-placeholder-count="3">
+<div style="padding:16px 18px 0;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:8px;height:8px;border-radius:5px;background:{{ g.color }}"></span>
+<span style="font-size:13px;font-weight:700;color:var(--text)">{{ g.title }}</span>
+<span style="font-size:11.5px;color:var(--text3)">{{ g.count }}</span>
+</div>
+<sc-for list="{{ g.items }}" as="i" hint-placeholder-count="2">
+<div style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:15px;padding:12px 15px 12px 13px;overflow:hidden">
+<div style="position:absolute;top:0;bottom:0;right:0;width:3px;background:{{ i.bar }}"></div>
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+<div style="font-size:14px;font-weight:600;color:var(--text)">{{ i.name }}</div>
+<div style="font-size:12px;font-weight:600;color:var(--gold);white-space:nowrap">{{ i.price }}</div>
+</div>
+<div style="font-size:11px;color:var(--text3);margin-top:5px">{{ i.meta }}</div>
+<div style="font-size:11px;color:{{ i.sinceColor }};margin-top:4px">{{ i.since }}</div>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTeam }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">الفريق</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">٦ موظفين · مرتّبين بالأداء</div></div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ members }}" as="m" hint-placeholder-count="4">
+<button onClick="{{ m.go }}" style="text-align:right;font-family:inherit;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 15px;cursor:pointer;display:flex;flex-direction:column;gap:11px;animation:riseIn .5s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ m.delay }};transition:transform .25s,border-color .25s" style-hover="transform:translateY(-3px);border-color:var(--gold-bd)">
+<div style="display:flex;align-items:center;gap:11px;width:100%">
+<span style="width:40px;height:40px;border-radius:13px;flex:none;background:var(--gold-bg);color:var(--gold);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ m.initial }}</span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:14.5px;font-weight:700;color:var(--text)">{{ m.name }}</span>
+<span style="display:flex;align-items:center;gap:6px;margin-top:4px">
+<span style="width:7px;height:7px;border-radius:4px;background:{{ m.presenceColor }}"></span>
+<span style="font-size:11px;color:var(--text3)">{{ m.role }} · {{ m.presence }}</span>
+</span>
+</span>
+<span style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;display:{{ m.badgeShow }};background:var(--bad-bg);color:var(--bad-fg);white-space:nowrap">{{ m.badge }}</span>
+</div>
+<div style="display:flex;align-items:center;gap:9px;width:100%">
+<div style="flex:1;height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;border-radius:3px;width:{{ m.pct }};background:{{ m.barColor }};animation:widen 1s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ m.delay }}"></div></div>
+<span style="font-size:11.5px;font-weight:700;color:{{ m.barColor }}">{{ m.pctLabel }} من الهدف</span>
+</div>
+<div style="font-size:11.5px;color:var(--text3);border-top:1px solid var(--line3);padding-top:10px;width:100%">{{ m.stats }}</div>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMember }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ backTeam }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">{{ member.name }}</div><div style="font-size:11.5px;color:var(--gold);margin-top:3px">{{ member.role }} · {{ member.presence }}</div></div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:17px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+<sc-for list="{{ memberKpis }}" as="k" hint-placeholder-count="6">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:15px;padding:12px 13px;animation:riseIn .45s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ k.delay }}">
+<div style="font-size:20px;font-weight:700;line-height:1;color:{{ k.color }}">{{ k.value }}</div>
+<div style="font-size:11px;color:var(--text2);margin-top:5px">{{ k.label }}</div>
+</div>
+</sc-for>
+</div>
+<div>
+<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:11px">قمع عملائه</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{ memberFunnel }}" as="f" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:11.5px;color:var(--text2);min-width:58px">{{ f.label }}</span>
+<div style="flex:1;height:10px;border-radius:5px;background:var(--card);overflow:hidden"><div style="height:100%;border-radius:5px;width:{{ f.pct }};background:{{ f.color }}"></div></div>
+<span style="font-size:11.5px;font-weight:700;color:{{ f.color }};min-width:24px;text-align:left">{{ f.count }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div>
+<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">نشاطه اليوم</div>
+<div style="display:flex;flex-direction:column">
+<sc-for list="{{ memberActivity }}" as="e" hint-placeholder-count="3">
+<div style="display:flex;gap:12px">
+<div style="display:flex;flex-direction:column;align-items:center;width:12px;flex:none">
+<span style="width:9px;height:9px;border-radius:5px;margin-top:4px;background:{{ e.color }}"></span>
+<span style="flex:1;width:1.5px;background:var(--border)"></span>
+</div>
+<div style="flex:1;padding-bottom:16px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+<div style="font-size:13px;font-weight:600;color:var(--text)">{{ e.title }}</div>
+<div style="font-size:11px;color:var(--text3)">{{ e.when }}</div>
+</div>
+<div style="font-size:12px;color:var(--text2);margin-top:5px">{{ e.note }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div>
+<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:11px">الأجهزة النشطة</div>
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden">
+<sc-for list="{{ memberSessions }}" as="d" hint-placeholder-count="2">
+<div style="min-height:52px;border-bottom:1px solid var(--line3);padding:10px 14px;display:flex;align-items:center;gap:10px">
+<div style="flex:1"><div style="font-size:13px;color:var(--text)">{{ d.device }}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">{{ d.meta }}</div></div>
+<button onClick="{{ d.end }}" style="min-height:32px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer">إنهاء</button>
+</div>
+</sc-for>
+</div>
+<button onClick="{{ endAllSessions }}" style="width:100%;margin-top:11px;min-height:46px;border-radius:14px;border:1px solid var(--bad-bd);background:var(--bad-bg);color:var(--bad);font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer">إنهاء كل الجلسات</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAnalytics }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">اسأل بياناتك</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">قراءة فقط — ما يعدّل شيء</div></div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:14px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+<sc-for list="{{ anaCards }}" as="a" hint-placeholder-count="4">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px;animation:riseIn .45s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ a.delay }}">
+<div style="font-size:20px;font-weight:700;color:var(--text);line-height:1">{{ a.value }}</div>
+<div style="font-size:11px;color:var(--text2);margin-top:5px">{{ a.label }}</div>
+<div style="font-size:11.5px;font-weight:600;color:{{ a.trendColor }};margin-top:7px">{{ a.trend }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<sc-for list="{{ anaQuestions }}" as="q" hint-placeholder-count="4">
+<button onClick="{{ q.ask }}" style="text-align:right;font-family:inherit;min-height:40px;padding:9px 13px;border-radius:12px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-size:12.5px;cursor:pointer;transition:border-color .25s,color .25s" style-hover="border-color:var(--gold-bd);color:var(--text)">{{ q.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ anaChat }}" as="m" hint-placeholder-count="2">
+<div style="align-self:{{ m.align }};max-width:88%;background:{{ m.bg }};border:1px solid {{ m.bd }};border-radius:16px;padding:12px 13px;animation:riseIn .4s cubic-bezier(.22,1,.36,1) both">
+<div style="font-size:13px;color:{{ m.fg }};line-height:1.7">{{ m.text }}</div>
+<div style="display:flex;flex-direction:column;gap:7px;margin-top:11px">
+<sc-for list="{{ m.bars }}" as="b" hint-placeholder-count="0">
+<div style="display:flex;align-items:center;gap:9px">
+<span style="font-size:11px;color:var(--text3);min-width:56px">{{ b.label }}</span>
+<div style="flex:1;height:9px;border-radius:5px;background:var(--bg);overflow:hidden"><div style="height:100%;border-radius:5px;width:{{ b.pct }};background:var(--gold)"></div></div>
+<span style="font-size:11px;font-weight:600;color:var(--text2);min-width:26px;text-align:left">{{ b.value }}</span>
+</div>
+</sc-for>
+</div>
+<div style="font-size:11.5px;color:var(--gold);margin-top:10px;display:{{ m.linkShow }}">شوف التفاصيل في الويب ›</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:9px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:9px 13px">
+<div style="flex:1;font-size:13px;color:var(--dim1)">اسأل عن أي رقم…</div>
+<button style="width:38px;height:38px;border-radius:19px;border:none;background:var(--gold-bg);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke:var(--gold)" stroke-width="1.9"><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5"/></svg></button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStages }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">مراحل العملاء</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">كائنات الشركة · ١١ مرحلة</div></div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:17px">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden">
+<sc-for list="{{ stageRows }}" as="r" hint-placeholder-count="11">
+<button onClick="{{ r.go }}" style="width:100%;min-height:48px;background:none;border:none;border-bottom:1px solid var(--line3);padding:0 14px;display:flex;align-items:center;gap:11px;cursor:pointer;font-family:inherit;text-align:right;transition:background-color .2s" style-hover="background:var(--raised)">
+<span style="width:9px;height:9px;border-radius:5px;flex:none;background:{{ r.color }}"></span>
+<span style="flex:1;font-size:13.5px;color:var(--text)">{{ r.name }}</span>
+<span style="font-size:12px;color:var(--text3)">{{ r.count }}</span>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="stroke:var(--dim2)" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+</button>
+</sc-for>
+</div>
+<div>
+<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:11px">أسباب عدم الاهتمام</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ lossReasons }}" as="l" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:12px;color:var(--text2);min-width:52px">{{ l.label }}</span>
+<div style="flex:1;height:11px;border-radius:6px;background:var(--card);overflow:hidden"><div style="height:100%;border-radius:6px;width:{{ l.pct }};background:var(--bad);animation:widen 1s cubic-bezier(.22,1,.36,1) both"></div></div>
+<span style="font-size:12px;font-weight:700;color:var(--bad-fg);min-width:24px;text-align:left">{{ l.count }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAssign }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">التوزيع التلقائي</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">القواعد والحدود والسجل</div></div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:16px">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:15px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<div>
+<div style="font-size:15px;font-weight:700;color:var(--text)">التوزيع التلقائي</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:5px">{{ assignStatus }}</div>
+</div>
+<button onClick="{{ toggleAuto }}" style="width:52px;height:31px;border-radius:16px;border:none;cursor:pointer;padding:3px;display:flex;flex:none;background:{{ autoTrack }};transition:background-color .3s">
+<span style="width:25px;height:25px;border-radius:13px;background:#FFFFFF;box-shadow:0 2px 5px rgba(0,0,0,.3);transform:translateX({{ autoX }});transition:transform .28s cubic-bezier(.34,1.56,.64,1)"></span>
+</button>
+</div>
+</div>
+<div style="background:var(--bad-bg);border:1px solid var(--bad-bd);border-radius:18px;padding:15px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+<div>
+<div style="font-size:22px;font-weight:700;color:var(--bad-fg);line-height:1">٢٣</div>
+<div style="font-size:11.5px;color:var(--bad-fg);opacity:.85;margin-top:5px">عميل غير موزّع</div>
+</div>
+<button onClick="{{ distributeNow }}" style="min-height:42px;padding:0 18px;border-radius:12px;border:none;background:var(--bad);color:#FFFFFF;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer">وزّعهم الآن</button>
+</div>
+<div style="display:flex;flex-direction:column;gap:11px">
+<div style="font-size:14px;font-weight:700;color:var(--text)">إعدادات التوزيع</div>
+<div style="display:flex;gap:7px">
+<sc-for list="{{ methodChips }}" as="m" hint-placeholder-count="3">
+<button onClick="{{ m.go }}" style="flex:1;min-height:38px;border-radius:11px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;background:{{ m.bg }};color:{{ m.fg }};border:1px solid {{ m.bd }}">{{ m.label }}</button>
+</sc-for>
+</div>
+<sc-for list="{{ steppers }}" as="s" hint-placeholder-count="4">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:15px;padding:11px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+<span style="font-size:13px;color:var(--text)">{{ s.label }}</span>
+<span style="display:flex;align-items:center;gap:11px">
+<button onClick="{{ s.dec }}" style="width:32px;height:32px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--gold);font-family:inherit;font-size:17px;font-weight:700;cursor:pointer;line-height:1">−</button>
+<span style="font-size:14px;font-weight:700;color:var(--text);min-width:52px;text-align:center">{{ s.value }}</span>
+<button onClick="{{ s.inc }}" style="width:32px;height:32px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--gold);font-family:inherit;font-size:17px;font-weight:700;cursor:pointer;line-height:1">+</button>
+</span>
+</div>
+</sc-for>
+<div style="background:var(--card);border:1px solid var(--border);border-radius:15px;padding:12px 13px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;color:var(--text)">ساعات العمل</span><span style="font-size:13px;font-weight:600;color:var(--gold)">٩:٠٠ ص — ٦:٠٠ م</span></div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<sc-for list="{{ workDays }}" as="d" hint-placeholder-count="7">
+<button onClick="{{ d.go }}" style="min-width:38px;min-height:34px;border-radius:10px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;background:{{ d.bg }};color:{{ d.fg }};border:1px solid {{ d.bd }}">{{ d.label }}</button>
+</sc-for>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:11px">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:15px;padding:13px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+<span style="font-size:13.5px;font-weight:600;color:var(--text)">سحب العملاء اللي ما تم التواصل معهم</span>
+<button onClick="{{ togglePull }}" style="width:52px;height:31px;border-radius:16px;border:none;cursor:pointer;padding:3px;display:flex;flex:none;background:{{ pullTrack }};transition:background-color .3s">
+<span style="width:25px;height:25px;border-radius:13px;background:#FFFFFF;box-shadow:0 2px 5px rgba(0,0,0,.3);transform:translateX({{ pullX }});transition:transform .28s cubic-bezier(.34,1.56,.64,1)"></span>
+</button>
+</div>
+<sc-for list="{{ pullLevels }}" as="p" hint-placeholder-count="3">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:15px;padding:11px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+<span style="font-size:13px;color:var(--text2)">{{ p.label }}</span>
+<span style="display:flex;align-items:center;gap:11px">
+<button onClick="{{ p.dec }}" style="width:32px;height:32px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--gold);font-family:inherit;font-size:17px;font-weight:700;cursor:pointer;line-height:1">−</button>
+<span style="font-size:13.5px;font-weight:700;color:var(--text);min-width:62px;text-align:center">{{ p.value }}</span>
+<button onClick="{{ p.inc }}" style="width:32px;height:32px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--gold);font-family:inherit;font-size:17px;font-weight:700;cursor:pointer;line-height:1">+</button>
+</span>
+</div>
+</sc-for>
+<div style="background:var(--warn-bg);border:1px solid var(--warn-bd);border-radius:15px;padding:13px;display:flex;flex-direction:column;gap:8px">
+<div style="font-size:12px;font-weight:700;color:var(--warn-fg)">إعدادات الحماية — ثوابت</div>
+<sc-for list="{{ protections }}" as="p" hint-placeholder-count="4">
+<div style="display:flex;align-items:flex-start;gap:8px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="stroke:var(--warn-fg);flex:none;margin-top:3px" stroke-width="2.2"><path d="M6 12.4l3.6 3.6L18 7.6"/></svg>
+<span style="font-size:12px;color:var(--warn-fg);line-height:1.6">{{ p.label }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div>
+<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:11px">سجل التوزيعات</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ assignLog }}" as="l" hint-placeholder-count="3">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:10px">
+<div style="flex:1"><div style="font-size:12.5px;color:var(--text)">{{ l.text }}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">{{ l.when }}</div></div>
+<span style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:var(--gold-bg);color:var(--gold);white-space:nowrap">{{ l.method }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">الإعدادات</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">الشركة والفريق والصلاحيات</div></div>
+</div>
+<div style="padding:14px 18px;display:flex;flex-direction:column;gap:17px">
+<div>
+<div style="font-size:13px;font-weight:700;color:var(--text3);margin-bottom:9px">بيانات الشركة</div>
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:5px 14px">
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:52px;border-bottom:1px solid var(--line3)">
+<span style="font-size:12.5px;color:var(--text3)">الشعار</span>
+<span style="display:flex;align-items:center;gap:10px"><img src="assets/app-icon.png" alt="" style="width:34px;height:34px;border-radius:10px;display:block"><span style="font-size:12.5px;color:var(--gold)">تغيير ›</span></span>
+</div>
+<sc-for list="{{ companyFacts }}" as="f" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:44px;border-bottom:1px solid var(--line3);font-size:13px">
+<span style="color:var(--text3)">{{ f.k }}</span><span style="color:var(--text);font-weight:500">{{ f.v }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div>
+<div style="font-size:13px;font-weight:700;color:var(--text3);margin-bottom:9px">الموظفون</div>
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden">
+<sc-for list="{{ staffRows }}" as="r" hint-placeholder-count="4">
+<button onClick="{{ r.go }}" style="width:100%;min-height:52px;background:none;border:none;border-bottom:1px solid var(--line3);padding:0 14px;display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;text-align:right">
+<span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;color:var(--text)">{{ r.name }}</span><span style="display:block;font-size:11px;color:var(--text3);margin-top:3px">{{ r.role }}</span></span>
+<span style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:{{ r.tagBg }};color:{{ r.tagFg }}">{{ r.status }}</span>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="stroke:var(--dim2)" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+</button>
+</sc-for>
+<button onClick="{{ addStaff }}" style="width:100%;min-height:48px;background:none;border:none;padding:0 14px;display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;color:var(--gold)">+ إضافة موظف</button>
+</div>
+</div>
+<div>
+<div style="font-size:13px;font-weight:700;color:var(--text3);margin-bottom:9px">أدوات</div>
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden">
+<sc-for list="{{ settingsLinks }}" as="m" hint-placeholder-count="3">
+<button onClick="{{ m.go }}" style="width:100%;min-height:52px;background:none;border:none;border-bottom:1px solid var(--line3);padding:0 14px;display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;text-align:right">
+<span style="flex:1;font-size:13.5px;color:var(--text)">{{ m.label }}</span>
+<span style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;display:{{ m.tagShow }};background:var(--bad-bg);color:var(--bad-fg)">{{ m.tag }}</span>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="stroke:var(--dim2)" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+</button>
+</sc-for>
+</div>
+</div>
+<div>
+<div style="font-size:13px;font-weight:700;color:var(--text3);margin-bottom:9px">الإشعارات</div>
+<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:4px 14px">
+<sc-for list="{{ notifSwitches }}" as="n" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:50px;border-bottom:1px solid var(--line3);gap:10px">
+<span style="font-size:13px;color:var(--text)">{{ n.label }}</span>
+<button onClick="{{ n.go }}" style="width:48px;height:29px;border-radius:15px;border:none;cursor:pointer;padding:3px;display:flex;flex:none;background:{{ n.track }};transition:background-color .3s">
+<span style="width:23px;height:23px;border-radius:12px;background:#FFFFFF;box-shadow:0 2px 4px rgba(0,0,0,.3);transform:translateX({{ n.x }});transition:transform .26s cubic-bezier(.34,1.56,.64,1)"></span>
+</button>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="text-align:center;font-size:11.5px;color:var(--gold);padding:4px 0 6px">الاستيراد وإنشاء المشاريع وتعديل ألوان المراحل — افتح في الويب ›</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDupes }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ backSettings }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">العملاء المكرّرون</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">٣ سجلات تحتاج مراجعة</div></div>
+</div>
+<sc-for list="{{ dupeGroups }}" as="g" hint-placeholder-count="2">
+<div style="padding:14px 18px 0;display:flex;flex-direction:column;gap:11px">
+<div style="font-size:12.5px;font-weight:700;color:{{ g.color }}">{{ g.title }}</div>
+<sc-for list="{{ g.pairs }}" as="p" hint-placeholder-count="2">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:11px">
+<div style="font-size:14.5px;font-weight:700;color:var(--text)">{{ p.name }}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+<sc-for list="{{ p.copies }}" as="c" hint-placeholder-count="2">
+<div style="background:var(--bg);border:1px solid var(--border);border-radius:13px;padding:10px 11px;display:flex;flex-direction:column;gap:5px">
+<div style="font-size:11px;font-weight:700;color:var(--gold)">{{ c.tag }}</div>
+<div style="font-size:11.5px;color:var(--text2)">{{ c.phone }}</div>
+<div style="font-size:11.5px;color:var(--text2)">{{ c.source }}</div>
+<div style="font-size:11.5px;color:var(--text2)">{{ c.staff }}</div>
+<div style="font-size:11px;color:var(--text3)">{{ c.when }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:7px">
+<button onClick="{{ p.merge }}" style="flex:1;min-height:38px;border-radius:11px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">دمج</button>
+<button onClick="{{ p.keep }}" style="flex:1;min-height:38px;border-radius:11px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer">احتفظ بالاثنين</button>
+<button onClick="{{ p.del }}" style="flex:1;min-height:38px;border-radius:11px;border:1px solid var(--bad-bd);background:var(--bad-bg);color:var(--bad);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer">احذف المكرّر</button>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAudit }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;overflow-y:auto;padding:0 0 96px;animation:screenIn .38s cubic-bezier(.22,1,.36,1) both">
+<div style="position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);padding:60px 18px 13px;display:flex;align-items:center;gap:11px">
+<button onClick="{{ closeOverlay }}" style="background:none;border:none;cursor:pointer;padding:6px;display:flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--text)" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button>
+<div><div style="font-size:17px;font-weight:700;color:var(--text)">سجل التدقيق</div><div style="font-size:11.5px;color:var(--text3);margin-top:3px">مين غيّر وش · توقيت الرياض</div></div>
+</div>
+<div style="padding:13px 18px 0;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:7px;overflow-x:auto">
+<sc-for list="{{ auditPeriods }}" as="f" hint-placeholder-count="4">
+<button onClick="{{ f.go }}" style="flex:none;height:32px;padding:0 13px;border-radius:16px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;gap:7px;overflow-x:auto">
+<sc-for list="{{ auditKinds }}" as="f" hint-placeholder-count="5">
+<button onClick="{{ f.go }}" style="flex:none;height:30px;padding:0 12px;border-radius:15px;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;gap:8px;overflow-x:auto;background:var(--card);border:1px solid var(--border);border-radius:13px;padding:10px 12px">
+<sc-for list="{{ auditCounters }}" as="c" hint-placeholder-count="4">
+<span style="flex:none;font-size:11.5px;color:var(--text2);white-space:nowrap">{{ c.label }} <b style="color:var(--gold)">{{ c.value }}</b></span>
+</sc-for>
+</div>
+</div>
+<sc-for list="{{ auditGroups }}" as="g" hint-placeholder-count="2">
+<div style="padding:15px 18px 0;display:flex;flex-direction:column;gap:9px">
+<div style="font-size:12.5px;font-weight:700;color:var(--text3)">{{ g.title }}</div>
+<sc-for list="{{ g.items }}" as="e" hint-placeholder-count="3">
+<button onClick="{{ e.go }}" style="text-align:right;font-family:inherit;background:var(--card);border:1px solid var(--border);border-radius:15px;padding:12px 13px;cursor:pointer;display:flex;align-items:flex-start;gap:10px;transition:border-color .22s,transform .22s" style-hover="border-color:var(--gold-bd);transform:translateY(-2px)">
+<span style="width:8px;height:8px;border-radius:5px;flex:none;margin-top:6px;background:{{ e.color }}"></span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:13px;color:var(--text);line-height:1.6">{{ e.head }}</span>
+<span style="display:block;font-size:12px;color:var(--text2);margin-top:5px;line-height:1.6">{{ e.detail }}</span>
+<span style="display:block;font-size:11px;color:var(--text3);margin-top:5px">{{ e.when }}</span>
+</span>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="stroke:var(--dim2);flex:none;margin-top:4px" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+</button>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ showTabs }}" hint-placeholder-val="{{ true }}">
+<div style="position:absolute;bottom:0;right:0;left:0;height:84px;background:var(--tabbar);backdrop-filter:blur(18px);border-top:1px solid var(--border);display:flex;padding:8px 6px 22px;z-index:30">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+<button onClick="{{ t.go }}" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;position:relative;font-family:inherit">
+<svg width="23" height="23" viewBox="0 0 24 24" fill="none" style="stroke:{{ t.color }};transform:scale({{ t.scale }});transition:stroke .3s ease,transform .35s cubic-bezier(.34,1.56,.64,1)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ t.d }}"/><path d="{{ t.d2 }}"/><path d="{{ t.d3 }}"/></svg>
+<span style="font-size:10px;font-weight:600;color:{{ t.color }};transition:color .3s">{{ t.label }}</span>
+<span style="position:absolute;bottom:1px;width:5px;height:5px;border-radius:3px;background:var(--gold);opacity:{{ t.dot }};transition:opacity .3s"></span>
+<span style="position:absolute;top:2px;left:50%;transform:translateX(2px);min-width:17px;height:17px;border-radius:9px;font-size:10px;font-weight:700;display:{{ t.badgeDisplay }};align-items:center;justify-content:center;padding:0 4px;background:{{ t.badgeBg }};color:{{ t.badgeFg }}">{{ t.badge }}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(0,0,0,.62);z-index:50;animation:fadeIn .18s ease-out"></div>
+</sc-if>
+
+<sc-if value="{{ isFollowSheet }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;right:0;left:0;bottom:0;z-index:60;background:var(--raised);border-top:1px solid var(--border);border-radius:26px 26px 0 0;padding:10px 18px 30px;max-height:76%;overflow-y:auto;animation:sheetUp .3s cubic-bezier(.32,.72,0,1)">
+<div style="width:38px;height:4px;border-radius:2px;background:var(--dim2);margin:0 auto 16px"></div>
+<div style="font-size:19px;font-weight:700;color:var(--text)">{{ sheet.title }}</div>
+<div style="font-size:12.5px;color:var(--text3);margin-top:5px">{{ sheet.sub }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">
+<sc-for list="{{ sheet.options }}" as="o" hint-placeholder-count="4">
+<button onClick="{{ o.pick }}" style="flex:{{ o.flex }};min-width:{{ o.minw }};min-height:44px;border-radius:12px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;padding:0 14px;background:{{ o.bg }};color:{{ o.fg }};border:1px solid {{ o.bd }}">{{ o.label }}</button>
+</sc-for>
+</div>
+<sc-if value="{{ sheet.hasExtra }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:14px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:13px">
+<div style="font-size:12px;color:var(--gold);font-weight:600;margin-bottom:9px">{{ sheet.extraTitle }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:7px">
+<sc-for list="{{ sheet.extraChips }}" as="c" hint-placeholder-count="3">
+<div style="min-height:36px;display:flex;align-items:center;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-size:12.5px;color:var(--text2)">{{ c.label }}</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ sheet.hasFields }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px;display:flex;flex-direction:column;gap:11px">
+<div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:12px 13px;min-height:84px;display:flex;gap:10px">
+<div style="flex:1;font-size:13px;color:var(--dim1)">اكتب ملاحظة أو سجّلها صوتيًا…</div>
+<button style="width:38px;height:38px;border-radius:19px;border:none;background:var(--gold-bg);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--gold)" stroke-width="1.9"><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5"/></svg>
+</button>
+</div>
+<div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:12px 13px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:13px;color:var(--text2)">المتابعة الجاية</span>
+<span style="font-size:13px;color:var(--gold);font-weight:600">{{ nextDateLabel }}</span>
+</div>
+<div style="display:flex;gap:7px;flex-wrap:wrap">
+<sc-for list="{{ quickDates }}" as="q" hint-placeholder-count="4">
+<button onClick="{{ q.pick }}" style="min-height:34px;padding:0 12px;border-radius:10px;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;background:{{ q.bg }};color:{{ q.fg }};border:1px solid {{ q.bd }}">{{ q.label }}</button>
+</sc-for>
+</div>
+</div>
+<button onClick="{{ save }}" style="height:52px;border-radius:14px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;position:relative;overflow:hidden;transition:transform .2s,filter .2s" style-hover="filter:brightness(1.06)" style-active="transform:scale(.985)" style-after="content:'';position:absolute;top:0;bottom:0;width:60%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.32),transparent);animation:sweep 3.6s ease-in-out infinite">حفظ</button>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isNotifSheet }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;right:0;left:0;bottom:0;z-index:60;background:var(--raised);border-top:1px solid var(--border);border-radius:26px 26px 0 0;padding:10px 18px 30px;max-height:80%;overflow-y:auto;animation:sheetUp .3s cubic-bezier(.32,.72,0,1)">
+<div style="width:38px;height:4px;border-radius:2px;background:var(--dim2);margin:0 auto 16px"></div>
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:19px;font-weight:700;color:var(--text)">الإشعارات</div>
+<button onClick="{{ readAll }}" style="background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--gold);cursor:pointer">علّمها كلها مقروءة</button>
+</div>
+<div style="font-size:12.5px;color:var(--text3);margin-top:4px">{{ notifSub }}</div>
+<div style="display:flex;flex-direction:column;gap:9px;margin-top:15px">
+<sc-for list="{{ notifs }}" as="n" hint-placeholder-count="4">
+<button onClick="{{ n.go }}" style="text-align:right;font-family:inherit;background:{{ n.bg }};border:1px solid {{ n.bd }};border-radius:15px;padding:12px 13px;cursor:pointer;display:flex;align-items:flex-start;gap:11px;animation:riseIn .45s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ n.delay }};transition:transform .22s,border-color .22s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)">
+<span style="width:34px;height:34px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:{{ n.iconBg }}">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:{{ n.color }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.d }}"/><path d="{{ n.d2 }}"/></svg>
+</span>
+<span style="flex:1;min-width:0">
+<span style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-size:13.5px;font-weight:600;color:var(--text)">{{ n.title }}</span>
+<span style="font-size:10.5px;color:var(--text3);white-space:nowrap">{{ n.when }}</span>
+</span>
+<span style="display:block;font-size:12px;color:var(--text2);margin-top:5px;line-height:1.6">{{ n.body }}</span>
+</span>
+<span style="width:8px;height:8px;border-radius:5px;flex:none;margin-top:6px;background:{{ n.unread }}"></span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isWaSheet }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;right:0;left:0;bottom:0;z-index:60;background:var(--raised);border-top:1px solid var(--border);border-radius:26px 26px 0 0;padding:10px 18px 30px;max-height:80%;overflow-y:auto;animation:sheetUp .3s cubic-bezier(.32,.72,0,1)">
+<div style="width:38px;height:4px;border-radius:2px;background:var(--dim2);margin:0 auto 16px"></div>
+<div style="font-size:19px;font-weight:700;color:var(--text)">{{ waTitle }}</div>
+<div style="font-size:12.5px;color:var(--text3);margin-top:5px">تنرسل من واتساب جوالك</div>
+<div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+<sc-for list="{{ waTemplates }}" as="t" hint-placeholder-count="3">
+<button onClick="{{ t.pick }}" style="text-align:right;font-family:inherit;background:var(--bg);border:1px solid var(--border);border-radius:15px;padding:13px 14px;cursor:pointer;display:flex;flex-direction:column;gap:8px">
+<span style="font-size:12px;font-weight:700;color:var(--gold)">{{ t.name }}</span>
+<span style="font-size:13px;color:var(--text2);line-height:1.75">{{ t.body }}</span>
+</button>
+</sc-for>
+</div>
+<button onClick="{{ closeSheet }}" style="width:100%;margin-top:12px;height:46px;border-radius:13px;border:1px solid var(--border);background:none;color:var(--text);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">رسالة جديدة</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDetailSheet }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;right:0;left:0;bottom:0;z-index:60;background:var(--raised);border-top:1px solid var(--border);border-radius:26px 26px 0 0;padding:10px 18px 30px;max-height:80%;overflow-y:auto;animation:sheetUp .3s cubic-bezier(.32,.72,0,1)">
+<div style="width:38px;height:4px;border-radius:2px;background:var(--dim2);margin:0 auto 16px"></div>
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+<div>
+<div style="font-size:19px;font-weight:700;color:var(--text)">{{ detail.title }}</div>
+<div style="font-size:12.5px;color:var(--text3);margin-top:5px">{{ detail.sub }}</div>
+</div>
+<div style="font-size:11px;font-weight:600;padding:5px 10px;border-radius:8px;display:{{ detail.badgeShow }};background:{{ detail.badgeBg }};color:{{ detail.badgeFg }};white-space:nowrap">{{ detail.badge }}</div>
+</div>
+<div style="background:var(--bg);border:1px solid var(--border);border-radius:15px;padding:4px 13px;margin-top:15px">
+<div style="align-items:center;justify-content:space-between;gap:10px;min-height:40px;border-bottom:1px solid var(--line3);font-size:13px;display:{{ detail.swatchShow }}">
+<span style="color:var(--text3)">اللون</span>
+<span style="display:flex;align-items:center;gap:9px">
+<span style="width:20px;height:20px;border-radius:6px;border:1px solid var(--border);background:{{ detail.swatch }}"></span>
+<span style="color:var(--text);font-weight:500;letter-spacing:.4px">{{ detail.swatch }}</span>
+</span>
+</div>
+<sc-for list="{{ detail.facts }}" as="f" hint-placeholder-count="6">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:40px;border-bottom:1px solid var(--line3);font-size:13px">
+<span style="color:var(--text3)">{{ f.k }}</span>
+<span style="color:{{ f.color }};font-weight:500;text-align:left">{{ f.v }}</span>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;display:{{ detail.chipsShow }}">
+<sc-for list="{{ detail.chips }}" as="c" hint-placeholder-count="0">
+<span style="min-height:34px;display:flex;align-items:center;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:12.5px;color:var(--text2)">{{ c.label }}</span>
+</sc-for>
+</div>
+<button onClick="{{ closeSheet }}" style="width:100%;margin-top:16px;min-height:48px;border-radius:14px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer">{{ detail.cta }}</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;bottom:100px;right:18px;left:18px;z-index:70;background:var(--ok-bg);border:1px solid var(--ok-bd);border-radius:13px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ok-fg);font-size:13.5px;font-weight:600;animation:toastIn .22s ease-out">{{ toast }}</div>
+</sc-if>
+
+</div>
+</div>
+<div style="font-size:11.5px;color:var(--dim1)">iPhone 15 · ٣٩٣×٨٥٢ · نموذج تفاعلي</div>
+</div>
+
+<div style="width:250px;position:sticky;top:44px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+<img src="uploads/icon-192.png" alt="" style="width:38px;height:38px;border-radius:11px;display:block">
+<div>
+<div style="font-size:13px;font-weight:700;color:var(--text)">مشاريع السلطان</div>
+<div style="font-size:11px;color:var(--text3);margin-top:2px">تطبيق الجوال — نموذج تفاعلي</div>
+</div>
+</div>
+<div style="display:flex;gap:5px;padding:5px;border-radius:14px;background:var(--panel);border:1px solid var(--line2);margin-bottom:6px">
+<button onClick="{{ setDark }}" style="flex:1;min-height:36px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:7px;background:{{ darkBg }};color:{{ darkFg }};transition:background-color .3s,color .3s">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="stroke:currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"/></svg>ليلي</button>
+<button onClick="{{ setLight }}" style="flex:1;min-height:36px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:7px;background:{{ lightBg }};color:{{ lightFg }};transition:background-color .3s,color .3s">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="stroke:currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg>نهاري</button>
+</div>
+<div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.4px">الشاشات المطلوبة</div>
+<div style="display:flex;flex-direction:column;gap:5px">
+<sc-for list="{{ screenIndex }}" as="s" hint-placeholder-count="12">
+<button onClick="{{ s.go }}" style="text-align:right;font-family:inherit;min-height:38px;border-radius:10px;padding:0 12px;cursor:pointer;display:flex;align-items:center;gap:9px;font-size:12.5px;background:{{ s.bg }};color:{{ s.fg }};border:1px solid {{ s.bd }}">
+<span style="font-size:10.5px;color:var(--dim1);min-width:14px">{{ s.n }}</span>{{ s.label }}</button>
+</sc-for>
+</div>
+<div style="margin-top:8px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--panel);font-size:11.5px;color:var(--dim1);line-height:1.8">
+النطاق: التواصل والمتابعة فقط. التقارير والاستيراد والإعدادات تبقى في الويب.
+</div>
+</div>
+
+</div>
+
+<div style="width:100%;max-width:960px;display:flex;flex-direction:column;gap:22px;border-top:1px solid var(--line2);padding-top:44px">
+<div>
+<div style="font-size:17px;font-weight:700;color:var(--text)">نظام المكوّنات</div>
+<div style="font-size:12.5px;color:var(--dim1);margin-top:5px">العناصر المتكرّرة عبر الشاشات — نفس القياسات في كل مكان</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px">
+
+<div style="background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:11.5px;font-weight:700;color:var(--text3)">بادجات المراحل</div>
+<div style="display:flex;flex-wrap:wrap;gap:7px">
+<sc-for list="{{ badgeSpecs }}" as="b" hint-placeholder-count="8">
+<span style="font-size:10.5px;font-weight:600;padding:5px 10px;border-radius:7px;background:{{ b.bg }};color:{{ b.fg }}">{{ b.label }}</span>
+</sc-for>
+</div>
+</div>
+
+<div style="background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:11.5px;font-weight:700;color:var(--text3)">الألوان</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
+<sc-for list="{{ swatches }}" as="s" hint-placeholder-count="8">
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="height:38px;border-radius:9px;border:1px solid var(--border);background:{{ s.hex }}"></div>
+<div style="font-size:9px;color:var(--dim1);letter-spacing:.2px">{{ s.hex }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:11.5px;font-weight:700;color:var(--text3)">الأزرار — ٤٤ نقطة</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<button style="height:52px;border-radius:14px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:15px;font-weight:700">أساسي · ٥٢</button>
+<div style="display:flex;gap:8px">
+<button style="flex:1;height:36px;border-radius:10px;border:none;background:var(--gold);color:var(--on-gold);font-family:inherit;font-size:13px;font-weight:600">اتصال · ٣٦</button>
+<button style="flex:1;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600">ثانوي · ٣٦</button>
+</div>
+<div style="display:flex;gap:7px">
+<span style="height:32px;display:flex;align-items:center;padding:0 13px;border-radius:16px;background:var(--gold);color:var(--on-gold);font-size:12px;font-weight:600">شريحة نشطة</span>
+<span style="height:32px;display:flex;align-items:center;padding:0 13px;border-radius:16px;border:1px solid var(--border);color:var(--text2);font-size:12px;font-weight:600">شريحة</span>
+</div>
+</div>
+</div>
+
+<div style="background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:11.5px;font-weight:700;color:var(--text3)">بطاقة العميل</div>
+<div style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px 16px 12px 13px;overflow:hidden">
+<div style="position:absolute;top:0;bottom:0;right:0;width:3px;background:var(--ok)"></div>
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:15px;font-weight:600;color:var(--text)">فهد العتيبي</div>
+<div style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:var(--ok-bg);color:var(--ok-fg)">مهتم</div>
+</div>
+<div style="font-size:11.5px;color:var(--text3);margin-top:5px">آخر تواصل قبل ٣ أيام · تيك توك</div>
+<div style="height:1px;background:var(--border);margin:11px 0 10px"></div>
+<div style="display:flex;gap:8px">
+<div style="flex:1;height:36px;border-radius:10px;background:var(--gold);color:var(--on-gold);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center">اتصال</div>
+<div style="flex:1;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--raised);color:var(--text2);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center">واتساب</div>
+</div>
+</div>
+</div>
+
+<div style="background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:11.5px;font-weight:700;color:var(--text3)">حالات فارغة وتحميل</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0;border:1px dashed var(--border);border-radius:13px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="stroke:var(--text3)" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg>
+<div style="font-size:12.5px;color:var(--text3)">ما فيه عملاء جدد الحين 👌</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="height:46px;border-radius:13px;background:var(--card);animation:skel 1.4s ease-in-out infinite"></div>
+<div style="height:46px;border-radius:13px;background:var(--card);animation:skel 1.4s ease-in-out infinite;opacity:.6"></div>
+</div>
+</div>
+
+<div style="background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:11.5px;font-weight:700;color:var(--text3)">تنبيه انقطاع الاتصال</div>
+<div style="background:var(--warn-bg);border:1px solid var(--warn-bd);border-radius:11px;min-height:40px;display:flex;align-items:center;padding:0 13px;font-size:12.5px;color:var(--warn-fg)">ما فيه اتصال — البيانات آخر تحديث ١٠:٣٠</div>
+<div style="font-size:11.5px;color:var(--dim1);line-height:1.8">العرض للقراءة فقط وأزرار الحفظ معطّلة. لا تعديل بدون اتصال.</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1080},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;employee&quot;,&quot;owner&quot;],&quot;default&quot;:&quot;employee&quot;,&quot;tsType&quot;:&quot;'employee' | 'owner'&quot;,&quot;section&quot;:&quot;النموذج&quot;}}">
+const G='var(--gold)', DIM='var(--text3)', SEC='var(--text2)', BD='var(--border)', CARD='var(--card)';
+const P = {
+  info:{bar:'var(--info)',bg:'var(--info-bg)',fg:'var(--info-fg)'},
+  ok:{bar:'var(--ok)',bg:'var(--ok-bg)',fg:'var(--ok-fg)'},
+  warn:{bar:'var(--warn)',bg:'var(--warn-bg)',fg:'var(--warn-fg)'},
+  bad:{bar:'var(--bad)',bg:'var(--bad-bg)',fg:'var(--bad-fg)'},
+  gold:{bar:'var(--gold)',bg:'var(--gold-bg)',fg:'var(--gold-lt)'}
+};
+const chip = (on) => on ? {bg:G,fg:'var(--on-gold)',bd:G} : {bg:'transparent',fg:SEC,bd:BD};
+
+const SWATCH = {
+  dark:['0A0A0B','141416','16161A','26262A','CBA45E','E24B4A','639922','C98A16','378ADD','FFFFFF','A1A1A6','6E6E73'],
+  light:['FBF9F4','FFFFFF','F7F4EC','E4DFD3','9C7C3C','C0392F','4F7F18','A0680C','2E6FB0','1E1B15','6B665B','8C8779']
+};
+const LIGHT = {bg:'#FBF9F4',page:'#EDE9E0',panel:'#FFFFFF',card:'#FFFFFF',raised:'#F7F4EC',border:'#E4DFD3',line2:'#E9E5DB',line3:'#F0ECE3',
+ text:'#1E1B15',text2:'#6B665B',text3:'#8C8779',dim1:'#ADA79A',dim2:'#C9C3B6',
+ gold:'#9C7C3C','gold-lt':'#7D612C','on-gold':'#FFFFFF','gold-bg':'#F6EFE0','gold-bd':'#E0CFAB',
+ bad:'#C0392F','bad-bg':'#FBEAE7','bad-fg':'#8E2B22','bad-bd':'#EBCCC6',
+ ok:'#4F7F18','ok-bg':'#EDF4E1','ok-fg':'#3C5F14','ok-bd':'#D3E3B9',
+ warn:'#A0680C','warn-bg':'#FAF0DB','warn-fg':'#7A4E08','warn-bd':'#EBD8AE',
+ info:'#2E6FB0','info-bg':'#E6EFF9','info-fg':'#1F4E7D',
+ bez1:'#DAD6CD',bez2:'#B7B2A7',tabbar:'rgba(251,249,244,.92)',glow:'rgba(156,124,60,.20)',glow2:'rgba(46,111,176,.14)'};
+const DARK = {bg:'#0A0A0B',page:'#08080A',panel:'#0d0d0f',card:'#141416',raised:'#16161A',border:'#26262A',line2:'#1c1c20',line3:'#1e1e22',
+ text:'#FFFFFF',text2:'#A1A1A6',text3:'#6E6E73',dim1:'#48484C',dim2:'#3a3a3e',
+ gold:'#CBA45E','gold-lt':'#E2C078','on-gold':'#0A0A0B','gold-bg':'#1c1710','gold-bd':'#3a2f18',
+ bad:'#E24B4A','bad-bg':'#2A0E0E','bad-fg':'#F7C1C1','bad-bd':'#5c2220',
+ ok:'#639922','ok-bg':'#173404','ok-fg':'#C0DD97','ok-bd':'#2f5c0d',
+ warn:'#C98A16','warn-bg':'#412402','warn-fg':'#FAC775','warn-bd':'#6b4008',
+ info:'#378ADD','info-bg':'#042C53','info-fg':'#B5D4F4',
+ bez1:'#2a2a2e',bez2:'#161618',tabbar:'rgba(14,14,16,.92)',glow:'rgba(203,164,94,.20)',glow2:'rgba(55,138,221,.14)'};
+const ICON = {
+  kanban:['M4 4h4.4v16H4zM9.8 4h4.4v11H9.8zM15.6 4H20v7h-4.4z'],
+  building:['M3 21h18M5 21V6.2l7-3.2 7 3.2V21','M9.5 21v-5h5v5M9 10h.01M15 10h.01'],
+  doc:['M6 2.6h7.5L18 7v13.9a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5z','M13.5 2.6V7H18M9 12.5h6M9 16.5h4'],
+  chart:['M4 20V10.5M10 20V4M16 20v-6.5','M22 20.5H2'],
+  chat:['M21 11.8a8 8 0 0 1-11.6 7.2L4 20.5l1.5-5.3A8 8 0 1 1 21 11.8z'],
+  user:['M18.5 20.5v-1.7a5 5 0 0 0-5-5h-3a5 5 0 0 0-5 5v1.7','M12 11a4.2 4.2 0 1 0 0-8.4A4.2 4.2 0 0 0 12 11'],
+  bell:['M18 8.6a6 6 0 0 0-12 0c0 6-2.2 7.6-2.2 7.6h16.4S18 14.6 18 8.6z','M13.7 20a2 2 0 0 1-3.4 0'],
+  finger:['M12 3.2a6.5 6.5 0 0 0-6.5 6.5v3.6M18.5 9.7a6.5 6.5 0 0 0-3.3-5.6','M9 20.4a10 10 0 0 0 1.6-5.4V9.7a1.4 1.4 0 0 1 2.8 0V15M15.6 20.6c.6-1.6.9-3.2.9-4.9v-2.2'],
+  trend:['M3 17l6-6 4 4 8-8','M21 7h-5.4M21 7v5.4'],
+  users:['M15.5 20.5v-1.7a4.6 4.6 0 0 0-4.6-4.6H6.6A4.6 4.6 0 0 0 2 18.8v1.7','M8.7 10.8a4 4 0 1 0 0-8 4 4 0 0 0 0 8M16.6 3.1a4 4 0 0 1 0 7.8M22 20.5v-1.7a4.6 4.6 0 0 0-3.4-4.4'],
+  share:['M12 16.2V3.4M12 3.4 7.6 7.8M12 3.4l4.4 4.4','M4 14.6v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5'],
+  shield:['M12 2.6l8 3v6.1c0 4.9-3.4 8.6-8 9.7-4.6-1.1-8-4.8-8-9.7V5.6z','M9 12.2l2.2 2.2 4.3-4.4'],
+  gear:['M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8','M19.6 12c0 .5.1 1 .2 1.4l1.4 1-1.6 2.9-1.7-.6a5.9 5.9 0 0 1-2.4 1.4l-.3 1.8h-3.3l-.3-1.8a5.9 5.9 0 0 1-2.4-1.4l-1.7.6L3.8 14.4l1.4-1a5.9 5.9 0 0 1 0-2.8l-1.4-1 1.7-2.9 1.7.6a5.9 5.9 0 0 1 2.4-1.4l.3-1.8h3.3l.3 1.8a5.9 5.9 0 0 1 2.4 1.4l1.7-.6 1.6 2.9-1.4 1c.1.4.2.9.2 1.4z']
+};
+const stagger = (arr, step) => arr.map((x,i) => ({...x, delay:(i*(step||70))+'ms'}));
+
+class Component extends DCLogic {
+  state = { theme:'dark', avail:true, authed:false, role:null, tab:'home', overlay:null, sheet:null, outcome:null, quick:null, toast:null, period:'اليوم', fuFilter:'الكل', clientFilter:'الكل' };
+
+  componentDidMount(){
+    let t = 'dark';
+    try { t = localStorage.getItem('sultan-theme') || 'dark'; } catch(e) {}
+    this.applyTheme(t); this.setState({theme:t});
+  }
+  applyTheme(t){
+    const v = t === 'light' ? LIGHT : DARK, r = document.documentElement.style;
+    Object.keys(v).forEach(k => r.setProperty('--' + k, v[k]));
+  }
+  setTheme(t){ this.applyTheme(t); this.setState({theme:t}); try { localStorage.setItem('sultan-theme', t); } catch(e) {} }
+
+  get role(){ return this.state.role || this.props.role || 'employee'; }
+  set(o){ this.setState(o); }
+  flash(msg){ this.setState({toast:msg}); clearTimeout(this._t); this._t = setTimeout(()=>this.setState({toast:null}), 2200); }
+  openSheet(kind, mode, name){ this.setState({sheet:{kind,mode,name}, outcome:null, quick:null}); }
+
+  nav(kind, name){ return () => this.setState({overlay:{kind, name}, sheet:null}); }
+  bump(key, delta, min, max){
+    return () => this.setState(st => {
+      const cur = st[key] === undefined ? min : st[key];
+      return {[key]: Math.max(min, Math.min(max, cur + delta))};
+    });
+  }
+  chipSet(key, list, current){
+    return list.map(l => ({label:l, ...chip((this.state[key] || current) === l), go: () => this.setState({[key]: l})}));
+  }
+  ownerScreens(s, ov, go){
+    const k = ov ? ov.kind : null;
+    const AR = n => String(n).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]);
+    const detailSheet = (sh) => {
+      if (!sh || sh.kind !== 'detail') return {facts:[], chips:[], swatchShow:'none', swatch:'transparent'};
+      return {swatchShow:'none', swatch:'transparent', ...sh.data};
+    };
+    const sheetDetail = detailSheet(s.sheet);
+    const openDetail = (data) => () => this.setState({sheet:{kind:'detail', data}});
+
+    const unitFilter = s.unitFilter || 'الكل';
+    const rawUnits = [
+      ['شقة ١٢','الدور ٣','١٤٠ م²','٧٥٠٬٠٠٠ ريال سعودي','محجوز','warn','خالد الشمري','شقق'],
+      ['شقة ١٤','الدور ٣','١٢٥ م²','٦٩٥٬٠٠٠ ريال سعودي','متاح','none','','شقق'],
+      ['دور أرضي ٢','الأرضي','٢١٠ م²','٩٨٠٬٠٠٠ ريال سعودي','مباع','ok','أمل الشهراني','أدوار'],
+      ['شقة ٢١','الدور ٥','١٣٠ م²','٧٢٠٬٠٠٠ ريال سعودي','متاح','none','','شقق'],
+      ['بنتهاوس ١','الدور ٧','٣٢٠ م²','١٬٦٠٠٬٠٠٠ ريال سعودي','مباع','ok','وليد الجهني','بنتهاوس'],
+      ['شقة ٣٠','الدور ٦','١٤٥ م²','٧٩٥٬٠٠٠ ريال سعودي','متاح','none','','شقق']
+    ];
+    const typeFilter = s.typeFilter || 'شقق';
+    const units = stagger(rawUnits
+      .filter(u => unitFilter === 'الكل' || u[4] === unitFilter)
+      .map(u => {
+        const tone = u[5];
+        const on = tone !== 'none';
+        return {
+          label:u[0], floor:u[1], area:u[2], price:u[3], badge:u[4], buyer:u[6],
+          bg: u[4] === 'مباع' ? 'var(--bg)' : 'var(--card)',
+          bd: on ? 'var(--' + tone + '-bd)' : 'var(--border)',
+          badgeBg: on ? 'var(--' + tone + '-bg)' : 'var(--border)',
+          badgeFg: on ? 'var(--' + tone + '-fg)' : 'var(--text2)',
+          go: openDetail({
+            title: u[0] + ' — مشروع ٨٠', sub: u[1] + ' · ' + u[2] + ' · ٣ + صالة',
+            badge: u[4], badgeShow:'flex',
+            badgeBg: on ? 'var(--' + tone + '-bg)' : 'var(--border)',
+            badgeFg: on ? 'var(--' + tone + '-fg)' : 'var(--text2)',
+            facts: u[4] === 'متاح' ? [
+              {k:'النوع', v:'شقة', color:'var(--text)'},
+              {k:'السعر', v:u[3], color:'var(--gold)'},
+              {k:'الحالة', v:'متاح — ما فيه حجز', color:'var(--text)'}
+            ] : [
+              {k:'السعر', v:u[3], color:'var(--gold)'},
+              {k:'العميل', v:u[6], color:'var(--text)'},
+              {k:'الموظف', v:'عبير الحربي', color:'var(--text)'},
+              {k:'المحصّل', v:'٥٠٬٠٠٠ ريال سعودي', color:'var(--ok-fg)'},
+              {k:'المتبقي', v:'٧٠٠٬٠٠٠ ريال سعودي', color:'var(--text)'}
+            ],
+            chipsShow:'none', chips:[],
+            cta: u[4] === 'متاح' ? 'ما فيه حجز على هذي الوحدة' : 'فتح ملف الحجز ›'
+          })
+        };
+      }), 45);
+
+    const STAGES = [
+      ['جديد','info',12,'#378ADD'],['لم يتم التواصل','bad',23,'#E24B4A'],['مهتم','ok',34,'#639922'],
+      ['زيارة مجدولة','info',8,'#378ADD'],['زار المشروع','info',6,'#2E6FB0'],['تفاوض','gold',12,'#CBA45E'],
+      ['في الانتظار','warn',70,'#C98A16'],['حسبة البنك','warn',14,'#A0680C'],['محجوز','ok',9,'#4F7F18'],
+      ['مباع','ok',60,'#2f5c0d'],['غير مهتم','bad',167,'#8E2B22']
+    ];
+    const clients = n => AR(n) + (n >= 3 && n <= 10 ? ' عملاء' : ' عميل');
+
+    return {
+      isProjects: !!ov && k === 'projects',
+      isProject: !!ov && k === 'project',
+      isPipeline: !!ov && k === 'pipeline',
+      isTeam: !!ov && k === 'team',
+      isMember: !!ov && k === 'member',
+      isAnalytics: !!ov && k === 'analytics',
+      isStages: !!ov && k === 'stages',
+      isAssign: !!ov && k === 'assign',
+      isSettings: !!ov && k === 'settings',
+      isDupes: !!ov && k === 'dupes',
+      isAudit: !!ov && k === 'audit',
+      isDetailSheet: !!s.sheet && s.sheet.kind === 'detail',
+      detail: sheetDetail,
+      backProjects: this.nav('projects'),
+      backTeam: this.nav('team'),
+      backSettings: this.nav('settings'),
+
+      projFilters: this.chipSet('projFilter', ['الكل','نشط','مكتمل'], 'الكل'),
+      projects: stagger([
+        ['مشروع السلطان ٨٠','ظهرة لبن · الرياض','نشط','ok','42%','٤٢٪','٨٦','١٢','٧٢'],
+        ['مشروع السلطان ٧٩','العارض · الرياض','نشط','ok','61%','٦١٪','٤٤','٧','٧٠'],
+        ['مشروع ٧٦ ظهرة لبن','ظهرة لبن · الرياض','مكتمل','info','100%','١٠٠٪','٠','٠','٥٢'],
+        ['مشروع السلطان ٨٢','النرجس · الرياض','نشط','warn','8%','٨٪','١٤٠','٤','١٢']
+      ].map(([name, district, badge, tone, pct, pctLabel, avail, held, sold]) => ({
+        name, district, badge, pct, pctLabel, avail, held, sold,
+        badgeBg:'var(--' + tone + '-bg)', badgeFg:'var(--' + tone + '-fg)',
+        go: this.nav('project', name)
+      })), 80),
+
+      projStats: [
+        {value:'١٧٠', label:'إجمالي الوحدات', color:'var(--text)'},
+        {value:'٨٦', label:'متاح', color:'var(--text2)'},
+        {value:'١٢', label:'محجوز', color:'var(--warn-fg)'},
+        {value:'٧٢', label:'مباع', color:'var(--ok-fg)'},
+        {value:'٥٨٪', label:'إشغال', color:'var(--gold)'}
+      ],
+      unitFilters: this.chipSet('unitFilter', ['الكل','متاح','محجوز','مباع','مسلّم'], 'الكل'),
+      typeFilters: this.chipSet('typeFilter', ['شقق','أدوار','بنتهاوس'], 'شقق'),
+      units,
+
+      funnel: stagger([
+        ['مهتم','ok','100%','٣٤'],['زيارة','info','62%','٢١'],['تفاوض','gold','36%','١٢'],
+        ['محجوز','warn','26%','٩'],['مباع','ok','88%','٦٠']
+      ].map(([label, tone, pct, count]) => ({label, pct, count, color:'var(--' + tone + ')'})), 90),
+      staffFilters: this.chipSet('pipeStaff', ['الكل','عبير','ريان','دانة','فيصل'], 'الكل'),
+      pipeGroups: [
+        {title:'تفاوض', count:'١٢ عميل', color:'var(--gold)', items:[
+          {name:'خالد الشمري', price:'٧٥٠٬٠٠٠ ريال', meta:'مشروع ٨٠ · شقة ١٢ · عبير الحربي', since:'في هذي المرحلة منذ ٤ أيام', sinceColor:'var(--text3)', bar:'var(--gold)'},
+          {name:'ماجد الزهراني', price:'٩٨٠٬٠٠٠ ريال', meta:'مشروع ٧٩ · دور أرضي · ريان القرني', since:'راكد ١٦ يوم', sinceColor:'var(--warn-fg)', bar:'var(--warn)'}
+        ]},
+        {title:'محجوز', count:'٩ عملاء', color:'var(--ok)', items:[
+          {name:'أمل الشهراني', price:'٧٠٠٬٠٠٠ ريال', meta:'مشروع ٨٠ · دور أرضي ٢ · دانة العتيبي', since:'في هذي المرحلة منذ يومين', sinceColor:'var(--text3)', bar:'var(--ok)'}
+        ]},
+        {title:'حسبة البنك', count:'١٤ عميل', color:'var(--warn)', items:[
+          {name:'منال الشهري', price:'٦٩٥٬٠٠٠ ريال', meta:'الراجحي · عبير الحربي', since:'راكد ١٩ يوم', sinceColor:'var(--warn-fg)', bar:'var(--warn)'}
+        ]}
+      ],
+
+      members: stagger([
+        ['د.ع','دانة العتيبي','مستشارة مبيعات','متصلة الآن','var(--ok)','86%','٨٦٪','var(--gold)','عملاء ١٤٠ · متابعات اليوم ٥ · حجوزات ٥',''],
+        ['ع.ح','عبير الحربي','مستشارة مبيعات','متصلة الآن','var(--ok)','70%','٧٠٪','var(--gold)','عملاء ١٢٤ · متابعات اليوم ٨ · حجوزات ٤',''],
+        ['ف.د','فيصل الدوسري','مستشار مبيعات','آخر ظهور قبل ساعتين','var(--dim2)','52%','٥٢٪','var(--gold)','عملاء ٧٦ · متابعات اليوم ٩ · حجوزات ١',''],
+        ['ر.ق','ريان القرني','مستشار مبيعات','آخر ظهور أمس','var(--dim2)','44%','٤٤٪','var(--bad)','عملاء ٩٨ · متابعات اليوم ١٢ · حجوزات ٢','٧ متأخرة']
+      ].map(([initial, name, role, presence, presenceColor, pct, pctLabel, barColor, stats, badge]) => ({
+        initial, name, role, presence, presenceColor, pct, pctLabel, barColor, stats, badge,
+        badgeShow: badge ? 'flex' : 'none',
+        go: this.nav('member', name)
+      })), 85),
+
+      member: {
+        name: (ov && ov.name) || 'عبير الحربي',
+        role: 'مستشارة مبيعات', presence: 'متصلة الآن'
+      },
+      memberKpis: stagger([
+        {value:'١٢٤', label:'إجمالي عملائه', color:'var(--text)'},
+        {value:'٤', label:'لم يتم التواصل', color:'var(--bad-fg)'},
+        {value:'٨', label:'متابعات اليوم', color:'var(--gold)'},
+        {value:'٢', label:'متأخرة', color:'var(--bad-fg)'},
+        {value:'١١', label:'زيارات الشهر', color:'var(--info-fg)'},
+        {value:'٤', label:'حجوزات الشهر', color:'var(--ok-fg)'}
+      ], 50),
+      memberFunnel: [
+        {label:'مهتم', pct:'100%', count:'٢٢', color:'var(--ok)'},
+        {label:'زيارة', pct:'55%', count:'١٢', color:'var(--info)'},
+        {label:'تفاوض', pct:'32%', count:'٧', color:'var(--gold)'},
+        {label:'محجوز', pct:'18%', count:'٤', color:'var(--warn)'}
+      ],
+      memberActivity: [
+        {title:'سجّلت متابعة — فهد العتيبي', when:'١١:٥٢ ص', note:'«يبي يشوف الدور الأرضي بكرة»', color:'var(--ok)'},
+        {title:'حدّثت مرحلة — نورة القحطاني', when:'١١:٢٤ ص', note:'من «مهتم» إلى «زيارة مجدولة»', color:'var(--info)'},
+        {title:'اتصال بدون رد — سعود الحربي', when:'١٠:٠٦ ص', note:'محاولة ثانية', color:'var(--warn)'}
+      ],
+      memberSessions: [
+        {device:'iPhone 15 · الرياض', meta:'نشط الآن · آخر دخول ٩:٠٢ ص', end: () => this.flash('انتهت الجلسة ✓')},
+        {device:'متصفح كروم · ويندوز', meta:'قبل ٣ أيام', end: () => this.flash('انتهت الجلسة ✓')}
+      ],
+      endAllSessions: () => this.flash('انتهت كل الجلسات ✓'),
+
+      anaCards: stagger([
+        {value:'٢١٤', label:'عملاء الشهر', trend:'↑ ١٨٪ عن الشهر الماضي', trendColor:'var(--ok-fg)'},
+        {value:'٧٫٢٪', label:'معدل التحويل', trend:'↓ ١٫١٪ عن الشهر الماضي', trendColor:'var(--bad-fg)'},
+        {value:'٢٤ يوم', label:'متوسط أيام الإغلاق', trend:'↑ ٣ أيام', trendColor:'var(--bad-fg)'},
+        {value:'٩٥٠٬٠٠٠ ريال', label:'إجمالي المحصّل', trend:'↑ ٢٢٪', trendColor:'var(--ok-fg)'}
+      ], 60),
+      anaQuestions: [
+        'كم عميل جانا من تيك توك هذا الشهر؟',
+        'مين أفضل موظف من ناحية التحويل؟',
+        'كم متوسط الوقت من أول تواصل للحجز؟',
+        'أي مشروع أسرع بيعًا؟',
+        'وش أكثر سبب لعدم الاهتمام؟'
+      ].map(l => ({label:l, ask: () => this.flash('نحلّل…')})),
+      anaChat: [
+        {text:'كم عميل جانا من تيك توك هذا الشهر؟', align:'flex-start', bg:'var(--gold-bg)', bd:'var(--gold-bd)', fg:'var(--text)', bars:[], linkShow:'none'},
+        {text:'جاك ٩٤ عميل من تيك توك هذا الشهر — ٤٤٪ من إجمالي العملاء الجدد، وأعلى قناة تحويلًا بنسبة ٩٫١٪.', align:'flex-end', bg:'var(--card)', bd:'var(--border)', fg:'var(--text2)', linkShow:'block', bars:[
+          {label:'تيك توك', pct:'100%', value:'٩٤'},
+          {label:'واتساب', pct:'58%', value:'٥٥'},
+          {label:'ميتا', pct:'41%', value:'٣٩'},
+          {label:'إحالة', pct:'27%', value:'٢٦'}
+        ]}
+      ],
+
+      stageRows: STAGES.map(([name, tone, count, hex]) => ({
+        name, count: clients(count), color:'var(--' + tone + ')',
+        go: openDetail({
+          title: name, sub:'مرحلة من كائنات الشركة', badge:'', badgeShow:'none', badgeBg:'transparent', badgeFg:'transparent',
+          swatch: hex, swatchShow:'flex',
+          facts:[
+            {k:'عدد العملاء', v:clients(count), color:'var(--text)'},
+            {k:'متوسط البقاء', v:'٦ أيام', color:'var(--text)'},
+            {k:'يشملها فلتر', v:name + ' (مظلّة)', color:'var(--text)'}
+          ],
+          chipsShow:'flex',
+          chips:['زيارة','موعد لاحق','تفاوض','حسبة البنك','في الانتظار','غير مهتم'].map(l => ({label:l})),
+          cta:'شوف عملاء هذي المرحلة ›'
+        })
+      })),
+      lossReasons: [
+        {label:'السعر', count:'٦٨', pct:'100%'},
+        {label:'نهائي', count:'٣٦', pct:'53%'},
+        {label:'الموقع', count:'٤٢', pct:'62%'},
+        {label:'المساحة', count:'٢١', pct:'31%'}
+      ],
+
+      assignStatus: (s.auto === false) ? 'موقوف — التوزيع يدوي حاليًا' : 'آخر توزيعة قبل ٢٥ دقيقة · ٨ عملاء',
+      autoTrack: (s.auto === false) ? 'var(--border)' : 'var(--gold)',
+      autoX: (s.auto === false) ? '0px' : '-21px',
+      toggleAuto: () => this.setState({auto: s.auto === false}),
+      pullTrack: (s.pull === false) ? 'var(--border)' : 'var(--gold)',
+      pullX: (s.pull === false) ? '0px' : '-21px',
+      togglePull: () => this.setState({pull: s.pull === false}),
+      distributeNow: () => this.flash('انوزعوا على ٤ موظفين ✓'),
+      methodChips: this.chipSet('method', ['بالتناوب','الأقل حِملًا','الأكثر نشاطًا'], 'الأقل حِملًا'),
+      steppers: [
+        {label:'حجم الدفعة', value: AR(s.batch === undefined ? 8 : s.batch) + ' عملاء', dec: this.bump('batch', -1, 1, 40), inc: this.bump('batch', 1, 1, 40)},
+        {label:'الحد اليومي للموظف', value: AR(s.daily === undefined ? 20 : s.daily) + ' عميل', dec: this.bump('daily', -5, 5, 120), inc: this.bump('daily', 5, 5, 120)}
+      ],
+      workDays: ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'].map((l, i) => {
+        const off = (s.offDays || ['الجمعة']).indexOf(l) >= 0;
+        return {label:l.slice(0, 6), ...chip(!off), go: () => this.setState(st => {
+          const cur = st.offDays || ['الجمعة'];
+          return {offDays: cur.indexOf(l) >= 0 ? cur.filter(x => x !== l) : cur.concat([l])};
+        })};
+      }),
+      pullLevels: [
+        {label:'المستوى الأول', value:'بعد ' + AR(s.l1 === undefined ? 3 : s.l1) + ' أيام', dec: this.bump('l1', -1, 1, 14), inc: this.bump('l1', 1, 1, 14)},
+        {label:'المستوى الثاني', value:'بعد ' + AR(s.l2 === undefined ? 2 : s.l2) + ' يومين', dec: this.bump('l2', -1, 1, 14), inc: this.bump('l2', 1, 1, 14)},
+        {label:'المستوى الثالث', value:'فوري', dec: () => this.flash('المستوى الثالث ثابت'), inc: () => this.flash('المستوى الثالث ثابت')}
+      ],
+      protections: [
+        {label:'حصانة العميل بعد ٥ متابعات'},
+        {label:'حد أدنى ٦٠ دقيقة قبل أي سحب'},
+        {label:'تحذير مسبق للموظف قبل السحب'},
+        {label:'العملاء المتعذّر الوصول إليهم محميون'}
+      ],
+      assignLog: [
+        {text:'٨ عملاء → ٣ موظفين', when:'قبل ٢٥ دقيقة', method:'بالتناوب'},
+        {text:'١٢ عميل → ٤ موظفين', when:'قبل ساعتين', method:'الأقل حِملًا'},
+        {text:'٦ عملاء مسحوبين → أُعيد توزيعهم', when:'اليوم ٩:٠٠ ص', method:'سحب'}
+      ],
+
+      companyFacts: [
+        {k:'اسم الشركة', v:'مشاريع السلطان'},
+        {k:'رقم فال REGA', v:'١٢٠٠٠٢١٠٢٩'},
+        {k:'رقم التواصل', v:'٠٥٠١١٥٥٤٤٧'}
+      ],
+      staffRows: [
+        ['عبير الحربي','مستشارة مبيعات','نشط','ok'],
+        ['دانة العتيبي','مستشارة مبيعات','نشط','ok'],
+        ['ريان القرني','مستشار مبيعات','نشط','ok'],
+        ['سارة المطيري','مستشارة مبيعات','معطّل','bad']
+      ].map(([name, role, status, tone]) => ({
+        name, role, status,
+        tagBg:'var(--' + tone + '-bg)', tagFg:'var(--' + tone + '-fg)',
+        go: openDetail({
+          title:name, sub:role, badge:status, badgeShow:'flex',
+          badgeBg:'var(--' + tone + '-bg)', badgeFg:'var(--' + tone + '-fg)',
+          facts:[
+            {k:'الدور', v:role, color:'var(--text)'},
+            {k:'الجلسات النشطة', v:'٢ أجهزة', color:'var(--text)'},
+            {k:'آخر دخول', v:'اليوم ٩:٠٢ ص', color:'var(--text)'}
+          ],
+          chipsShow:'flex',
+          chips:['تغيير الدور','إعادة تعيين الرمز','تعطيل الحساب','إنهاء الجلسات'].map(l => ({label:l})),
+          cta:'شوف عملاءه ›'
+        })
+      })),
+      addStaff: () => this.flash('في الويب فقط'),
+      settingsLinks: [
+        {label:'العملاء المكرّرون', tag:'٣', tagShow:'flex', go: this.nav('dupes')},
+        {label:'إدارة الجلسات', tag:'', tagShow:'none', go: () => this.flash('١١ جهاز نشط')},
+        {label:'سجل التدقيق', tag:'', tagShow:'none', go: this.nav('audit')}
+      ],
+      notifSwitches: ['ليد جديد','حجز جديد','تجاوز خصم','متابعات متأخرة'].map(l => {
+        const off = (s.notifOff || []).indexOf(l) >= 0;
+        return {
+          label:l, track: off ? 'var(--border)' : 'var(--ok)', x: off ? '0px' : '-19px',
+          go: () => this.setState(st => {
+            const cur = st.notifOff || [];
+            return {notifOff: cur.indexOf(l) >= 0 ? cur.filter(x => x !== l) : cur.concat([l])};
+          })
+        };
+      }),
+
+      dupeGroups: [
+        {title:'نشطون', color:'var(--warn-fg)', pairs:[
+          {name:'فهد العتيبي', merge: () => this.flash('اندمجوا ✓'), keep: () => this.flash('انحفظ الاثنين'), del: () => this.flash('انحذف المكرّر ✓'), copies:[
+            {tag:'النسخة الأصلية', phone:'٠٥٠١٢٣٤٥٦٧', source:'تيك توك', staff:'عبير الحربي', when:'أُضيف ١٤ يوليو'},
+            {tag:'النسخة المكرّرة', phone:'٥٠١٢٣٤٥٦٧', source:'ميتا', staff:'ريان القرني', when:'أُضيف ٢٨ يوليو'}
+          ]},
+          {name:'منال الشهري', merge: () => this.flash('اندمجوا ✓'), keep: () => this.flash('انحفظ الاثنين'), del: () => this.flash('انحذف المكرّر ✓'), copies:[
+            {tag:'النسخة الأصلية', phone:'٠٥٠٩٨٧٦٥٤', source:'واتساب', staff:'عبير الحربي', when:'أُضيف ٢ يوليو'},
+            {tag:'النسخة المكرّرة', phone:'٠٥٠٩٨٧٦٥٤', source:'عقار', staff:'دانة العتيبي', when:'أُضيف ٣٠ يوليو'}
+          ]}
+        ]},
+        {title:'محجوزون / مباعون', color:'var(--ok-fg)', pairs:[
+          {name:'خالد الشمري', merge: () => this.flash('اندمجوا ✓'), keep: () => this.flash('انحفظ الاثنين'), del: () => this.flash('انحذف المكرّر ✓'), copies:[
+            {tag:'سجل الحجز', phone:'٠٥٣٤٤٥٥٦٦', source:'عقار', staff:'عبير الحربي', when:'محجوز · شقة ١٢'},
+            {tag:'سجل مكرّر', phone:'٠٥٣٤٤٥٥٦٦', source:'إحالة', staff:'فيصل الدوسري', when:'مهتم · بدون وحدة'}
+          ]}
+        ]}
+      ],
+
+      auditPeriods: this.chipSet('auditPeriod', ['اليوم','أمس','٧ أيام','٣٠ يوم'], 'اليوم'),
+      auditKinds: this.chipSet('auditKind', ['الكل','تعديل عميل','متابعة','حجز','نقل','حذف','دخول'], 'الكل'),
+      auditCounters: [
+        {label:'عبير', value:'٤٢'}, {label:'دانة', value:'٣٨'},
+        {label:'ريان', value:'٣١'}, {label:'فيصل', value:'٢٨'}
+      ],
+      auditGroups: [
+        {title:'اليوم', items:[
+          {head:'عبير الحربي غيّرت مرحلة فهد العتيبي', detail:'من «مهتم» إلى «زيارة مجدولة»', when:'١١:٢٤ ص', color:'var(--info)', go: openDetail({
+            title:'تعديل مرحلة', sub:'عملية واحدة', badge:'تعديل عميل', badgeShow:'flex', badgeBg:'var(--info-bg)', badgeFg:'var(--info-fg)',
+            facts:[
+              {k:'العميل', v:'فهد العتيبي ›', color:'var(--gold)'},
+              {k:'الموظف', v:'عبير الحربي ›', color:'var(--gold)'},
+              {k:'الحقل', v:'المرحلة', color:'var(--text)'},
+              {k:'قبل', v:'مهتم', color:'var(--text2)'},
+              {k:'بعد', v:'زيارة مجدولة', color:'var(--text)'},
+              {k:'الوقت', v:'٢٠ يوليو ٢٠٢٦ · ١١:٢٤ ص', color:'var(--text)'},
+              {k:'الجهاز', v:'iPhone · الرياض', color:'var(--text)'}
+            ],
+            chipsShow:'none', chips:[], cta:'افتح ملف العميل ›'
+          })},
+          {head:'عبير الحربي سجّلت ٦ متابعات', detail:'عمليات متشابهة مدموجة — اضغط لفكّها', when:'١١:٢٤ – ١١:٥٢ ص', color:'var(--ok)', go: () => this.flash('انفكّت ٦ عمليات')},
+          {head:'دانة العتيبي أنشأت حجز أمل الشهراني', detail:'مشروع ٨٠ · دور أرضي ٢ · ٧٥٬٠٠٠ ريال سعودي', when:'١٠:١٨ ص', color:'var(--gold)', go: () => this.flash('فتحنا التفاصيل')}
+        ]},
+        {title:'أمس', items:[
+          {head:'ريان القرني نقل ٣ عملاء', detail:'إلى فيصل الدوسري — سبب: إعادة توزيع', when:'٤:٤٠ م', color:'var(--warn)', go: () => this.flash('فتحنا التفاصيل')},
+          {head:'سارة المطيري سجّلت دخول', detail:'متصفح كروم · ويندوز · الرياض', when:'٩:٠٥ ص', color:'var(--text3)', go: () => this.flash('فتحنا التفاصيل')}
+        ]}
+      ]
+    };
+  }
+  renderVals(){
+    const s = this.state, role = this.role, emp = role === 'employee';
+    const ov = s.overlay;
+    const go = (tab) => () => this.setState({tab, overlay:null, sheet:null});
+    const openProfile = (name) => () => this.setState({overlay:{kind:'profile',name}, sheet:null});
+
+    const lead = (name, meta, pal, badge, primary) => ({
+      name, meta, badge, bar:pal.bar, badgeBg:pal.bg, badgeFg:pal.fg,
+      callBg: primary ? G : 'var(--raised)', callFg: primary ? 'var(--on-gold)' : SEC,
+      call: () => this.openSheet('follow', badge==='جديد'?'first':'stage', name),
+      wa: () => this.openSheet('wa', null, name),
+      open: openProfile(name)
+    });
+
+    const tabDefs = [
+      {id:'home', label:'الرئيسية', d:'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'},
+      {id:'new', label:'جدد', d:'M14.5 20v-1.6a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20', d2:'M8.2 10.6a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6', d3:'M18.5 7.5v6M21.5 10.5h-6', badge:'٦', badgeBg:'var(--bad)', badgeFg:'#FFFFFF'},
+      {id:'followups', label:'متابعات', d:'M4.5 4h15a.5.5 0 0 1 .5.5v15a.5.5 0 0 1-.5.5h-15a.5.5 0 0 1-.5-.5v-15a.5.5 0 0 1 .5-.5z', d2:'M8.2 12.3l2.6 2.6 5-5.4', badge:'٧', badgeBg:G, badgeFg:'var(--on-gold)'},
+      {id:'clients', label:'العملاء', d:'M15.5 20v-1.6a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20', d2:'M8.7 10.6a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6', d3:'M16.5 3.6a3.8 3.8 0 0 1 0 7.4M22 20v-1.6a4 4 0 0 0-3-3.8'},
+      {id:'more', label:'المزيد', d:'M5 12h.01', d2:'M12 12h.01', d3:'M19 12h.01'}
+    ];
+
+    const tabs = tabDefs.map(t => ({
+      ...t, d2:t.d2||'', d3:t.d3||'',
+      color: (s.tab===t.id && !ov) ? G : DIM,
+      go: go(t.id),
+      scale: (s.tab===t.id && !ov) ? 1.1 : 1,
+      dot: (s.tab===t.id && !ov) ? 1 : 0,
+      badge: emp ? (t.badge||'') : '',
+      badgeDisplay: (emp && t.badge) ? 'flex' : 'none',
+      badgeBg: t.badgeBg||'transparent', badgeFg: t.badgeFg||'var(--text)'
+    }));
+
+    const sheetVal = (() => {
+      const sh = s.sheet;
+      if(!sh || sh.kind!=='follow') return {options:[], extraChips:[]};
+      const first = sh.mode === 'first';
+      const labels = first
+        ? ['مهتم','لا يرد','طلب التواصل في وقت آخر','غير مهتم']
+        : ['زيارة','موعد لاحق','تفاوض','حسبة البنك','في الانتظار','غير مهتم'];
+      const options = labels.map(l => {
+        const on = s.outcome === l;
+        const c = chip(on);
+        return {label:l, ...c, flex: first ? '1 1 46%' : '0 1 auto', minw: first ? '46%' : 'auto', pick: () => this.setState({outcome:l})};
+      });
+      const extras = {
+        'غير مهتم': {t:'وش السبب؟', c:['الموقع','السعر','المساحة','نهائي','نحاول لاحقًا؟']},
+        'في الانتظار': {t:'ينتظر إيش؟ (إلزامي)', c:['موافقة الأهل','بيع عقار','راتب/دفعة','موعد الرجوع']},
+        'حسبة البنك': {t:'البنك (اختياري)', c:['الراجحي','الأهلي','الرياض','بنك ثاني']},
+        'زيارة': {t:'مكان الزيارة · التاريخ إلزامي', c:['مشروع ٨٠','مشروع ٧٩','المكتب','اختيار الوحدة']},
+        'طلب التواصل في وقت آخر': {t:'تاريخ ووقت إلزامي', c:['بكرة الصباح','بكرة العصر','تاريخ محدد']}
+      }[s.outcome];
+      return {
+        title: first ? ('وش صار مع ' + (sh.name||'العميل') + '؟') : ('سجّل متابعة — ' + (sh.name||'')),
+        sub: first ? 'أول تواصل — اختر النتيجة' : 'المرحلة الحالية: مهتم',
+        options,
+        hasExtra: !!extras, extraTitle: extras ? extras.t : '', extraChips: extras ? extras.c.map(l=>({label:l})) : [],
+        hasFields: !!s.outcome && s.outcome !== 'لا يرد'
+      };
+    })();
+
+    const quickDates = ['بكرة','بعد يومين','بعد أسبوع','تاريخ محدد'].map(l => ({
+      label:l, ...chip(s.quick===l), pick: () => this.setState({quick:l})
+    }));
+
+    const profName = (ov && ov.kind==='profile') ? ov.name : 'فهد العتيبي';
+
+    const screens = [
+      ['١','تسجيل الدخول', () => this.setState({authed:false, sheet:null, overlay:null}), 'login'],
+      ['٢','الرئيسية — موظف', () => this.setState({authed:true, role:'employee', tab:'home', overlay:null, sheet:null}), 'emp-home'],
+      ['٣','الرئيسية — مالك', () => this.setState({authed:true, role:'owner', tab:'home', overlay:null, sheet:null}), 'own-home'],
+      ['٤','عملاء جدد', () => this.setState({authed:true, role:'employee', tab:'new', overlay:null, sheet:null}), 'new'],
+      ['٥','متابعات اليوم', () => this.setState({authed:true, role:'employee', tab:'followups', overlay:null, sheet:null}), 'fu'],
+      ['٦','كل العملاء', () => this.setState({authed:true, role:'employee', tab:'clients', overlay:null, sheet:null}), 'cl'],
+      ['٧','ملف العميل', () => this.setState({authed:true, role:'employee', overlay:{kind:'profile',name:'فهد العتيبي'}, sheet:null}), 'prof'],
+      ['٨','ورقة المتابعة — أول تواصل', () => this.setState({authed:true, role:'employee', tab:'home', overlay:null, sheet:{kind:'follow',mode:'first',name:'عبدالله الدوسري'}, outcome:null}), 'sf1'],
+      ['٩','ورقة المتابعة — مهتم', () => this.setState({authed:true, role:'employee', tab:'home', overlay:null, sheet:{kind:'follow',mode:'stage',name:'فهد العتيبي'}, outcome:'زيارة'}), 'sf2'],
+      ['١٠','قوالب واتساب', () => this.setState({authed:true, role:'employee', tab:'home', overlay:null, sheet:{kind:'wa',name:'فهد'}}), 'wa'],
+      ['١١','المزيد — موظف', () => this.setState({authed:true, role:'employee', tab:'more', overlay:null, sheet:null}), 'more-e'],
+      ['١٢','المزيد — مالك', () => this.setState({authed:true, role:'owner', tab:'more', overlay:null, sheet:null}), 'more-o'],
+      ['+','الحجوزات', () => this.setState({authed:true, overlay:{kind:'bookings'}, sheet:null}), 'bk']
+    ].concat([
+      ['١٣','المشاريع — القائمة','projects'],
+      ['١٤','تفاصيل مشروع + الوحدات','project'],
+      ['١٥','خط المبيعات','pipeline'],
+      ['١٦','الفريق — القائمة','team'],
+      ['١٧','الفريق — صفحة موظف','member'],
+      ['١٨','التحليلات — اسأل بياناتك','analytics'],
+      ['١٩','مراحل العملاء','stages'],
+      ['٢٠','التوزيع التلقائي','assign'],
+      ['٢١','الإعدادات','settings'],
+      ['٢٢','العملاء المكرّرون','dupes'],
+      ['٢٣','سجل التدقيق','audit'],
+      ['٢٤','ورقة تفاصيل الوحدة','unitSheet']
+    ].map(([n, label, key]) => [n, label, () => {
+      if (key === 'unitSheet') {
+        this.setState({authed:true, role:'owner', overlay:{kind:'project'}, sheet:{kind:'detail', data:{
+          title:'شقة ١٢ — مشروع ٨٠', sub:'الدور ٣ · ١٤٠ م² · ٣ + صالة',
+          badge:'محجوز', badgeShow:'flex', badgeBg:'var(--warn-bg)', badgeFg:'var(--warn-fg)',
+          facts:[
+            {k:'السعر', v:'٧٥٠٬٠٠٠ ريال سعودي', color:'var(--gold)'},
+            {k:'العميل', v:'خالد الشمري', color:'var(--text)'},
+            {k:'الموظف', v:'عبير الحربي', color:'var(--text)'},
+            {k:'المحصّل', v:'٥٠٬٠٠٠ ريال سعودي', color:'var(--ok-fg)'},
+            {k:'المتبقي', v:'٧٠٠٬٠٠٠ ريال سعودي', color:'var(--text)'}
+          ],
+          chipsShow:'none', chips:[], cta:'فتح ملف الحجز ›'
+        }}});
+      } else {
+        this.setState({authed:true, role:'owner', overlay:{kind:key, name: key==='member' ? 'عبير الحربي' : 'مشروع السلطان ٨٠'}, sheet:null});
+      }
+    }, key]));
+    const activeKey = !s.authed ? 'login'
+      : (s.sheet && s.sheet.kind==='follow') ? (s.sheet.mode==='first'?'sf1':'sf2')
+      : (s.sheet && s.sheet.kind==='wa') ? 'wa'
+      : (s.sheet && s.sheet.kind==='detail') ? 'unitSheet'
+      : ov ? (ov.kind==='bookings' ? 'bk' : ov.kind==='profile' ? 'prof' : ov.kind)
+      : s.tab==='home' ? (emp?'emp-home':'own-home')
+      : s.tab==='new' ? 'new' : s.tab==='followups' ? 'fu' : s.tab==='clients' ? 'cl' : (emp?'more-e':'more-o');
+
+    const isLogin = !s.authed;
+    const base = s.authed && !ov;
+
+    return {
+      isLogin,
+      login: () => this.setState({authed:true, tab:'home'}),
+      isEmpHome: base && emp && s.tab==='home',
+      isOwnerHome: base && !emp && s.tab==='home',
+      isNew: base && s.tab==='new',
+      isFollowups: base && s.tab==='followups',
+      isClients: base && s.tab==='clients',
+      isMore: base && s.tab==='more',
+      isProfile: s.authed && !!ov && ov.kind==='profile',
+      isBookings: s.authed && !!ov && ov.kind==='bookings',
+      showTabs: s.authed,
+      tabs,
+      goNew: go('new'), goClients: go('clients'),
+      closeOverlay: () => this.setState({overlay:null}),
+      closeSheet: () => this.setState({sheet:null}),
+      ...this.ownerScreens(s, ov, go),
+      openNotif: () => this.setState({sheet:{kind:'notif'}}),
+      isNotifSheet: !!s.sheet && s.sheet.kind==='notif',
+      notifSub: s.read ? 'ما فيه إشعارات جديدة' : (emp ? '٣ جديدة من أصل ٥' : '٨ جديدة تحتاج نظرة'),
+      readAll: () => { this.setState({read:true}); this.flash('انقروا كلهم ✓'); },
+      notifs: stagger((emp ? [
+        ['عميل جديد انتقل لك','ريم المطيري — تيك توك · مشروع ٨٠','قبل ١٠ د', ICON.user, 'info', 1],
+        ['تذكير زيارة اليوم','نورة القحطاني · مشروع ٨٠ شقة ١٢ · ١١:٠٠','قبل ٢٥ د', ICON.doc, 'gold', 1],
+        ['متابعة متأخرة','فهد العتيبي — كان المفروض أمس ٤:٠٠','قبل ساعة', ICON.bell, 'bad', 1],
+        ['رد على رسالتك','عبدالله الدوسري رد في واتساب','أمس', ICON.chat, 'ok', 0],
+        ['تحديث حجز','خالد الشمري — وصلت دفعة ٥٠٬٠٠٠ ريال سعودي','أمس', ICON.doc, 'ok', 0]
+      ] : [
+        ['١٤ عميل غير موزّع','وصلوا اليوم ولسّا ما انوزعوا على الفريق','قبل ٥ د', ICON.share, 'bad', 1],
+        ['خصم تجاوز الحد','خالد الشمري — بانتظار موافقتك','قبل ٤٠ د', ICON.shield, 'warn', 1],
+        ['متابعات متأخرة','ريان القرني عنده ٧ متابعات متأخرة','قبل ساعتين', ICON.bell, 'bad', 1],
+        ['عملاء مكرّرون','٣ سجلات تحتاج مراجعة ودمج','اليوم', ICON.users, 'info', 1],
+        ['حجز جديد','أمل الشهراني — مشروع ٨٠ دور أرضي ٢','أمس', ICON.trend, 'ok', 0]
+      ]).map(([title, body, when, ic, tone, un]) => ({
+        title, body, when, d: ic[0], d2: ic[1] || '',
+        color: 'var(--' + tone + ')', iconBg: 'var(--' + tone + '-bg)',
+        bg: (un && !s.read) ? 'var(--bg)' : 'transparent',
+        bd: (un && !s.read) ? 'var(--border)' : 'var(--line2)',
+        unread: (un && !s.read) ? 'var(--' + tone + ')' : 'transparent',
+        go: () => { this.setState({sheet:null}); this.flash('فتحنا التفاصيل'); }
+      })), 55),
+      sheetOpen: !!s.sheet,
+      isFollowSheet: !!s.sheet && s.sheet.kind==='follow',
+      isWaSheet: !!s.sheet && s.sheet.kind==='wa',
+      sheet: sheetVal,
+      quickDates,
+      nextDateLabel: s.quick || 'ما حُدّد',
+      save: () => { this.setState({sheet:null}); this.flash('انحفظت ✓'); },
+      toast: s.toast,
+      waTitle: 'رسالة لـ' + ((s.sheet && s.sheet.name) || 'العميل'),
+      waTemplates: [
+        {name:'ترحيب', body:'هلا فهد، معك عبير من مشاريع السلطان. وصلني طلبك وأحب أخدمك — أبغى أفهم وش تدور بالضبط؟'},
+        {name:'تذكير موعد', body:'هلا فهد، تذكير بموعد المعاينة بكرة الساعة ١١ في مشروع ٨٠. يناسبك؟'},
+        {name:'متابعة', body:'هلا فهد، حبيت أطمن عليك — وصلتك التفاصيل؟ أي استفسار أنا حاضرة.'}
+      ].map(t => ({...t, pick: () => { this.setState({sheet:null}); this.flash('انفتح واتساب ✓'); }})),
+
+      urgency: stagger([
+        {
+          title:'ما تواصلت معهم', count:'٤', cta:'اقتحمهم',
+          color:'var(--bad)', fg:'var(--bad-fg)', bd:'var(--bad-bd)', subColor:'var(--bad-fg)',
+          sub:'أقدمهم ينتظر من ٢٠٨ دقيقة — الرد السريع يرفع التحويل ٩ أضعاف',
+          go: go('new'),
+          chips:[
+            {name:'منيرة الدوسري', sub:'سناب · من ٤ د', dot:'var(--bad)', fg:'var(--bad-fg)'},
+            {name:'عبدالعزيز القحطاني', sub:'انستقرام · من ١٣ د', dot:'var(--warn)', fg:'var(--warn-fg)'},
+            {name:'هيا العنزي', sub:'ميتا · من ٤٦ د', dot:'var(--warn)', fg:'var(--warn-fg)'},
+            {name:'تركي الغامدي', sub:'إحالة · من ٢٠٨ د', dot:'var(--bad)', fg:'var(--bad-fg)'}
+          ]
+        },
+        {
+          title:'متابعات اليوم', count:'٧', cta:'خلّصها',
+          color:'var(--gold)', fg:'var(--text)', bd:'var(--gold-bd)', subColor:'var(--text3)',
+          sub:'٢ متأخرة من أمس · أقرب موعد الساعة ١١:٠٠',
+          go: go('followups'),
+          chips:[
+            {name:'فهد العتيبي', sub:'متأخر · أمس ٤:٠٠', dot:'var(--bad)', fg:'var(--bad-fg)'},
+            {name:'سعود الحربي', sub:'متأخر · أمس ٦:٣٠', dot:'var(--bad)', fg:'var(--bad-fg)'},
+            {name:'نورة القحطاني', sub:'زيارة · ١١:٠٠', dot:'var(--gold)', fg:'var(--text)'},
+            {name:'منال الشهري', sub:'اتصال · ٢:٣٠', dot:'var(--gold)', fg:'var(--text)'}
+          ]
+        },
+        {
+          title:'زيارات وتنبيهات اليوم', count:'٣', cta:'شوفها',
+          color:'var(--info)', fg:'var(--info-fg)', bd:'var(--info)', subColor:'var(--info-fg)',
+          sub:'زيارة وحدة على موعد + تنبيهين جديدين وصلوك',
+          go: go('followups'),
+          chips:[
+            {name:'زيارة — نورة', sub:'مشروع ٨٠ · شقة ١٢ · ١١:٠٠', dot:'var(--info)', fg:'var(--info-fg)'},
+            {name:'عميل جديد انتقل لك', sub:'ريم المطيري · قبل ١٠ د', dot:'var(--info)', fg:'var(--info-fg)'},
+            {name:'خصم بانتظار الموافقة', sub:'خالد الشمري · قبل ساعة', dot:'var(--warn)', fg:'var(--warn-fg)'}
+          ]
+        }
+      ], 90),
+      theme: s.theme,
+      setDark: () => this.setTheme('dark'),
+      setLight: () => this.setTheme('light'),
+      darkBg: s.theme==='light' ? 'transparent' : 'var(--gold)', darkFg: s.theme==='light' ? 'var(--text2)' : 'var(--on-gold)',
+      lightBg: s.theme==='light' ? 'var(--gold)' : 'transparent', lightFg: s.theme==='light' ? 'var(--on-gold)' : 'var(--text2)',
+      priorityLeads: stagger([
+        lead('فهد العتيبي','آخر تواصل قبل ٣ أيام · تيك توك', P.bad, 'متأخر', true),
+        lead('نورة القحطاني','زيارة اليوم ١١:٠٠ · مشروع ٨٠', P.info, 'زيارة اليوم', true),
+        lead('عبدالله الدوسري','وصل قبل ساعتين · واتساب', P.info, 'جديد', true),
+        lead('منال الشهري','حسبة البنك · الراجحي', P.warn, 'في الانتظار', false),
+        lead('سعود الحربي','حاولت مرتين أمس · ميتا', P.warn, 'لم يرد', false)
+      ]),
+      newLeads: stagger([
+        {...lead('عبدالله الدوسري','واتساب · مشروع ٧٩', P.bad, 'جديد', true), wait:'ينتظر ٣ أيام', bar:P.bad.bar, badgeBg:P.bad.bg, badgeFg:P.bad.fg},
+        {...lead('ريم المطيري','تيك توك · مشروع ٨٠', P.bad, 'جديد', true), wait:'ينتظر يومين', bar:P.bad.bar, badgeBg:P.bad.bg, badgeFg:P.bad.fg},
+        {...lead('ماجد الزهراني','عقار · مشروع ٨٠', P.warn, 'جديد', true), wait:'وصل قبل ٩ ساعات', bar:P.warn.bar, badgeBg:P.warn.bg, badgeFg:P.warn.fg},
+        {...lead('هيا العنزي','ميتا · دور أرضي', P.info, 'جديد', true), wait:'وصل قبل ساعتين', bar:P.info.bar, badgeBg:P.info.bg, badgeFg:P.info.fg},
+        {...lead('تركي الغامدي','إحالة · بنتهاوس', P.info, 'جديد', true), wait:'وصل قبل ٤٠ دقيقة', bar:P.info.bar, badgeBg:P.info.bg, badgeFg:P.info.fg}
+      ]),
+      fuFilters: ['الكل','متأخر','زيارات','اتصالات'].map(l => ({label:l, ...chip(s.fuFilter===l), go: () => this.setState({fuFilter:l})})),
+      fuGroups: [
+        {title:'متأخر', color:'var(--bad-fg)', items:[
+          {title:'اتصال — فهد العتيبي', sub:'كان المفروض أمس · مشروع ٨٠', time:'أمس ٤:٠٠', timeColor:'var(--bad-fg)', bar:P.bad.bar, call:()=>this.openSheet('follow','stage','فهد العتيبي'), wa:()=>this.openSheet('wa',null,'فهد')},
+          {title:'اتصال — سعود الحربي', sub:'حاولت مرتين · ميتا', time:'أمس ٦:٣٠', timeColor:'var(--bad-fg)', bar:P.bad.bar, call:()=>this.openSheet('follow','stage','سعود الحربي'), wa:()=>this.openSheet('wa',null,'سعود')}
+        ]},
+        {title:'اليوم', color:'var(--text)', items:[
+          {title:'زيارة — نورة القحطاني', sub:'مشروع ٨٠ · شقة ١٢', time:'١١:٠٠', timeColor:G, bar:P.info.bar, call:()=>this.openSheet('follow','stage','نورة القحطاني'), wa:()=>this.openSheet('wa',null,'نورة')},
+          {title:'اتصال — منال الشهري', sub:'حسبة البنك · الراجحي', time:'٢:٣٠', timeColor:G, bar:P.warn.bar, call:()=>this.openSheet('follow','stage','منال الشهري'), wa:()=>this.openSheet('wa',null,'منال')}
+        ]},
+        {title:'بكرة', color:SEC, items:[
+          {title:'اتصال — ريم المطيري', sub:'أول تواصل · تيك توك', time:'٩:٣٠', timeColor:SEC, bar:P.info.bar, call:()=>this.openSheet('follow','first','ريم المطيري'), wa:()=>this.openSheet('wa',null,'ريم')}
+        ]}
+      ],
+      clientFilters: ['الكل','لم يتم التواصل','جديد','مهتم','زيارة','في الانتظار','حسبة البنك','تفاوض','محجوز','مقفول']
+        .map(l => ({label:l, ...chip(s.clientFilter===l), go: () => this.setState({clientFilter:l})})),
+      allClients: stagger([
+        lead('فهد العتيبي','٠٥٠١٢٣٤٥٦٧ · تيك توك', P.ok, 'مهتم'),
+        lead('نورة القحطاني','٠٥٥٧٧٦٦٥٥ · إحالة', P.info, 'زيارة'),
+        lead('خالد الشمري','٠٥٣٤٤٥٥٦٦ · عقار', P.ok, 'محجوز'),
+        lead('منال الشهري','٠٥٠٩٨٧٦٥٤ · واتساب', P.warn, 'حسبة البنك'),
+        lead('عبدالله الدوسري','٠٥٦١١٢٢٣٣ · واتساب', P.info, 'جديد'),
+        lead('سعود الحربي','٠٥٩٨٨٧٧٦٦ · ميتا', P.warn, 'لم يرد'),
+        lead('لطيفة السبيعي','٠٥٤٣٢١٠٩٨ · تيك توك', P.bad, 'غير مهتم')
+      ], 45),
+      periods: ['اليوم','أمس','٧ أيام','الشهر'].map(l => ({label:l, ...chip(s.period===l), go: () => this.setState({period:l})})),
+      ownerKpis: stagger([
+        {value:'٨٤٦', label:'إجمالي العملاء', color:'var(--text)', size:'24px'},
+        {value:'٢٧', label:'لم يتم التواصل', color:'var(--bad-fg)', size:'24px'},
+        {value:'٤١', label:'متابعات اليوم', color:G, size:'24px'},
+        {value:'٦', label:'زيارات اليوم', color:'var(--info-fg)', size:'24px'},
+        {value:'٩٥٠٬٠٠٠ ريال سعودي', label:'حجوزات الشهر — المحصّل', color:G, size:'16px'}
+      ]),
+      team: stagger([
+        {name:'عبير الحربي', stats:'١٢٤ عميل · ٨ متابعات اليوم · ٤ حجوزات', pct:'70%', pctLabel:'٧٠٪', barColor:G},
+        {name:'ريان القرني', stats:'٩٨ عميل · ١٢ متابعة اليوم · ٢ حجز', pct:'44%', pctLabel:'٤٤٪', barColor:'var(--bad)'},
+        {name:'دانة العتيبي', stats:'١٤٠ عميل · ٥ متابعات اليوم · ٥ حجوزات', pct:'86%', pctLabel:'٨٦٪', barColor:G},
+        {name:'فيصل الدوسري', stats:'٧٦ عميل · ٩ متابعات اليوم · ١ حجز', pct:'52%', pctLabel:'٥٢٪', barColor:G}
+      ], 110),
+      alerts: [
+        {text:'عملاء مكرّرون بانتظار المراجعة', color:'var(--info)', count:'٣'},
+        {text:'خصومات تجاوزت الحد', color:'var(--warn)', count:'٢'},
+        {text:'ريان القرني — متابعات متأخرة', color:'var(--bad)', count:'٧'}
+      ],
+      meName: emp ? 'عبير الحربي' : 'سلطان العبدالله',
+      meRole: emp ? 'موظفة مبيعات' : 'مدير المبيعات',
+      meInitial: emp ? 'ع.ح' : 'س.ع',
+      notifCount: emp ? '٣' : '٨',
+      availLabel: s.avail === false ? 'موقوفة الاستلام' : 'متاح للاستلام',
+      availTrack: s.avail === false ? 'var(--border)' : 'var(--ok)',
+      availX: s.avail === false ? '0px' : '-21px',
+      toggleAvail: () => this.setState({avail: s.avail === false}),
+      logout: () => this.setState({authed:false, role:null, tab:'home', overlay:null, sheet:null}),
+      moreTiles: stagger((emp ? [
+        ['مراحل العملاء','كانبان ٩ مراحل', ICON.kanban],
+        ['المشاريع والوحدات','المتاح والمحجوز', ICON.building],
+        ['حجوزاتي','استخدام أسبوعي', ICON.doc, 'bk', '٢'],
+        ['أرقامي','هدفي ونشاطي', ICON.chart],
+        ['الشات الداخلي','مع الإدارة', ICON.chat, '', '١'],
+        ['حسابي','التوفّر والرمز', ICON.user],
+        ['الإشعارات','مفعّلة', ICON.bell],
+        ['البصمة / Face ID','مفعّل', ICON.finger]
+      ] : [
+        ['خط المبيعات','٩ قيد البيع · ٦٠ مباع', ICON.trend, 'pipeline'],
+        ['المشاريع والوحدات','٤ مشاريع · ٥٩٠ وحدة', ICON.building, 'projects'],
+        ['التحليلات','اسأل بياناتك', ICON.chart, 'analytics'],
+        ['الفريق','٦ موظفين · الأهداف', ICON.users, 'team', '٧'],
+        ['التوزيع التلقائي','قواعد وحدود', ICON.share, 'assign', '٢٣'],
+        ['مراحل العملاء','١١ مرحلة · أسباب الفقد', ICON.kanban, 'stages'],
+        ['سجل التدقيق','مين غيّر وش', ICON.shield, 'audit'],
+        ['الإعدادات','الشركة والفريق', ICON.gear, 'settings']
+      ]).map(([label, sub, ic, act, badge]) => ({
+        label, sub, d: ic[0], d2: ic[1] || '',
+        badge: badge || '', badgeShow: badge ? 'flex' : 'none',
+        go: act === 'bk' ? () => this.setState({overlay:{kind:'bookings'}})
+          : act ? this.nav(act) : () => this.flash('في الويب فقط')
+      })), 55),
+      bookings: [
+        {name:'خالد الشمري', unit:'مشروع ٧٦ ظهرة لبن · شقة ٤', badge:'محجوز', badgeBg:P.ok.bg, badgeFg:P.ok.fg, paid:'٥٠٬٠٠٠ ريال سعودي', rest:'٤٥٠٬٠٠٠ ريال سعودي'},
+        {name:'أمل الشهراني', unit:'مشروع ٨٠ · دور أرضي ٢', badge:'تمويل', badgeBg:P.warn.bg, badgeFg:P.warn.fg, paid:'٧٥٬٠٠٠ ريال سعودي', rest:'٦٢٥٬٠٠٠ ريال سعودي'},
+        {name:'وليد الجهني', unit:'مشروع ٧٩ · بنتهاوس ١', badge:'مباع', badgeBg:P.ok.bg, badgeFg:P.ok.fg, paid:'١٬١٠٠٬٠٠٠ ريال سعودي', rest:'٠ ريال سعودي'}
+      ],
+      prof: {
+        name: profName,
+        meta: '٠٥٠١٢٣٤٥٦٧ · تيك توك',
+        badge:'مهتم', badgeBg:P.ok.bg, badgeFg:P.ok.fg,
+        call: () => this.openSheet('follow','stage', profName),
+        wa: () => this.openSheet('wa', null, profName.split(' ')[0]),
+        log: () => this.openSheet('follow','stage', profName),
+        facts: [
+          {k:'المصدر', v:'تيك توك', color:'var(--text)'},
+          {k:'تاريخ الإضافة', v:'١٤ يوليو ٢٠٢٦', color:'var(--text)'},
+          {k:'الموظف المسؤول', v:'عبير الحربي', color:'var(--text)'},
+          {k:'هدف الشراء', v:'سكن — دور أرضي', color:'var(--text)'},
+          {k:'المتابعة القادمة', v:'بكرة ١١:٠٠', color:G}
+        ],
+        timeline: [
+          {title:'مهتم — موعد زيارة', when:'قبل يومين', note:'«العميل يبي دور أرضي، ميزانيته ٨٠٠ ألف»', by:'عبير الحربي', color:P.ok.bar},
+          {title:'لم يرد', when:'قبل ٤ أيام', note:'حاولت مرتين — الجوال مشغول', by:'عبير الحربي', color:P.warn.bar},
+          {title:'أول تواصل — مهتم', when:'قبل ٦ أيام', note:'«يسأل عن مشروع ٨٠، يبي يشوف على الطبيعة»', by:'عبير الحربي', color:P.info.bar},
+          {title:'وصل من تيك توك', when:'قبل ٧ أيام', note:'حملة دور أرضي — نموذج تسجيل', by:'النظام', color:'var(--dim2)'}
+        ]
+      },
+      screenIndex: screens.map(([n,label,fn,key]) => {
+        const on = activeKey === key;
+        return {n, label, go: fn, bg: on ? 'var(--gold-bg)' : 'var(--panel)', fg: on ? G : SEC, bd: on ? 'var(--gold-bd)' : 'var(--line2)'};
+      }),
+      badgeSpecs: [
+        {label:'جديد', bg:P.info.bg, fg:P.info.fg},
+        {label:'لم يرد', bg:P.warn.bg, fg:P.warn.fg},
+        {label:'مهتم', bg:P.ok.bg, fg:P.ok.fg},
+        {label:'زيارة', bg:P.info.bg, fg:P.info.fg},
+        {label:'في الانتظار', bg:P.warn.bg, fg:P.warn.fg},
+        {label:'حسبة البنك', bg:P.warn.bg, fg:P.warn.fg},
+        {label:'محجوز', bg:P.ok.bg, fg:P.ok.fg},
+        {label:'غير مهتم', bg:P.bad.bg, fg:P.bad.fg},
+        {label:'متأخر', bg:P.bad.bg, fg:P.bad.fg}
+      ],
+      swatches: SWATCH[s.theme==='light'?'light':'dark'].map(h => ({hex:'#'+h}))
+    };
+  }
+}
+</script>
+</body>
+</html>

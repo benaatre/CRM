@@ -20,6 +20,25 @@ export const authConfig = {
       const role = auth?.user?.role;
       const { pathname } = nextUrl;
 
+      // ===== تطبيق الجوال (/m) — صمّام أمان + بوابة مصادقة خاصة =====
+      // البوابة هنا لا في middleware.ts: لفّ الميدلوير بمعالِج يُسقط فرع
+      // «غير مصرّح ← صفحة الدخول» في next-auth (lib/index.js) فتنكشف كل صفحات
+      // الويب. الاستثناء هنا يبقى داخل نفس المسار المعتمد لـ/login و/reset-pin.
+      if (pathname === "/m" || pathname.startsWith("/m/")) {
+        // مفتاح إطفاء التطبيق كليًا — أي طلب لـ/m يرجع للويب.
+        if (process.env.MOBILE_APP === "off") {
+          return Response.redirect(new URL("/", nextUrl));
+        }
+        // شاشة دخول التطبيق عامة — والمسجّل يُحوّل لواجهة التطبيق.
+        if (pathname.startsWith("/m/login")) {
+          if (isLoggedIn) return Response.redirect(new URL("/m", nextUrl));
+          return true;
+        }
+        // بقية مسارات التطبيق: نفس حماية الويب، لكن التحويل لشاشة دخول التطبيق.
+        if (!isLoggedIn) return Response.redirect(new URL("/m/login", nextUrl));
+        return true;
+      }
+
       // صفحة الدخول عامة — وإذا كان داخلًا، حوّله للوحة.
       if (pathname.startsWith("/login")) {
         if (isLoggedIn) {
