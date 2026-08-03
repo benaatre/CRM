@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { LeadStage } from "@prisma/client";
+import { markCall } from "@/lib/mobile-call-tracker";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { FollowupSheet } from "./followup-sheet";
 import { WaSheet } from "./wa-sheet";
@@ -15,6 +16,7 @@ export function MobileProfileActions({
   firstContact,
   meName,
   projects,
+  autoOpenFollowup = false,
 }: {
   leadId: string;
   phone: string;
@@ -23,8 +25,14 @@ export function MobileProfileActions({
   firstContact: boolean;
   meName: string;
   projects: { id: string; name: string }[];
+  /** فتح ورقة المتابعة تلقائيًا (عودة من مكالمة عبر جسر Capacitor — ?log=call). */
+  autoOpenFollowup?: boolean;
 }) {
   const [sheet, setSheet] = useState<"wa" | "fu" | null>(null);
+
+  useEffect(() => {
+    if (autoOpenFollowup) setSheet("fu");
+  }, [autoOpenFollowup]);
 
   const btn = {
     boxSizing: "border-box" as const,
@@ -42,6 +50,7 @@ export function MobileProfileActions({
       <div className="flex" style={{ gap: 8, padding: "14px 0 13px" }}>
         <a
           href={`tel:${phone}`}
+          onClick={() => markCall(leadId)}
           style={{
             ...btn, flex: 1,
             border: `1px solid ${MOBILE_COLORS.border}`,

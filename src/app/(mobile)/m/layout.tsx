@@ -1,4 +1,5 @@
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { CapacitorBridge } from "@/components/mobile/capacitor-bridge";
 
 /**
  * تخطيط تطبيق الجوال — الغلاف المشترك لكل مسارات /m (بما فيها شاشة الدخول).
@@ -18,6 +19,8 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
         paddingTop: "env(safe-area-inset-top)",
       }}
     >
+      {/* جسر Capacitor: لا يعمل إلا داخل التطبيق الأصلي (isNativePlatform) */}
+      <CapacitorBridge />
       {children}
     </div>
   );

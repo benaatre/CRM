@@ -8,6 +8,7 @@ import { channelLabel, stageLabel } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { waitingLabel, type WaitingBasis } from "@/lib/mobile-format";
+import { markCall } from "@/lib/mobile-call-tracker";
 
 /**
  * الحد الأدنى الذي تحتاجه البطاقة — `LeadRow` يحققه بنيويًا، فتُمرَّر صفوف
@@ -131,7 +132,7 @@ export function MobileLeadCard({
       <div className="relative z-10 flex" style={{ gap: 8 }}>
         <a
           href={`tel:${lead.phone}`}
-          onClick={stop}
+          onClick={(e) => { stop(e); markCall(lead.id); }}
           className="flex flex-1 items-center"
           style={{ paddingBlock: TAP_PAD_Y }}
         >

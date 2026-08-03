@@ -14,11 +14,13 @@ export const dynamic = "force-dynamic";
 
 export default async function MobileLeadProfile({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ log?: string }>;
 }) {
   const user = await requireUser();
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
 
   // getLeadDetail محجَّمة: الموظف لا يفتح عميل غيره (ترجع null ⇒ 404).
   const lead = await getLeadDetail(id);
@@ -91,6 +93,7 @@ export default async function MobileLeadProfile({
           firstContact={firstContact}
           meName={(user.name ?? "").trim().split(/\s+/)[0] || "فريق السلطان"}
           projects={projects}
+          autoOpenFollowup={sp.log === "call"}
         />
       </div>
 
