@@ -3,10 +3,11 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth-guards";
 import { getLeadDetail } from "@/lib/data/leads";
+import { prisma } from "@/lib/prisma";
 import { stageLabel, channelLabel, priorityLabel } from "@/lib/labels";
 import { stageChipClass, STAGE_HEX } from "@/lib/stage-colors";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
-import { toArabicDigits, waitingLabel } from "@/lib/mobile-format";
+import { toArabicDigits, waitingLabel, waitingBasisOf } from "@/lib/mobile-format";
 import { MobileProfileActions } from "@/components/mobile/profile-actions";
 
 export const dynamic = "force-dynamic";
@@ -23,14 +24,22 @@ export default async function MobileLeadProfile({
   const lead = await getLeadDetail(id);
   if (!lead) notFound();
 
+  // نفس استعلام صفحة الويب — لاختيار مكان الزيارة في ورقة المتابعة.
+  const projects = await prisma.project.findMany({
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   const firstContact = lead.firstContactStage === null && lead.followUpsCount === 0;
+  // نص الانتظار يتبع أساسه (آخر تواصل أم الإسناد) — لا يُخمَّن.
+  const basis = waitingBasisOf(lead);
 
   const facts: { k: string; v: string; color?: string }[] = [
     { k: "الجوال", v: lead.phone },
     { k: "القناة", v: channelLabel(lead.channel) },
     { k: "الأولوية", v: priorityLabel(lead.priority) },
     { k: "المحاولات", v: toArabicDigits(lead.attempts) },
-    { k: "الانتظار", v: waitingLabel(lead.daysWaiting) },
+    { k: "الانتظار", v: waitingLabel(lead.daysWaiting, basis) },
     ...(lead.projectName ? [{ k: "المشروع", v: lead.projectName }] : []),
     ...(lead.nextFollowup ? [{ k: "المتابعة الجاية", v: fmtDateTime(lead.nextFollowup), color: MOBILE_COLORS.gold }] : []),
     ...(lead.visitAt ? [{ k: "موعد الزيارة", v: fmtDateTime(lead.visitAt), color: MOBILE_COLORS.gold }] : []),
@@ -63,7 +72,7 @@ export default async function MobileLeadProfile({
               {lead.name}
             </h1>
             <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textMuted, marginTop: 5 }}>
-              {waitingLabel(lead.daysWaiting)} · {channelLabel(lead.channel)}
+              {waitingLabel(lead.daysWaiting, basis)} · {channelLabel(lead.channel)}
             </div>
           </div>
           <span
@@ -81,6 +90,7 @@ export default async function MobileLeadProfile({
           stage={lead.stage}
           firstContact={firstContact}
           meName={(user.name ?? "").trim().split(/\s+/)[0] || "فريق السلطان"}
+          projects={projects}
         />
       </div>
 

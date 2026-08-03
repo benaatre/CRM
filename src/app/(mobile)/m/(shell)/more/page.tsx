@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  CalendarCheck, Archive, Bell, KeyRound, Share2, Copy, ScrollText, BarChart3,
+  CalendarCheck, Archive, Bell, KeyRound, Share2, Copy, ScrollText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";

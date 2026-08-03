@@ -45,6 +45,7 @@ export function FollowupSheet({
   leadId,
   stage,
   firstContact,
+  projects,
 }: {
   open: boolean;
   onClose: () => void;
@@ -52,6 +53,8 @@ export function FollowupSheet({
   stage: LeadStage;
   /** وضع «أول تواصل»: ما تحدّدت المرحلة الأولى ولا فيه متابعات. */
   firstContact: boolean;
+  /** مشاريع الاختيار عند «زيارة» — نفس قائمة الويب. */
+  projects: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -59,6 +62,9 @@ export function FollowupSheet({
   const [step, setStep] = useState<InterestedStep | null>(null);
   const [visitAction, setVisitAction] = useState<"schedule" | "done" | null>(null);
   const [noShowChoice, setNoShowChoice] = useState<"resched" | "reject" | null>(null);
+  const [visitKind, setVisitKind] = useState<"project" | "office">("project");
+  const [visitMode, setVisitMode] = useState<"all" | "select">("all");
+  const [selProjects, setSelProjects] = useState<Set<string>>(new Set());
   const [reasons, setReasons] = useState<Set<string>>(new Set());
   const [retry, setRetry] = useState<"yes" | "no">("no");
   const [note, setNote] = useState("");
@@ -71,6 +77,7 @@ export function FollowupSheet({
   const reset = () => {
     setSel(null); setStep(null); setVisitAction(null); setNoShowChoice(null);
     setReasons(new Set()); setRetry("no"); setNote(""); setDate(""); setError(null);
+    setVisitKind("project"); setVisitMode("all"); setSelProjects(new Set());
   };
   const pick = (k: string) => { reset(); setSel(k); };
 
@@ -88,10 +95,18 @@ export function FollowupSheet({
     } else if (firstContact) {
       body = buildFirstContactBody(sel as FcKey, note, date);
     } else {
-      body = buildBody({ key: sel, stage, step, visitAction, noShowChoice: noShowChoice === "resched" ? "resched" : null, note, date });
+      body = buildBody({
+        key: sel, stage, step, visitAction,
+        noShowChoice: noShowChoice === "resched" ? "resched" : null,
+        note, date, visitKind, visitMode, selProjects: [...selProjects],
+      });
     }
     if (!body) { setError("اختر خطوة"); return; }
     if (needsNote(sel) && !note.trim()) { setError("اكتب سبب الانتظار"); return; }
+    if (sel === "visit" && visitKind === "project" && visitMode === "select" && selProjects.size === 0) {
+      setError("اختر مشروعًا واحدًا على الأقل");
+      return;
+    }
 
     setError(null);
     startTransition(async () => {
@@ -142,6 +157,40 @@ export function FollowupSheet({
             <Chip on={visitAction === "done"} onClick={() => setVisitAction("done")}>تمت الزيارة</Chip>
           )}
         </Group>
+      )}
+
+      {sel === "visit" && (
+        <>
+          <Group title="مكان الزيارة">
+            <Chip on={visitKind === "project"} onClick={() => setVisitKind("project")}>زيارة المشروع</Chip>
+            <Chip on={visitKind === "office"} onClick={() => setVisitKind("office")}>زيارة للمكتب</Chip>
+          </Group>
+          {visitKind === "project" && (
+            <Group title="أي مشروع؟">
+              <Chip on={visitMode === "all"} onClick={() => setVisitMode("all")}>جميع المشاريع</Chip>
+              <Chip on={visitMode === "select"} onClick={() => setVisitMode("select")}>حدد المشاريع</Chip>
+            </Group>
+          )}
+          {visitKind === "project" && visitMode === "select" && (
+            <Group title="المشاريع">
+              {projects.length === 0 ? (
+                <span style={{ fontSize: "12.5px", color: MOBILE_COLORS.textMuted }}>ما فيه مشاريع</span>
+              ) : (
+                projects.map((p) => (
+                  <Chip
+                    key={p.id}
+                    on={selProjects.has(p.name)}
+                    onClick={() => setSelProjects((s) => {
+                      const n = new Set(s); if (n.has(p.name)) n.delete(p.name); else n.add(p.name); return n;
+                    })}
+                  >
+                    {p.name}
+                  </Chip>
+                ))
+              )}
+            </Group>
+          )}
+        </>
       )}
 
       {/* «ما حضر» بتدرّج */}

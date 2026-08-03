@@ -98,8 +98,19 @@ export function buildBody(args: {
   noShowChoice: "resched" | null;
   note: string;
   date: string;
+  /** مكان الزيارة — نفس تركيب الويب: مكتب · جميع المشاريع · أسماء مختارة. */
+  visitKind?: "project" | "office";
+  visitMode?: "all" | "select";
+  selProjects?: string[];
 }): SaveBody | null {
   const { key, stage, step, visitAction, noShowChoice, note, date } = args;
+  const visitKind = args.visitKind ?? "project";
+  const place =
+    visitKind === "office"
+      ? "زيارة للمكتب"
+      : (args.visitMode ?? "all") === "all"
+        ? "جميع المشاريع"
+        : (args.selProjects ?? []).join("، ");
   switch (key) {
     case "interested":
       if (step === "visit")
@@ -114,8 +125,8 @@ export function buildBody(args: {
     case "visit":
       // «تمت الزيارة» متاحة فقط لمن عنده موعد زيارة قائم.
       if (stage === "VISIT_SCHEDULED" && visitAction === "done")
-        return { type: "VISIT_PROJECT", result: "INTERESTED_VISITED", section: "INTERESTED", stage: "VIEWING", note: compose("تمت الزيارة — جميع المشاريع", note) };
-      return { type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("موعد زيارة — جميع المشاريع", note), nextDate: date };
+        return { type: visitKind === "office" ? "VISIT_OFFICE" : "VISIT_PROJECT", result: "INTERESTED_VISITED", section: "INTERESTED", stage: "VIEWING", note: compose(`تمت الزيارة — ${place}`, note) };
+      return { type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose(`موعد زيارة — ${place}`, note), nextDate: date };
     case "noShow":
       if (noShowChoice === "resched")
         return { type: "CALL", result: "INTERESTED_VISIT_SCHEDULED", section: "INTERESTED", stage: "VISIT_SCHEDULED", note: compose("ما حضر — أُعيدت جدولة الزيارة", note), nextDate: date };

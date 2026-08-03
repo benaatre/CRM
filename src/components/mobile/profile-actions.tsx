@@ -14,6 +14,7 @@ export function MobileProfileActions({
   stage,
   firstContact,
   meName,
+  projects,
 }: {
   leadId: string;
   phone: string;
@@ -21,6 +22,7 @@ export function MobileProfileActions({
   stage: LeadStage;
   firstContact: boolean;
   meName: string;
+  projects: { id: string; name: string }[];
 }) {
   const [sheet, setSheet] = useState<"wa" | "fu" | null>(null);
 
@@ -88,6 +90,7 @@ export function MobileProfileActions({
         leadId={leadId}
         stage={stage}
         firstContact={firstContact}
+        projects={projects}
       />
     </>
   );
