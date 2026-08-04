@@ -90,7 +90,7 @@ export default async function MobileTodayPage({
       {total === 0 ? (
         <div className="flex flex-col items-center text-center" style={{ gap: 9, padding: "26px 0 6px", opacity: 0.55 }}>
           <CheckCircle2 size={34} style={{ color: MOBILE_COLORS.textMuted }} aria-hidden />
-          <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textMuted }}>خلّصت متابعات اليوم 🎉</div>
+          <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textMuted }}>ما عندك متابعات مستحقّة</div>
         </div>
       ) : (
         <>

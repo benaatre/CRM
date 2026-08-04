@@ -97,9 +97,9 @@ export default async function MobileHomePage({
   };
   take(visitsToday, 2, false, (l) => `زيارة اليوم ${fmtTime(l.visitAt!)}`);
   take(lateSorted, 2, true, (l) => overdueLabel(l.nextFollowup!, now));
-  take(freshUntouched, 1, false, () => "جديد — ما تواصلت معه");
+  take(freshUntouched, 1, false, () => "ينتظر أول تواصل");
   take(lateSorted, TOP_MAX, true, (l) => overdueLabel(l.nextFollowup!, now));
-  take(freshUntouched, TOP_MAX, false, () => "جديد — ما تواصلت معه");
+  take(freshUntouched, TOP_MAX, false, () => "ينتظر أول تواصل");
 
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
@@ -158,7 +158,7 @@ export default async function MobileHomePage({
         {notContacted.length > 0 && (
           <UrgencyCard
             href="/m/new"
-            title="ما تواصلت معهم"
+            title="ينتظرون أول تواصل"
             count={notContacted.length}
             cta="اقتحمهم"
             color={MOBILE_STATUS.danger.base}
@@ -167,8 +167,8 @@ export default async function MobileHomePage({
             subColor={MOBILE_STATUS.danger.fg}
             sub={
               oldest?.assignedAt
-                ? `أقدمهم ينتظر من ${elapsedLabel(oldest.assignedAt, now)} — الرد السريع يرفع التحويل ٩ أضعاف`
-                : "الرد السريع يرفع التحويل ٩ أضعاف"
+                ? `أقدمهم ينتظر من ${elapsedLabel(oldest.assignedAt, now)} — سرعة الرد ترفع التحويل ٩ أضعاف`
+                : "سرعة الرد ترفع التحويل ٩ أضعاف"
             }
             chips={untouchedChips}
           />
@@ -206,7 +206,7 @@ export default async function MobileHomePage({
       {/* ===== ابدأ بهذول (١٥/٧٠٠ + مؤشر «ن من م») ===== */}
       <section>
         <div className="flex items-baseline justify-between" style={{ marginTop: 4, padding: "0 2px" }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>ابدأ بهذول</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>أولويات اليوم</h2>
           {taskCount > 0 && (
             <span style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted }}>
               {toArabicDigits(Math.min(top.length, taskCount))} من {toArabicDigits(taskCount)}
@@ -221,7 +221,7 @@ export default async function MobileHomePage({
           >
             <CheckCircle2 className="size-8" style={{ color: MOBILE_COLORS.textMuted }} aria-hidden />
             <p className="text-sm" style={{ color: MOBILE_COLORS.textSecondary }}>
-              خلّصت مهام اليوم 🎉
+              ما عندك متابعات مستحقّة
             </p>
           </div>
         ) : (

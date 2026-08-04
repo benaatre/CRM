@@ -44,15 +44,15 @@ export default async function MobileMorePage() {
     // داخلي: شاشة الإشعارات موجودة الآن.
     { href: "/m/notifications", label: "الإشعارات", sub: "تنبيهاتك", icon: Bell },
     // داخلي: تبويب «مؤرشف» من نفس دالة getLeads (كان يشير لفلتر مرحلة يستبعده تبويب working فيطلع فارغًا).
-    { href: "/m/leads?tab=hidden", label: "المؤرشفون", sub: "المنسحبون والمغلقون", icon: Archive },
+    { href: "/m/leads?tab=hidden", label: "مؤرشف", sub: "المنسحبون والمغلقون", icon: Archive },
     // خارجي: لا شاشة حجوزات في /m بعد.
-    { href: "/bookings", label: "الحجوزات", sub: "يفتح في المتصفح", icon: CalendarCheck, external: true },
+    { href: "/bookings", label: "خط المبيعات", sub: "يفتح في المتصفح", icon: CalendarCheck, external: true },
   ];
 
   // أدوات المالك/المدير — روابط للويب مؤقتًا حتى تُبنى شاشاتها في الجوال.
   const managerTiles: Tile[] = [
     { href: "/distribution", label: "التوزيع التلقائي", sub: "يفتح في المتصفح", icon: Share2, external: true },
-    { href: "/leads/duplicates", label: "المكرّرون", sub: "يفتح في المتصفح", icon: Copy, external: true },
+    { href: "/leads/duplicates", label: "العملاء المكررون", sub: "يفتح في المتصفح", icon: Copy, external: true },
     { href: "/audit", label: "سجل التدقيق", sub: "يفتح في المتصفح", icon: ScrollText, external: true },
   ];
 
@@ -110,7 +110,7 @@ export default async function MobileMorePage() {
         </div>
 
         <div className="flex" style={{ gap: 11, marginTop: 14 }}>
-          <Stat value={leads.length} label="عملائي" />
+          <Stat value={leads.length} label="إجمالي العملاء" />
           <Stat value={dueToday.length} label="متابعات اليوم" />
         </div>
       </div>

@@ -56,7 +56,7 @@ export default async function MobileLeadsPage({
       />
 
       <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, padding: "0 2px" }}>
-        {tab === "hidden" ? "المؤرشفون · " : tab === "archived" ? "المحجوزون والمقفولون · " : ""}
+        {tab === "hidden" ? "مؤرشف · " : tab === "archived" ? "تم الحجز / الشراء · " : ""}
         {toArabicDigits(rows.length)} عميل
       </div>
 

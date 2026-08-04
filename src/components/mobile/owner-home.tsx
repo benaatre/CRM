@@ -32,9 +32,9 @@ export async function MobileOwnerHome({
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
 
   const kpis = [
-    { value: data.kpis.newInPeriod, label: "عملاء الفترة", color: MOBILE_COLORS.textPrimary },
-    { value: data.kpis.bookings, label: "حجوزات", color: MOBILE_COLORS.gold },
-    { value: data.kpis.visits, label: "زيارات", color: MOBILE_COLORS.textPrimary },
+    { value: data.kpis.newInPeriod, label: "إجمالي العملاء", color: MOBILE_COLORS.textPrimary },
+    { value: data.kpis.bookings, label: "عدد الحجوزات", color: MOBILE_COLORS.gold },
+    { value: data.kpis.visits, label: "عدد الزيارات", color: MOBILE_COLORS.textPrimary },
     { value: data.kpis.closedWon, label: "صفقات مقفولة", color: MOBILE_STATUS.success.fg },
   ];
 
@@ -44,7 +44,7 @@ export async function MobileOwnerHome({
   // تنبيهات من مصادر فعلية فقط — صفرها يُسقطها.
   const alerts = [
     noResponseCount > 0 ? { text: "عملاء «لم يتم الرد» بانتظار قرارك", count: noResponseCount, color: MOBILE_STATUS.danger.base, href: "/no-response" } : null,
-    dupCount > 0 ? { text: "مجموعات عملاء مكررين", count: dupCount, color: MOBILE_STATUS.warning.base, href: "/leads/duplicates" } : null,
+    dupCount > 0 ? { text: "العملاء المكررون", count: dupCount, color: MOBILE_STATUS.warning.base, href: "/leads/duplicates" } : null,
     data.kpis.unassigned > 0 ? { text: "عملاء غير موزّعين", count: data.kpis.unassigned, color: MOBILE_STATUS.danger.base, href: "/distribution" } : null,
   ].filter((a): a is NonNullable<typeof a> => a !== null);
 
@@ -166,7 +166,7 @@ export async function MobileOwnerHome({
       {teamRows.length > 0 && (
         <section className="flex flex-col" style={{ gap: 11 }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginTop: 6, padding: "0 2px" }}>
-            أداء الفريق
+            أداء الموظفين
           </h2>
           {teamRows.map((t) => {
             const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : 0;

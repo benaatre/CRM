@@ -25,7 +25,7 @@ export default async function MobileNewPage() {
   return (
     <div className="flex flex-col" style={{ gap: 14, padding: "0 2px" }}>
       <div className="flex items-baseline" style={{ gap: 9 }}>
-        <h1 style={{ fontSize: 21, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>عملاء جدد</h1>
+        <h1 style={{ fontSize: 21, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>ينتظرون أول تواصل</h1>
         {fresh.length > 0 && (
           <span
             style={{
@@ -39,7 +39,7 @@ export default async function MobileNewPage() {
         )}
       </div>
       <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, marginTop: -8 }}>
-        {manager ? "كل العملاء بلا أول تواصل" : "الأطول انتظارًا فوق"}
+        {manager ? "كل من ينتظر أول تواصل" : "سرعة الرد ترفع التحويل ٩ أضعاف · الأطول انتظارًا فوق"}
       </div>
 
       {fresh.length === 0 ? (
@@ -67,7 +67,7 @@ function EmptyNew() {
     >
       <UserPlus size={34} style={{ color: MOBILE_COLORS.textMuted }} aria-hidden />
       <p style={{ fontSize: "12.5px", color: MOBILE_COLORS.textSecondary }}>
-        ما فيه عملاء ينتظرون أول تواصل 🎉
+        ما فيه ليدات جديدة تنتظر
       </p>
     </div>
   );
