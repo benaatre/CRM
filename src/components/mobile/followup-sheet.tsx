@@ -10,6 +10,7 @@ import {
   needsDate, needsNote, type InterestedStep, type FcKey, type SaveBody,
 } from "@/lib/mobile-followup";
 import { BottomSheet } from "./bottom-sheet";
+import { MobileExternalLink } from "./external-link";
 
 const optionBase = {
   boxSizing: "border-box" as const,
@@ -151,11 +152,10 @@ export function FollowupSheet({
           <p style={{ fontSize: 13, color: MOBILE_COLORS.textSecondary, lineHeight: 1.7 }}>
             تسجيل الحجز يفتح نموذج الحجز الكامل (الوحدة والأسعار والدفعات) في ملف العميل على الويب.
           </p>
-          <a
+          <MobileExternalLink
             href={`/leads/${leadId}`}
-            target="_blank"
-            rel="noopener noreferrer"
             className="flex w-full items-center justify-center"
+            showIcon={false}
             style={{
               boxSizing: "border-box", marginTop: 11, height: 48, borderRadius: 12,
               background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
@@ -163,7 +163,7 @@ export function FollowupSheet({
             }}
           >
             افتح ملف العميل في الويب
-          </a>
+          </MobileExternalLink>
         </div>
       )}
 

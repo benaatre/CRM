@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  CalendarCheck, Archive, Bell, KeyRound, Share2, Copy, ScrollText,
+  CalendarCheck, Archive, Bell, Share2, Copy, ScrollText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
@@ -10,12 +10,21 @@ import { roleLabel } from "@/lib/labels";
 import { buildAgenda } from "@/lib/mobile-agenda";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
+import { MobileExternalLink } from "@/components/mobile/external-link";
 
 export const dynamic = "force-dynamic";
 
 const APP_VERSION = "١٫٠٫٠";
 
-type Tile = { href: string; label: string; sub: string; icon: LucideIcon; badge?: number; external?: boolean };
+type Tile = {
+  href: string;
+  label: string;
+  sub: string;
+  icon: LucideIcon;
+  badge?: number;
+  /** شاشة ويب لا مقابل لها في /m — تُفتح بمتصفح النظام لا داخل WebView. */
+  external?: boolean;
+};
 
 export default async function MobileMorePage() {
   const user = await requireUser();
@@ -32,17 +41,19 @@ export default async function MobileMorePage() {
 
   // بطاقات الموظف. الحجوزات/المؤرشفون/الإشعارات/تغيير الرمز.
   const tiles: Tile[] = [
-    { href: "/bookings", label: "الحجوزات", sub: "خط المبيعات", icon: CalendarCheck, external: true },
-    { href: "/m/leads?stage=CLOSED_LOST", label: "المؤرشفون", sub: "المنسحبون والمغلقون", icon: Archive },
-    { href: "/m/more", label: "الإشعارات", sub: "قريبًا", icon: Bell },
-    { href: "/reset-pin", label: "تغيير الرمز", sub: "رمز الدخول", icon: KeyRound, external: true },
+    // داخلي: شاشة الإشعارات موجودة الآن.
+    { href: "/m/notifications", label: "الإشعارات", sub: "تنبيهاتك", icon: Bell },
+    // داخلي: تبويب «مؤرشف» من نفس دالة getLeads (كان يشير لفلتر مرحلة يستبعده تبويب working فيطلع فارغًا).
+    { href: "/m/leads?tab=hidden", label: "المؤرشفون", sub: "المنسحبون والمغلقون", icon: Archive },
+    // خارجي: لا شاشة حجوزات في /m بعد.
+    { href: "/bookings", label: "الحجوزات", sub: "يفتح في المتصفح", icon: CalendarCheck, external: true },
   ];
 
   // أدوات المالك/المدير — روابط للويب مؤقتًا حتى تُبنى شاشاتها في الجوال.
   const managerTiles: Tile[] = [
-    { href: "/distribution", label: "التوزيع التلقائي", sub: "الويب", icon: Share2, external: true },
-    { href: "/leads/duplicates", label: "المكرّرون", sub: "الويب", icon: Copy, external: true },
-    { href: "/audit", label: "سجل التدقيق", sub: "الويب", icon: ScrollText, external: true },
+    { href: "/distribution", label: "التوزيع التلقائي", sub: "يفتح في المتصفح", icon: Share2, external: true },
+    { href: "/leads/duplicates", label: "المكرّرون", sub: "يفتح في المتصفح", icon: Copy, external: true },
+    { href: "/audit", label: "سجل التدقيق", sub: "يفتح في المتصفح", icon: ScrollText, external: true },
   ];
 
   const all = manager ? [...tiles, ...managerTiles] : tiles;
@@ -108,18 +119,14 @@ export default async function MobileMorePage() {
       <div className="grid grid-cols-2" style={{ gap: 11 }}>
         {all.map((t) => {
           const Icon = t.icon;
-          return (
-            <Link
-              key={t.label}
-              href={t.href}
-              {...(t.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-              className="flex flex-col justify-between text-right"
-              style={{
+          const tileClass = "flex flex-col justify-between text-right";
+          const tileStyle = {
                 boxSizing: "border-box", position: "relative",
                 background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
                 borderRadius: 20, padding: "14px 15px 15px", minHeight: 124, overflow: "hidden",
-              }}
-            >
+          } as const;
+          const inner = (
+            <>
               <div className="flex w-full items-start justify-between">
                 {t.badge ? (
                   <span
@@ -151,6 +158,15 @@ export default async function MobileMorePage() {
                 </div>
                 <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.gold, marginTop: 5 }}>{t.sub}</div>
               </div>
+            </>
+          );
+          return t.external ? (
+            <MobileExternalLink key={t.label} href={t.href} className={tileClass} style={tileStyle} showIcon={false}>
+              {inner}
+            </MobileExternalLink>
+          ) : (
+            <Link key={t.label} href={t.href} className={tileClass} style={tileStyle}>
+              {inner}
             </Link>
           );
         })}

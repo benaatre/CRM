@@ -1,7 +1,7 @@
 import type { LeadStage } from "@prisma/client";
 import { Contact } from "lucide-react";
 import { requireUser } from "@/lib/auth-guards";
-import { getLeads } from "@/lib/data/leads";
+import { getLeads, type LeadTab } from "@/lib/data/leads";
 import { stageLabel } from "@/lib/labels";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
@@ -20,16 +20,18 @@ const STAGE_CHIPS: LeadStage[] = [
 export default async function MobileLeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; stage?: string }>;
+  searchParams: Promise<{ q?: string; stage?: string; tab?: string }>;
 }) {
   await requireUser();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const stage = STAGE_CHIPS.find((s) => s === sp.stage);
+  // تبويب «المؤرشفون» (hidden) — نفس تبويبات الويب؛ الافتراضي «جاري العمل».
+  const tab: LeadTab = sp.tab === "hidden" ? "hidden" : sp.tab === "archived" ? "archived" : "working";
 
   // البحث والفلترة على الخادم عبر نفس دالة الويب المحجَّمة.
   const rows = await getLeads({
-    tab: "working",
+    tab,
     sort: "activity",
     ...(q ? { q } : {}),
     ...(stage ? { stages: [stage] } : {}),
@@ -54,6 +56,7 @@ export default async function MobileLeadsPage({
       />
 
       <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, padding: "0 2px" }}>
+        {tab === "hidden" ? "المؤرشفون · " : tab === "archived" ? "المحجوزون والمقفولون · " : ""}
         {toArabicDigits(rows.length)} عميل
       </div>
 

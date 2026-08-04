@@ -7,6 +7,7 @@ import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import { MobileChips } from "@/components/mobile/chips";
+import { MobileExternalLink } from "@/components/mobile/external-link";
 
 /**
  * لوحة المالك/المدير (isOwnerHome في النموذج) — البيانات من getDashboard:
@@ -128,12 +129,11 @@ export async function MobileOwnerHome({
                 عملاء غير موزّعين
               </div>
             </div>
-            {/* التوزيع في الويب مؤقتًا حتى تُبنى شاشته */}
-            <a
+            {/* شاشة التوزيع في الويب — تُفتح بمتصفح النظام لا داخل WebView */}
+            <MobileExternalLink
               href="/distribution"
-              target="_blank"
-              rel="noopener noreferrer"
               className="flex items-center"
+              showIcon={false}
               style={{
                 boxSizing: "border-box", height: 38, padding: "0 16px", borderRadius: 10,
                 background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
@@ -141,7 +141,7 @@ export async function MobileOwnerHome({
               }}
             >
               وزّعهم الآن
-            </a>
+            </MobileExternalLink>
           </div>
         )}
         {kpis.map((k) => (
@@ -214,12 +214,11 @@ export async function MobileOwnerHome({
             تنبيهات تحتاج انتباه
           </h2>
           {alerts.map((a) => (
-            <a
+            <MobileExternalLink
               key={a.text}
               href={a.href}
-              target="_blank"
-              rel="noopener noreferrer"
               className="flex items-center"
+              showIcon={false}
               style={{
                 boxSizing: "border-box", gap: 11, minHeight: 44,
                 background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
@@ -229,7 +228,7 @@ export async function MobileOwnerHome({
               <span className="flex-none" style={{ width: 8, height: 8, borderRadius: 5, background: a.color }} />
               <span className="flex-1" style={{ fontSize: 13, color: MOBILE_COLORS.textPrimary }}>{a.text}</span>
               <span style={{ fontSize: 11, color: MOBILE_COLORS.textMuted }}>{toArabicDigits(a.count)}</span>
-            </a>
+            </MobileExternalLink>
           ))}
         </section>
       )}
