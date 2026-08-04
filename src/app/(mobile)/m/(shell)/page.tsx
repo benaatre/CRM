@@ -173,6 +173,7 @@ export default async function MobileHomePage({
             chips={untouchedChips}
           />
         )}
+        {(taskCount > 0 || overdueCount > 0) && (
         <UrgencyCard
           href="/m/today"
           title="متابعات اليوم"
@@ -185,6 +186,7 @@ export default async function MobileHomePage({
           sub={followupSub}
           chips={followupChips}
         />
+        )}
         {visitsToday.length > 0 && (
           <UrgencyCard
             href="/m/today?t=visits"

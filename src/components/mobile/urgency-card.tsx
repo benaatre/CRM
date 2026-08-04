@@ -58,16 +58,19 @@ export function UrgencyCard({
     >
       <div className="flex w-full items-center justify-between" style={{ gap: 8 }}>
         <div className="flex items-center" style={{ gap: 8 }}>
-          <span
-            className="flex items-center justify-center"
-            style={{
-              boxSizing: "border-box", minWidth: 23, height: 23, borderRadius: 8,
-              background: color, color: "#FFFFFF",
-              fontSize: 12, fontWeight: 700, padding: "0 6px",
-            }}
-          >
-            {toArabicDigits(count)}
-          </span>
+          {/* «صفر» ليس إنذارًا — الرقاقة الملوّنة تختفي بدل أن تعرض ٠ بلا معنى. */}
+          {count > 0 && (
+            <span
+              className="flex items-center justify-center"
+              style={{
+                boxSizing: "border-box", minWidth: 23, height: 23, borderRadius: 8,
+                background: color, color: "#FFFFFF",
+                fontSize: 12, fontWeight: 700, padding: "0 6px",
+              }}
+            >
+              {toArabicDigits(count)}
+            </span>
+          )}
           <span style={{ fontSize: "14.5px", fontWeight: 700, color: fg }}>{title}</span>
         </div>
         <span className="whitespace-nowrap" style={{ fontSize: 12, fontWeight: 600, color }}>
