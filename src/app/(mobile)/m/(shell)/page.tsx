@@ -4,6 +4,7 @@ import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeads, type LeadRow } from "@/lib/data/leads";
 import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
 import { buildAgenda } from "@/lib/mobile-agenda";
+import { getNotifications } from "@/lib/actions/notifications";
 import { channelLabel } from "@/lib/labels";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { greeting, toArabicDigits, waitingBasisOf, elapsedLabel } from "@/lib/mobile-format";
@@ -29,7 +30,10 @@ export default async function MobileHomePage({
    * مصدر واحد محجَّم بالدور: getLeads (tab=working) — الموظف يرى عملاءه فقط عبر
    * scopeForUser، والتبويب يستبعد المؤرشف والمحجوز/المقفول أصلًا.
    */
-  const leads = await getLeads({ tab: "working", sort: "activity" });
+  const [leads, notif] = await Promise.all([
+    getLeads({ tab: "working", sort: "activity" }),
+    getNotifications(),
+  ]);
 
   const now = new Date();
   // كل التقسيم الزمني من المصدر المشترك — لا منطق تاريخ في هذي الصفحة.
@@ -110,10 +114,10 @@ export default async function MobileHomePage({
           </div>
         </div>
         <div className="flex items-center" style={{ gap: 9 }}>
-          {/* الجرس: لا نظام إشعارات في الجوال بعد — الشارة = المتأخرات (رقم فعلي قابل للفعل) ويفتح متابعات اليوم. */}
+          {/* الجرس ← شاشة الإشعارات الفعلية، والشارة = غير المقروء (نفس مصدر الويب). */}
           <Link
-            href="/m/today"
-            aria-label="التنبيهات"
+            href="/m/notifications"
+            aria-label="الإشعارات"
             className="relative flex items-center justify-center"
             style={{
               boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
@@ -121,7 +125,7 @@ export default async function MobileHomePage({
             }}
           >
             <Bell size={19} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
-            {overdueCount > 0 && (
+            {notif.unread > 0 && (
               <span
                 className="absolute flex items-center justify-center"
                 style={{
@@ -131,7 +135,7 @@ export default async function MobileHomePage({
                   border: `2px solid ${MOBILE_COLORS.bg}`,
                 }}
               >
-                {toArabicDigits(overdueCount)}
+                {toArabicDigits(notif.unread)}
               </span>
             )}
           </Link>

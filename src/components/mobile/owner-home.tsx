@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Bell } from "lucide-react";
 import { getDashboard, normalizePeriod, type Period } from "@/lib/data/dashboard";
 import { getNoResponseCount } from "@/lib/data/no-response";
+import { getNotifications } from "@/lib/actions/notifications";
 import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
@@ -20,10 +21,11 @@ export async function MobileOwnerHome({
 }) {
   const period = normalizePeriod(rawPeriod);
   const owner = user.role === "OWNER";
-  const [data, dupCount, noResponseCount] = await Promise.all([
+  const [data, dupCount, noResponseCount, notif] = await Promise.all([
     getDashboard(period),
     owner ? activeDuplicateGroupCount() : Promise.resolve(0),
     owner ? getNoResponseCount() : Promise.resolve(0),
+    getNotifications(),
   ]);
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
@@ -66,8 +68,8 @@ export async function MobileOwnerHome({
         </div>
         <div className="flex items-center" style={{ gap: 9 }}>
           <Link
-            href="/no-response"
-            aria-label="التنبيهات"
+            href="/m/notifications"
+            aria-label="الإشعارات"
             className="relative flex items-center justify-center"
             style={{
               boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
@@ -75,7 +77,7 @@ export async function MobileOwnerHome({
             }}
           >
             <Bell size={19} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
-            {noResponseCount > 0 && (
+            {notif.unread > 0 && (
               <span
                 className="absolute flex items-center justify-center"
                 style={{
@@ -85,7 +87,7 @@ export async function MobileOwnerHome({
                   border: `2px solid ${MOBILE_COLORS.bg}`,
                 }}
               >
-                {toArabicDigits(noResponseCount)}
+                {toArabicDigits(notif.unread)}
               </span>
             )}
           </Link>
