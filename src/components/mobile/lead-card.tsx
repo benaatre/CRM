@@ -40,6 +40,7 @@ export function MobileLeadCard({
   reason,
   waitingBasis = "assign",
   trailing,
+  delayMs = 0,
 }: {
   lead: MobileLeadCardLead;
   /** متأخر (فات موعده) — يصبغ زر الاتصال ذهبيًا مملوءًا. */
@@ -48,6 +49,8 @@ export function MobileLeadCard({
   reason?: string;
   /** أساس عدّاد الانتظار — تحسبه الصفحة من lastContact/assignedAt ولا يُخمَّن هنا. */
   waitingBasis?: WaitingBasis;
+  /** تأخير الدخول المتدرّج — النموذج: stagger افتراضي ٧٠ms. */
+  delayMs?: number;
   /**
    * نص يحل محل شارة المرحلة أعلى اليسار (نمط بطاقات «متابعات اليوم» في النموذج:
    * الوقت مكان الشارة، بلونه). غيابه = شارة المرحلة كالمعتاد.
@@ -74,11 +77,14 @@ export function MobileLeadCard({
 
   return (
     <article
-      className="relative overflow-hidden rounded-2xl"
+      className="m-leadcard m-rise relative overflow-hidden"
       style={{
+        boxSizing: "border-box",
         backgroundColor: MOBILE_COLORS.card,
         border: `1px solid ${MOBILE_COLORS.border}`,
+        borderRadius: 16,
         padding: "13px 16px 12px 13px",
+        animationDelay: `${delayMs}ms`,
       }}
     >
       {/* الشريط اللوني — لون المرحلة من مصدرها الوحيد. */}

@@ -32,9 +32,16 @@ export default async function MobileShellLayout({ children }: { children: React.
         المساحة السفلية = ارتفاع الشريط (٤rem) + شريط الإيماءات،
         حتى لا يغطّي الشريط الثابت آخر عنصر في الصفحة.
       */}
+      {/*
+        حشوة الشاشة من النموذج حرفيًا: 64px أعلى · 18px جانبًا · 96px أسفل.
+        الأعلى يُستبدل بـsafe-area + 18 (النموذج يحجز 64 لشريط حالة وهمي مرسوم
+        داخل إطار الجهاز، ونحن تحت شريط النظام الحقيقي).
+      */}
       <div
-        className="mx-auto w-full max-w-lg px-4 pt-4"
-        style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+        className="m-noscroll mx-auto w-full max-w-lg"
+        style={{
+          padding: "calc(env(safe-area-inset-top) + 18px) 18px calc(96px + env(safe-area-inset-bottom))",
+        }}
       >
         {children}
       </div>

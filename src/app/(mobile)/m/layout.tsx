@@ -1,3 +1,4 @@
+import "./mobile.css";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { CapacitorBridge } from "@/components/mobile/capacitor-bridge";
 

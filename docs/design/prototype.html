@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="ext-resource-dependency" content="https://unpkg.com/react@18.3.1/umd/react.production.min.js" data-resource-id="react" />
+<meta name="ext-resource-dependency" content="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" data-resource-id="reactDom" />
 <script src="./support.js"></script>
 </head>
 <body>
@@ -27,6 +29,9 @@ body *{transition:background-color .4s ease,border-color .4s ease,color .3s ease
 @keyframes ringDash{from{stroke-dashoffset:100.5}to{stroke-dashoffset:34}}
 @keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(203,164,94,0)}50%{box-shadow:0 0 22px 0 var(--glow)}}
 </style>
+<template id="__bundler_thumbnail" data-bg-color="#0A0A0B">
+<svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg"><rect width="1200" height="800" fill="#0A0A0B"/><g transform="translate(600 400)" fill="none" stroke="#CBA45E" stroke-width="14"><path d="M-120 -170v300l90 60"/><path d="M-60 -110l60 -50v390"/><path d="M0 -170h120v230l-120 90"/><path d="M0 -20h120"/></g></svg>
+</template>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -41,9 +46,16 @@ a:hover{color:var(--gold-lt)}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes skel{0%,100%{opacity:.55}50%{opacity:1}}
+doc-page:not(:defined){visibility:hidden}
+@media print{
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+*{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}
+}
 </style>
+<script src="./doc-page.js"></script>
 </helmet>
-<div dir="rtl" style="min-height:100vh;padding:44px 40px 80px;display:flex;flex-direction:column;align-items:center;gap:56px">
+<doc-page margin="0.4in">
+<div dir="rtl" style="padding:0;display:flex;flex-direction:column;align-items:center;gap:44px">
 
 <div style="display:flex;gap:36px;align-items:flex-start;justify-content:center;flex-wrap:wrap">
 
@@ -101,11 +113,13 @@ a:hover{color:var(--gold-lt)}
 <div style="font-size:13px;color:var(--text2);margin-top:4px">عندك ٧ مهام اليوم</div>
 </div>
 <div style="display:flex;align-items:center;gap:9px">
+<button onClick="{{ toggleTheme }}" style="position:relative;width:42px;height:42px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)" style-active="transform:scale(.94)">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--gold)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ themeIconD }}"/><path d="{{ themeIconD2 }}"/></svg>
+</button>
 <button onClick="{{ openNotif }}" style="position:relative;width:42px;height:42px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)" style-active="transform:scale(.94)">
 <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--text2)" stroke-width="1.8" stroke-linecap="round"><path d="M18 8.6a6 6 0 0 0-12 0c0 6-2.2 7.6-2.2 7.6h16.4S18 14.6 18 8.6z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
 <span style="position:absolute;top:-6px;left:-6px;min-width:19px;height:19px;border-radius:10px;background:var(--bad);color:#FFFFFF;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--bg);animation:pulseDot 2.2s ease-in-out infinite">{{ notifCount }}</span>
 </button>
-<div style="width:42px;height:42px;border-radius:21px;background:var(--raised);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:var(--gold)">{{ meInitial }}</div>
 </div>
 </div>
 
@@ -173,11 +187,13 @@ a:hover{color:var(--gold-lt)}
 <div style="font-size:13px;color:var(--text2);margin-top:4px">نظرة على الفريق اليوم</div>
 </div>
 <div style="display:flex;align-items:center;gap:9px">
+<button onClick="{{ toggleTheme }}" style="position:relative;width:42px;height:42px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)" style-active="transform:scale(.94)">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--gold)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ themeIconD }}"/><path d="{{ themeIconD2 }}"/></svg>
+</button>
 <button onClick="{{ openNotif }}" style="position:relative;width:42px;height:42px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .25s" style-hover="transform:translateY(-2px);border-color:var(--gold-bd)" style-active="transform:scale(.94)">
 <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="stroke:var(--text2)" stroke-width="1.8" stroke-linecap="round"><path d="M18 8.6a6 6 0 0 0-12 0c0 6-2.2 7.6-2.2 7.6h16.4S18 14.6 18 8.6z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
 <span style="position:absolute;top:-6px;left:-6px;min-width:19px;height:19px;border-radius:10px;background:var(--bad);color:#FFFFFF;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--bg);animation:pulseDot 2.2s ease-in-out infinite">{{ notifCount }}</span>
 </button>
-<div style="width:42px;height:42px;border-radius:21px;background:var(--raised);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--gold)">{{ meInitial }}</div>
 </div>
 </div>
 <div style="display:flex;gap:8px">
@@ -1249,10 +1265,11 @@ a:hover{color:var(--gold-lt)}
 
 </div>
 </div>
+</doc-page>
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1080},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;employee&quot;,&quot;owner&quot;],&quot;default&quot;:&quot;employee&quot;,&quot;tsType&quot;:&quot;'employee' | 'owner'&quot;,&quot;section&quot;:&quot;النموذج&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1080},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;employee&quot;,&quot;owner&quot;],&quot;default&quot;:&quot;owner&quot;,&quot;tsType&quot;:&quot;'employee' | 'owner'&quot;,&quot;section&quot;:&quot;النموذج&quot;}}">
 const G='var(--gold)', DIM='var(--text3)', SEC='var(--text2)', BD='var(--border)', CARD='var(--card)';
 const P = {
   info:{bar:'var(--info)',bg:'var(--info-bg)',fg:'var(--info-fg)'},
@@ -1804,6 +1821,9 @@ class Component extends DCLogic {
       closeOverlay: () => this.setState({overlay:null}),
       closeSheet: () => this.setState({sheet:null}),
       ...this.ownerScreens(s, ov, go),
+      toggleTheme: () => this.setTheme(s.theme === 'light' ? 'dark' : 'light'),
+      themeIconD: s.theme === 'light' ? 'M12 16.2a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4' : 'M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z',
+      themeIconD2: s.theme === 'light' ? 'M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7' : '',
       openNotif: () => this.setState({sheet:{kind:'notif'}}),
       isNotifSheet: !!s.sheet && s.sheet.kind==='notif',
       notifSub: s.read ? 'ما فيه إشعارات جديدة' : (emp ? '٣ جديدة من أصل ٥' : '٨ جديدة تحتاج نظرة'),

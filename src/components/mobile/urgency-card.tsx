@@ -12,9 +12,9 @@ export type UrgencyChip = {
 };
 
 /**
- * البطاقة المجمّعة في رئيسية الموظف (نمط urgency في النموذج سطر 113):
- * عدّاد + عنوان + زر سهم ← + سطر رؤية + صفوف مصغّرة بتمرير أفقي.
- * البطاقة كلها رابط للشاشة المفصّلة.
+ * البطاقة المجمّعة في رئيسية الموظف — منقولة حرفيًا من النموذج (isEmpHome ›
+ * urgency): زوايا ١٨ · حشوة 12/13/13 · فجوة ٩ · حد بلون الحالة · دخول riseIn
+ * بتأخير متدرّج ٩٠ms · صفوف مصغّرة بعرض أدنى ١٣٢ وتمرير أفقي.
  */
 export function UrgencyCard({
   href,
@@ -27,6 +27,7 @@ export function UrgencyCard({
   subColor,
   sub,
   chips,
+  delayMs = 0,
 }: {
   href: string;
   title: string;
@@ -42,11 +43,13 @@ export function UrgencyCard({
   subColor: string;
   sub: string;
   chips: UrgencyChip[];
+  /** تأخير الدخول المتدرّج — النموذج: stagger(…, 90). */
+  delayMs?: number;
 }) {
   return (
     <Link
       href={href}
-      className="flex flex-col overflow-hidden text-right"
+      className="m-urgency m-rise flex flex-col overflow-hidden text-right"
       style={{
         boxSizing: "border-box",
         background: MOBILE_COLORS.card,
@@ -54,6 +57,7 @@ export function UrgencyCard({
         borderRadius: 18,
         padding: "12px 13px 13px",
         gap: 9,
+        animationDelay: `${delayMs}ms`,
       }}
     >
       <div className="flex w-full items-center justify-between" style={{ gap: 8 }}>
@@ -81,7 +85,7 @@ export function UrgencyCard({
       <div style={{ fontSize: "11.5px", color: subColor, lineHeight: 1.6 }}>{sub}</div>
 
       {chips.length > 0 && (
-        <div className="flex w-full overflow-x-auto" style={{ gap: 8, paddingBottom: 2 }}>
+        <div className="m-noscroll flex w-full overflow-x-auto" style={{ gap: 8, paddingBottom: 2 }}>
           {chips.map((c) => (
             <div
               key={c.name + c.sub}

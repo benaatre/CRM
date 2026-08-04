@@ -102,8 +102,8 @@ export default async function MobileHomePage({
   take(freshUntouched, TOP_MAX, false, () => "ينتظر أول تواصل");
 
   return (
-    <div className="flex flex-col" style={{ gap: 16 }}>
-      {/* ===== الترويسة (النموذج: جرس ٤٢ بشارة + صورة رمزية ٤٢) ===== */}
+    <div className="m-screen flex flex-col" style={{ gap: 16 }}>
+      {/* ===== الترويسة — النموذج: زرّان ٤٢×٤٢ نصف قطر ١٤، فجوة ٩ ===== */}
       <header className="flex items-start justify-between" style={{ padding: "0 2px" }}>
         <div className="min-w-0">
           <div className="truncate" style={{ fontSize: 21, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
@@ -114,20 +114,36 @@ export default async function MobileHomePage({
           </div>
         </div>
         <div className="flex items-center" style={{ gap: 9 }}>
+          {/*
+            النموذج يضع هنا زرّ تبديل الثيم — واجهة الجوال داكنة فقط (ألوانها
+            hex ثابتة لا متغيّرات)، فالزر سيكون معطّلًا. أبقينا الهندسة نفسها
+            (٤٢×٤٢ · نصف قطر ١٤ · نفس الخلفية والحد) وجعلناها الصورة الرمزية.
+          */}
+          <div
+            className="m-iconbtn flex items-center justify-center"
+            style={{
+              boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
+              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
+              fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.gold,
+            }}
+            aria-hidden
+          >
+            {firstName.slice(0, 1)}
+          </div>
           {/* الجرس ← شاشة الإشعارات الفعلية، والشارة = غير المقروء (نفس مصدر الويب). */}
           <Link
             href="/m/notifications"
             aria-label="الإشعارات"
-            className="relative flex items-center justify-center"
+            className="m-iconbtn relative flex items-center justify-center"
             style={{
               boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
               background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
             }}
           >
-            <Bell size={19} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
+            <Bell size={19} strokeWidth={1.8} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
             {notif.unread > 0 && (
               <span
-                className="absolute flex items-center justify-center"
+                className="m-pulse absolute flex items-center justify-center"
                 style={{
                   boxSizing: "border-box", top: -6, left: -6, minWidth: 19, height: 19,
                   borderRadius: 10, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
@@ -139,17 +155,6 @@ export default async function MobileHomePage({
               </span>
             )}
           </Link>
-          <div
-            className="flex items-center justify-center"
-            style={{
-              boxSizing: "border-box", width: 42, height: 42, borderRadius: 21,
-              background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`,
-              fontSize: 16, fontWeight: 600, color: MOBILE_COLORS.gold,
-            }}
-            aria-hidden
-          >
-            {firstName.slice(0, 1)}
-          </div>
         </div>
       </header>
 
@@ -171,6 +176,7 @@ export default async function MobileHomePage({
                 : "سرعة الرد ترفع التحويل ٩ أضعاف"
             }
             chips={untouchedChips}
+            delayMs={0}
           />
         )}
         {(taskCount > 0 || overdueCount > 0) && (
@@ -185,6 +191,7 @@ export default async function MobileHomePage({
           subColor={MOBILE_COLORS.textMuted}
           sub={followupSub}
           chips={followupChips}
+          delayMs={90}
         />
         )}
         {visitsToday.length > 0 && (
@@ -199,12 +206,13 @@ export default async function MobileHomePage({
             subColor={MOBILE_STATUS.info.fg}
             sub={`${toArabicDigits(visitsToday.length)} ${visitsToday.length === 1 ? "زيارة" : "زيارات"} على موعد اليوم — أقربها ${fmtTime(visitsToday[0].visitAt!)}`}
             chips={visitChips}
+            delayMs={180}
           />
         )}
       </div>
 
       {/* ===== ابدأ بهذول (١٥/٧٠٠ + مؤشر «ن من م») ===== */}
-      <section>
+      <section className="flex flex-col" style={{ gap: 10 }}>
         <div className="flex items-baseline justify-between" style={{ marginTop: 4, padding: "0 2px" }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>أولويات اليوم</h2>
           {taskCount > 0 && (
@@ -216,7 +224,7 @@ export default async function MobileHomePage({
 
         {top.length === 0 ? (
           <div
-            className="mt-2 flex flex-col items-center gap-2 rounded-xl px-4 py-8 text-center"
+            className="flex flex-col items-center gap-2 rounded-xl px-4 py-8 text-center"
             style={{ backgroundColor: MOBILE_COLORS.card }}
           >
             <CheckCircle2 className="size-8" style={{ color: MOBILE_COLORS.textMuted }} aria-hidden />
@@ -226,21 +234,22 @@ export default async function MobileHomePage({
           </div>
         ) : (
           <>
-            <div className="mt-2 flex flex-col" style={{ gap: 10 }}>
-              {top.map((item) => (
+            <div className="flex flex-col" style={{ gap: 10 }}>
+              {top.map((item, i) => (
                 <MobileLeadCard
                   key={item.lead.id}
                   lead={item.lead}
                   late={item.late}
                   reason={item.reason}
                   waitingBasis={waitingBasisOf(item.lead)}
+                  delayMs={i * 70}
                 />
               ))}
             </div>
             <Link
               href="/m/leads"
-              className="flex min-h-11 items-center justify-center text-[0.8125rem]"
-              style={{ color: MOBILE_COLORS.textMuted }}
+              className="flex items-center justify-center"
+              style={{ minHeight: 44, padding: 10, fontSize: 13, color: MOBILE_COLORS.textMuted }}
             >
               شوف كل العملاء ›
             </Link>
