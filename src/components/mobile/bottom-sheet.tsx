@@ -12,13 +12,16 @@ export function BottomSheet({
   onClose,
   title,
   subtitle,
-  maxHeight = "76%",
+  maxHeight = "85dvh",
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   subtitle?: string;
+  /** ⚠️ استخدم dvh لا % ولا vh: في WebView الأندرويد الـviewport التخطيطي أطول
+   *  من المرئي (شريط الإيماءات/العنوان)، فالنسبة تحسب على ارتفاع أكبر من الشاشة
+   *  ويقع أسفل الورقة — ومعه الأزرار — تحت حافة العرض. */
   maxHeight?: string;
   children: React.ReactNode;
 }) {
@@ -35,7 +38,7 @@ export function BottomSheet({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60]" dir="rtl">
+    <div className="fixed inset-0 z-[60]" dir="rtl" style={{ height: "100dvh" }}>
       <button
         aria-label="إغلاق"
         onClick={onClose}
@@ -52,8 +55,12 @@ export function BottomSheet({
           background: MOBILE_COLORS.sheet,
           borderTop: `1px solid ${MOBILE_COLORS.border}`,
           borderRadius: "26px 26px 0 0",
-          padding: "10px 18px calc(30px + env(safe-area-inset-bottom))",
+          // حشوة سفلية سخيّة + شريط الإيماءات: آخر زر يبقى فوق الحافة ولو تمرّرت للنهاية.
+          padding: "10px 18px calc(40px + env(safe-area-inset-bottom))",
           maxHeight,
+          // التمرير داخل الورقة لا خلفها، وبلا سحب الصفحة الأم عند بلوغ الحافة.
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         <div

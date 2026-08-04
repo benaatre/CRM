@@ -116,7 +116,7 @@ export function WaSheet({
       onClose={close}
       title={`واتساب — ${first}`}
       subtitle="تنرسل من واتساب جوالك"
-      maxHeight="80%"
+      maxHeight="85dvh"
     >
       <div className="flex flex-col" style={{ gap: 10, marginTop: 16 }}>
         {templates.map((t) => (
