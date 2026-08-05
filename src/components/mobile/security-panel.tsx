@@ -2,15 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { signOutAllDevicesAction, signOutUserDevices } from "@/lib/actions/auth";
+import { signOutAllDevicesMobileAction, signOutUserDevices } from "@/lib/actions/auth";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 
 export type SessionRow = { userId: string; name: string; devices: { label: string; lastBeat: string }[] };
 
 /**
- * قسم الأمان — نفس أكشنات الديسكتوب:
- * «الخروج من كل الأجهزة» signOutAllDevicesAction (للجميع — sessionsValidFrom)،
+ * قسم الأمان — نفس أكشنات الديسكتوب بمنطقها الواحد:
+ * «الخروج من كل الأجهزة» signOutAllDevicesMobileAction (نفس sessionsValidFrom،
+ * والفرق الوحيد أن وجهة ما بعد الخروج /m/login لا /login)،
  * وقائمة الجلسات النشطة + إخراج مستخدم signOutUserDevices (المالك — الحارس داخل الأكشن).
  */
 export function MobileSecurityPanel({
@@ -48,7 +49,7 @@ export function MobileSecurityPanel({
         onClick={() =>
           startTransition(async () => {
             if (!confirm("تسجيل الخروج من كل الأجهزة؟ ستحتاج تسجيل الدخول من جديد على كل جهاز.")) return;
-            await signOutAllDevicesAction(); // يعيد التوجيه بنفسه
+            await signOutAllDevicesMobileAction(); // يعيد التوجيه بنفسه — إلى /m/login
           })
         }
         className="flex w-full items-center justify-center"

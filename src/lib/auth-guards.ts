@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { WEB_LOGIN, MOBILE_LOGIN } from "@/lib/logout-target";
 
 /**
  * يحلّ المستخدم الحالي مرّة واحدة لكل طلب (cache) ويفرض إبطال الجلسات:
@@ -34,9 +35,24 @@ const resolveSession = cache(async () => {
 /** يرجّع المستخدم الحالي أو يحوّل لصفحة الدخول. استخدمه في كل صفحة/أكشن محمي. */
 export async function requireUser() {
   const r = await resolveSession();
-  if (!r) redirect("/login");
+  if (!r) redirect(WEB_LOGIN);
   // جلسة مُبطَلة (خروج من كل الأجهزة / موقوف) → مسار يمسح الكوكي ثم يحوّل للدخول
   if ("invalid" in r) redirect("/api/logout");
+  return r.user;
+}
+
+/**
+ * نظير requireUser لشاشات التطبيق (/m): نفس ضمانات الإبطال حرفيًا، لكن كل
+ * تحويلاته تنتهي داخل التطبيق لا على تخطيط الويب.
+ *
+ * يُستدعى في قشرة /m — وهي الأب الذي يُحسم قبل عرض أي صفحة تحته، فتحويله
+ * يسبق أي requireUser في الصفحات.
+ */
+export async function requireMobileUser() {
+  const r = await resolveSession();
+  if (!r) redirect(MOBILE_LOGIN);
+  // ?to= صريح: لا نتكل على المُحيل الذي قد يغيب في الإقلاع البارد للتطبيق.
+  if ("invalid" in r) redirect(`/api/logout?to=${MOBILE_LOGIN}`);
   return r.user;
 }
 

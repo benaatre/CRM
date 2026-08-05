@@ -259,6 +259,7 @@ model User {
   /// المشاريع المسموح للموظف بيعها
   allowedProjects Project[] @relation("AllowedSellers")
   notifications Notification[]
+  deviceTokens  DeviceToken[]
   followUps     FollowUp[] @relation("FollowUpCreator")
   sentMessages     ChatMessage[] @relation("ChatSender")
   receivedMessages ChatMessage[] @relation("ChatRecipient")
@@ -798,4 +799,23 @@ model SoundAsset {
   fileUrl   String
   isBuiltIn Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+/// توكن جهاز لإشعارات Push النيتف (FCM) — صف لكل جهاز/تثبيت.
+/// جدول مستقل تمامًا: لا يمسّ Lead ولا أي جدول قائم.
+model DeviceToken {
+  id     String @id @default(cuid())
+  userId String
+  /// توكن التسجيل من FCM — فريد عالميًا: الجهاز نفسه قد ينتقل لمستخدم آخر،
+  /// فالـupsert على token يعيد ربطه بصاحبه الجديد بدل تكرار الصف.
+  token  String @unique
+  /// المنصّة: android | ios | web
+  platform String
+  /// آخر نبضة تسجيل — يُحدَّث تلقائيًا مع كل upsert (لتنظيف الأجهزة الميتة لاحقًا)
+  lastSeenAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

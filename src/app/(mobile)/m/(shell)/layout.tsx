@@ -1,17 +1,20 @@
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireMobileUser, isManager } from "@/lib/auth-guards";
 import { getLeads, getLeadCounts } from "@/lib/data/leads";
 import { buildAgenda } from "@/lib/mobile-agenda";
 import { BottomNav } from "@/components/mobile/bottom-nav";
+import { PushRegistrar } from "@/components/mobile/push-registrar";
 
 /**
  * قشرة التطبيق المحميّة — كل تبويبات /m عداها شاشة الدخول.
  *
- * الجلسة تُقرأ بنفس دالة الويب `requireUser()` فتنطبق كل ضمانات الإبطال
- * (حساب موقوف / «خروج من كل الأجهزة»). تحويل غير المسجّل إلى /m/login يتم
- * في بوابة المصادقة (auth.config.ts) قبل وصول الطلب إلى هنا.
+ * الجلسة تُقرأ بـ`requireMobileUser()` — نفس ضمانات إبطال الويب حرفيًا
+ * (حساب موقوف / «خروج من كل الأجهزة») لكن كل تحويلاتها تنتهي داخل التطبيق.
+ * القشرة هي الأب الذي يُحسم قبل عرض أي صفحة تحتها، فتحويلها يسبق أي
+ * `requireUser` في الصفحات ولا يتسرّب المستخدم لتخطيط الويب.
+ * تحويل غير المسجّل إلى /m/login يتم أصلًا في بوابة المصادقة (auth.config.ts).
  */
 export default async function MobileShellLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
+  const user = await requireMobileUser();
 
   /*
    * شارات الشريط السفلي (جدد/متابعات) — من نفس مصدر الشاشات (buildAgenda)
@@ -33,6 +36,8 @@ export default async function MobileShellLayout({ children }: { children: React.
 
   return (
     <>
+      {/* تسجيل الجهاز لإشعارات Push — داخل غلاف Capacitor فقط، لا أثر في المتصفح. */}
+      <PushRegistrar />
       {/*
         المساحة السفلية = ارتفاع الشريط (٤rem) + شريط الإيماءات،
         حتى لا يغطّي الشريط الثابت آخر عنصر في الصفحة.

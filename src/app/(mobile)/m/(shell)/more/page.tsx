@@ -189,7 +189,9 @@ export default async function MobileMorePage() {
       </div>
 
       {/* ===== الخروج + الهوية ===== */}
-      <a href="/api/logout" className="flex items-center justify-center"
+      {/* ?to=/m/login: بدونها ينتهي الخروج على /login بتخطيط الويب، والدخول
+          من هناك يوجّه لـ/dashboard فيخرج المستخدم من التطبيق كليًا. */}
+      <a href="/api/logout?to=/m/login" className="flex items-center justify-center"
         style={{
           boxSizing: "border-box", minHeight: 52, borderRadius: 16,
           border: `1px solid ${MOBILE_STATUS.danger.border}`, background: MOBILE_STATUS.danger.bg,

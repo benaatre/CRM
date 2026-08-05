@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-guards";
 import { getNotifications } from "@/lib/actions/notifications";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
+import { toMobileLink } from "@/lib/mobile-link";
 import { MarkAllReadButton } from "@/components/mobile/mark-all-read";
 
 export const dynamic = "force-dynamic";
@@ -108,16 +109,6 @@ export default async function MobileNotificationsPage() {
       )}
     </div>
   );
-}
-
-/** يحوّل رابط إشعار الويب لمقابله في الجوال، وإلا يُسقطه (لا نخرج من التطبيق). */
-function toMobileLink(link: string | null): string | null {
-  if (!link) return null;
-  const lead = link.match(/^\/leads\/([^/?#]+)/);
-  if (lead) return `/m/leads/${lead[1]}`;
-  if (link.startsWith("/leads")) return "/m/leads";
-  if (link.startsWith("/dashboard")) return "/m";
-  return null;
 }
 
 function fmtDateTime(d: Date): string {

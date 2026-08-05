@@ -24,6 +24,7 @@
     "@capacitor/browser": "^8.0.4",
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
+    "@capacitor/push-notifications": "^8.1.2",
     "@prisma/client": "^6.19.3",
     "@serwist/next": "^9.5.11",
     "bcryptjs": "^3.0.3",

@@ -32,4 +32,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        إشعارات Push: إلزامية من Android 13 (API 33) — بدونها لا يظهر أي إشعار
+        إطلاقًا، ولازم تُطلب وقت التشغيل كذلك (PushNotifications.requestPermissions).
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

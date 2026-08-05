@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "309289632405",
+    "project_id": "sultan-crm",
+    "storage_bucket": "sultan-crm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:309289632405:android:2c4495cf0460975f48919c",
+        "android_client_info": {
+          "package_name": "com.benaatre.sultan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqiZUxZkl-mJ-bvvi_iM-VeK6MnryvCnM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
