@@ -1,5 +1,5 @@
 import { requireUser, isManager } from "@/lib/auth-guards";
-import { getLeads } from "@/lib/data/leads";
+import { getLeads, getLeadCounts } from "@/lib/data/leads";
 import { buildAgenda } from "@/lib/mobile-agenda";
 import { BottomNav } from "@/components/mobile/bottom-nav";
 
@@ -18,9 +18,14 @@ export default async function MobileShellLayout({ children }: { children: React.
    * حتى لا يظهر رقم في الشارة يخالف رقم الشاشة. للموظف فقط: أرقام المدير
    * الجماعية ما لها معنى في شريط تنقّل شخصي.
    */
+  const manager = isManager(user.role);
   let newCount = 0;
   let todayCount = 0;
-  if (!isManager(user.role)) {
+  let unassignedCount = 0;
+  if (manager) {
+    // شارة تبويب «غير موزّعين» — نفس عدّاد صفحة العملاء (getLeadCounts).
+    unassignedCount = (await getLeadCounts()).unassigned;
+  } else {
     const agenda = buildAgenda(await getLeads({ tab: "working", sort: "activity" }));
     newCount = agenda.notContacted.length;
     todayCount = agenda.dueToday.length;
@@ -45,7 +50,7 @@ export default async function MobileShellLayout({ children }: { children: React.
       >
         {children}
       </div>
-      <BottomNav newCount={newCount} todayCount={todayCount} />
+      <BottomNav newCount={newCount} todayCount={todayCount} unassignedCount={unassignedCount} manager={manager} />
     </>
   );
 }

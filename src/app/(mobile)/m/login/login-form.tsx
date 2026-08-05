@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { Role } from "@prisma/client";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { mobileLoginWithPin, type MobileLoginState } from "./actions";
 
 export type MobileLoginUser = { id: string; name: string; role: Role };
@@ -11,7 +11,7 @@ export type MobileLoginUser = { id: string; name: string; role: Role };
 type Tab = "employee" | "manager";
 
 const fieldClass =
-  "w-full rounded-xl border px-4 py-3 text-base outline-none transition-colors focus:border-[#CBA45E] disabled:opacity-50";
+  "w-full rounded-xl border px-4 py-3 text-base outline-none transition-colors focus:border-[var(--m-gold)] disabled:opacity-50";
 const fieldStyle = {
   backgroundColor: MOBILE_COLORS.bg,
   borderColor: MOBILE_COLORS.border,
@@ -123,14 +123,14 @@ export function MobileLoginForm({
             style={{
               ...fieldStyle,
               // حالة الخطأ كما في النموذج: حد أحمر على الحقل نفسه.
-              ...(state?.error ? { borderColor: "#E24B4A" } : {}),
+              ...(state?.error ? { borderColor: MOBILE_STATUS.danger.base } : {}),
             }}
           />
         </div>
 
         {state?.error ? (
-          <p className="flex items-center" style={{ fontSize: 12, color: "#F7C1C1", gap: 6 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ stroke: "#E24B4A", flex: "none" }} strokeWidth="2" aria-hidden>
+          <p className="flex items-center" style={{ fontSize: 12, color: MOBILE_STATUS.danger.fg, gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ stroke: MOBILE_STATUS.danger.base, flex: "none" }} strokeWidth="2" aria-hidden>
               <circle cx="12" cy="12" r="9" />
               <path d="M12 7.5v5M12 16h.01" />
             </svg>

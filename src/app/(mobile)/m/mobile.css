@@ -1,7 +1,112 @@
 /*
- * حركات وانتقالات تطبيق الجوال — منقولة حرفيًا من docs/design/prototype.html.
+ * ألوان وحركات تطبيق الجوال — منقولة حرفيًا من docs/design/prototype.html.
  * ملف مستقل يُستورد في تخطيط (mobile) وحده، فلا يمسّ globals.css ولا الويب.
  */
+
+/*
+ * ===== رموز الألوان =====
+ * مصدر الحقيقة الوحيد لألوان قشرة /m. `lib/mobile-tokens.ts` يقرأ منها بـvar()
+ * فتعمل داخل style السطري كما تعمل في CSS. الداكن هو الافتراضي (:root)،
+ * والفاتح يتفعّل بسمة data-theme="light" على غلاف (mobile).
+ *
+ * ⚠️ ألوان **المراحل** ليست هنا — مصدرها الوحيد `lib/stage-colors` (STAGE_HEX)
+ * وهي مشتركة مع الويب، فما زالت قيمًا ثابتة في الثيمين.
+ */
+:root,
+[data-theme="dark"] {
+  --m-bg: #0a0a0b;
+  --m-card: #141416;
+  --m-sheet: #16161a;
+  --m-border: #26262a;
+  --m-page: #08080a;
+  --m-panel: #0d0d0f;
+  --m-line2: #1c1c20;
+  --m-line3: #1e1e22;
+
+  --m-text1: #ffffff;
+  --m-text2: #a1a1a6;
+  --m-text3: #6e6e73;
+  --m-dim1: #48484c;
+  --m-dim2: #3a3a3e;
+
+  --m-gold: #cba45e;
+  --m-gold-lt: #e2c078;
+  --m-gold-bg: #1c1710;
+  --m-gold-bd: #3a2f18;
+
+  --m-tabbar: rgba(14, 14, 16, 0.92);
+  /* ارتفاع الشريط السفلي المرئي: min-h-11 (٤٤) + py-2 (١٦) — بلا safe-area.
+     مصدر واحد تقرأ منه الأشرطة الطافية حتى لا تختفي تحته. */
+  --m-tabbar-h: 60px;
+
+  --m-danger: #e24b4a;
+  --m-danger-bg: #2a0e0e;
+  --m-danger-fg: #f7c1c1;
+  --m-danger-bd: #5c2220;
+
+  --m-success: #639922;
+  --m-success-bg: #173404;
+  --m-success-fg: #c0dd97;
+  --m-success-bd: #2f5c0d;
+
+  --m-warning: #c98a16;
+  --m-warning-bg: #412402;
+  --m-warning-fg: #fac775;
+  --m-warning-bd: #6b4008;
+
+  --m-info: #378add;
+  --m-info-bg: #042c53;
+  --m-info-fg: #b5d4f4;
+  --m-info-bd: #0d3f6e;
+}
+
+/*
+ * النهاري — نفس البنية بقيم معكوسة. الذهبي يغمق (#cba45e على أبيض تباينه ~٢:١
+ * فلا يُقرأ)، ويبقى «سيد الثيم» بحضوره في الحدود والخلفيات الذهبية.
+ */
+[data-theme="light"] {
+  --m-bg: #f4f4f7;
+  --m-card: #ffffff;
+  --m-sheet: #ffffff;
+  --m-border: #e2e2e8;
+  --m-page: #eeeef2;
+  --m-panel: #fafafc;
+  --m-line2: #ececf1;
+  --m-line3: #e9e9ef;
+
+  --m-text1: #17171a;
+  --m-text2: #55555d;
+  --m-text3: #78787f;
+  --m-dim1: #9a9aa2;
+  --m-dim2: #c2c2ca;
+
+  --m-gold: #8f6b1f;
+  --m-gold-lt: #a8802b;
+  --m-gold-bg: #f8f1de;
+  --m-gold-bd: #e0cda2;
+
+  --m-tabbar: rgba(255, 255, 255, 0.92);
+
+  --m-danger: #c22e2d;
+  --m-danger-bg: #fdecec;
+  --m-danger-fg: #8c1a19;
+  --m-danger-bd: #f1c3c2;
+
+  --m-success: #4c7a19;
+  --m-success-bg: #eef7e3;
+  --m-success-fg: #33540e;
+  --m-success-bd: #c9e2a7;
+
+  --m-warning: #9a6a0d;
+  --m-warning-bg: #fbf2dd;
+  --m-warning-fg: #6b4705;
+  --m-warning-bd: #ead4a0;
+
+  --m-info: #1c6cbb;
+  --m-info-bg: #e8f1fb;
+  --m-info-fg: #134e7c;
+  --m-info-bd: #b9d7f1;
+}
 
 /* ===== keyframes النموذج (نصًّا كما هي) ===== */
 @keyframes m-riseIn {
@@ -59,8 +164,40 @@
 }
 .m-iconbtn:active { transform: scale(0.94); }
 @media (hover: hover) {
-  .m-iconbtn:hover { transform: translateY(-2px); border-color: #3a2f18; }
+  .m-iconbtn:hover { transform: translateY(-2px); border-color: var(--m-gold-bd); }
 }
+
+/* الورقة السفلية — انزلاق من الأسفل (m-sheetUp من النموذج) */
+.m-sheet {
+  animation: m-sheetUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/*
+ * الشريط الطافي (وضع التحديد) — يجلس **فوق** الشريط السفلي لا تحته.
+ * z أعلى من الشريط (٥٠) حتى لو تداخلا على شاشة قصيرة.
+ */
+.m-actionbar {
+  position: fixed;
+  inset-inline: 0;
+  z-index: 55;
+  bottom: calc(var(--m-tabbar-h) + env(safe-area-inset-bottom) + 10px);
+  animation: m-riseIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ردّ فعل اللمس الموحّد — كل زر/بطاقة قابلة للضغط */
+.m-press {
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.16s, background-color 0.2s, border-color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.m-press:active { transform: scale(0.96); }
+
+/* شريط أفقي بالتقاط (أفاتارات الموظفين · بطاقات الإحصاءات) */
+.m-snap {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.m-snap > * { scroll-snap-align: start; }
 
 /* البطاقة المجمّعة */
 .m-urgency {
@@ -87,7 +224,7 @@
 @media (hover: hover) {
   .m-leadcard:hover {
     transform: translateY(-3px);
-    border-color: #3a2f18;
+    border-color: var(--m-gold-bd);
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
   }
 }
@@ -111,6 +248,7 @@
 
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
-  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after { animation: none; }
-  .m-iconbtn, .m-urgency, .m-leadcard { transition: none; }
+  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar { animation: none; }
+  .m-iconbtn, .m-urgency, .m-leadcard, .m-press { transition: none; }
+  .m-press:active { transform: none; }
 }

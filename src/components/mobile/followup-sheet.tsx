@@ -10,7 +10,6 @@ import {
   needsDate, needsNote, type InterestedStep, type FcKey, type SaveBody,
 } from "@/lib/mobile-followup";
 import { BottomSheet } from "./bottom-sheet";
-import { MobileExternalLink } from "./external-link";
 
 const optionBase = {
   boxSizing: "border-box" as const,
@@ -130,6 +129,24 @@ export function FollowupSheet({
       onClose={onClose}
       title={firstContact ? "سجّل أول تواصل" : "تسجيل متابعة"}
       subtitle={firstContact ? "اختر نتيجة أول تواصل (إلزامي)" : "وش صار مع العميل؟"}
+      tall
+      footer={
+        sel && sel !== "booked" ? (
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending}
+            className="m-press m-sweep w-full"
+            style={{
+              boxSizing: "border-box", height: 52, borderRadius: 14, border: "none",
+              background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
+              fontSize: 16, fontWeight: 700, opacity: pending ? 0.6 : 1,
+            }}
+          >
+            {pending ? "جارٍ الحفظ…" : "حفظ"}
+          </button>
+        ) : null
+      }
     >
       {/* أزرار النتائج — حسب المرحلة، من شجرة الويب نفسها */}
       <div className="flex flex-wrap" style={{ gap: 8, marginTop: 16 }}>
@@ -152,18 +169,15 @@ export function FollowupSheet({
           <p style={{ fontSize: 13, color: MOBILE_COLORS.textSecondary, lineHeight: 1.7 }}>
             تسجيل الحجز يفتح نموذج الحجز الكامل (الوحدة والأسعار والدفعات) في ملف العميل على الويب.
           </p>
-          <MobileExternalLink
-            href={`/leads/${leadId}`}
-            className="flex w-full items-center justify-center"
-            showIcon={false}
+          <p
             style={{
-              boxSizing: "border-box", marginTop: 11, height: 48, borderRadius: 12,
-              background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
-              fontSize: 14, fontWeight: 700,
+              boxSizing: "border-box", marginTop: 11, borderRadius: 12, padding: "11px 13px",
+              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
+              color: MOBILE_COLORS.textMuted, fontSize: 11.5, lineHeight: 1.8,
             }}
           >
-            افتح ملف العميل في الويب
-          </MobileExternalLink>
+            سجّل الحجز من الديسكتوب — نموذج الوحدة والدفعات ما انتقل للتطبيق بعد.
+          </p>
         </div>
       )}
 
@@ -299,21 +313,6 @@ export function FollowupSheet({
         }}>{error}</p>
       )}
 
-      {sel && sel !== "booked" && (
-        <button
-          type="button"
-          onClick={submit}
-          disabled={pending}
-          className="w-full"
-          style={{
-            boxSizing: "border-box", marginTop: 16, height: 52, borderRadius: 14, border: "none",
-            background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
-            fontSize: 16, fontWeight: 700, opacity: pending ? 0.6 : 1,
-          }}
-        >
-          {pending ? "جارٍ الحفظ…" : "حفظ"}
-        </button>
-      )}
     </BottomSheet>
   );
 }

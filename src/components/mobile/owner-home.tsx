@@ -1,13 +1,14 @@
 import Link from "next/link";
-import { Bell } from "lucide-react";
 import { getDashboard, normalizePeriod, type Period } from "@/lib/data/dashboard";
 import { getNoResponseCount } from "@/lib/data/no-response";
+import { getActivityReport } from "@/lib/data/activity-report";
 import { getNotifications } from "@/lib/actions/notifications";
 import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
+import { MobileEmployeeCards, type EmpStatCard } from "@/components/mobile/employee-cards";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import { MobileChips } from "@/components/mobile/chips";
-import { MobileExternalLink } from "@/components/mobile/external-link";
+import { MobileHeaderActions } from "@/components/mobile/header-actions";
 
 /**
  * لوحة المالك/المدير (isOwnerHome في النموذج) — البيانات من getDashboard:
@@ -22,12 +23,30 @@ export async function MobileOwnerHome({
 }) {
   const period = normalizePeriod(rawPeriod);
   const owner = user.role === "OWNER";
-  const [data, dupCount, noResponseCount, notif] = await Promise.all([
+  const [data, dupCount, noResponseCount, notif, activity] = await Promise.all([
     getDashboard(period),
     owner ? activeDuplicateGroupCount() : Promise.resolve(0),
     owner ? getNoResponseCount() : Promise.resolve(0),
     getNotifications(),
+    // «استقبل / سُحب منه / متابعات» — نفس تقرير نشاط الديسكتوب (يرجّع فارغًا لغير المالك).
+    getActivityReport({ all: true }),
   ]);
+
+  // بطاقات الموظفين: دمج مصدرَي الديسكتوب على المعرّف — بلا أي حساب جديد.
+  const actById = new Map(activity.rows.map((r) => [r.id, r]));
+  const empCards: EmpStatCard[] = data.team.map((t): EmpStatCard => {
+    const a = actById.get(t.id);
+    return {
+      id: t.id,
+      name: t.name,
+      calls: t.attempts,
+      followups: a?.followups ?? null,
+      visits: t.visits,
+      bookings: t.bookings,
+      received: a?.received ?? null,
+      pulled: a?.lateLost ?? null,
+    };
+  });
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
 
@@ -43,9 +62,9 @@ export async function MobileOwnerHome({
 
   // تنبيهات من مصادر فعلية فقط — صفرها يُسقطها.
   const alerts = [
-    noResponseCount > 0 ? { text: "عملاء «لم يتم الرد» بانتظار قرارك", count: noResponseCount, color: MOBILE_STATUS.danger.base, href: "/no-response" } : null,
-    dupCount > 0 ? { text: "العملاء المكررون", count: dupCount, color: MOBILE_STATUS.warning.base, href: "/leads/duplicates" } : null,
-    data.kpis.unassigned > 0 ? { text: "عملاء غير موزّعين", count: data.kpis.unassigned, color: MOBILE_STATUS.danger.base, href: "/distribution" } : null,
+    noResponseCount > 0 ? { text: "عملاء «لم يتم الرد» بانتظار قرارك", count: noResponseCount, color: MOBILE_STATUS.danger.base, href: "/m/no-response" } : null,
+    dupCount > 0 ? { text: "العملاء المكررون", count: dupCount, color: MOBILE_STATUS.warning.base, href: "/m/duplicates" } : null,
+    data.kpis.unassigned > 0 ? { text: "عملاء غير موزّعين", count: data.kpis.unassigned, color: MOBILE_STATUS.danger.base, href: "/m/distribution" } : null,
   ].filter((a): a is NonNullable<typeof a> => a !== null);
 
   const PERIODS: { key: Period; label: string }[] = [
@@ -67,43 +86,8 @@ export async function MobileOwnerHome({
             نظرة على الفريق اليوم
           </div>
         </div>
-        <div className="flex items-center" style={{ gap: 9 }}>
-          <Link
-            href="/m/notifications"
-            aria-label="الإشعارات"
-            className="relative flex items-center justify-center"
-            style={{
-              boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-            }}
-          >
-            <Bell size={19} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
-            {notif.unread > 0 && (
-              <span
-                className="absolute flex items-center justify-center"
-                style={{
-                  boxSizing: "border-box", top: -6, left: -6, minWidth: 19, height: 19,
-                  borderRadius: 10, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
-                  fontSize: 10, fontWeight: 700, padding: "0 5px",
-                  border: `2px solid ${MOBILE_COLORS.bg}`,
-                }}
-              >
-                {toArabicDigits(notif.unread)}
-              </span>
-            )}
-          </Link>
-          <div
-            className="flex items-center justify-center"
-            style={{
-              boxSizing: "border-box", width: 42, height: 42, borderRadius: 21,
-              background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`,
-              fontSize: 13, fontWeight: 700, color: MOBILE_COLORS.gold,
-            }}
-            aria-hidden
-          >
-            {firstName.slice(0, 1)}
-          </div>
-        </div>
+        {/* ثيم · بحث · جرس — نفس هندسة النموذج (الصورة الرمزية في /m/more). */}
+        <MobileHeaderActions unread={notif.unread} />
       </header>
 
       {/* ===== فلتر الفترة ===== */}
@@ -129,11 +113,9 @@ export async function MobileOwnerHome({
                 عملاء غير موزّعين
               </div>
             </div>
-            {/* شاشة التوزيع في الويب — تُفتح بمتصفح النظام لا داخل WebView */}
-            <MobileExternalLink
-              href="/distribution"
+            <Link
+              href="/m/distribution"
               className="flex items-center"
-              showIcon={false}
               style={{
                 boxSizing: "border-box", height: 38, padding: "0 16px", borderRadius: 10,
                 background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
@@ -141,7 +123,7 @@ export async function MobileOwnerHome({
               }}
             >
               وزّعهم الآن
-            </MobileExternalLink>
+            </Link>
           </div>
         )}
         {kpis.map((k) => (
@@ -162,11 +144,21 @@ export async function MobileOwnerHome({
         ))}
       </div>
 
-      {/* ===== أداء الفريق (متابعات اليوم بأشرطة التقدم) ===== */}
+      {/* ===== ٦) بطاقات إحصاءات الموظفين — شريط أفقي بالتقاط ===== */}
+      {empCards.length > 0 && (
+        <section className="flex flex-col" style={{ gap: 11 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginTop: 6, padding: "0 2px" }}>
+            إحصاءات الموظفين
+          </h2>
+          <MobileEmployeeCards cards={empCards} />
+        </section>
+      )}
+
+      {/* ===== متابعات اليوم بأشرطة التقدم ===== */}
       {teamRows.length > 0 && (
         <section className="flex flex-col" style={{ gap: 11 }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginTop: 6, padding: "0 2px" }}>
-            أداء الموظفين
+            متابعات اليوم
           </h2>
           {teamRows.map((t) => {
             const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : 0;
@@ -214,11 +206,10 @@ export async function MobileOwnerHome({
             تنبيهات تحتاج انتباه
           </h2>
           {alerts.map((a) => (
-            <MobileExternalLink
+            <Link
               key={a.text}
               href={a.href}
               className="flex items-center"
-              showIcon={false}
               style={{
                 boxSizing: "border-box", gap: 11, minHeight: 44,
                 background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
@@ -228,7 +219,7 @@ export async function MobileOwnerHome({
               <span className="flex-none" style={{ width: 8, height: 8, borderRadius: 5, background: a.color }} />
               <span className="flex-1" style={{ fontSize: 13, color: MOBILE_COLORS.textPrimary }}>{a.text}</span>
               <span style={{ fontSize: 11, color: MOBILE_COLORS.textMuted }}>{toArabicDigits(a.count)}</span>
-            </MobileExternalLink>
+            </Link>
           ))}
         </section>
       )}

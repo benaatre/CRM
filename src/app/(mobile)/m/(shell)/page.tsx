@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeads, type LeadRow } from "@/lib/data/leads";
 import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
@@ -11,6 +11,7 @@ import { greeting, toArabicDigits, waitingBasisOf, elapsedLabel } from "@/lib/mo
 import { MobileLeadCard } from "@/components/mobile/lead-card";
 import { UrgencyCard, type UrgencyChip } from "@/components/mobile/urgency-card";
 import { MobileOwnerHome } from "@/components/mobile/owner-home";
+import { MobileHeaderActions } from "@/components/mobile/header-actions";
 
 // البيانات تتغيّر مع كل متابعة — لا تُخزَّن الصفحة.
 export const dynamic = "force-dynamic";
@@ -113,49 +114,12 @@ export default async function MobileHomePage({
             عندك {toArabicDigits(taskCount)} {taskWord(taskCount)} اليوم
           </div>
         </div>
-        <div className="flex items-center" style={{ gap: 9 }}>
-          {/*
-            النموذج يضع هنا زرّ تبديل الثيم — واجهة الجوال داكنة فقط (ألوانها
-            hex ثابتة لا متغيّرات)، فالزر سيكون معطّلًا. أبقينا الهندسة نفسها
-            (٤٢×٤٢ · نصف قطر ١٤ · نفس الخلفية والحد) وجعلناها الصورة الرمزية.
-          */}
-          <div
-            className="m-iconbtn flex items-center justify-center"
-            style={{
-              boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-              fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.gold,
-            }}
-            aria-hidden
-          >
-            {firstName.slice(0, 1)}
-          </div>
-          {/* الجرس ← شاشة الإشعارات الفعلية، والشارة = غير المقروء (نفس مصدر الويب). */}
-          <Link
-            href="/m/notifications"
-            aria-label="الإشعارات"
-            className="m-iconbtn relative flex items-center justify-center"
-            style={{
-              boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-            }}
-          >
-            <Bell size={19} strokeWidth={1.8} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
-            {notif.unread > 0 && (
-              <span
-                className="m-pulse absolute flex items-center justify-center"
-                style={{
-                  boxSizing: "border-box", top: -6, left: -6, minWidth: 19, height: 19,
-                  borderRadius: 10, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
-                  fontSize: 10, fontWeight: 700, padding: "0 5px",
-                  border: `2px solid ${MOBILE_COLORS.bg}`,
-                }}
-              >
-                {toArabicDigits(notif.unread)}
-              </span>
-            )}
-          </Link>
-        </div>
+        {/*
+          خانة الثيم في النموذج رجعت لوظيفتها الأصلية بعد تحويل الرموز إلى
+          متغيّرات CSS — وبجانبها البحث والجرس بنفس الهندسة (الصورة الرمزية
+          انتقلت لبطاقة الملف الشخصي في /m/more).
+        */}
+        <MobileHeaderActions unread={notif.unread} />
       </header>
 
       {/* ===== البطاقات المجمّعة الثلاث ===== */}

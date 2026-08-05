@@ -117,6 +117,20 @@ export function WaSheet({
       title={`واتساب — ${first}`}
       subtitle="تنرسل من واتساب جوالك"
       maxHeight="85dvh"
+      footer={
+        <button
+          type="button"
+          onClick={() => openWa()}
+          className="m-press w-full"
+          style={{
+            boxSizing: "border-box", height: 46, borderRadius: 13,
+            border: `1px solid ${MOBILE_COLORS.border}`, background: "none",
+            color: MOBILE_COLORS.textPrimary, fontSize: 14, fontWeight: 600,
+          }}
+        >
+          رسالة جديدة
+        </button>
+      }
     >
       <div className="flex flex-col" style={{ gap: 10, marginTop: 16 }}>
         {templates.map((t) => (
@@ -141,24 +155,6 @@ export function WaSheet({
           </button>
         ))}
       </div>
-      <button
-        type="button"
-        onClick={() => openWa()}
-        className="w-full"
-        style={{
-          boxSizing: "border-box",
-          marginTop: 12,
-          height: 46,
-          borderRadius: 13,
-          border: `1px solid ${MOBILE_COLORS.border}`,
-          background: "none",
-          color: MOBILE_COLORS.textPrimary,
-          fontSize: 14,
-          fontWeight: 600,
-        }}
-      >
-        رسالة جديدة
-      </button>
     </BottomSheet>
   );
 }

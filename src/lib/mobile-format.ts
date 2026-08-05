@@ -1,4 +1,4 @@
-import { toArabicDigits } from "@/lib/format";
+import { toArabicDigits, formatDateTime, RIYADH_TZ } from "@/lib/format";
 import { ksaHourOf } from "@/lib/ksa-time";
 
 /**
@@ -8,6 +8,38 @@ import { ksaHourOf } from "@/lib/ksa-time";
  * للراحة بلا تكرار المنطق (نسخة ثانية تعني اختلافًا صامتًا يومًا ما).
  */
 export { toArabicDigits };
+
+/* ===== وقت دقيق بتوقيت الرياض (ميلادي · أرقام عربية) ===== */
+
+/** مفتاح اليوم (YYYY-MM-DD) بتوقيت الرياض — نسخة (app)/audit وm/audit حرفيًا. */
+function riyadhDayKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: RIYADH_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(date);
+}
+function shiftDayKey(key: string, days: number): string {
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d) + days * 86_400_000);
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
+}
+
+/**
+ * «اليوم ٣:٤٥ م» / «أمس ١١:٢٠ ص» / تاريخ كامل للأقدم — صياغة عرض بحتة
+ * (نفس منطق `auditWhen` في شاشة سجل التدقيق). تُستخدم لـ«آخر ظهور».
+ */
+export function exactWhen(date: Date | string | null | undefined, now: Date = new Date()): string {
+  if (!date) return "لم يظهر بعد";
+  const d = typeof date === "string" ? new Date(date) : date;
+  const todayKey = riyadhDayKey(now);
+  const key = riyadhDayKey(d);
+  const time = new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
+    calendar: "gregory", timeZone: RIYADH_TZ, hour: "numeric", minute: "2-digit",
+  }).format(d);
+  if (key === todayKey) return `اليوم ${time}`;
+  if (key === shiftDayKey(todayKey, -1)) return `أمس ${time}`;
+  return formatDateTime(d);
+}
 
 /** تحية حسب ساعة الرياض: صباحًا قبل ١٢ ظهرًا، وإلا مساءً. */
 export function greeting(date: Date = new Date()): string {

@@ -1,5 +1,6 @@
+import { cookies } from "next/headers";
 import "./mobile.css";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, MOBILE_THEME_COOKIE, normalizeTheme } from "@/lib/mobile-tokens";
 import { CapacitorBridge } from "@/components/mobile/capacitor-bridge";
 
 /**
@@ -8,11 +9,17 @@ import { CapacitorBridge } from "@/components/mobile/capacitor-bridge";
  *
  * الحارس (requireUser) والشريط السفلي في تخطيط المجموعة `(shell)` وحده —
  * حتى تبقى /m/login خارجهما (بلا شريط سفلي وبلا حلقة تحويل).
+ *
+ * `data-theme` هنا هو حامل متغيّرات ألوان mobile.css: يُقرأ من الكوكي على
+ * الخادم فيصل الوضع الصحيح مع أول بايت — بلا وميض ولا اختلاف ترطيب.
  */
-export default function MobileLayout({ children }: { children: React.ReactNode }) {
+export default async function MobileLayout({ children }: { children: React.ReactNode }) {
+  const theme = normalizeTheme((await cookies()).get(MOBILE_THEME_COOKIE)?.value);
+
   return (
     <div
       dir="rtl"
+      data-theme={theme}
       className="min-h-dvh w-full"
       style={{
         backgroundColor: MOBILE_COLORS.bg,

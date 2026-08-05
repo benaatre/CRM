@@ -1,16 +1,24 @@
 import Link from "next/link";
 import {
-  CalendarCheck, Archive, Bell, Share2, Copy, ScrollText,
+  Archive, Share2, Copy, ScrollText, BarChart3, Users, Settings,
+  MessagesSquare, Building2, PhoneMissed, Handshake,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
-import { getLeads } from "@/lib/data/leads";
+import { getLeadCounts } from "@/lib/data/leads";
 import { getSettings } from "@/lib/data/settings";
+import { getBookings } from "@/lib/data/bookings";
+import { getProjectsOverview } from "@/lib/data/projects";
+import { getNoResponseCount } from "@/lib/data/no-response";
+import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
+import { getDistributionConfig } from "@/lib/actions/distribution";
+import { getMyAvailability } from "@/lib/actions/availability";
+import { getChatPeers } from "@/lib/actions/chat";
 import { roleLabel } from "@/lib/labels";
-import { buildAgenda } from "@/lib/mobile-agenda";
+import { pauseReasonLabel, formatPauseRemaining } from "@/lib/availability";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
-import { MobileExternalLink } from "@/components/mobile/external-link";
+import { MobileProfileCard } from "@/components/mobile/profile-card";
 
 export const dynamic = "force-dynamic";
 
@@ -21,198 +29,179 @@ type Tile = {
   label: string;
   sub: string;
   icon: LucideIcon;
+  /** شارة حمراء دائرية — تظهر فقط لعدد > ٠ (الصفر بلا معنى فيُسقط). */
   badge?: number;
-  /** شاشة ويب لا مقابل لها في /m — تُفتح بمتصفح النظام لا داخل WebView. */
-  external?: boolean;
 };
 
+/**
+ * «المزيد» — لوحة بلاطات: الملف الشخصي فوق، ثم شبكة ٢×٢ لكل الشاشات.
+ * التفاصيل (الفريق والمتابعات · الإشعارات والأصوات · الأمان) خلف بلاطاتها
+ * في /m/team و/m/settings بنفس الحراس — لا شيء مسطّح هنا.
+ */
 export default async function MobileMorePage() {
   const user = await requireUser();
   const manager = isManager(user.role);
+  const owner = user.role === "OWNER";
 
-  // استعلاما قراءة فقط — كلاهما محجَّم/موجود، بلا منطق جديد.
-  const [leads, settings] = await Promise.all([
-    getLeads({ tab: "working", sort: "activity" }),
+  const [settings, counts, bookings, projects, avail, peers, dist, dupCount, noRespCount] = await Promise.all([
     getSettings(),
+    getLeadCounts(),
+    getBookings(),          // محجَّمة بالدور داخلها (المبالغ تُحجب — ما نعرض منها إلا الأعداد).
+    getProjectsOverview(),
+    getMyAvailability(),
+    getChatPeers(),
+    // «الفريق» — نفس DistEmployee من getDistributionConfig (requireManager داخلها).
+    manager ? getDistributionConfig() : Promise.resolve(null),
+    owner ? activeDuplicateGroupCount() : Promise.resolve(0),
+    owner ? getNoResponseCount() : Promise.resolve(0),
   ]);
-  const { dueToday } = buildAgenda(leads);
 
-  const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
+  const units = projects.kpis.available + projects.kpis.reserved + projects.kpis.sold;
+  const pausedCount = dist ? dist.employees.filter((e) => e.paused).length : 0;
 
-  // بطاقات الموظف. الحجوزات/المؤرشفون/الإشعارات/تغيير الرمز.
+  // ===== البلاطات — كل سطر ثانوي من بيانات موجودة فعلًا =====
   const tiles: Tile[] = [
-    // داخلي: شاشة الإشعارات موجودة الآن.
-    { href: "/m/notifications", label: "الإشعارات", sub: "تنبيهاتك", icon: Bell },
-    // داخلي: تبويب «مؤرشف» من نفس دالة getLeads (كان يشير لفلتر مرحلة يستبعده تبويب working فيطلع فارغًا).
-    { href: "/m/leads?tab=hidden", label: "مؤرشف", sub: "المنسحبون والمغلقون", icon: Archive },
-    // خارجي: لا شاشة حجوزات في /m بعد.
-    { href: "/bookings", label: "خط المبيعات", sub: "يفتح في المتصفح", icon: CalendarCheck, external: true },
+    {
+      href: "/m/bookings", label: "خط المبيعات", icon: Handshake,
+      sub: `${toArabicDigits(bookings.kpis.inProgress)} قيد البيع · ${toArabicDigits(bookings.kpis.sold)} مباع`,
+    },
+    {
+      href: "/m/projects", label: "المشاريع والوحدات", icon: Building2,
+      sub: `${toArabicDigits(projects.kpis.projects)} مشاريع · ${toArabicDigits(units)} وحدة`,
+    },
+    {
+      href: "/m/analytics", label: manager ? "التحليلات" : "أدائي", icon: BarChart3,
+      sub: "أسأل بياناتك",
+    },
+    {
+      href: "/m/chat", label: "الشات الداخلي", icon: MessagesSquare,
+      sub: `${toArabicDigits(peers.length)} زميل`,
+    },
+    ...(manager && dist
+      ? [
+          {
+            href: "/m/team", label: "الفريق", icon: Users,
+            sub: `${toArabicDigits(dist.employees.length)} موظفين · المتابعات`,
+            badge: pausedCount,
+          },
+          {
+            href: "/m/distribution", label: "التوزيع التلقائي", icon: Share2,
+            sub: "قواعد وحدود",
+            badge: counts.unassigned,
+          },
+          {
+            href: "/m/audit", label: "سجل التدقيق", icon: ScrollText,
+            sub: "مين غيّر وش",
+          },
+        ]
+      : []),
+    {
+      href: "/m/settings", label: "الإعدادات", icon: Settings,
+      sub: manager ? "الشركة والفريق" : "الإشعارات والأمان",
+    },
+    {
+      href: "/m/leads?tab=hidden", label: "المؤرشف", icon: Archive,
+      sub: `${toArabicDigits(counts.hidden)} عميل مخفي`,
+    },
+    ...(owner
+      ? [
+          {
+            href: "/m/duplicates", label: "العملاء المكررون", icon: Copy,
+            sub: `${toArabicDigits(dupCount)} مجموعة`,
+            badge: dupCount,
+          },
+          {
+            href: "/m/no-response", label: "لم يتم الرد", icon: PhoneMissed,
+            sub: "بانتظار قرارك",
+            badge: noRespCount,
+          },
+        ]
+      : []),
   ];
-
-  // أدوات المالك/المدير — روابط للويب مؤقتًا حتى تُبنى شاشاتها في الجوال.
-  const managerTiles: Tile[] = [
-    { href: "/distribution", label: "التوزيع التلقائي", sub: "يفتح في المتصفح", icon: Share2, external: true },
-    { href: "/leads/duplicates", label: "العملاء المكررون", sub: "يفتح في المتصفح", icon: Copy, external: true },
-    { href: "/audit", label: "سجل التدقيق", sub: "يفتح في المتصفح", icon: ScrollText, external: true },
-  ];
-
-  const all = manager ? [...tiles, ...managerTiles] : tiles;
 
   return (
-    <div className="flex flex-col" style={{ gap: 16 }}>
-      {/* ===== الترويسة ===== */}
-      <div className="flex items-start justify-between" style={{ padding: "0 2px" }}>
-        <div>
-          <h1 style={{ fontSize: 21, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>المزيد</h1>
-          <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.gold, marginTop: 4 }}>حسابي والأدوات</div>
-        </div>
-        <div
-          className="flex items-center justify-center"
-          style={{
-            boxSizing: "border-box", width: 44, height: 44, borderRadius: 14,
-            background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
-            fontSize: 14, fontWeight: 700,
-          }}
-          aria-hidden
-        >
-          {firstName.slice(0, 1)}
-        </div>
-      </div>
+    <div className="m-screen flex flex-col" style={{ gap: 13 }}>
+      <h1 style={{ fontSize: 21, fontWeight: 700, color: MOBILE_COLORS.textPrimary, padding: "0 2px" }}>المزيد</h1>
 
-      {/* ===== بطاقة الحساب + إحصاءان ===== */}
-      <div
-        style={{
-          boxSizing: "border-box", background: MOBILE_COLORS.card,
-          border: `1px solid ${MOBILE_COLORS.border}`, borderRadius: 20,
-          padding: "15px 15px 15px 17px",
-        }}
-      >
-        <div className="flex items-center" style={{ gap: 12 }}>
-          <div
-            className="flex flex-none items-center justify-center"
-            style={{
-              boxSizing: "border-box", width: 52, height: 52, borderRadius: 16,
-              background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
-              fontSize: 16, fontWeight: 700,
-            }}
-            aria-hidden
-          >
-            {firstName.slice(0, 1)}
-          </div>
-          <div className="min-w-0">
-            <div className="truncate" style={{ fontSize: 17, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
-              {user.name ?? "مستخدم"}
-            </div>
-            <div style={{ fontSize: 12, color: MOBILE_COLORS.gold, marginTop: 4 }}>
-              {roleLabel(user.role)}
-            </div>
-          </div>
-        </div>
+      {/* ===== ٢-أ) بطاقة الملف الشخصي ===== */}
+      {/* نص المدّة يُصاغ هنا (خادم) — Date.now() داخل مكوّن عميل يولّد اختلاف ترطيب. */}
+      <MobileProfileCard
+        name={user.name ?? "مستخدم"}
+        roleText={roleLabel(user.role)}
+        canPause={user.role === "EMPLOYEE"}
+        paused={avail.paused}
+        pauseText={
+          avail.paused
+            ? `موقوف مؤقتًا — ${pauseReasonLabel(avail.reason)} · ${formatPauseRemaining(avail.pauseUntil)}`
+            : null
+        }
+      />
 
-        <div className="flex" style={{ gap: 11, marginTop: 14 }}>
-          <Stat value={leads.length} label="إجمالي العملاء" />
-          <Stat value={dueToday.length} label="متابعات اليوم" />
-        </div>
-      </div>
-
-      {/* ===== شبكة الأدوات ===== */}
-      <div className="grid grid-cols-2" style={{ gap: 11 }}>
-        {all.map((t) => {
+      {/* ===== ٢-ب) شبكة البلاطات ===== */}
+      <div className="grid grid-cols-2" style={{ gap: 9 }}>
+        {tiles.map((t, i) => {
           const Icon = t.icon;
-          const tileClass = "flex flex-col justify-between text-right";
-          const tileStyle = {
-                boxSizing: "border-box", position: "relative",
+          const n = t.badge ?? 0;
+          return (
+            <Link
+              key={t.href + t.label}
+              href={t.href}
+              className="m-rise relative flex flex-col"
+              style={{
+                boxSizing: "border-box", gap: 8, minHeight: 104,
                 background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-                borderRadius: 20, padding: "14px 15px 15px", minHeight: 124, overflow: "hidden",
-          } as const;
-          const inner = (
-            <>
-              <div className="flex w-full items-start justify-between">
-                {t.badge ? (
-                  <span
-                    className="flex items-center justify-center"
-                    style={{
-                      boxSizing: "border-box", minWidth: 22, height: 22, borderRadius: 11,
-                      background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
-                      fontSize: "10.5px", fontWeight: 700, padding: "0 6px",
-                    }}
-                  >
-                    {toArabicDigits(t.badge)}
-                  </span>
-                ) : (
-                  <span />
-                )}
+                borderRadius: 16, padding: "13px 13px 14px",
+                animationDelay: `${Math.min(i, 8) * 45}ms`,
+              }}
+            >
+              <span
+                className="flex flex-none items-center justify-center"
+                style={{
+                  boxSizing: "border-box", width: 34, height: 34, borderRadius: 12,
+                  background: MOBILE_COLORS.goldBg,
+                }}
+              >
+                <Icon size={17} strokeWidth={1.9} style={{ color: MOBILE_COLORS.gold }} aria-hidden />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate" style={{ fontSize: "14.5px", fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
+                  {t.label}
+                </span>
+                <span className="block truncate" style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, marginTop: 3 }}>
+                  {t.sub}
+                </span>
+              </span>
+              {n > 0 && (
                 <span
-                  className="flex items-center justify-center"
+                  className="absolute flex items-center justify-center"
                   style={{
-                    boxSizing: "border-box", width: 38, height: 38, borderRadius: 12,
-                    background: MOBILE_COLORS.goldBg,
+                    boxSizing: "border-box", top: 11, insetInlineEnd: 12, minWidth: 20, height: 20,
+                    borderRadius: 10, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
+                    fontSize: 10, fontWeight: 700, padding: "0 5px",
                   }}
                 >
-                  <Icon size={19} style={{ color: MOBILE_COLORS.gold }} aria-hidden />
+                  {toArabicDigits(n > 99 ? 99 : n)}
                 </span>
-              </div>
-              <div>
-                <div style={{ fontSize: "14.5px", fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
-                  {t.label}
-                </div>
-                <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.gold, marginTop: 5 }}>{t.sub}</div>
-              </div>
-            </>
-          );
-          return t.external ? (
-            <MobileExternalLink key={t.label} href={t.href} className={tileClass} style={tileStyle} showIcon={false}>
-              {inner}
-            </MobileExternalLink>
-          ) : (
-            <Link key={t.label} href={t.href} className={tileClass} style={tileStyle}>
-              {inner}
+              )}
             </Link>
           );
         })}
       </div>
 
-      {/* ===== الخروج ===== */}
-      <a
-        href="/api/logout"
-        className="flex items-center justify-center"
+      {/* ===== الخروج + الهوية ===== */}
+      <a href="/api/logout" className="flex items-center justify-center"
         style={{
           boxSizing: "border-box", minHeight: 52, borderRadius: 16,
-          border: `1px solid ${MOBILE_STATUS.danger.border}`,
-          background: MOBILE_STATUS.danger.bg, color: MOBILE_STATUS.danger.base,
-          fontSize: "14.5px", fontWeight: 700,
-        }}
-      >
+          border: `1px solid ${MOBILE_STATUS.danger.border}`, background: MOBILE_STATUS.danger.bg,
+          color: MOBILE_STATUS.danger.base, fontSize: "14.5px", fontWeight: 700, marginTop: 4,
+        }}>
         تسجيل الخروج
       </a>
-
-      {/* ===== الترخيص والإصدار ===== */}
-      <div
-        className="text-center"
-        style={{ fontSize: 11, color: MOBILE_COLORS.dim1, lineHeight: 1.9, padding: "6px 0 4px" }}
-      >
+      <div className="text-center" style={{ fontSize: 11, color: MOBILE_COLORS.dim1, lineHeight: 1.9, padding: "4px 0" }}>
         ترخيص فال (REGA) {toArabicDigits(settings.falLicense ?? "1200021029")}
         <br />
         الإصدار {APP_VERSION}
       </div>
-    </div>
-  );
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div
-      className="flex flex-1 flex-col items-center justify-center"
-      style={{
-        boxSizing: "border-box", background: MOBILE_COLORS.bg,
-        border: `1px solid ${MOBILE_COLORS.border}`, borderRadius: 14,
-        padding: "10px 8px", gap: 3,
-      }}
-    >
-      <span style={{ fontSize: 19, fontWeight: 700, color: MOBILE_COLORS.gold, lineHeight: 1 }}>
-        {toArabicDigits(value)}
-      </span>
-      <span style={{ fontSize: 11, color: MOBILE_COLORS.textMuted }}>{label}</span>
     </div>
   );
 }

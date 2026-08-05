@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, UserPlus, CalendarCheck, Contact, Menu } from "lucide-react";
+import { Home, UserPlus, CalendarCheck, Contact, Menu, ScrollText, Inbox } from "lucide-react";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 
-type TabKey = "home" | "new" | "today" | "leads" | "more";
-const TABS: { key: TabKey; href: string; label: string; icon: typeof Home }[] = [
+type TabKey = "home" | "new" | "today" | "audit" | "unassigned" | "leads" | "more";
+type Tab = { key: TabKey; href: string; label: string; icon: typeof Home };
+
+/** الموظف: الرئيسية · جدد · متابعات · العملاء · المزيد. */
+const EMPLOYEE_TABS: Tab[] = [
   { key: "home", href: "/m", label: "الرئيسية", icon: Home },
   { key: "new", href: "/m/new", label: "جدد", icon: UserPlus },
   { key: "today", href: "/m/today", label: "متابعات", icon: CalendarCheck },
@@ -16,7 +19,26 @@ const TABS: { key: TabKey; href: string; label: string; icon: typeof Home }[] = 
 ];
 
 /**
+ * الإدارة (مالك + أدمن): الموضعان ٢ و٣ لأدواتها بدل عدّاديها الشخصيين
+ * («جدد» و«متابعات» أرقام شخصية لا معنى لها لمن يرى الفريق كله).
+ * «غير موزّعين» هو القرار اليومي — و«التوزيع التلقائي» بلاطة في /m/more.
+ */
+const MANAGER_TABS: Tab[] = [
+  { key: "home", href: "/m", label: "الرئيسية", icon: Home },
+  { key: "audit", href: "/m/audit", label: "سجل التدقيق", icon: ScrollText },
+  { key: "unassigned", href: "/m/unassigned", label: "غير موزّعين", icon: Inbox },
+  { key: "leads", href: "/m/leads", label: "العملاء", icon: Contact },
+  { key: "more", href: "/m/more", label: "المزيد", icon: Menu },
+];
+
+/**
  * الشريط السفلي — خمسة تبويبات ثابتة أسفل الشاشة.
+ *
+ * ⚠️ مصدر واحد للحقيقة: `manager` **prop من تخطيط (shell) الخادمي** (requireUser +
+ * isManager). ممنوع اشتقاق الدور هنا من جلسة أو كوكي أو localStorage — أي فرع
+ * يقرأ حالة لا تتوفّر وقت SSR يولّد اختلاف ترطيب. الفرع الوحيد على `manager`،
+ * والمصفوفتان ثابتتان على مستوى الوحدة فيبني الخادم والعميل نفس الروابط حرفيًا.
+ * (`usePathname` يُستعمل للتمييز البصري فقط — لا يختار التبويبات.)
  * كل هدف لمس ≥ ٤٤ بكسل (min-h-11)، والشريط يرتفع فوق شريط الإيماءات
  * عبر padding سفلي بمقدار safe-area-inset-bottom.
  * الشارات تصل من تخطيط (shell) — نفس مصدر أرقام الشاشات (buildAgenda).
@@ -24,12 +46,22 @@ const TABS: { key: TabKey; href: string; label: string; icon: typeof Home }[] = 
 export function BottomNav({
   newCount = 0,
   todayCount = 0,
+  unassignedCount = 0,
+  manager = false,
 }: {
   newCount?: number;
   todayCount?: number;
+  /** عدد غير الموزّعين (getLeadCounts) — شارة تبويب الإدارة. */
+  unassignedCount?: number;
+  /** الدور يصل من تخطيط (shell) — يُقرأ على الخادم عبر requireUser/isManager. */
+  manager?: boolean;
 }) {
   const pathname = usePathname();
-  const badges: Partial<Record<TabKey, number>> = { new: newCount, today: todayCount };
+  const tabs = manager ? MANAGER_TABS : EMPLOYEE_TABS;
+  // شارات الموظف شخصية؛ شارة الإدارة الوحيدة عدّاد «غير موزّعين».
+  const badges: Partial<Record<TabKey, number>> = manager
+    ? { unassigned: unassignedCount }
+    : { new: newCount, today: todayCount };
 
   return (
     <nav
@@ -46,7 +78,7 @@ export function BottomNav({
       }}
     >
       <ul className="mx-auto flex max-w-lg items-stretch">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           // «/m» تُطابَق تمامًا حتى لا تبقى الرئيسية نشطة داخل كل تبويب.
           const active = tab.href === "/m" ? pathname === "/m" : pathname.startsWith(tab.href);
