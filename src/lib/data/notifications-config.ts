@@ -113,7 +113,12 @@ export async function ensureNotificationDefaults(): Promise<void> {
   // إعدادات الأحداث — النغمة الافتراضية = «تنبيه ناعم». نزرع الناقص فقط (idempotent):
   // إضافة حدث جديد لاحقًا (مثل «إنذار سحب عميل») تُزرع تلقائيًا دون مسّ إعدادات الموجود،
   // وهذا ضروري لأن updateNotificationEvent يستخدم update لا upsert (يحتاج صفًّا موجودًا).
-  if ((await prisma.notificationSetting.count()) < NOTIFICATION_EVENTS.length) {
+  // نعدّ صفوف الأحداث وحدها: الجدول يحمل كذلك صفوف فئات القنوات (channel:*)،
+  // وعدّها ضمن المجموع كان يخفي نقص حدث جديد فلا يُزرع أبدًا.
+  const eventRows = await prisma.notificationSetting.count({
+    where: { eventKey: { in: NOTIFICATION_EVENTS.map((e) => e.key) } },
+  });
+  if (eventRows < NOTIFICATION_EVENTS.length) {
     const [softSound, urgentSound] = await Promise.all([
       prisma.soundAsset.findFirst({ where: { fileUrl: "/sounds/soft.wav" }, select: { id: true } }),
       prisma.soundAsset.findFirst({ where: { fileUrl: "/sounds/urgent.wav" }, select: { id: true } }),

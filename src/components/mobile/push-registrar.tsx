@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toMobileLink } from "@/lib/mobile-link";
+import { CHANNEL_PREFIX, FALLBACK_CHANNEL } from "@/lib/push/channels";
 
 /**
  * تسجيل الجهاز لإشعارات Push النيتف — يعمل داخل غلاف Capacitor فقط.
@@ -31,6 +32,55 @@ const isNative = (): boolean => {
   }
 };
 
+type PluginApi = typeof import("@capacitor/push-notifications").PushNotifications;
+
+type ServerChannel = {
+  id: string; category: string; name: string; description: string;
+  sound: string; importance: number; vibration: boolean;
+};
+
+/**
+ * يوائم قنوات الجهاز مع نغمات المالك الحالية.
+ *
+ * أندرويد يجمّد صوت القناة لحظة إنشائها ولا يقبل تعديله، فتغيير النغمة يعني
+ * معرّف قناة جديدًا. لذلك عند كل إقلاع: نقرأ المعرّفات الحالية من الخادم،
+ * ننشئ الناقص، ونحذف كل قناة قديمة تحمل بادئتنا ولم تعد ضمنها — وإلا تراكمت
+ * في إعدادات النظام قنوات ميتة بأصوات قديمة.
+ *
+ * قناة الاحتياط (sultan_fallback) لا تُمسّ: هي شبكة الأمان المسجّلة في
+ * المانيفست لأي إشعار يسبق إنشاء قناته.
+ */
+async function syncChannels(plugin: PluginApi): Promise<void> {
+  const res = await fetch("/api/push/channels", { cache: "no-store" });
+  if (!res.ok) return; // بلا شبكة: القنوات الموجودة من آخر مرة تكفي
+  const data = (await res.json()) as { ok?: boolean; channels?: ServerChannel[] };
+  const wanted = data.channels ?? [];
+  if (wanted.length === 0) return;
+
+  for (const c of wanted) {
+    // createChannel لا يغيّر قناة قائمة بنفس المعرّف — وهذا مطلوب: المعرّف
+    // مشتقّ من النغمة أصلًا، فوجوده يعني أن صوتها صحيح.
+    await plugin.createChannel({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      sound: c.sound,
+      importance: c.importance as 1 | 2 | 3 | 4 | 5,
+      vibration: c.vibration,
+      visibility: 0, // PRIVATE — العنوان على شاشة القفل والتفاصيل محجوبة
+    }).catch(() => {});
+  }
+
+  // تنظيف القنوات المهجورة (نغمات سابقة + قنوات النسخة الأولى sultan_alerts…).
+  const keep = new Set([...wanted.map((c) => c.id), FALLBACK_CHANNEL]);
+  const existing = await plugin.listChannels().catch(() => null);
+  for (const ch of existing?.channels ?? []) {
+    if (ch.id.startsWith(CHANNEL_PREFIX) && !keep.has(ch.id)) {
+      await plugin.deleteChannel({ id: ch.id }).catch(() => {});
+    }
+  }
+}
+
 export function PushRegistrar() {
   const router = useRouter();
 
@@ -54,6 +104,9 @@ export function PushRegistrar() {
           perm = await PushNotifications.requestPermissions();
         }
         if (cancelled || perm.receive !== "granted") return;
+
+        await syncChannels(PushNotifications);
+        if (cancelled) return;
 
         // التوكن يصل عبر هذا الحدث بعد register() — لا يرجع من الدالة نفسها.
         await PushNotifications.addListener("registration", (token) => {

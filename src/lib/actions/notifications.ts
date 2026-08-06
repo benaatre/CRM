@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
 import { requireUser, requireManager, requireManagerAction } from "@/lib/auth-guards";
 import { getNotificationConfig, ensureNotificationDefaults, type NotificationConfig } from "@/lib/data/notifications-config";
+import { ensureChannelDefaults, channelSettingKey, invalidateChannelCache } from "@/lib/data/push-channels";
+import { CATEGORIES, rawNameFor, type PushCategory } from "@/lib/push/channels";
 
 export type NotificationDTO = {
   id: string;
@@ -106,6 +108,40 @@ export async function updateMasterAudio(patch: { masterVolume?: number; globalMu
     if (patch.globalMute !== undefined) data.globalMute = patch.globalMute;
     await prisma.settings.update({ where: { id: "singleton" }, data });
     revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
+// ===================== نغمات قنوات الإشعارات النيتف (المالك) =====================
+
+/**
+ * تغيير نغمة فئة — للمالك وحده (أشدّ من بقية إعدادات الإشعارات: يمسّ كل
+ * أجهزة الفريق لا جهاز المُعدِّل).
+ */
+export async function updateChannelSound(category: string, soundId: string): Promise<ActionResult> {
+  try {
+    const user = await requireManagerAction();
+    if (user.role !== "OWNER") return { ok: false, error: "تغيير نغمات التنبيهات للمالك فقط" };
+    if (!CATEGORIES.includes(category as PushCategory)) return { ok: false, error: "فئة غير صالحة" };
+
+    const sound = await prisma.soundAsset.findUnique({ where: { id: soundId }, select: { fileUrl: true } });
+    if (!sound) return { ok: false, error: "النغمة غير موجودة" };
+    // نغمة مرفوعة من المالك ما لها مقابل داخل الـAPK — القناة تحتاج ملفًا مُضمّنًا.
+    if (!rawNameFor(sound.fileUrl)) {
+      return { ok: false, error: "هذي النغمة تشتغل بالويب فقط — اختر وحدة من النغمات الجاهزة" };
+    }
+
+    await ensureChannelDefaults();
+    await prisma.notificationSetting.update({
+      where: { eventKey: channelSettingKey(category as PushCategory) },
+      data: { soundId },
+    });
+    invalidateChannelCache(); // لا ينتظر الإشعار التالي انتهاء الكاش
+
+    revalidatePath("/settings");
+    revalidatePath("/m/settings");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: toUserError(e) };

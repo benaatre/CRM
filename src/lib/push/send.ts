@@ -2,6 +2,8 @@ import "server-only";
 
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
+import { categoryFor, FALLBACK_CHANNEL, type PushCategory } from "@/lib/push/channels";
+import { getChannelConfigCached, type ChannelConfig } from "@/lib/data/push-channels";
 
 /**
  * إرسال إشعارات Push النيتف عبر FCM HTTP v1.
@@ -14,19 +16,6 @@ import { prisma } from "@/lib/prisma";
  */
 
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
-
-/** قنوات أندرويد — لازم تُنشأ نيتف بنفس المعرّفات (MainActivity). */
-export const CHANNEL_DEFAULT = "sultan_alerts";
-export const CHANNEL_URGENT = "sultan_urgent";
-
-/**
- * أحداث حرجة تُرسل على القناة العاجلة — نفس منطق URGENT_DEFAULT_KEYS في
- * notifications-config.ts، موسّعًا لأنواع notify() المباشرة التي ما لها إعداد.
- */
-const URGENT_KEYS = new Set<string>(["sweep.warn", "no_response.warn", "lead_lost"]);
-
-const channelFor = (eventKey: string): string =>
-  URGENT_KEYS.has(eventKey) ? CHANNEL_URGENT : CHANNEL_DEFAULT;
 
 type ServiceAccount = { client_email: string; private_key: string; project_id?: string };
 
@@ -79,6 +68,11 @@ export type PushPayload = {
   title: string;
   body?: string | null;
   link?: string | null;
+  /**
+   * تجاوز فئة الحدث. لازم لـfollowup_due: يُطلق بمفتاح واحد لحالتين
+   * (مستحقة = عادي، فات موعدها = عاجل) فلا يميّزهما المفتاح وحده.
+   */
+  category?: PushCategory | null;
 };
 
 /**
@@ -93,7 +87,9 @@ async function sendOne(
   token: string,
   bearer: string,
   p: PushPayload,
+  channel: ChannelConfig,
 ): Promise<"ok" | "drop" | "retry"> {
+  const urgent = channel.category === "urgent";
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
     method: "POST",
     headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
@@ -102,16 +98,23 @@ async function sendOne(
         token,
         notification: { title: p.title, ...(p.body ? { body: p.body } : {}) },
         android: {
-          priority: "high",
+          // «معلومات» لا تستحق إيقاظ الجهاز من Doze — normal يوفّر البطارية.
+          priority: channel.category === "info" ? "normal" : "high",
           notification: {
-            channel_id: channelFor(p.eventKey),
-            notification_priority: "PRIORITY_MAX",
-            default_sound: true,
-            default_vibrate_timings: true,
+            channel_id: channel.channelId,
+            notification_priority: urgent ? "PRIORITY_MAX" : "PRIORITY_DEFAULT",
+            // اسم المورد بلا امتداد — لأجهزة ما قبل أندرويد ٨ حيث لا قنوات
+            // أصلًا فالصوت يجي من الحمولة. على ٨ فما فوق صوت القناة هو الحاكم.
+            sound: channel.sound.replace(/\.wav$/, ""),
+            default_vibrate_timings: channel.vibration,
           },
         },
         // قيم data لازم تكون نصوصًا — يقرأها العميل ليفتح الرابط عند الضغط.
-        data: { eventKey: p.eventKey, ...(p.link ? { link: p.link } : {}) },
+        data: {
+          eventKey: p.eventKey,
+          category: channel.category,
+          ...(p.link ? { link: p.link } : {}),
+        },
       },
     }),
   });
@@ -149,6 +152,16 @@ export async function sendPush(userIds: string[], p: PushPayload): Promise<numbe
   });
   if (rows.length === 0) return 0;
 
+  // فئة الحدث → قناتها الحالية (بنغمة المالك). لو تعذّر الإعداد لأي سبب،
+  // نرسل على قناة الاحتياط الدائمة بدل إسقاط الإشعار.
+  const category = categoryFor(p.eventKey, p.category);
+  const channels = await getChannelConfigCached().catch(() => []);
+  const channel: ChannelConfig = channels.find((c) => c.category === category) ?? {
+    category, channelId: FALLBACK_CHANNEL, label: "", description: "",
+    importance: 5, vibration: true, sound: "notif_soft.wav", soundId: null,
+    soundUrl: "/sounds/soft.wav",
+  };
+
   const bearer = await accessToken(cfg.creds);
   const dead: string[] = [];
   let sent = 0;
@@ -159,7 +172,7 @@ export async function sendPush(userIds: string[], p: PushPayload): Promise<numbe
     const slice = rows.slice(i, i + BATCH);
     const results = await Promise.all(
       slice.map((r) =>
-        sendOne(cfg.projectId, r.token, bearer, p)
+        sendOne(cfg.projectId, r.token, bearer, p, channel)
           .then((out) => ({ token: r.token, out }))
           .catch(() => ({ token: r.token, out: "retry" as const })),
       ),

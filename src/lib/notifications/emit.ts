@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notify, ownerIds, managerIds, activeUserIds } from "@/lib/notify";
 import { ensureNotificationDefaults, NOTIFICATION_EVENTS } from "@/lib/data/notifications-config";
+import type { PushCategory } from "@/lib/push/channels";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -21,6 +22,8 @@ type EmitArgs = {
   title: string;             // عنوان الإشعار (سعودي)
   body?: string;             // تفاصيل
   link?: string;             // رابط يفتح العنصر
+  /** فئة قناة Push حين لا يكفي eventKey (مثل followup_due: مستحقة/فاتت). */
+  category?: PushCategory;
 };
 
 /** يحدّد المستلمين حسب الجمهور المحفوظ للحدث. */
@@ -42,7 +45,7 @@ async function recipientsFor(db: Db, audience: string, assignedUserId?: string |
  * التحقق من الجمهور كله على الخادم — لا اعتماد على الواجهة.
  */
 export async function emitNotification(args: EmitArgs, db: Db = prisma): Promise<void> {
-  const { eventKey, assignedUserId, title, body, link } = args;
+  const { eventKey, assignedUserId, title, body, link, category } = args;
   await ensureNotificationDefaults();
   const setting = await db.notificationSetting.findUnique({
     where: { eventKey },
@@ -56,7 +59,7 @@ export async function emitNotification(args: EmitArgs, db: Db = prisma): Promise
   const recipients = await recipientsFor(db, audience, assignedUserId);
   if (recipients.length === 0) return;
   // نُنشئ السجل دائمًا (الجرس يعرضه)؛ العميل يقرّر التوست/الصوت حسب إعداد الحدث وقت الوصول.
-  await notify(db, recipients, eventKey, title, body, link);
+  await notify(db, recipients, eventKey, title, body, link, category);
 }
 
 export type LeadAssignedBucket = { userId: string; count: number; sampleLeadId?: string; sampleName?: string };

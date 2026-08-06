@@ -11,55 +11,45 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
 
     /**
-     * قنوات الإشعارات — لازم تُنشأ هنا بنفس المعرّفات المستخدمة في الخادم
-     * (src/lib/push/send.ts). على أندرويد ٨ (API 26) فما فوق، أي إشعار يصل
-     * بمعرّف قناة غير موجودة يُسقَط بصمت ولا يظهر إطلاقًا.
+     * قناة الاحتياط الدائمة — شبكة أمان لا أكثر.
      *
-     * IMPORTANCE_HIGH = تنبيه منبثق + صوت + ظهور على شاشة القفل، وهو المطلوب
-     * لتنبيه الموظف والتطبيق مقفول.
+     * قنوات الفئات الثلاث (عاجل/عادي/معلومات) تُنشأ من الويب عند إقلاع التطبيق
+     * (components/mobile/push-registrar.tsx) لأن نغمة كل فئة يختارها المالك من
+     * الخادم، ولا يعرفها كود نيتف مبنيّ مسبقًا.
      *
-     * ملاحظة: خصائص القناة (الصوت/الاهتزاز/الأهمية) تُثبَّت عند أول إنشاء ولا
-     * يمكن تعديلها بالكود بعدها — تغييرها لاحقًا يحتاج معرّف قناة جديدًا.
+     * فائدة هذه القناة: أندرويد ٨ فما فوق يُسقط بصمت أي إشعار يصل بمعرّف قناة
+     * غير موجودة. لو غيّر المالك النغمة ووصل إشعار قبل أن يفتح الموظف التطبيق
+     * (فتُنشأ القناة الجديدة)، يعرضه أندرويد على هذه بدل أن يضيع — لأنها
+     * مسجّلة في المانيفست كـdefault_notification_channel_id.
+     *
+     * معرّفها ثابت ولا يحمل نغمة مخصّصة، فلا يلزمها إعادة إنشاء أبدًا.
      */
-    private static final String CHANNEL_DEFAULT = "sultan_alerts";
-    private static final String CHANNEL_URGENT = "sultan_urgent";
+    private static final String FALLBACK_CHANNEL = "sultan_fallback";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        createNotificationChannels();
+        createFallbackChannel();
     }
 
-    private void createNotificationChannels() {
+    private void createFallbackChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return; // ما قبل أندرويد ٨: لا قنوات أصلًا
 
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
 
-        NotificationChannel alerts = new NotificationChannel(
-            CHANNEL_DEFAULT,
-            "تنبيهات النظام",
+        NotificationChannel fallback = new NotificationChannel(
+            FALLBACK_CHANNEL,
+            "تنبيهات مشاريع السلطان",
             NotificationManager.IMPORTANCE_HIGH
         );
-        alerts.setDescription("عملاء جدد، متابعات مستحقة، مواعيد زيارات، وحجوزات");
-        alerts.enableVibration(true);
-        alerts.setShowBadge(true);
-        // PRIVATE: العنوان يظهر على شاشة القفل والتفاصيل تُخفى لو الجهاز مقفل بنمط آمن
-        // — أسماء العملاء ما تنكشف لمن يمسك الجوال.
-        alerts.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        fallback.setDescription("تنبيهات النظام — تُستخدم لحين تحديث نغمات التنبيهات");
+        fallback.enableVibration(true);
+        fallback.setShowBadge(true);
+        // PRIVATE: العنوان يظهر على شاشة القفل والتفاصيل تُخفى لو الجهاز مقفل
+        // بنمط آمن — أسماء العملاء ما تنكشف لمن يمسك الجوال.
+        fallback.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
 
-        NotificationChannel urgent = new NotificationChannel(
-            CHANNEL_URGENT,
-            "تنبيهات عاجلة",
-            NotificationManager.IMPORTANCE_HIGH
-        );
-        urgent.setDescription("إنذار قبل سحب عميل، وانتقال عميل منك");
-        urgent.enableVibration(true);
-        urgent.setVibrationPattern(new long[] { 0, 400, 200, 400 }); // نبض مزدوج يميّزها
-        urgent.setShowBadge(true);
-        urgent.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-
-        manager.createNotificationChannel(alerts);
-        manager.createNotificationChannel(urgent);
+        manager.createNotificationChannel(fallback);
     }
 }

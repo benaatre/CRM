@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { sendPush } from "@/lib/push/send";
+import type { PushCategory } from "@/lib/push/channels";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -24,14 +25,16 @@ export async function notify(
   title: string,
   body?: string,
   link?: string,
+  /** تجاوز فئة القناة — يُمرَّر فقط حين لا يكفي eventKey لتحديدها. */
+  category?: PushCategory,
 ): Promise<void> {
   const ids = [...new Set(userIds.filter((x): x is string => !!x))];
   if (ids.length === 0) return;
   await db.notification.createMany({
     data: ids.map((userId) => ({ userId, type, title, body: body ?? null, link: link ?? null })),
   });
-  // type هو eventKey — تختار منه خدمة الإرسال القناة (عادية/عاجلة).
-  void sendPush(ids, { eventKey: type, title, body, link }).catch((e) =>
+  // type هو eventKey — تشتقّ منه خدمة الإرسال فئة القناة (عاجل/عادي/معلومات).
+  void sendPush(ids, { eventKey: type, title, body, link, category }).catch((e) =>
     console.error("[push] فشل إرسال إشعار نيتف", e),
   );
 }

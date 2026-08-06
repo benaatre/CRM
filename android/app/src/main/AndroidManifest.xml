@@ -20,6 +20,15 @@
             </intent-filter>
         </activity>
 
+        <!--
+            قناة الاحتياط: يستخدمها FCM إذا وصل إشعار بمعرّف قناة لم تُنشأ بعد
+            على الجهاز (نافذة ما بين تغيير المالك للنغمة وأول فتح للتطبيق).
+            بدونها يُسقط أندرويد ٨+ الإشعار بصمت. تُنشأ في MainActivity.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="sultan_fallback" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
