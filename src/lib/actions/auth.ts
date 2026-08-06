@@ -20,6 +20,17 @@ export async function signOutAction() {
 }
 
 /**
+ * خروج الجوال — زر «تسجيل الخروج» في /m/more. أكشن لا <a href="/api/logout">:
+ * التنقّل الكامل يُرمى لسفاري خارجي على iOS (سياسة تنقّل WKWebView بلا
+ * allowNavigation)، بينما تحويل الأكشن يمشي براوتر Next داخل الـWebView.
+ */
+export async function signOutMobileAction() {
+  const session = await auth();
+  if (session?.user?.id) await dropUserTokens(session.user.id);
+  await signOut({ redirectTo: MOBILE_LOGIN });
+}
+
+/**
  * تسجيل الخروج من كل الأجهزة: يرفع نقطة القطع sessionsValidFrom إلى الآن،
  * فتُبطَل كل جلسات المستخدم (JWT) المُصدَرة قبلها — على أي جهاز. عند التنقّل
  * التالي يكتشفها requireUser ويحوّل لـ /api/logout. ثم نُخرج الجهاز الحالي فورًا.

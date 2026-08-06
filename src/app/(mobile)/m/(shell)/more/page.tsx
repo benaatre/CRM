@@ -19,6 +19,7 @@ import { pauseReasonLabel, formatPauseRemaining } from "@/lib/availability";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import { MobileProfileCard } from "@/components/mobile/profile-card";
+import { MobileLogoutButton } from "@/components/mobile/logout-button";
 
 export const dynamic = "force-dynamic";
 
@@ -189,16 +190,10 @@ export default async function MobileMorePage() {
       </div>
 
       {/* ===== الخروج + الهوية ===== */}
-      {/* ?to=/m/login: بدونها ينتهي الخروج على /login بتخطيط الويب، والدخول
-          من هناك يوجّه لـ/dashboard فيخرج المستخدم من التطبيق كليًا. */}
-      <a href="/api/logout?to=/m/login" className="flex items-center justify-center"
-        style={{
-          boxSizing: "border-box", minHeight: 52, borderRadius: 16,
-          border: `1px solid ${MOBILE_STATUS.danger.border}`, background: MOBILE_STATUS.danger.bg,
-          color: MOBILE_STATUS.danger.base, fontSize: "14.5px", fontWeight: 700, marginTop: 4,
-        }}>
-        تسجيل الخروج
-      </a>
+      {/* زر بأكشن خادم لا <a href="/api/logout">: التنقّل الكامل يُرمى لسفاري
+          خارجي على iOS — تحويل الأكشن يمشي براوتر Next داخل الـWebView،
+          ووجهته /m/login مثبّتة داخل signOutMobileAction نفسه. */}
+      <MobileLogoutButton />
       <div className="text-center" style={{ fontSize: 11, color: MOBILE_COLORS.dim1, lineHeight: 1.9, padding: "4px 0" }}>
         ترخيص فال (REGA) {toArabicDigits(settings.falLicense ?? "1200021029")}
         <br />
