@@ -89,7 +89,10 @@ async function sendOne(
   p: PushPayload,
   channel: ChannelConfig,
 ): Promise<"ok" | "drop" | "retry"> {
-  const urgent = channel.category === "urgent";
+  // الأولوية من أهمية الفئة لا من اسمها — الفئات الهادئة (importance 3:
+  // عميل راكد/حالة الموظفين) لا تستحق إيقاظ الجهاز من Doze، وإنذار السحب
+  // وحده يأخذ PRIORITY_MAX (أعلى اختراق للوضع الصامت الذكي).
+  const popup = channel.importance >= 5;
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
     method: "POST",
     headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
@@ -98,11 +101,11 @@ async function sendOne(
         token,
         notification: { title: p.title, ...(p.body ? { body: p.body } : {}) },
         android: {
-          // «معلومات» لا تستحق إيقاظ الجهاز من Doze — normal يوفّر البطارية.
-          priority: channel.category === "info" ? "normal" : "high",
+          priority: popup ? "high" : "normal",
           notification: {
             channel_id: channel.channelId,
-            notification_priority: urgent ? "PRIORITY_MAX" : "PRIORITY_DEFAULT",
+            notification_priority:
+              channel.category === "pull_warn" ? "PRIORITY_MAX" : popup ? "PRIORITY_HIGH" : "PRIORITY_DEFAULT",
             // اسم المورد بلا امتداد — لأجهزة ما قبل أندرويد ٨ حيث لا قنوات
             // أصلًا فالصوت يجي من الحمولة. على ٨ فما فوق صوت القناة هو الحاكم.
             sound: channel.sound.replace(/\.wav$/, ""),

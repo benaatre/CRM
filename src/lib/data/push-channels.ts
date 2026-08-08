@@ -41,6 +41,11 @@ export type ChannelConfig = {
  * منفصل عن ensureNotificationDefaults لأن ذاك يتعامل مع الأحداث لا الفئات.
  */
 export async function ensureChannelDefaults(): Promise<void> {
+  // تنظيف صفوف فئات النسخة الثلاثية (عاجل/عادي/معلومات) — بطلت أسماؤها مع
+  // الانتقال للسبع وصارت يتيمة. idempotent: بعد أول حذف ترجع صفرًا دائمًا.
+  await prisma.notificationSetting.deleteMany({
+    where: { eventKey: { in: ["channel:urgent", "channel:normal", "channel:info"] } },
+  });
   const existing = await prisma.notificationSetting.findMany({
     where: { eventKey: { in: CATEGORIES.map(channelSettingKey) } },
     select: { eventKey: true },

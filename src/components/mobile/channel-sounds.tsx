@@ -58,9 +58,13 @@ export function MobileChannelSounds({
     });
 
   const accent: Record<string, string> = {
-    urgent: MOBILE_STATUS.danger.base,
-    normal: MOBILE_COLORS.gold,
-    info: MOBILE_COLORS.textMuted,
+    new_lead: MOBILE_COLORS.gold,
+    pull_warn: MOBILE_STATUS.danger.base,
+    appointments: MOBILE_STATUS.warning.base,
+    achievement: MOBILE_STATUS.success.base,
+    reassigned: MOBILE_STATUS.info.base,
+    stale: MOBILE_COLORS.textMuted,
+    staff: MOBILE_COLORS.dim1,
   };
 
   return (

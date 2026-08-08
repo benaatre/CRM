@@ -121,9 +121,9 @@ export async function runLateFollowupReminder(now: Date = new Date()): Promise<n
       title: "تذكير: موعد متابعة فاتك",
       body: p.body ?? undefined,
       link: p.link,
-      // فاتت موعدها = «عاجل». المستحقة تبقى «عادي» — نفس eventKey فلا يميّزهما
-      // إلا هذا التجاوز الصريح.
-      category: "urgent",
+      // فاتت موعدها = ترقية لفئة «إنذار سحب» (هي إنذار فعليًا). المستحقة تبقى
+      // «مواعيد ومتابعات» — نفس eventKey فلا يميّزهما إلا هذا التجاوز الصريح.
+      category: "pull_warn",
     });
     emitted++;
   }

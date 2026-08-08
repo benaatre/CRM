@@ -34,7 +34,7 @@ export const AUDIENCE_OPTIONS: { code: AudienceCode; label: string }[] = [
 export const eventLabel = (key: string): string =>
   NOTIFICATION_EVENTS.find((e) => e.key === key)?.label ?? key;
 
-// النغمات المدمجة (ملفات WAV مولّدة في public/sounds/).
+// النغمات المدمجة (WAV في public/sounds/ + مقابل notif_*.wav داخل الـAPK).
 const BUILTIN_SOUNDS = [
   { name: "تنبيه ناعم", fileUrl: "/sounds/soft.wav" },
   { name: "جرس", fileUrl: "/sounds/bell.wav" },
@@ -42,6 +42,22 @@ const BUILTIN_SOUNDS = [
   { name: "تنبيه عاجل", fileUrl: "/sounds/urgent.wav" },
   { name: "نقرة", fileUrl: "/sounds/click.wav" },
   { name: "دينق", fileUrl: "/sounds/ding.wav" },
+  // دفعة 2026-08 — منتقاة ومُوحَّدة الشدة (متوسط ≈ -١٨dB):
+  { name: "صعود إنجاز", fileUrl: "/sounds/level_up.wav" },
+  { name: "تنبيه حازم", fileUrl: "/sounds/alert_strong.wav" },
+  { name: "نغمة حادة خاطفة", fileUrl: "/sounds/fault.wav" },
+  { name: "جرس الباب", fileUrl: "/sounds/doorbell.wav" },
+  { name: "جرس ساطع", fileUrl: "/sounds/bell_bright.wav" },
+  { name: "نغمة تنبيه خطأ", fileUrl: "/sounds/error_tone.wav" },
+  { name: "أثيري متدرج", fileUrl: "/sounds/aero.wav" },
+  { name: "طقّة ناعمة", fileUrl: "/sounds/ui_pop.wav" },
+  { name: "رنين ممتد", fileUrl: "/sounds/chime_long.wav" },
+  { name: "نغمة رسالة", fileUrl: "/sounds/message_tone.wav" },
+  { name: "تنبيه لطيف", fileUrl: "/sounds/alert_light.wav" },
+  { name: "جرس هادئ", fileUrl: "/sounds/bell_soft.wav" },
+  { name: "تصاعد ناعم", fileUrl: "/sounds/rising.wav" },
+  { name: "تنبيه رايق", fileUrl: "/sounds/alert_calm.wav" },
+  { name: "همسة", fileUrl: "/sounds/whisper.wav" },
 ];
 
 export type NotifEvent = {
@@ -103,10 +119,14 @@ let defaultsEnsured = false;
  */
 export async function ensureNotificationDefaults(): Promise<void> {
   if (defaultsEnsured) return;
-  // النغمات المدمجة
-  if ((await prisma.soundAsset.count({ where: { isBuiltIn: true } })) === 0) {
+  // النغمات المدمجة — نزرع الناقص فقط (كان الشرط «العدّ صفر» فأي نغمة مدمجة
+  // جديدة تُضاف للقائمة ما كانت تُزرع أبدًا على قاعدة فيها نغمات قديمة).
+  if ((await prisma.soundAsset.count({ where: { isBuiltIn: true } })) < BUILTIN_SOUNDS.length) {
+    const have = new Set(
+      (await prisma.soundAsset.findMany({ where: { isBuiltIn: true }, select: { fileUrl: true } })).map((s) => s.fileUrl),
+    );
     await prisma.soundAsset.createMany({
-      data: BUILTIN_SOUNDS.map((s) => ({ name: s.name, fileUrl: s.fileUrl, isBuiltIn: true })),
+      data: BUILTIN_SOUNDS.filter((s) => !have.has(s.fileUrl)).map((s) => ({ name: s.name, fileUrl: s.fileUrl, isBuiltIn: true })),
       skipDuplicates: true,
     });
   }

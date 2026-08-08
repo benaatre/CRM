@@ -3,7 +3,7 @@ import { ChevronLeft, ShieldCheck, Bell } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getNotificationConfig, eventLabel, ensureNotificationDefaults } from "@/lib/data/notifications-config";
 import { ensureChannelDefaults, getChannelConfig } from "@/lib/data/push-channels";
-import { eventsByCategory } from "@/lib/push/channels";
+import { eventsByCategory, DIRECT_EVENT_LABELS } from "@/lib/push/channels";
 import { MobileChannelSounds } from "@/components/mobile/channel-sounds";
 import { getActiveSessions } from "@/lib/session-devices";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
@@ -101,7 +101,9 @@ export default async function MobileSettingsPage() {
               description: c.description,
               soundId: c.soundId,
               soundUrl: c.soundUrl,
-              events: (byCategory[c.category] ?? []).map(eventLabel),
+              // الأحداث المسجّلة اسمها من قائمتها، والمباشرة (notify بلا صف
+              // إعدادات) من خريطتها — وإلا ظهر المفتاح الإنجليزي الخام.
+              events: (byCategory[c.category] ?? []).map((k) => DIRECT_EVENT_LABELS[k] ?? eventLabel(k)),
             }))}
             sounds={notifCfg.sounds.map((s) => ({
               id: s.id, name: s.name, fileUrl: s.fileUrl, builtIn: s.isBuiltIn,
