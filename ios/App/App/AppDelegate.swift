@@ -1,5 +1,7 @@
 import UIKit
 import Capacitor
+import FirebaseCore
+import FirebaseMessaging
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,7 +9,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // يقرأ GoogleService-Info.plist من الـbundle. لازم قبل أي استخدام
+        // لـMessaging، فمكانه أول شيء في دورة الحياة.
+        FirebaseApp.configure()
         return true
     }
 
@@ -31,6 +35,42 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationWillTerminate(_ application: UIApplication) {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+    }
+
+    /**
+     * APNs سلّمنا توكن الجهاز — لا نبثّه كما هو.
+     *
+     * لماذا: مسار الإرسال (send.ts) يستخدم FCM HTTP v1 وحقل token فيه يقبل
+     * توكن تسجيل FCM حصرًا، لا توكن APNs الخام. فنسلّم الخام لـMessaging
+     * ليبادله، ونبثّ الناتج للجسر.
+     *
+     * البثّ كنص مقصود: بلجن Capacitor يقبل object كـData أو String ويمرّر
+     * النص كما هو لحدث registration — فما نحتاج بلجن جسر إضافي.
+     */
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Messaging.messaging().apnsToken = deviceToken
+        Messaging.messaging().token { token, error in
+            if let token = token {
+                NotificationCenter.default.post(
+                    name: .capacitorDidRegisterForRemoteNotifications,
+                    object: token
+                )
+            } else {
+                NotificationCenter.default.post(
+                    name: .capacitorDidFailToRegisterForRemoteNotifications,
+                    object: error ?? NSError(domain: "fcm", code: -1)
+                )
+            }
+        }
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(
+            name: .capacitorDidFailToRegisterForRemoteNotifications,
+            object: error
+        )
     }
 
     func application(_ application: UIApplication,

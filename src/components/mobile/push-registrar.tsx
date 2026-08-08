@@ -16,7 +16,10 @@ import { CHANNEL_PREFIX, FALLBACK_CHANNEL } from "@/lib/push/channels";
  * يحمّل الحزمة أصلًا ولا يُطلب منه أي إذن.
  */
 
-type CapacitorGlobal = { isNativePlatform?: () => boolean };
+type CapacitorGlobal = {
+  isNativePlatform?: () => boolean;
+  getPlatform?: () => string;
+};
 
 declare global {
   interface Window {
@@ -29,6 +32,20 @@ const isNative = (): boolean => {
     return typeof window !== "undefined" && window.Capacitor?.isNativePlatform?.() === true;
   } catch {
     return false;
+  }
+};
+
+/**
+ * المنصّة من الكائن العام الذي يحقنه الغلاف — "android" | "ios".
+ *
+ * لماذا من window لا باستيراد @capacitor/core: نفس سبب الاستيراد الديناميكي
+ * للبلجن أعلاه — لئلا يحمّل مستخدم الويب حزمة لا تعنيه.
+ */
+const platformOf = (): string => {
+  try {
+    return window.Capacitor?.getPlatform?.() ?? "android";
+  } catch {
+    return "android";
   }
 };
 
@@ -105,15 +122,20 @@ export function PushRegistrar() {
         }
         if (cancelled || perm.receive !== "granted") return;
 
-        await syncChannels(PushNotifications);
-        if (cancelled) return;
+        // القنوات مفهوم أندرويدي بحت — createChannel/listChannels معلنتان
+        // unimplemented على iOS. وعلى iOS الصوت يجي من حمولة الإشعار نفسها،
+        // فتغيير المالك للنغمة يسري فورًا بلا إنشاء قنوات ولا تنظيفها.
+        if (platformOf() === "android") {
+          await syncChannels(PushNotifications);
+          if (cancelled) return;
+        }
 
         // التوكن يصل عبر هذا الحدث بعد register() — لا يرجع من الدالة نفسها.
         await PushNotifications.addListener("registration", (token) => {
           fetch("/api/push/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: token.value, platform: "android" }),
+            body: JSON.stringify({ token: token.value, platform: platformOf() }),
             keepalive: true,
           }).catch(() => {}); // فشل الشبكة: المحاولة التالية عند فتح التطبيق
         });

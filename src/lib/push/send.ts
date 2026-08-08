@@ -112,6 +112,24 @@ async function sendOne(
             default_vibrate_timings: channel.vibration,
           },
         },
+        apns: {
+          headers: {
+            // 10 = توصيل فوري، 5 = مؤجّل موفّر للبطارية. مشتقّ من نفس popup
+            // المستخدم لأندرويد فلا يفترق سلوك المنصتين.
+            "apns-priority": popup ? "10" : "5",
+          },
+          payload: {
+            aps: {
+              // الامتداد مطلوب على iOS بخلاف أندرويد الذي يجرّده أعلاه:
+              // هناك اسم مورد في res/raw، وهنا اسم ملف في الـbundle.
+              // اسم غير موجود = صمت تام لا خطأ، فالتسمية لازم تطابق.
+              sound: channel.sound,
+              // يوازي notification_priority على أندرويد: المنبثق يضيء
+              // الشاشة، والهادئ يصل بلا إزعاج.
+              "interruption-level": popup ? "active" : "passive",
+            },
+          },
+        },
         // قيم data لازم تكون نصوصًا — يقرأها العميل ليفتح الرابط عند الضغط.
         data: {
           eventKey: p.eventKey,

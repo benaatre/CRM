@@ -1,11 +1,14 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * تغليف أندرويد — WebView يشير لواجهة الجوال على الإنتاج مباشرة.
+ * تغليف أندرويد و iOS — WebView يشير لواجهة الجوال على الإنتاج مباشرة.
  *
  * لماذا server.url وليس تصديرًا ثابتًا: التطبيق server-rendered بمصادقة
  * وقاعدة بيانات (App Router + Auth.js + Prisma) — لا يوجد وضع static أصلًا.
  * webDir=public شكلي فقط (Capacitor يلزمه مجلد) — لا يُحمَّل منه شيء.
+ *
+ * allowNavigation: يُبقي التنقّل داخل الـWebView بدل ما يُرمى المستخدم
+ * لمتصفح خارجي (سفاري على iOS، كروم على أندرويد).
  */
 const config: CapacitorConfig = {
   appId: "com.benaatre.sultan",
@@ -14,6 +17,7 @@ const config: CapacitorConfig = {
   server: {
     url: "https://crm.benaatre.com/m",
     androidScheme: "https",
+    allowNavigation: ["crm.benaatre.com"],
   },
   android: {
     allowMixedContent: false,
