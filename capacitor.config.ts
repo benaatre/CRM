@@ -12,7 +12,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
  */
 const config: CapacitorConfig = {
   appId: "com.benaatre.sultan",
-  appName: "مشاريع السلطان",
+  appName: "Sultan CRM",
   webDir: "public",
   server: {
     url: "https://crm.benaatre.com/m",
