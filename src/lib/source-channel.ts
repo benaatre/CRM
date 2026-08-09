@@ -17,5 +17,6 @@ export function channelForSourceName(name: string | null | undefined): Channel {
   if (/عقار|aqar/.test(n)) return "AQAR";
   if (/واتساب|whats/.test(n)) return "WHATSAPP";
   if (/إحالة|احالة|referr/.test(n)) return "REFERRAL";
+  if (/زيارة|visit/.test(n)) return "VISIT";
   return "OTHER";
 }

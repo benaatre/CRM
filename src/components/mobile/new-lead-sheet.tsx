@@ -6,7 +6,7 @@ import type { UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
-import { channelLabels, channelOrder, unitTypeLabels } from "@/lib/labels";
+import { unitTypeLabels } from "@/lib/labels";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { BottomSheet } from "@/components/mobile/bottom-sheet";
 import { DistrictSelect } from "@/components/leads/district-select";
@@ -38,7 +38,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /**
  * ورقة «عميل جديد» — نقل NewLeadDialog للجوال بنفس الحقول والأكشن حرفيًا:
  * createLead(FormData) + fetchSources() + DistrictSelect المشترك.
- * القناة والمصدر إجباريان (نفس تحقق الديسكتوب قبل الإرسال، والخادم يعيد فرضه).
+ * المصدر إجباري (نفس تحقق الديسكتوب قبل الإرسال، والخادم يعيد فرضه) — والقناة تُشتق منه على الخادم.
  */
 export function MobileNewLeadSheet({
   open, onClose, isManager, employees,
@@ -51,19 +51,17 @@ export function MobileNewLeadSheet({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [channel, setChannel] = useState<string>("");
   const [sources, setSources] = useState<SourceListItem[]>([]);
   const [sourceSel, setSourceSel] = useState("");
   const [areas, setAreas] = useState<string[]>([]);
 
   useEffect(() => {
-    if (open) { fetchSources().then(setSources).catch(() => {}); setAreas([]); setChannel(""); setSourceSel(""); setError(null); }
+    if (open) { fetchSources().then(setSources).catch(() => {}); setAreas([]); setSourceSel(""); setError(null); }
   }, [open]);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!channel) { setError("اختر القناة (المنصة)"); return; }
     if (!sourceSel) { setError("اختر مصدر العميل"); return; }
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
@@ -78,7 +76,7 @@ export function MobileNewLeadSheet({
       open={open}
       onClose={onClose}
       title="عميل جديد"
-      subtitle="نفس نموذج الديسكتوب — القناة والمصدر إجباريان"
+      subtitle="نفس نموذج الديسكتوب — المصدر إجباري"
       tall
       footer={
         /* خارج <form> — سمة form تبقيه زرّ إرسال حقيقيًا. */
@@ -100,28 +98,6 @@ export function MobileNewLeadSheet({
       <form id="m-newlead-form" onSubmit={onSubmit} style={{ marginTop: 6 }}>
         <Row label="الاسم *"><input name="name" required style={fieldStyle} placeholder="اسم العميل" /></Row>
         <Row label="الجوال *"><input name="phone" required inputMode="numeric" dir="ltr" style={fieldStyle} placeholder="05xxxxxxxx" /></Row>
-
-        <Row label="المنصة / القناة *">
-          <div className="flex flex-wrap" style={{ gap: 7 }}>
-            {channelOrder.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setChannel(c)}
-                style={{
-                  boxSizing: "border-box", minHeight: 36, padding: "0 12px", borderRadius: 18,
-                  fontSize: 12, fontWeight: 600,
-                  ...(channel === c
-                    ? { background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }
-                    : { background: MOBILE_COLORS.bg, color: MOBILE_COLORS.textSecondary, border: `1px solid ${MOBILE_COLORS.border}` }),
-                }}
-              >
-                {channelLabels[c]}
-              </button>
-            ))}
-          </div>
-          <input type="hidden" name="channel" value={channel} />
-        </Row>
 
         <Row label="المصدر *">
           <select name="sourceId" value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} style={fieldStyle}>

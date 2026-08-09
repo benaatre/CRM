@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { channelLabels, channelOrder, unitTypeLabels } from "@/lib/labels";
+import { unitTypeLabels } from "@/lib/labels";
 import type { UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
@@ -25,7 +25,6 @@ export function NewLeadDialog({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [channel, setChannel] = useState<string>("");
   const [sources, setSources] = useState<SourceListItem[]>([]);
   const [sourceSel, setSourceSel] = useState("");
   // «في أي حي تفضّل التملك؟» — اختياري، بلا إلزام.
@@ -38,7 +37,6 @@ export function NewLeadDialog({
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!channel) { setError("اختر القناة (المنصة)"); return; }
     if (!sourceSel) { setError("اختر مصدر العميل"); return; }
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
@@ -69,23 +67,6 @@ export function NewLeadDialog({
             <Field label="الجوال *">
               <input name="phone" required inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" />
             </Field>
-            <div className="col-span-2">
-              <Field label="المنصة / القناة *">
-                <div className="flex flex-wrap gap-1.5">
-                  {channelOrder.map((c) => (
-                    <button
-                      type="button"
-                      key={c}
-                      onClick={() => setChannel(c)}
-                      className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${channel === c ? "border-gold bg-gold/15 text-gold" : "border-border text-muted-foreground hover:text-foreground"}`}
-                    >
-                      {channelLabels[c]}
-                    </button>
-                  ))}
-                </div>
-                <input type="hidden" name="channel" value={channel} />
-              </Field>
-            </div>
             <Field label="نوع الوحدة">
               <select name="unitType" className="select-base" defaultValue="">
                 <option value="">—</option>

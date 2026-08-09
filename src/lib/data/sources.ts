@@ -17,16 +17,23 @@ export const DEFAULT_SOURCES = [
   "دايركت من إعلانات",
   "جوجل",
   "يوتيوب",
+  "إحالة",
+  "زيارة مباشرة",
   "أخرى",
 ];
 
-/** يزرع المصادر الافتراضية إذا ما فيه ولا مصدر (idempotent). */
+/** يزرع الناقص فقط من المصادر الافتراضية (idempotent) — لا يلمس الموجود ولا يحذف شيئًا. */
 export async function ensureDefaultSources(): Promise<void> {
-  const count = await prisma.leadSource.count();
-  if (count > 0) return;
+  const existing = await prisma.leadSource.findMany({
+    where: { name: { in: DEFAULT_SOURCES } },
+    select: { name: true },
+  });
+  const have = new Set(existing.map((s) => s.name));
+  const missing = DEFAULT_SOURCES.filter((name) => !have.has(name));
+  if (!missing.length) return;
   await prisma.leadSource.createMany({
-    data: DEFAULT_SOURCES.map((name) => ({ name, isDefault: true })),
-    skipDuplicates: true,
+    data: missing.map((name) => ({ name, isDefault: true })),
+    skipDuplicates: true, // name فريد — يحمي من سباق طلبين متزامنين
   });
 }
 

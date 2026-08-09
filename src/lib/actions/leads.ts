@@ -11,7 +11,6 @@ import {
 import type { PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
-import { parseEnum } from "@/lib/parse-enum";
 import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
@@ -66,12 +65,12 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     if (!/^\d{9,10}$/.test(phone.replace(/\s/g, "")))
       return { ok: false, error: "رقم جوال غير صحيح" };
 
-    const channel = parseEnum(Channel, formData.get("channel"), Channel.OTHER)!;
-    // المصدر إجباري عند الإضافة اليدوية.
+    // المصدر إجباري عند الإضافة اليدوية — والقناة تُشتق من اسمه (نفس مسار التعديل والاستيراد).
     const sourceId = String(formData.get("sourceId") ?? "").trim();
     if (!sourceId) return { ok: false, error: "اختر مصدر العميل" };
-    const sourceExists = await prisma.leadSource.findUnique({ where: { id: sourceId }, select: { id: true } });
-    if (!sourceExists) return { ok: false, error: "المصدر غير صالح" };
+    const src = await prisma.leadSource.findUnique({ where: { id: sourceId }, select: { name: true } });
+    if (!src) return { ok: false, error: "المصدر غير صالح" };
+    const channel = channelForSourceName(src.name);
     const unitTypeRaw = formData.get("unitType") as string;
     const unitType =
       unitTypeRaw && unitTypeRaw in UnitType
@@ -127,6 +126,7 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
         name,
         phone,
         channel,
+        source: src.name, // النص القديم يُكتب مع sourceId (نفس مسار التعديل — اتساق)
         unitType,
         budget,
         notes,
