@@ -137,6 +137,10 @@
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
 }
+/* امتلاء أشرطة القمع — من صفر إلى العرض المضبوط سطريًا (transform فقط) */
+@keyframes m-fillX {
+  from { transform: scaleX(0); }
+}
 
 /* ===== أصناف التطبيق ===== */
 
@@ -238,6 +242,12 @@
   animation: m-ctaPulse 1.9s ease-in-out infinite;
 }
 
+/* شريط قمع يمتلئ من اليمين (RTL) — القيمة النهائية من transform السطري */
+.m-fillx {
+  animation: m-fillX 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: right;
+}
+
 /* لمعة الزر الذهبي الأساسي (sweep في النموذج) */
 .m-sweep { position: relative; overflow: hidden; }
 .m-sweep::after {
@@ -257,7 +267,7 @@
 
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
-  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse { animation: none; }
+  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx { animation: none; }
   .m-iconbtn, .m-urgency, .m-leadcard, .m-press { transition: none; }
   .m-press:active { transform: none; }
 }

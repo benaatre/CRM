@@ -28,6 +28,23 @@ export type TeamData = {
   unassigned: number;
 };
 
+/** صف «آخر ظهور» — نسخة خفيفة لرئيسية المالك (استعلام واحد، بلا تجميعات getTeam الست). */
+export type PresenceRow = { id: string; name: string; lastSeenAt: Date | null; online: boolean };
+
+/** الموظفون النشطون بحالة اتصالهم — نفس حقول getTeam وعتبتها (ONLINE_THRESHOLD_MS). */
+export async function getTeamPresence(): Promise<PresenceRow[]> {
+  const users = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", active: true },
+    select: { id: true, name: true, lastSeenAt: true },
+    orderBy: { name: "asc" },
+  });
+  const now = Date.now();
+  return users
+    .map((u) => ({ ...u, online: !!u.lastSeenAt && now - u.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS }))
+    // المتصل الآن أولًا، ثم الأحدث ظهورًا.
+    .sort((a, b) => Number(b.online) - Number(a.online) || (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0));
+}
+
 export async function getTeam(): Promise<TeamData> {
   const [users, byTotal, byClosed, byNotContacted, byBookings, unassigned] = await Promise.all([
     prisma.user.findMany({

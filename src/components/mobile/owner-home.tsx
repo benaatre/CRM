@@ -5,6 +5,7 @@ import { getNotifications } from "@/lib/actions/notifications";
 import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
 import { getTeamCommitment, normalizeFuWindow, FU_WINDOWS } from "@/lib/data/team-commitment";
 import { getAuditLog, resolveAuditNames } from "@/lib/data/audit";
+import { getTeamPresence } from "@/lib/data/team";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
 import { MobileChips } from "@/components/mobile/chips";
@@ -12,6 +13,8 @@ import { MobileHeaderActions } from "@/components/mobile/header-actions";
 import { OwnerKpis } from "@/components/mobile/owner-kpis";
 import { TeamCommitment, type CommitmentRow } from "@/components/mobile/team-commitment";
 import { ActivityTicker } from "@/components/mobile/activity-ticker";
+import { TeamPresence } from "@/components/mobile/team-presence";
+import { SalesFunnel } from "@/components/mobile/sales-funnel";
 
 /**
  * لوحة المالك/المدير (isOwnerHome في النموذج) — البيانات من getDashboard:
@@ -31,7 +34,7 @@ export async function MobileOwnerHome({
   const fuWin = normalizeFuWindow(rawFu);
   const owner = user.role === "OWNER";
   const now = new Date();
-  const [data, dupCount, noResponseCount, notif, commitment, ticker] = await Promise.all([
+  const [data, dupCount, noResponseCount, notif, commitment, ticker, presence] = await Promise.all([
     getDashboard(period),
     owner ? activeDuplicateGroupCount() : Promise.resolve(0),
     owner ? getNoResponseCount() : Promise.resolve(0),
@@ -39,6 +42,7 @@ export async function MobileOwnerHome({
     getTeamCommitment(fuWin, now),
     // «آخر النشاطات»: لقطة آخر ١٠ أحداث + حلّ أسماء المعرّفات — نفس دوال /m/audit.
     getAuditLog({ limit: 10 }).then(async (entries) => ({ entries, names: await resolveAuditNames(entries) })),
+    getTeamPresence(),
   ]);
 
   // «متابعات الموظفين»: أسماء الفريق من getDashboard (موظفون نشطون فقط — المالك ليس بينهم)
@@ -138,6 +142,16 @@ export async function MobileOwnerHome({
         </section>
       )}
 
+      {/* ===== آخر ظهور للموظفين — صفوف مبسّطة: نشط الآن (نقطة نابضة) أو وقت نسبي ===== */}
+      {presence.length > 0 && (
+        <section className="flex flex-col" style={{ gap: 9 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginTop: 6, padding: "0 2px" }}>
+            آخر ظهور للموظفين
+          </h2>
+          <TeamPresence rows={presence} now={now} />
+        </section>
+      )}
+
       {/* ===== تنبيهات تحتاج انتباه ===== */}
       {alerts.length > 0 && (
         <section className="flex flex-col" style={{ gap: 9 }}>
@@ -162,6 +176,14 @@ export async function MobileOwnerHome({
           ))}
         </section>
       )}
+
+      {/* ===== قمع المبيعات — آخر الصفحة: data.funnel الجاهز، المراحل كلها منفصلة بالترتيب ===== */}
+      <section className="flex flex-col" style={{ gap: 11 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginTop: 6, padding: "0 2px" }}>
+          قمع المبيعات
+        </h2>
+        <SalesFunnel funnel={data.funnel} />
+      </section>
     </div>
   );
 }
