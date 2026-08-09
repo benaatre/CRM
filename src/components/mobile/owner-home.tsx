@@ -9,6 +9,7 @@ import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import { MobileChips } from "@/components/mobile/chips";
 import { MobileHeaderActions } from "@/components/mobile/header-actions";
+import { OwnerKpis } from "@/components/mobile/owner-kpis";
 
 /**
  * لوحة المالك/المدير (isOwnerHome في النموذج) — البيانات من getDashboard:
@@ -50,13 +51,6 @@ export async function MobileOwnerHome({
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
 
-  const kpis = [
-    { value: data.kpis.newInPeriod, label: "إجمالي العملاء", color: MOBILE_COLORS.textPrimary },
-    { value: data.kpis.bookings, label: "عدد الحجوزات", color: MOBILE_COLORS.gold },
-    { value: data.kpis.visits, label: "عدد الزيارات", color: MOBILE_COLORS.textPrimary },
-    { value: data.kpis.closedWon, label: "صفقات مقفولة", color: MOBILE_STATUS.success.fg },
-  ];
-
   // «متابعات اليوم للفريق» — أشرطة التقدم (أحمر لمن عنده متأخرات).
   const teamRows = data.teamFollowupsToday;
 
@@ -70,6 +64,7 @@ export async function MobileOwnerHome({
   const PERIODS: { key: Period; label: string }[] = [
     { key: "24h", label: "٢٤ ساعة" },
     { key: "48h", label: "٤٨ ساعة" },
+    { key: "72h", label: "٧٢ ساعة" },
     { key: "week", label: "أسبوع" },
     { key: "all", label: "الكل" },
   ];
@@ -90,59 +85,17 @@ export async function MobileOwnerHome({
         <MobileHeaderActions unread={notif.unread} />
       </header>
 
-      {/* ===== فلتر الفترة ===== */}
-      <MobileChips param="p" current={period} base="/m" items={PERIODS} />
+      {/* ===== فلتر الفترة — الفعّال بتدرّج ذهبي ===== */}
+      <MobileChips param="p" current={period} base="/m" items={PERIODS} goldGradient />
 
-      {/* ===== المؤشرات ===== */}
-      <div className="grid grid-cols-2" style={{ gap: 9 }}>
-        {data.kpis.unassigned > 0 && (
-          <div
-            className="col-span-2 flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              background: MOBILE_STATUS.danger.bg,
-              border: `1px solid ${MOBILE_STATUS.danger.border}`,
-              borderRadius: 16, padding: 14,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: MOBILE_STATUS.danger.fg, lineHeight: 1 }}>
-                {toArabicDigits(data.kpis.unassigned)}
-              </div>
-              <div style={{ fontSize: "11.5px", color: MOBILE_STATUS.danger.fg, opacity: 0.8, marginTop: 5 }}>
-                عملاء غير موزّعين
-              </div>
-            </div>
-            <Link
-              href="/m/distribution"
-              className="flex items-center"
-              style={{
-                boxSizing: "border-box", height: 38, padding: "0 16px", borderRadius: 10,
-                background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
-                fontSize: 13, fontWeight: 700,
-              }}
-            >
-              وزّعهم الآن
-            </Link>
-          </div>
-        )}
-        {kpis.map((k) => (
-          <div
-            key={k.label}
-            className="flex flex-col justify-center"
-            style={{
-              boxSizing: "border-box",
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-              borderRadius: 16, padding: "14px 13px", minHeight: 82, gap: 5,
-            }}
-          >
-            <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: k.color }}>
-              {toArabicDigits(k.value)}
-            </div>
-            <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.textSecondary }}>{k.label}</div>
-          </div>
-        ))}
-      </div>
+      {/* ===== المؤشرات الحية: بانر «غير موزّعين» + شبكة KPI بعدّ تصاعدي ===== */}
+      <OwnerKpis
+        unassigned={data.kpis.unassigned}
+        total={data.kpis.newInPeriod}
+        conversion={data.kpis.conversion}
+        bookings={data.kpis.bookings}
+        visits={data.kpis.visits}
+      />
 
       {/* ===== ٦) بطاقات إحصاءات الموظفين — شريط أفقي بالتقاط ===== */}
       {empCards.length > 0 && (

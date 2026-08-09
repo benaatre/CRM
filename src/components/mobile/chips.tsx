@@ -13,11 +13,14 @@ export function MobileChips<T extends string>({
   current,
   base,
   items,
+  goldGradient = false,
 }: {
   param: string;
   current: T;
   base: string;
   items: { key: T; label: string }[];
+  /** الشريحة الفعّالة بتدرّج ذهبي مصمت (رئيسية المالك) بدل الخلفية الذهبية الخافتة. */
+  goldGradient?: boolean;
 }) {
   return (
     <div className="flex overflow-x-auto" style={{ gap: 8, paddingBottom: 2 }}>
@@ -41,9 +44,13 @@ export function MobileChips<T extends string>({
                 borderRadius: 17,
                 fontSize: "12.5px",
                 fontWeight: 600,
-                background: on ? MOBILE_COLORS.goldBg : MOBILE_COLORS.card,
-                color: on ? MOBILE_COLORS.gold : MOBILE_COLORS.textSecondary,
-                border: `1px solid ${on ? MOBILE_COLORS.goldBorder : MOBILE_COLORS.border}`,
+                background: on
+                  ? goldGradient
+                    ? `linear-gradient(135deg, ${MOBILE_COLORS.goldLight}, ${MOBILE_COLORS.gold})`
+                    : MOBILE_COLORS.goldBg
+                  : MOBILE_COLORS.card,
+                color: on ? (goldGradient ? MOBILE_COLORS.bg : MOBILE_COLORS.gold) : MOBILE_COLORS.textSecondary,
+                border: `1px solid ${on ? (goldGradient ? "transparent" : MOBILE_COLORS.goldBorder) : MOBILE_COLORS.border}`,
               }}
             >
               {it.label}
