@@ -14,6 +14,7 @@ export function MobileChips<T extends string>({
   base,
   items,
   goldGradient = false,
+  keep,
 }: {
   param: string;
   current: T;
@@ -21,12 +22,18 @@ export function MobileChips<T extends string>({
   items: { key: T; label: string }[];
   /** الشريحة الفعّالة بتدرّج ذهبي مصمت (رئيسية المالك) بدل الخلفية الذهبية الخافتة. */
   goldGradient?: boolean;
+  /** بارامترات تُحفظ في الرابط عند التبديل (فلاتر أخرى بنفس الصفحة) — القيم الفارغة تُسقط. */
+  keep?: Record<string, string>;
 }) {
   return (
     <div className="flex overflow-x-auto" style={{ gap: 8, paddingBottom: 2 }}>
       {items.map((it) => {
         const on = it.key === current;
-        const href = it.key === items[0].key ? base : `${base}?${param}=${it.key}`;
+        const qp = new URLSearchParams();
+        if (it.key !== items[0].key) qp.set(param, it.key);
+        for (const [k, v] of Object.entries(keep ?? {})) if (v) qp.set(k, v);
+        const qs = qp.toString();
+        const href = qs ? `${base}?${qs}` : base;
         return (
           <Link
             key={it.key}

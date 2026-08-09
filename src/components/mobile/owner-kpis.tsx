@@ -12,7 +12,7 @@ import { toArabicDigits } from "@/lib/mobile-format";
  */
 
 /** عدّ تصاعدي من صفر بـrAF — يقفز للقيمة النهائية مباشرة مع تفضيل تقليل الحركة. */
-function useCountUp(target: number, durationMs = 750): number {
+export function useCountUp(target: number, durationMs = 750): number {
   const [val, setVal] = useState(0);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {

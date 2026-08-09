@@ -19,12 +19,12 @@ export const dynamic = "force-dynamic";
 export default async function MobileHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ p?: string }>;
+  searchParams: Promise<{ p?: string; fu?: string }>;
 }) {
   const user = await requireUser();
   if (isManager(user.role)) {
     const sp = await searchParams;
-    return <MobileOwnerHome user={user} period={sp.p} />;
+    return <MobileOwnerHome user={user} period={sp.p} fuWindow={sp.fu} />;
   }
 
   /*

@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { getDashboard, normalizePeriod, type Period } from "@/lib/data/dashboard";
 import { getNoResponseCount } from "@/lib/data/no-response";
-import { getActivityReport } from "@/lib/data/activity-report";
 import { getNotifications } from "@/lib/actions/notifications";
 import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
-import { MobileEmployeeCards, type EmpStatCard } from "@/components/mobile/employee-cards";
+import { getTeamCommitment, normalizeFuWindow, FU_WINDOWS } from "@/lib/data/team-commitment";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
-import { toArabicDigits } from "@/lib/mobile-format";
+import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
 import { MobileChips } from "@/components/mobile/chips";
 import { MobileHeaderActions } from "@/components/mobile/header-actions";
 import { OwnerKpis } from "@/components/mobile/owner-kpis";
+import { TeamCommitment, type CommitmentRow } from "@/components/mobile/team-commitment";
 
 /**
  * لوحة المالك/المدير (isOwnerHome في النموذج) — البيانات من getDashboard:
@@ -18,41 +18,46 @@ import { OwnerKpis } from "@/components/mobile/owner-kpis";
 export async function MobileOwnerHome({
   user,
   period: rawPeriod,
+  fuWindow: rawFu,
 }: {
   user: { name?: string | null; role: string };
   period?: string;
+  /** فلتر قسم «متابعات الموظفين» (?fu=) — مستقل تمامًا عن فلتر البطاقات (?p=). */
+  fuWindow?: string;
 }) {
   const period = normalizePeriod(rawPeriod);
+  const fuWin = normalizeFuWindow(rawFu);
   const owner = user.role === "OWNER";
-  const [data, dupCount, noResponseCount, notif, activity] = await Promise.all([
+  const now = new Date();
+  const [data, dupCount, noResponseCount, notif, commitment] = await Promise.all([
     getDashboard(period),
     owner ? activeDuplicateGroupCount() : Promise.resolve(0),
     owner ? getNoResponseCount() : Promise.resolve(0),
     getNotifications(),
-    // «استقبل / سُحب منه / متابعات» — نفس تقرير نشاط الديسكتوب (يرجّع فارغًا لغير المالك).
-    getActivityReport({ all: true }),
+    getTeamCommitment(fuWin, now),
   ]);
 
-  // بطاقات الموظفين: دمج مصدرَي الديسكتوب على المعرّف — بلا أي حساب جديد.
-  const actById = new Map(activity.rows.map((r) => [r.id, r]));
-  const empCards: EmpStatCard[] = data.team.map((t): EmpStatCard => {
-    const a = actById.get(t.id);
-    return {
-      id: t.id,
-      name: t.name,
-      calls: t.attempts,
-      followups: a?.followups ?? null,
-      visits: t.visits,
-      bookings: t.bookings,
-      received: a?.received ?? null,
-      pulled: a?.lateLost ?? null,
-    };
-  });
+  // «متابعات الموظفين»: أسماء الفريق من getDashboard (موظفون نشطون فقط — المالك ليس بينهم)
+  // + إحصاءات الالتزام، مرتّبين بالنسبة تنازليًا (الأعلى التزامًا أولًا).
+  const commitRows: CommitmentRow[] = data.team
+    .map((t): CommitmentRow => {
+      const c = commitment.get(t.id);
+      const done = c?.done ?? 0;
+      const missed = c?.missed ?? 0;
+      const total = done + missed;
+      return {
+        id: t.id,
+        name: t.name,
+        done,
+        missed,
+        total,
+        pct: total > 0 ? Math.round((done / total) * 100) : 0,
+        lastLabel: c?.lastAt ? `آخر نشاط قبل ${elapsedLabel(c.lastAt, now)}` : "لا نشاط مسجّل",
+      };
+    })
+    .sort((a, b) => b.pct - a.pct || b.done - a.done);
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
-
-  // «متابعات اليوم للفريق» — أشرطة التقدم (أحمر لمن عنده متأخرات).
-  const teamRows = data.teamFollowupsToday;
 
   // تنبيهات من مصادر فعلية فقط — صفرها يُسقطها.
   const alerts = [
@@ -85,8 +90,8 @@ export async function MobileOwnerHome({
         <MobileHeaderActions unread={notif.unread} />
       </header>
 
-      {/* ===== فلتر الفترة — الفعّال بتدرّج ذهبي ===== */}
-      <MobileChips param="p" current={period} base="/m" items={PERIODS} goldGradient />
+      {/* ===== فلتر الفترة — الفعّال بتدرّج ذهبي (يحفظ فلتر ?fu المستقل) ===== */}
+      <MobileChips param="p" current={period} base="/m" items={PERIODS} goldGradient keep={fuWin !== "today" ? { fu: fuWin } : undefined} />
 
       {/* ===== المؤشرات الحية: بانر «غير موزّعين» + شبكة KPI بعدّ تصاعدي ===== */}
       <OwnerKpis
@@ -97,58 +102,22 @@ export async function MobileOwnerHome({
         visits={data.kpis.visits}
       />
 
-      {/* ===== ٦) بطاقات إحصاءات الموظفين — شريط أفقي بالتقاط ===== */}
-      {empCards.length > 0 && (
+      {/* ===== متابعات الموظفين — التزام كل موظف بمواعيده (اتصالات + زيارات) ===== */}
+      {commitRows.length > 0 && (
         <section className="flex flex-col" style={{ gap: 11 }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginTop: 6, padding: "0 2px" }}>
-            إحصاءات الموظفين
+            متابعات الموظفين
           </h2>
-          <MobileEmployeeCards cards={empCards} />
-        </section>
-      )}
-
-      {/* ===== متابعات اليوم بأشرطة التقدم ===== */}
-      {teamRows.length > 0 && (
-        <section className="flex flex-col" style={{ gap: 11 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginTop: 6, padding: "0 2px" }}>
-            متابعات اليوم
-          </h2>
-          {teamRows.map((t) => {
-            const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : 0;
-            const barColor = t.missed > 0 ? MOBILE_STATUS.danger.base : MOBILE_COLORS.gold;
-            return (
-              <div
-                key={t.id}
-                className="flex flex-col"
-                style={{
-                  boxSizing: "border-box",
-                  background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-                  borderRadius: 16, padding: "13px 14px", gap: 9,
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div style={{ fontSize: "14.5px", fontWeight: 600, color: MOBILE_COLORS.textPrimary }}>
-                    {t.name}
-                  </div>
-                </div>
-                <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted }}>
-                  {toArabicDigits(t.done)} من {toArabicDigits(t.total)} متابعات اليوم
-                  {t.missed > 0 ? ` · ${toArabicDigits(t.missed)} متأخرة` : ""}
-                </div>
-                <div className="flex items-center" style={{ gap: 9 }}>
-                  <div
-                    className="flex-1 overflow-hidden"
-                    style={{ height: 6, borderRadius: 3, background: MOBILE_COLORS.border }}
-                  >
-                    <div style={{ height: "100%", borderRadius: 3, width: `${pct}%`, background: barColor }} />
-                  </div>
-                  <span style={{ fontSize: "11.5px", fontWeight: 600, color: barColor }}>
-                    {toArabicDigits(pct)}٪
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+          {/* فلتر القسم المستقل (?fu=) — يحفظ فلتر البطاقات ?p ولا يتأثر به */}
+          <MobileChips
+            param="fu"
+            current={fuWin}
+            base="/m"
+            items={FU_WINDOWS}
+            goldGradient
+            keep={period !== "24h" ? { p: period } : undefined}
+          />
+          <TeamCommitment rows={commitRows} />
         </section>
       )}
 
