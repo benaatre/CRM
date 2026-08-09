@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { unitTypeLabels } from "@/lib/labels";
-import type { UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
@@ -66,14 +64,6 @@ export function NewLeadDialog({
             </Field>
             <Field label="الجوال *">
               <input name="phone" required inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" />
-            </Field>
-            <Field label="نوع الوحدة">
-              <select name="unitType" className="select-base" defaultValue="">
-                <option value="">—</option>
-                {(Object.keys(unitTypeLabels) as UnitType[]).map((u) => (
-                  <option key={u} value={u}>{unitTypeLabels[u]}</option>
-                ))}
-              </select>
             </Field>
             <Field label="الميزانية">
               <input name="budget" inputMode="numeric" dir="ltr" className="select-base" placeholder="مثال: 750000" />

@@ -2,11 +2,9 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { UnitType } from "@prisma/client";
 import { createLead } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
-import { unitTypeLabels } from "@/lib/labels";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { BottomSheet } from "@/components/mobile/bottom-sheet";
 import { DistrictSelect } from "@/components/leads/district-select";
@@ -106,19 +104,9 @@ export function MobileNewLeadSheet({
           </select>
         </Row>
 
-        <div className="grid grid-cols-2" style={{ gap: 10 }}>
-          <Row label="نوع الوحدة">
-            <select name="unitType" style={fieldStyle} defaultValue="">
-              <option value="">—</option>
-              {(Object.keys(unitTypeLabels) as UnitType[]).map((u) => (
-                <option key={u} value={u}>{unitTypeLabels[u]}</option>
-              ))}
-            </select>
-          </Row>
-          <Row label="الميزانية">
-            <input name="budget" inputMode="numeric" dir="ltr" style={fieldStyle} placeholder="750000" />
-          </Row>
-        </div>
+        <Row label="الميزانية">
+          <input name="budget" inputMode="numeric" dir="ltr" style={fieldStyle} placeholder="750000" />
+        </Row>
 
         {isManager && (
           <Row label="الموظف المسؤول">

@@ -71,11 +71,6 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
     const src = await prisma.leadSource.findUnique({ where: { id: sourceId }, select: { name: true } });
     if (!src) return { ok: false, error: "المصدر غير صالح" };
     const channel = channelForSourceName(src.name);
-    const unitTypeRaw = formData.get("unitType") as string;
-    const unitType =
-      unitTypeRaw && unitTypeRaw in UnitType
-        ? (unitTypeRaw as UnitType)
-        : null;
     const budgetRaw = String(formData.get("budget") ?? "").replace(/[^\d]/g, "");
     const budget = budgetRaw ? Number(budgetRaw) : null;
     const notes = String(formData.get("notes") ?? "").trim() || null;
@@ -127,7 +122,6 @@ export async function createLead(formData: FormData): Promise<ActionResult> {
         phone,
         channel,
         source: src.name, // النص القديم يُكتب مع sourceId (نفس مسار التعديل — اتساق)
-        unitType,
         budget,
         notes,
         createdById: user.id,
