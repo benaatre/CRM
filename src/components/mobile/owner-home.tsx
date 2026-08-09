@@ -4,12 +4,14 @@ import { getNoResponseCount } from "@/lib/data/no-response";
 import { getNotifications } from "@/lib/actions/notifications";
 import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
 import { getTeamCommitment, normalizeFuWindow, FU_WINDOWS } from "@/lib/data/team-commitment";
+import { getAuditLog, resolveAuditNames } from "@/lib/data/audit";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
 import { MobileChips } from "@/components/mobile/chips";
 import { MobileHeaderActions } from "@/components/mobile/header-actions";
 import { OwnerKpis } from "@/components/mobile/owner-kpis";
 import { TeamCommitment, type CommitmentRow } from "@/components/mobile/team-commitment";
+import { ActivityTicker } from "@/components/mobile/activity-ticker";
 
 /**
  * لوحة المالك/المدير (isOwnerHome في النموذج) — البيانات من getDashboard:
@@ -29,12 +31,14 @@ export async function MobileOwnerHome({
   const fuWin = normalizeFuWindow(rawFu);
   const owner = user.role === "OWNER";
   const now = new Date();
-  const [data, dupCount, noResponseCount, notif, commitment] = await Promise.all([
+  const [data, dupCount, noResponseCount, notif, commitment, ticker] = await Promise.all([
     getDashboard(period),
     owner ? activeDuplicateGroupCount() : Promise.resolve(0),
     owner ? getNoResponseCount() : Promise.resolve(0),
     getNotifications(),
     getTeamCommitment(fuWin, now),
+    // «آخر النشاطات»: لقطة آخر ١٠ أحداث + حلّ أسماء المعرّفات — نفس دوال /m/audit.
+    getAuditLog({ limit: 10 }).then(async (entries) => ({ entries, names: await resolveAuditNames(entries) })),
   ]);
 
   // «متابعات الموظفين»: أسماء الفريق من getDashboard (موظفون نشطون فقط — المالك ليس بينهم)
@@ -118,6 +122,19 @@ export async function MobileOwnerHome({
             keep={period !== "24h" ? { p: period } : undefined}
           />
           <TeamCommitment rows={commitRows} />
+        </section>
+      )}
+
+      {/* ===== آخر النشاطات — لقطة آخر ١٠ أحداث من سجل التدقيق (قبل القمع القادم) ===== */}
+      {ticker.entries.length > 0 && (
+        <section className="flex flex-col" style={{ gap: 9 }}>
+          <div className="flex items-baseline justify-between" style={{ marginTop: 6, padding: "0 2px" }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>آخر النشاطات</h2>
+            <Link href="/m/audit" style={{ fontSize: 12, color: MOBILE_COLORS.textMuted }}>
+              السجل الكامل ←
+            </Link>
+          </div>
+          <ActivityTicker entries={ticker.entries} names={ticker.names} now={now} />
         </section>
       )}
 
