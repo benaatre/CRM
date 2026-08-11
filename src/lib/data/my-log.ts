@@ -198,3 +198,33 @@ export async function getMyDailyLog(userId: string, period: MyLogPeriod, page: n
 
   return { period, report, days, page: safePage, hasMore };
 }
+
+// ===================== آخر متابعاتي (رئيسية الموظف v2) =====================
+
+export type MyRecentFollowUp = {
+  id: string;
+  result: FollowUpResult;
+  createdAt: Date;
+  leadId: string;
+  leadName: string;
+};
+
+/**
+ * آخر متابعات الموظف مطلقًا (لقسم «سجل متابعاتي» في الرئيسية) — قراءة خالصة،
+ * مفلترة بهوية الجلسة حصرًا كبقية الملف (createdBy = userId من requireUser).
+ */
+export async function getMyRecentFollowups(userId: string, take = 5): Promise<MyRecentFollowUp[]> {
+  const rows = await prisma.followUp.findMany({
+    where: { createdBy: userId },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: { id: true, result: true, createdAt: true, leadId: true, lead: { select: { name: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    result: r.result,
+    createdAt: r.createdAt,
+    leadId: r.leadId,
+    leadName: r.lead.name,
+  }));
+}

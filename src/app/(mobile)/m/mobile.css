@@ -58,6 +58,16 @@
   --m-info-bg: #042c53;
   --m-info-fg: #b5d4f4;
   --m-info-bd: #0d3f6e;
+
+  /* ===== لوحة v2 (رئيسية الموظف المعتمدة) — أربع حالات زاهية + خلفياتها الخافتة ===== */
+  --m-mint: #34d494; /* نجاح / زيارة */
+  --m-mint-bg: #0e2c1f;
+  --m-rose: #ff7a8a; /* خطر / فاتت */
+  --m-rose-bg: #331318;
+  --m-sky: #5b9def; /* معلومة / عميل جديد */
+  --m-sky-bg: #12253f;
+  --m-amber: #e8a54d; /* كهرماني */
+  --m-amber-bg: #2f2410;
 }
 
 /*
@@ -106,6 +116,16 @@
   --m-info-bg: #e8f1fb;
   --m-info-fg: #134e7c;
   --m-info-bd: #b9d7f1;
+
+  /* لوحة v2 النهارية — مشتقة بنفس منطق العائلة: أساس أغمق للتباين وخلفية شاحبة */
+  --m-mint: #178a5d;
+  --m-mint-bg: #e3f6ec;
+  --m-rose: #c43d4f;
+  --m-rose-bg: #fde9ec;
+  --m-sky: #2f6cb8;
+  --m-sky-bg: #e8f0fb;
+  --m-amber: #a06c1c;
+  --m-amber-bg: #f7ecd9;
 }
 
 /* ===== keyframes النموذج (نصًّا كما هي) ===== */
@@ -140,6 +160,11 @@
 /* امتلاء أشرطة القمع — من صفر إلى العرض المضبوط سطريًا (transform فقط) */
 @keyframes m-fillX {
   from { transform: scaleX(0); }
+}
+/* «يتنفس» — كرت الموعد الجاري في ترس مواعيد اليوم (transform فقط) */
+@keyframes m-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.012); }
 }
 
 /* ===== أصناف التطبيق ===== */
@@ -248,6 +273,11 @@
   transform-origin: right;
 }
 
+/* كرت الموعد الجاري «يتنفس» */
+.m-breathe {
+  animation: m-breathe 2.6s ease-in-out infinite;
+}
+
 /* لمعة الزر الذهبي الأساسي (sweep في النموذج) */
 .m-sweep { position: relative; overflow: hidden; }
 .m-sweep::after {
@@ -267,7 +297,7 @@
 
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
-  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx { animation: none; }
+  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx, .m-breathe { animation: none; }
   .m-iconbtn, .m-urgency, .m-leadcard, .m-press { transition: none; }
   .m-press:active { transform: none; }
 }

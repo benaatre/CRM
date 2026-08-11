@@ -1,7 +1,11 @@
 import { cookies } from "next/headers";
+import { Zain } from "next/font/google";
 import "./mobile.css";
 import { MOBILE_COLORS, MOBILE_THEME_COOKIE, normalizeTheme } from "@/lib/mobile-tokens";
 import { CapacitorBridge } from "@/components/mobile/capacitor-bridge";
+
+// خط الأرقام في رئيسية الموظف v2 (--font-zain) — للأرقام فقط، لا يمس نص الواجهة.
+const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], variable: "--font-zain", display: "swap" });
 
 /**
  * تخطيط تطبيق الجوال — الغلاف المشترك لكل مسارات /m (بما فيها شاشة الدخول).
@@ -20,7 +24,7 @@ export default async function MobileLayout({ children }: { children: React.React
     <div
       dir="rtl"
       data-theme={theme}
-      className="min-h-dvh w-full"
+      className={`${zain.variable} min-h-dvh w-full`}
       style={{
         backgroundColor: MOBILE_COLORS.bg,
         color: MOBILE_COLORS.textPrimary,

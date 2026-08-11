@@ -38,6 +38,15 @@ export const MOBILE_COLORS = {
   goldBorder: "var(--m-gold-bd)",
   /** خلفية الشريط السفلي — شفافة، تتطلب backdrop-filter (--tabbar). */
   tabbar: "var(--m-tabbar)",
+  // ===== لوحة v2 (رئيسية الموظف) — أربع حالات زاهية بخلفياتها (--m-mint/rose/sky/amber) =====
+  mint: "var(--m-mint)",
+  mintBg: "var(--m-mint-bg)",
+  rose: "var(--m-rose)",
+  roseBg: "var(--m-rose-bg)",
+  sky: "var(--m-sky)",
+  skyBg: "var(--m-sky-bg)",
+  amber: "var(--m-amber)",
+  amberBg: "var(--m-amber-bg)",
 } as const;
 
 /** رباعية كل حالة: لون أساسي + خلفية غامقة + نص فاتح + حد. */

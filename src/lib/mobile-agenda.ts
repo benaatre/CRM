@@ -1,5 +1,6 @@
 import type { LeadRow } from "@/lib/data/leads";
 import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
+import { channelLabel } from "@/lib/labels";
 
 /**
  * أجندة الموظف — **المصدر الوحيد** لتقسيم عملائه زمنيًا.
@@ -56,4 +57,46 @@ export function buildAgenda(leads: LeadRow[], now: Date = new Date()): Agenda {
     dayStart,
     dayEnd,
   };
+}
+
+// ===================== مواعيد اليوم (رئيسية الموظف v2 — البانر + الترس) =====================
+
+/** موعد واحد في يوم الموظف — زيارة أو متابعة أو أول تواصل مع عميل جديد. */
+export type DayAppointment = {
+  leadId: string;
+  name: string;
+  phone: string;
+  at: Date;
+  kind: "visit" | "followup" | "new";
+  /** سطر السبب — مركّب من النوع والمرحلة (قرار معتمد: بلا توسعة select للملاحظة الفعلية). */
+  reason: string;
+};
+
+/**
+ * يركّب مواعيد اليوم من الأجندة (زيارات اليوم + مواعيد اليوم) مرتبة بالساعة.
+ * العميل بموعد اتصال وزيارة معًا يظهر مرتين — التزامان مستقلان.
+ */
+export function buildDayAppointments(a: Agenda): DayAppointment[] {
+  const visits: DayAppointment[] = a.visitsToday.map((l) => ({
+    leadId: l.id,
+    name: l.name,
+    phone: l.phone,
+    at: l.visitAt as Date,
+    kind: "visit",
+    reason: `زيارة ${l.projectName ?? "مشروع"} — جهّز تفاصيل الوحدات`,
+  }));
+  const followups: DayAppointment[] = a.dueToday.map((l) => ({
+    leadId: l.id,
+    name: l.name,
+    phone: l.phone,
+    at: l.nextFollowup as Date,
+    kind: l.stage === "NEW" ? "new" : "followup",
+    reason:
+      l.stage === "NEW"
+        ? `أول تواصل — عميل جديد من ${channelLabel(l.channel)}`
+        : l.waitingReason
+          ? `موعد متابعة — ${l.waitingReason}`
+          : "موعد متابعة مجدول",
+  }));
+  return [...visits, ...followups].sort((x, y) => x.at.getTime() - y.at.getTime());
 }
