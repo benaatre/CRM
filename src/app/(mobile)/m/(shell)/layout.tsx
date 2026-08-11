@@ -1,7 +1,7 @@
 import { requireMobileUser, isManager } from "@/lib/auth-guards";
 import { getLeads, getLeadCounts } from "@/lib/data/leads";
-import { buildAgenda } from "@/lib/mobile-agenda";
-import { BottomNav } from "@/components/mobile/bottom-nav";
+import { buildAgenda, buildDayAppointments } from "@/lib/mobile-agenda";
+import { MercuryNav } from "@/components/mobile/mercury-nav";
 import { PushRegistrar } from "@/components/mobile/push-registrar";
 
 /**
@@ -17,21 +17,18 @@ export default async function MobileShellLayout({ children }: { children: React.
   const user = await requireMobileUser();
 
   /*
-   * شارات الشريط السفلي (جدد/متابعات) — من نفس مصدر الشاشات (buildAgenda)
-   * حتى لا يظهر رقم في الشارة يخالف رقم الشاشة. للموظف فقط: أرقام المدير
-   * الجماعية ما لها معنى في شريط تنقّل شخصي.
+   * شارة شريط الزئبق — من نفس مصدر الشاشات حتى لا تخالف أرقامها:
+   * الموظف: مواعيد اليوم **الفايتة** (نفس مصدر البانر buildDayAppointments — دلالة
+   * معتمدة: الفائت فقط، لا كل اليوم). الإدارة: «غير موزّعين» (getLeadCounts) كما كان.
    */
   const manager = isManager(user.role);
-  let newCount = 0;
-  let todayCount = 0;
-  let unassignedCount = 0;
+  let badgeCount = 0;
   if (manager) {
-    // شارة تبويب «غير موزّعين» — نفس عدّاد صفحة العملاء (getLeadCounts).
-    unassignedCount = (await getLeadCounts()).unassigned;
+    badgeCount = (await getLeadCounts()).unassigned;
   } else {
     const agenda = buildAgenda(await getLeads({ tab: "working", sort: "activity" }));
-    newCount = agenda.notContacted.length;
-    todayCount = agenda.dueToday.length;
+    const nowMs = Date.now();
+    badgeCount = buildDayAppointments(agenda).filter((a) => a.at.getTime() < nowMs).length;
   }
 
   return (
@@ -47,15 +44,16 @@ export default async function MobileShellLayout({ children }: { children: React.
         الأعلى يُستبدل بـsafe-area + 18 (النموذج يحجز 64 لشريط حالة وهمي مرسوم
         داخل إطار الجهاز، ونحن تحت شريط النظام الحقيقي).
       */}
+      {/* الحشوة السفلية 110: كبسولة الزئبق 58 + بروز القطرة 34 + متنفس. */}
       <div
         className="m-noscroll mx-auto w-full max-w-lg"
         style={{
-          padding: "calc(env(safe-area-inset-top) + 18px) 18px calc(96px + env(safe-area-inset-bottom))",
+          padding: "calc(env(safe-area-inset-top) + 18px) 18px calc(110px + env(safe-area-inset-bottom))",
         }}
       >
         {children}
       </div>
-      <BottomNav newCount={newCount} todayCount={todayCount} unassignedCount={unassignedCount} manager={manager} />
+      <MercuryNav manager={manager} badgeCount={badgeCount} />
     </>
   );
 }
