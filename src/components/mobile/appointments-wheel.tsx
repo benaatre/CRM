@@ -40,7 +40,7 @@ function toneOf(a: DayAppointment, st: Status): { base: string; bg: string } {
 }
 
 function fmtParts(d: Date): { clock: string; period: string } {
-  const parts = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { hour: "numeric", minute: "2-digit" }).formatToParts(d);
+  const parts = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", hour: "numeric", minute: "2-digit" }).formatToParts(d);
   const period = parts.find((p) => p.type === "dayPeriod")?.value ?? "";
   const clock = parts.filter((p) => p.type !== "dayPeriod").map((p) => p.value).join("").trim();
   return { clock, period };

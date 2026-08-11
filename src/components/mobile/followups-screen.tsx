@@ -6,6 +6,8 @@ import { Bell } from "lucide-react";
 import type { LeadStage, FollowUpResult } from "@prisma/client";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
+import { formatTime, RIYADH_TZ } from "@/lib/format";
+import { DAY_MS, dayStartKSA, ksaDayKey, ksaDayOfWeek, parseRiyadhLocal } from "@/lib/ksa-time";
 import { followUpResultLabels } from "@/lib/labels";
 import { markCall } from "@/lib/mobile-call-tracker";
 import { FollowupSheet } from "@/components/mobile/followup-sheet";
@@ -59,14 +61,12 @@ const RANGE_CHIPS: { key: RangeKey; label: string }[] = [
   { key: "next", label: "الأسبوع الجاي" },
 ];
 
-function fmtClock(d: Date): string {
-  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { hour: "numeric", minute: "2-digit" }).format(d);
-}
+// الساعة مثبّتة على الرياض (مصدر التنسيق الموحّد) — لا توقيت الجهاز/الخادم.
+const fmtClock = formatTime;
 function fmtDayTitle(d: Date, now: Date): string {
-  const dayMs = 86_400_000;
-  const start = (x: Date) => { const c = new Date(x); c.setHours(0, 0, 0, 0); return c.getTime(); };
-  const diff = Math.round((start(d) - start(now)) / dayMs);
-  const w = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { weekday: "long", day: "numeric", month: "short" }).format(d);
+  // حدود «بكرة/بعد بكرة» بيوم الرياض لا بيوم الجهاز — ومنتصف الليل ما ينقلب يومًا سابقًا.
+  const diff = Math.round((dayStartKSA(d).getTime() - dayStartKSA(now).getTime()) / DAY_MS);
+  const w = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: RIYADH_TZ, weekday: "long", day: "numeric", month: "short" }).format(d);
   if (diff === 1) return `بكرة — ${w}`;
   if (diff === 2) return `بعد بكرة — ${w}`;
   return w;
@@ -145,18 +145,19 @@ export function FollowupsScreen({
   };
 
   const upcomingFiltered = useMemo(() => {
-    const dayMs = 86_400_000;
-    const start = (x: Date) => { const c = new Date(x); c.setHours(0, 0, 0, 0); return c.getTime(); };
-    const t0 = start(now);
+    // كل الحدود بيوم الرياض (بداية اليوم ويوم الأسبوع) — لا توقيت الجهاز.
+    const dayMs = DAY_MS;
+    const t0 = dayStartKSA(now).getTime();
+    const dow = ksaDayOfWeek(now);
     let lo = -Infinity, hi = Infinity;
     if (range === "tomorrow") { lo = t0 + dayMs; hi = t0 + 2 * dayMs; }
-    else if (range === "week") { lo = t0; hi = t0 + (7 - ((now.getDay() + 0) % 7 === 0 ? 7 : (now.getDay() % 7))) * dayMs + dayMs; }
+    else if (range === "week") { lo = t0; hi = t0 + (7 - (dow % 7 === 0 ? 7 : dow % 7)) * dayMs + dayMs; }
     else if (range === "next") {
-      const daysToSun = (7 - now.getDay()) % 7 || 7;
+      const daysToSun = (7 - dow) % 7 || 7;
       lo = t0 + daysToSun * dayMs; hi = lo + 7 * dayMs;
     } else if (range === "custom") {
-      if (from) lo = new Date(`${from}T00:00:00`).getTime();
-      if (to) hi = new Date(`${to}T00:00:00`).getTime() + dayMs;
+      if (from) lo = parseRiyadhLocal(from).getTime();
+      if (to) hi = parseRiyadhLocal(to).getTime() + dayMs;
     }
     return upcoming.filter((a) => kindOk(a) && a.at.getTime() >= lo && a.at.getTime() < hi);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -165,7 +166,7 @@ export function FollowupsScreen({
   const upcomingGroups = useMemo(() => {
     const map = new Map<string, { title: string; items: FuAppointment[] }>();
     for (const a of upcomingFiltered) {
-      const key = a.at.toDateString();
+      const key = ksaDayKey(a.at); // التجميع بيوم الرياض — نفس حدود العناوين
       const g = map.get(key) ?? { title: fmtDayTitle(a.at, now), items: [] };
       g.items.push(a);
       map.set(key, g);
@@ -421,7 +422,7 @@ export function FollowupsScreen({
                       {r.nextDate && r.nextDate.getTime() > nowMs && (
                         <span style={{ boxSizing: "border-box", borderRadius: 8, padding: "3px 9px", fontSize: 11, fontWeight: 600, background: MOBILE_COLORS.skyBg, color: MOBILE_COLORS.sky }}>
                           🗓️ الموعد القادم: {fmtClock(r.nextDate)}{" "}
-                          {new Intl.DateTimeFormat("ar-SA-u-nu-arab", { day: "numeric", month: "short" }).format(r.nextDate)}
+                          {new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: RIYADH_TZ, day: "numeric", month: "short" }).format(r.nextDate)}
                         </span>
                       )}
                       {left > 0 && (

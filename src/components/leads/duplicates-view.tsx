@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Copy } from "lucide-react";
 import { formatDate, toArabicDigits } from "@/lib/format";
+import { parseRiyadhLocal } from "@/lib/ksa-time";
 import { stageLabels, stageColor, followUpResultLabels, channelLabels } from "@/lib/labels";
 import type { DuplicatesData, DupGroup, DupMember } from "@/lib/data/duplicates";
 import { pullDuplicateLead, archiveDuplicateLead } from "@/lib/actions/leads";
@@ -33,9 +34,9 @@ function inRange(
   if (range === "today") return g.newToday;
   if (range === "week") return t >= weekCutoff;
   if (from || to) {
-    // النطاق شامل للطرفين: «من» من أول اليوم، و«إلى» لآخر لحظة فيه.
-    if (from && t < new Date(`${from}T00:00:00`).getTime()) return false;
-    if (to && t > new Date(`${to}T23:59:59.999`).getTime()) return false;
+    // النطاق شامل للطرفين: «من» من أول اليوم، و«إلى» لآخر لحظة فيه — بيوم الرياض.
+    if (from && t < parseRiyadhLocal(from).getTime()) return false;
+    if (to && t > parseRiyadhLocal(`${to}T23:59:59.999`).getTime()) return false;
   }
   return true;
 }

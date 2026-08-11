@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { markContacted } from "@/lib/auto-distribute";
 import { shouldHideHistory } from "@/lib/visibility";
 import { followUpResultLabels, firstContactStageLabels } from "@/lib/labels";
+import { parseRiyadhLocal } from "@/lib/ksa-time";
 import {
   deriveOutcome,
   REJECTED_RESULTS,
@@ -161,7 +162,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (body.nextDate !== undefined) {
     if (body.nextDate === null || body.nextDate === "") nextDate = null;
     else {
-      nextDate = new Date(body.nextDate);
+      // نص datetime-local بلا منطقة = وقت حائط الرياض — لا توقيت الخادم (UTC على الإنتاج).
+      nextDate = parseRiyadhLocal(body.nextDate);
       if (Number.isNaN(nextDate.getTime())) return NextResponse.json({ error: "تاريخ المتابعة غير صحيح" }, { status: 400 });
     }
   }
@@ -280,7 +282,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // #32: تاريخ غير صالح يُرفض برسالة عربية بدل خطأ Prisma خام.
   let nextDate: Date | null = null;
   if (body.nextDate) {
-    nextDate = new Date(body.nextDate);
+    // نص datetime-local بلا منطقة = وقت حائط الرياض — لا توقيت الخادم (UTC على الإنتاج).
+    nextDate = parseRiyadhLocal(body.nextDate);
     if (Number.isNaN(nextDate.getTime())) return NextResponse.json({ error: "تاريخ المتابعة غير صحيح" }, { status: 400 });
   }
 
@@ -345,7 +348,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     // وتذكير الموعد القديم يبطل تلقائيًا (التذكيرات مشروطة بمطابقة visitAt الحالي)،
     // وسجل يوضح الاستبدال بلا أي عدّاد ظاهر للموظف.
     if (isVisitAppt && nextDate && lead.visitAt && lead.visitAt > new Date() && lead.visitAt.getTime() !== nextDate.getTime()) {
-      const fmt = (d: Date) => new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }).format(d);
+      const fmt = (d: Date) => new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }).format(d);
       await tx.activity.create({
         data: { leadId: id, userId: user.id, type: ActivityType.NOTE, note: `أعيدت جدولة الزيارة من ${fmt(lead.visitAt)} إلى ${fmt(nextDate)}` },
       });

@@ -58,7 +58,7 @@ function rangeFor(period: MyLogPeriod, now: Date): { start: Date; end: Date } {
 
 /** عنوان اليوم: «اليوم الجمعة ٢٥ يوليو» / «أمس …» / «الجمعة ٢٥ يوليو». */
 function dayLabel(d: Date, now: Date): string {
-  const fmt = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", weekday: "long", day: "numeric", month: "long" });
+  const fmt = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: "Asia/Riyadh", weekday: "long", day: "numeric", month: "long" });
   const key = dayStartKSA(d).getTime();
   const today = dayStartKSA(now).getTime();
   const prefix = key === today ? "اليوم " : key === today - DAY_MS ? "أمس " : "";

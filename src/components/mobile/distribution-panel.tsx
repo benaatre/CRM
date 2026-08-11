@@ -12,6 +12,8 @@ import {
 } from "@/lib/actions/distribution";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
+import { toRiyadhInputValue } from "@/lib/format";
+import { parseRiyadhLocal } from "@/lib/ksa-time";
 
 /**
  * لوحة التوزيع للجوال — طبقة عرض فقط فوق سيرفر أكشنز الديسكتوب نفسها.
@@ -113,12 +115,8 @@ export function MobileDistributionPanel({
   const [sel, setSel] = useState<Set<string>>(new Set());
   const toggleSel = (id: string) =>
     setSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  // حاجز السحب التاريخي (المالك) — datetime-local بقيمة الخادم الحالية.
-  const [cutoff, setCutoff] = useState(() => {
-    const d = new Date(sweepCutoffAt);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  });
+  // حاجز السحب التاريخي (المالك) — datetime-local بوقت حائط الرياض (نفس تفسير الحفظ).
+  const [cutoff, setCutoff] = useState(() => toRiyadhInputValue(sweepCutoffAt));
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string; message?: string }>, okText: string) =>
     startTransition(async () => {
@@ -578,7 +576,7 @@ export function MobileDistributionPanel({
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={() => run(() => updateSweepCutoff(new Date(cutoff).toISOString()), "حُدّث الحاجز")}
+                  onClick={() => run(() => updateSweepCutoff(parseRiyadhLocal(cutoff).toISOString()), "حُدّث الحاجز")}
                   style={{
                     boxSizing: "border-box", minHeight: 44, padding: "0 14px", borderRadius: 10,
                     border: `1px solid ${MOBILE_COLORS.goldBorder}`, background: MOBILE_COLORS.goldBg,

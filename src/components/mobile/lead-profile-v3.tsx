@@ -96,7 +96,8 @@ export type ProfileData = {
 };
 
 function fmtDT(d: Date): string {
-  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }).format(d);
+  // calendar صريح: ar-SA بلا gregory يطلع هجريًا في ICU.
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
 /** لون نقطة المتابعة — نفس تصنيف الخط الزمني v2. */
@@ -596,7 +597,7 @@ function TransfersTab({ extras }: { extras: OwnerExtras }) {
                     </span>
                   </div>
                   <div style={{ fontSize: 11, color: MOBILE_COLORS.textMuted, marginTop: 4 }}>
-                    {reasonLabel(t.reason)} · {new Intl.DateTimeFormat("ar-SA-u-nu-arab", { dateStyle: "medium" }).format(t.createdAt)}
+                    {reasonLabel(t.reason)} · {new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: "Asia/Riyadh", dateStyle: "medium" }).format(t.createdAt)}
                   </div>
                 </div>
               </div>

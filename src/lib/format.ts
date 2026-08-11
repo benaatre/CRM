@@ -2,6 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
+import { KSA_OFFSET_MS } from "@/lib/ksa-time";
 
 const AR_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
 
@@ -101,6 +102,39 @@ export function formatDateTime(date: Date | string | null | undefined): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(d);
+}
+
+/** الساعة والدقيقة فقط (٣:٤٥ م) — مثبّتة على الرياض كبقية التنسيقات. */
+export function formatTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
+    calendar: "gregory",
+    timeZone: RIYADH_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
+}
+
+/**
+ * Date → أجزاء تعبئة <input type=date|time> بوقت حائط **الرياض** (عكس
+ * parseRiyadhLocal في ksa-time) — لا getFullYear/getHours المرهونة بتوقيت الجهاز.
+ */
+export function toRiyadhInputParts(date: Date | string | null | undefined): { date: string; time: string } {
+  if (!date) return { date: "", time: "" };
+  const d = typeof date === "string" ? new Date(date) : date;
+  const k = new Date(d.getTime() + KSA_OFFSET_MS);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return {
+    date: `${k.getUTCFullYear()}-${p(k.getUTCMonth() + 1)}-${p(k.getUTCDate())}`,
+    time: `${p(k.getUTCHours())}:${p(k.getUTCMinutes())}`,
+  };
+}
+
+/** Date → قيمة <input type=datetime-local> بوقت حائط الرياض. */
+export function toRiyadhInputValue(date: Date | string | null | undefined): string {
+  const { date: ds, time } = toRiyadhInputParts(date);
+  return ds ? `${ds}T${time}` : "";
 }
 
 /** «قبل ٣ أيام» / «اليوم» / «بكرة» — نسبيًا للحين. */

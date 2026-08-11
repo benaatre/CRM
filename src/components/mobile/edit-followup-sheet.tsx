@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
+import { toRiyadhInputParts } from "@/lib/format";
 import { BottomSheet } from "@/components/mobile/bottom-sheet";
 
 /**
@@ -16,14 +17,8 @@ import { BottomSheet } from "@/components/mobile/bottom-sheet";
 const MIN = 60_000;
 const EDIT_WINDOW_MIN = 60;
 
-function toParts(d: Date | null): { date: string; time: string } {
-  if (!d) return { date: "", time: "" };
-  const p = (n: number) => String(n).padStart(2, "0");
-  return {
-    date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
-    time: `${p(d.getHours())}:${p(d.getMinutes())}`,
-  };
-}
+// التعبئة بوقت حائط الرياض (لا getHours المرهونة بتوقيت الجهاز) — نفس تفسير الخادم عند الحفظ.
+const toParts = toRiyadhInputParts;
 
 /** الدقائق المتبقية من نافذة التعديل — سالبها يعني انتهت. */
 export function editMinutesLeft(createdAt: Date, nowMs: number): number {

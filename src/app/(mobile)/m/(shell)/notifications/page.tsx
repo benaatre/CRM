@@ -113,6 +113,6 @@ export default async function MobileNotificationsPage() {
 
 function fmtDateTime(d: Date): string {
   return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
-    timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short",
+    calendar: "gregory", timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short",
   }).format(d);
 }

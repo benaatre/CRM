@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import type { FollowUpResult } from "@prisma/client";
 import { followUpSectionLabels, followUpSectionColor, followUpResultLabels, stageLabels } from "@/lib/labels";
-import { formatDateTime, toArabicDigits } from "@/lib/format";
+import { formatDateTime, toArabicDigits, toRiyadhInputValue } from "@/lib/format";
 import { NI_REASONS, NI_REASON_RESULT } from "./not-interested-dialog";
 import type { FollowUpItem, SystemEvent } from "./use-followups";
 
@@ -139,12 +139,8 @@ export function FollowUpsTimeline({ items, systemEvents = [], loading, leadId, o
   );
 }
 
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+// التعبئة بوقت حائط الرياض (لا توقيت المتصفح) — نفس تفسير الخادم عند الحفظ.
+const toLocalInput = toRiyadhInputValue;
 
 function EditFollowUpDialog({ item, leadId, onClose, onSaved }: {
   item: FollowUpItem; leadId: string; onClose: () => void; onSaved: () => void;

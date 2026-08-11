@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Users, Send } from "lucide-react";
-import { toArabicDigits } from "@/lib/format";
+import { toArabicDigits, toRiyadhInputParts } from "@/lib/format";
 import {
   getChatMessages, sendChatMessage,
   type ChatMessageDTO, type ChatPeer,
@@ -11,10 +11,8 @@ import {
 const POLL_MS = 5000;
 
 function timeLabel(d: Date | string): string {
-  const dt = typeof d === "string" ? new Date(d) : d;
-  const hh = String(dt.getHours()).padStart(2, "0");
-  const mm = String(dt.getMinutes()).padStart(2, "0");
-  return toArabicDigits(`${hh}:${mm}`);
+  // ساعة الرسالة بتوقيت الرياض (لا توقيت الجهاز) — عبر أجزاء الإدخال الموحّدة.
+  return toArabicDigits(toRiyadhInputParts(d).time);
 }
 
 export function ChatView({

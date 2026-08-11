@@ -10,6 +10,7 @@ import { distributeDuplicateLead, pullDuplicateLead, archiveDuplicateLead } from
 import { stageChipClass } from "@/lib/stage-colors";
 import { stageLabels, channelLabels, followUpResultLabels } from "@/lib/labels";
 import { formatDate } from "@/lib/format";
+import { parseRiyadhLocal } from "@/lib/ksa-time";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import { BottomSheet } from "@/components/mobile/bottom-sheet";
@@ -38,9 +39,9 @@ function inRange(g: DupGroup, range: Range, from: string, to: string, weekCutoff
   if (range === "today") return g.newToday;
   if (range === "week") return t >= weekCutoff;
   if (range === "custom" && (from || to)) {
-    // النطاق شامل للطرفين: «من» من أول اليوم، و«إلى» لآخر لحظة فيه.
-    if (from && t < new Date(`${from}T00:00:00`).getTime()) return false;
-    if (to && t > new Date(`${to}T23:59:59.999`).getTime()) return false;
+    // النطاق شامل للطرفين: «من» من أول اليوم، و«إلى» لآخر لحظة فيه — بيوم الرياض.
+    if (from && t < parseRiyadhLocal(from).getTime()) return false;
+    if (to && t > parseRiyadhLocal(`${to}T23:59:59.999`).getTime()) return false;
   }
   return true;
 }

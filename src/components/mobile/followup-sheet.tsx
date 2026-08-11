@@ -4,6 +4,8 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { NI_REASONS, buildNotInterestedBody } from "@/components/leads/not-interested-dialog";
+import { formatTime, RIYADH_TZ } from "@/lib/format";
+import { parseRiyadhLocal } from "@/lib/ksa-time";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import {
   resultsFor, RESULT_LABEL, STEP_LABEL, FC_LABEL, buildBody, buildFirstContactBody,
@@ -30,12 +32,11 @@ const active = {
   border: `1px solid ${MOBILE_COLORS.goldBorder}`,
 };
 
-/** ملخص الموعد المختار بالعربي — التاريخ والوقت المحليان (نفس دلالة datetime-local السابقة). */
+/** ملخص الموعد المختار بالعربي — القيمة المختارة تعني وقت حائط الرياض (نفس تفسير الخادم). */
 function fmtPicked(dateOnly: string, timeOnly: string): string {
-  const d = new Date(`${dateOnly}T${timeOnly || "10:00"}`);
-  const ds = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", dateStyle: "medium" }).format(d);
-  const ts = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { hour: "numeric", minute: "2-digit" }).format(d);
-  return `${ds} — ${ts}`;
+  const d = parseRiyadhLocal(`${dateOnly}T${timeOnly || "10:00"}`);
+  const ds = new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: RIYADH_TZ, dateStyle: "medium" }).format(d);
+  return `${ds} — ${formatTime(d)}`;
 }
 
 export function FollowupSheet({

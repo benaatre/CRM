@@ -8,7 +8,8 @@ import {
   CheckCircle2, AlertTriangle, RefreshCw, Repeat, Power,
   ShieldCheck, CalendarClock, Hand, UserCheck, Layers,
 } from "lucide-react";
-import { toArabicDigits, formatDateTime } from "@/lib/format";
+import { toArabicDigits, formatDateTime, toRiyadhInputValue } from "@/lib/format";
+import { parseRiyadhLocal } from "@/lib/ksa-time";
 import { isInitialReason, INITIAL_FRESH } from "@/lib/transfer-mode";
 import { stageLabels } from "@/lib/labels";
 import type { LeadStage } from "@prisma/client";
@@ -277,7 +278,7 @@ function SweepCutoffPanel({ sweepCutoffAt }: { sweepCutoffAt: Date }) {
           />
         </label>
         <button
-          onClick={() => run(() => updateSweepCutoff(new Date(local).toISOString()))}
+          onClick={() => run(() => updateSweepCutoff(parseRiyadhLocal(local).toISOString()))}
           disabled={pending || !local}
           className="rounded-xl border border-gold/40 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/10 disabled:opacity-50"
         >
@@ -299,12 +300,8 @@ function SweepCutoffPanel({ sweepCutoffAt }: { sweepCutoffAt: Date }) {
   );
 }
 
-/** Date → قيمة input[type=datetime-local] بالتوقيت المحلي للمتصفح. */
-function toLocalInput(d: Date): string {
-  const dt = new Date(d);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-}
+/** Date → قيمة input[type=datetime-local] بوقت حائط الرياض (نفس تفسير الحفظ). */
+const toLocalInput = toRiyadhInputValue;
 
 // (حُذفت بطاقة «مفاتيح دورة الكرون» — كانت أداة تشخيص مؤقتة لسويتشات env؛ بطاقة «آخر دورة
 //  كرون» وسطر ترخيص فال انتقلا للوحة المراقبة أدناه.)

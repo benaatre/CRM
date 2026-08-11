@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 const DAY_MS = 86_400_000;
 
 function fmtDay(d: Date): string {
-  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", day: "numeric", month: "short" }).format(d);
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: "Asia/Riyadh", day: "numeric", month: "short" }).format(d);
 }
 
 // لوحة الأسبوع — الكل يراها (الشفافية مقصودة). الترتيب بالكفاءة والنقاط عمود ثانٍ.

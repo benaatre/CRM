@@ -17,7 +17,7 @@ const MIN = 60_000;
 const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)" };
 
 function fmtClock(d: Date): string {
-  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { hour: "numeric", minute: "2-digit" }).format(d);
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { timeZone: "Asia/Riyadh", hour: "numeric", minute: "2-digit" }).format(d);
 }
 
 /** «٥ دقائق» / «دقيقة» / «٢٥ دقيقة» — نافذة البانر ≤ ٣٠ دقيقة فالدقائق تكفي. */

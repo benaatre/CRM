@@ -44,3 +44,22 @@ export function ksaHourOf(d: Date): number {
 export function ksaDayKey(d: Date): string {
   return new Date(d.getTime() + KSA_OFFSET_MS).toISOString().slice(0, 10);
 }
+
+/** يوم الأسبوع بتوقيت الرياض (٠=الأحد … ٦=السبت) — بديل getDay() المرهون بتوقيت الجهاز. */
+export function ksaDayOfWeek(d: Date): number {
+  return new Date(d.getTime() + KSA_OFFSET_MS).getUTCDay();
+}
+
+/**
+ * يفسّر نص تاريخ «بلا منطقة زمنية» (قيم date/time/datetime-local) كوقت حائط
+ * **الرياض** — «13:00» تعني ١:٠٠ ظهرًا بالرياض أيًّا كان توقيت الخادم أو المتصفح.
+ *
+ * السبب: new Date("2026-08-11T13:00") تفسَّر بتوقيت البيئة المحلي، والخادم على
+ * الإنتاج UTC — فكانت المواعيد تُخزَّن مزاحة +٣ ساعات. نص كامل بمنطقة (Z أو
+ * إزاحة) يمرّ كما هو؛ نص غير صالح يرجع Date قيمته NaN (المستدعي يفحص كالعادة).
+ */
+export function parseRiyadhLocal(raw: string): Date {
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(raw)) return new Date(raw);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(`${raw}T00:00:00+03:00`);
+  return new Date(`${raw}+03:00`);
+}
