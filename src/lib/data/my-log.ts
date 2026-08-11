@@ -207,23 +207,30 @@ export type MyRecentFollowUp = {
   createdAt: Date;
   leadId: string;
   leadName: string;
+  /** توسعة v3 (شاشة المتابعات): الملاحظة وشارة الموعد القادم وزر التعديل. */
+  note: string | null;
+  nextDate: Date | null;
 };
 
 /**
- * آخر متابعات الموظف مطلقًا (لقسم «سجل متابعاتي» في الرئيسية) — قراءة خالصة،
- * مفلترة بهوية الجلسة حصرًا كبقية الملف (createdBy = userId من requireUser).
+ * آخر متابعات الموظف مطلقًا (رئيسية الموظف + تبويب «السجل» في شاشة المتابعات) —
+ * قراءة خالصة، مفلترة بهوية الجلسة حصرًا كبقية الملف (createdBy من requireUser).
+ * توسعة v3 المعلنة: skip للترقيم البسيط + note/nextDate للعرض والتعديل.
  */
-export async function getMyRecentFollowups(userId: string, take = 5): Promise<MyRecentFollowUp[]> {
+export async function getMyRecentFollowups(userId: string, take = 5, skip = 0): Promise<MyRecentFollowUp[]> {
   const rows = await prisma.followUp.findMany({
     where: { createdBy: userId },
     orderBy: { createdAt: "desc" },
     take,
-    select: { id: true, result: true, createdAt: true, leadId: true, lead: { select: { name: true } } },
+    skip,
+    select: { id: true, result: true, createdAt: true, note: true, nextDate: true, leadId: true, lead: { select: { name: true } } },
   });
   return rows.map((r) => ({
     id: r.id,
     result: r.result,
     createdAt: r.createdAt,
+    note: r.note,
+    nextDate: r.nextDate,
     leadId: r.leadId,
     leadName: r.lead.name,
   }));

@@ -4,7 +4,7 @@ import { stageLabels, channelLabel, followUpResultLabels } from "@/lib/labels";
 import { STAGE_HEX } from "@/lib/stage-colors";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
-import { avatarColor, avatarInitials } from "@/lib/mobile-avatar";
+import { avatarInitials } from "@/lib/mobile-avatar";
 import { waPhone } from "@/lib/value-normalize";
 import type { DayAppointment } from "@/lib/mobile-agenda";
 import type { MyRecentFollowUp } from "@/lib/data/my-log";

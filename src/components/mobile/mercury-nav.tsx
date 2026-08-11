@@ -39,8 +39,6 @@ const MANAGER_TABS: Tab[] = [
 const BAR_H = 58;
 const DROP = 58;
 const RISE = 34; // ارتفاع الأيقونة النشطة داخل القطرة
-const EASE = "cubic-bezier(.3,1.3,.4,1)";
-
 export function MercuryNav({
   manager = false,
   badgeCount = 0,
