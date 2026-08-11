@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Share2, Archive, ArchiveRestore, Trash2, CalendarClock, Check, Contact, X } from "lucide-react";
+import { Share2, Archive, ArchiveRestore, Trash2, Check, Contact, X } from "lucide-react";
 import type { Channel, LeadStage } from "@prisma/client";
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import { stageLabel, channelLabel } from "@/lib/labels";
@@ -14,7 +14,10 @@ import {
   transferLeads, recoverLeads, bulkArchive, bulkDelete, unarchiveLeads,
   type UnarchiveMode,
 } from "@/lib/actions/leads";
+import { Phone, MessageCircle } from "lucide-react";
 import { avatarColor, avatarInitials } from "@/lib/mobile-avatar";
+import { waPhone } from "@/lib/value-normalize";
+import { markCall } from "@/lib/mobile-call-tracker";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits, waitingLabel, waitingBasisOf } from "@/lib/mobile-format";
 import { BottomSheet } from "@/components/mobile/bottom-sheet";
@@ -26,6 +29,7 @@ import type { FilterSection, FilterSelection } from "@/components/mobile/filter-
 export type MobileLeadRow = {
   id: string;
   name: string;
+  phone: string;
   stage: LeadStage;
   channel: Channel;
   daysWaiting: number;
@@ -40,6 +44,15 @@ export type MobileLeadRow = {
   waiting: boolean;
   /** نص موعد الزيارة الجاهز (توقيت الرياض) — يُحسب بالخادم، null بلا زيارة. */
   visitText: string | null;
+  /** كرت v3: موعد المتابعة فات (يُحسب بالخادم) — الشارة الزمنية والسياق يحمرّان. */
+  overdueFu: boolean;
+  /** كرت v3: نص موعد المتابعة الجاهز («اليوم ٤:٣٠» / «١٢ أغسطس ...») — null بلا موعد. */
+  followupText: string | null;
+  /** كرت v3: الحجز النشط (محصّل/متبقٍ) — لسطر السياق. */
+  booking: { collected: number; remaining: number } | null;
+  /** كرت v3: وسما طريقة الشراء والميزانية (نصوص جاهزة من الخادم) — null يُخفي الوسم. */
+  pmLabel: string | null;
+  budgetLabel: string | null;
   /** اسم الموظف — للمدير فقط (null للموظف). */
   assignedToName: string | null;
 };
@@ -169,83 +182,186 @@ export function MobileLeadsList({
         <div className="flex flex-col" style={{ gap: 9 }}>
           {rows.slice(0, shown).map((l, i) => {
             const on = sel.has(l.id);
-            const inner = (
+            const isNew = l.stage === "NEW";
+            // السياق الذكي — بالأولوية: فاتت ← موعد قادم ← جديد ← حجز نشط ← يُخفى.
+            const ctx = l.overdueFu && l.followupText
+              ? { text: `⏰ كان المفروض تتواصل — ${l.followupText}`, base: MOBILE_COLORS.rose, bg: MOBILE_COLORS.roseBg }
+              : l.visitText
+                ? { text: `🗓️ زيارة ${l.visitText}`, base: MOBILE_COLORS.amber, bg: MOBILE_COLORS.amberBg }
+                : l.followupText
+                  ? { text: `🗓️ متابعة ${l.followupText}`, base: MOBILE_COLORS.amber, bg: MOBILE_COLORS.amberBg }
+                  : isNew
+                    ? { text: `✨ من ${channelLabel(l.channel)} · ينتظر أول تواصل`, base: MOBILE_COLORS.sky, bg: MOBILE_COLORS.skyBg }
+                    : l.booking
+                      ? { text: `📑 حجز نشط · محصّل ${toArabicDigits(l.booking.collected)} من ${toArabicDigits(l.booking.collected + l.booking.remaining)}`, base: MOBILE_COLORS.mint, bg: MOBILE_COLORS.mintBg }
+                      : null;
+            const tags = [channelLabel(l.channel), l.pmLabel, l.budgetLabel].filter(Boolean) as string[];
+            const card = (
               <>
-                <span className="absolute bottom-0 right-0 top-0" style={{ width: 3, background: STAGE_HEX[l.stage] }} aria-hidden />
-                {selectMode && (
-                  <span
-                    className="flex flex-none items-center justify-center"
-                    style={{
-                      boxSizing: "border-box", width: 24, height: 24, borderRadius: 12,
-                      border: `2px solid ${on ? MOBILE_COLORS.gold : MOBILE_COLORS.dim2}`,
-                      background: on ? MOBILE_COLORS.gold : "transparent",
-                      color: MOBILE_COLORS.bg,
-                      transition: "background .18s, border-color .18s",
-                    }}
-                    aria-hidden
-                  >
-                    {on && <Check size={14} strokeWidth={3} />}
-                  </span>
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center" style={{ gap: 6 }}>
-                    <span className="min-w-0 truncate" style={{ fontSize: "14.5px", fontWeight: 600, color: MOBILE_COLORS.textPrimary }}>
-                      {l.name}
-                    </span>
-                    {l.manualTransferred && (
-                      <span className="flex-none" title="محوَّل يدويًا بالبيانات"
-                        style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_STATUS.info.bg, color: MOBILE_STATUS.info.fg, border: `1px solid ${MOBILE_STATUS.info.border}` }}>
-                        ⇄ محوَّل
-                      </span>
-                    )}
-                    {!l.manualTransferred && l.isTransferred && (
-                      <span className="flex-none" title="مسترد / معاد توجيهه" style={{ fontSize: 11, color: MOBILE_COLORS.gold }}>✦</span>
-                    )}
-                    {l.waiting && (
-                      <span className="flex-none" title="آخر متابعة: في الانتظار"
-                        style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_STATUS.warning.bg, color: MOBILE_STATUS.warning.fg }}>
-                        في الانتظار
-                      </span>
-                    )}
-                  </span>
-                  <span className="block truncate" style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, marginTop: 4 }}>
-                    {waitingLabel(l.daysWaiting, waitingBasisOf(l))} · {channelLabel(l.channel)}
-                    {l.assignedToName ? ` · ${l.assignedToName}` : ""}
-                  </span>
-                  {l.visitText && (
-                    <span className="flex items-center" style={{ gap: 5, fontSize: "11.5px", fontWeight: 600, color: MOBILE_STATUS.info.fg, marginTop: 4 }}>
-                      <CalendarClock size={12} aria-hidden /> زيارة {l.visitText}
+                {/* الخط الجانبي المتوهّج بلون المرحلة */}
+                <span
+                  className="absolute"
+                  style={{ insetInlineStart: 0, top: 10, bottom: 10, width: 4, borderRadius: 3, background: STAGE_HEX[l.stage], boxShadow: `0 0 10px ${STAGE_HEX[l.stage]}` }}
+                  aria-hidden
+                />
+                <div className="flex items-center" style={{ gap: 10 }}>
+                  {selectMode && (
+                    <span
+                      className="flex flex-none items-center justify-center"
+                      style={{
+                        boxSizing: "border-box", width: 24, height: 24, borderRadius: 12,
+                        border: `2px solid ${on ? MOBILE_COLORS.gold : MOBILE_COLORS.dim2}`,
+                        background: on ? MOBILE_COLORS.gold : "transparent",
+                        color: MOBILE_COLORS.bg,
+                        transition: "background .18s, border-color .18s",
+                      }}
+                      aria-hidden
+                    >
+                      {on && <Check size={14} strokeWidth={3} />}
                     </span>
                   )}
-                </span>
-                <span
-                  className={`shrink-0 whitespace-nowrap border font-semibold ${stageChipClass[l.stage]}`}
-                  style={{ fontSize: "10.5px", padding: "4px 9px", borderRadius: 7 }}
-                >
-                  {stageLabel(l.stage)}
-                </span>
+                  <span
+                    className="flex flex-none items-center justify-center"
+                    style={{ width: 48, height: 48, borderRadius: 24, fontSize: 16, fontWeight: 700, background: STAGE_HEX[l.stage], color: MOBILE_COLORS.bg }}
+                  >
+                    {avatarInitials(l.name)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center" style={{ gap: 6 }}>
+                      <span className="min-w-0 truncate" style={{ fontSize: "16.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>
+                        {l.name}
+                      </span>
+                      {l.manualTransferred && (
+                        <span className="flex-none" title="محوَّل يدويًا بالبيانات"
+                          style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_STATUS.info.bg, color: MOBILE_STATUS.info.fg, border: `1px solid ${MOBILE_STATUS.info.border}` }}>
+                          ⇄ محوَّل
+                        </span>
+                      )}
+                      {!l.manualTransferred && l.isTransferred && (
+                        <span className="flex-none" title="مسترد / معاد توجيهه" style={{ fontSize: 11, color: MOBILE_COLORS.gold }}>✦</span>
+                      )}
+                      {l.waiting && (
+                        <span className="flex-none" title="آخر متابعة: في الانتظار"
+                          style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_STATUS.warning.bg, color: MOBILE_STATUS.warning.fg }}>
+                          في الانتظار
+                        </span>
+                      )}
+                    </span>
+                    <span dir="ltr" className="block truncate text-right" style={{ fontSize: 13, color: MOBILE_COLORS.textMuted, marginTop: 3 }}>
+                      {l.phone}
+                    </span>
+                  </span>
+                  <span className="flex flex-none flex-col items-end" style={{ gap: 5 }}>
+                    <span
+                      className={`whitespace-nowrap border font-semibold ${stageChipClass[l.stage]}`}
+                      style={{ fontSize: "10.5px", padding: "4px 9px", borderRadius: 7 }}
+                    >
+                      {stageLabel(l.stage)}
+                    </span>
+                    {/* الشارة الزمنية — تحمرّ مع متابعة فاتت */}
+                    <span
+                      className="whitespace-nowrap"
+                      style={{
+                        boxSizing: "border-box", fontSize: "10.5px", fontWeight: 600, padding: "3px 8px", borderRadius: 7,
+                        ...(l.overdueFu
+                          ? { background: MOBILE_COLORS.roseBg, color: MOBILE_COLORS.rose }
+                          : { background: MOBILE_COLORS.bg, color: MOBILE_COLORS.textMuted }),
+                      }}
+                    >
+                      {waitingLabel(l.daysWaiting, waitingBasisOf(l))}
+                    </span>
+                  </span>
+                </div>
+
+                {ctx && (
+                  <div
+                    style={{
+                      boxSizing: "border-box", marginTop: 9, borderRadius: 10, padding: "7px 10px",
+                      background: ctx.bg, fontSize: 12, fontWeight: 600, color: ctx.base, lineHeight: 1.55,
+                    }}
+                  >
+                    {ctx.text}
+                  </div>
+                )}
+
+                {(tags.length > 0 || l.assignedToName) && (
+                  <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6, marginTop: 8 }}>
+                    {l.assignedToName && (
+                      <span className="flex-none" style={{ boxSizing: "border-box", fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 7, background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold }}>
+                        {l.assignedToName}
+                      </span>
+                    )}
+                    {tags.map((t) => (
+                      <span key={t} className="flex-none" style={{ boxSizing: "border-box", fontSize: 10.5, padding: "3px 9px", borderRadius: 7, background: MOBILE_COLORS.bg, color: MOBILE_COLORS.textSecondary, border: `1px solid ${MOBILE_COLORS.line2}` }}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {!selectMode && (
+                  <div className="relative z-10 flex" style={{ gap: 8, marginTop: 10, pointerEvents: "auto" }}>
+                    <a
+                      href={`tel:${l.phone}`}
+                      onClick={(e) => { e.stopPropagation(); markCall(l.id); }}
+                      className="m-press flex flex-1 items-center justify-center"
+                      style={{
+                        boxSizing: "border-box", height: 40, borderRadius: 11, border: "none",
+                        background: isNew ? MOBILE_COLORS.sky : MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
+                        fontSize: 13, fontWeight: 700, gap: 5,
+                      }}
+                    >
+                      <Phone size={14} aria-hidden /> {isNew ? "اتصال أول" : "اتصال"}
+                    </a>
+                    <a
+                      href={`https://wa.me/${waPhone(l.phone)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="m-press flex flex-1 items-center justify-center"
+                      style={{
+                        boxSizing: "border-box", height: 40, borderRadius: 11,
+                        background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`,
+                        color: MOBILE_COLORS.textPrimary, fontSize: 13, fontWeight: 600, gap: 5,
+                      }}
+                    >
+                      <MessageCircle size={14} aria-hidden /> واتساب
+                    </a>
+                    <Link
+                      href={`/m/leads/${l.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`ملف العميل ${l.name}`}
+                      className="m-press flex flex-none items-center justify-center"
+                      style={{
+                        boxSizing: "border-box", width: 44, height: 40, borderRadius: 11,
+                        background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`,
+                        color: MOBILE_COLORS.textSecondary, fontSize: 15,
+                      }}
+                    >
+                      ←
+                    </Link>
+                  </div>
+                )}
               </>
             );
             const style = {
               boxSizing: "border-box" as const,
               background: selectMode && on ? MOBILE_COLORS.goldBg : MOBILE_COLORS.card,
               border: `1px solid ${selectMode && on ? MOBILE_COLORS.goldBorder : MOBILE_COLORS.border}`,
-              borderRadius: 15,
-              padding: "12px 16px 12px 13px",
-              gap: 10,
-              minHeight: 44,
+              borderRadius: 16,
+              padding: "12px 15px 12px 13px",
               animationDelay: `${Math.min(i, 10) * 35}ms`,
             };
             return selectMode ? (
               <button key={l.id} type="button" onClick={() => toggleSel(l.id)}
-                className="m-rise m-press relative flex w-full items-center overflow-hidden text-start" style={style}>
-                {inner}
+                className="m-rise m-press relative block w-full overflow-hidden text-start" style={style}>
+                {card}
               </button>
             ) : (
-              <Link key={l.id} href={`/m/leads/${l.id}`}
-                className="m-rise m-press m-leadcard relative flex items-center overflow-hidden text-right" style={style}>
-                {inner}
-              </Link>
+              <div key={l.id} className="m-rise m-leadcard relative overflow-hidden" style={style}>
+                {/* مساحة اللمس للملف — خلف المحتوى؛ صف الأزرار وحده يعيد تفعيل النقر (نمط بطاقة v2) */}
+                <Link href={`/m/leads/${l.id}`} aria-label={`ملف العميل ${l.name}`} className="absolute inset-0 z-0" />
+                <div className="pointer-events-none relative z-10">{card}</div>
+              </div>
             );
           })}
 

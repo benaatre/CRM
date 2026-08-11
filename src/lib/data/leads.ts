@@ -569,7 +569,11 @@ export async function getBankCheckCount(): Promise<number> {
 }
 
 /** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
-export async function getLeadCounts(): Promise<{ working: number; archived: number; hidden: number; unassigned: number }> {
+export async function getLeadCounts(): Promise<{
+  working: number; archived: number; hidden: number; unassigned: number;
+  /** عدّادات المراحل (تبويب جاري العمل، ضمن النطاق) — لرقاقات قائمة الجوال v3. */
+  stageCounts: Partial<Record<LeadStage, number>>;
+}> {
   const { where } = await scopeForUser();
   const ownerIds = await getOwnerIds();
   const dupIds = await duplicateLeadIds(); // لاستثناء المكررين من عدّاد «غير موزّعين» فقط
@@ -581,13 +585,20 @@ export async function getLeadCounts(): Promise<{ working: number; archived: numb
       ...(dupIds.size ? [{ id: { notIn: [...dupIds] } }] : []),
     ],
   };
-  const [working, archived, hidden, unassigned] = await Promise.all([
+  const [working, archived, hidden, unassigned, byStage] = await Promise.all([
     prisma.lead.count({ where: { AND: [where, tabWhere("working", ownerIds) ?? {}] } }),
     prisma.lead.count({ where: { AND: [where, tabWhere("archived", ownerIds) ?? {}] } }),
     prisma.lead.count({ where: { AND: [where, tabWhere("hidden", ownerIds) ?? {}] } }),
     prisma.lead.count({ where: unassignedWhere }),
+    // توسعة v3 (معلنة): عدّادات المراحل لرقاقات قائمة الجوال — نفس نطاق تبويب «جاري العمل».
+    prisma.lead.groupBy({
+      by: ["stage"],
+      where: { AND: [where, tabWhere("working", ownerIds) ?? {}] },
+      _count: { _all: true },
+    }),
   ]);
-  return { working, archived, hidden, unassigned };
+  const stageCounts = Object.fromEntries(byStage.map((g) => [g.stage, g._count._all])) as Partial<Record<LeadStage, number>>;
+  return { working, archived, hidden, unassigned, stageCounts };
 }
 
 /** العملاء مجمّعين حسب المرحلة — للكانبان. */
