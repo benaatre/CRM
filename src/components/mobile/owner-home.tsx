@@ -92,6 +92,17 @@ function leadIdIn(summary: string, names: AuditNameMaps): string | null {
   return null;
 }
 
+/**
+ * معرّف العميل المعتمد للسهم — **لا يُقبل إلا معرّفًا حُلّ فعلًا إلى عميل قائم**
+ * (`leadNames` تأتي من استعلام جدول العملاء). المسار المستدلّ (`inferFollowupLeads`)
+ * كان يُمرَّر بلا هذا التحقق، فمعرّف لعميل محذوف/مدموج يبني سهمًا يفتح ٤٠٤.
+ * سهم لا يعمل أسوأ من غياب السهم — فالمجهول يُسقط السهم بالكامل.
+ */
+function confirmedLeadId(e: AuditEntry, names: AuditNameMaps, inferred: Record<string, string>): string | null {
+  const id = leadIdIn(e.summary, names) ?? inferred[e.id] ?? null;
+  return id && names.leadNames[id] ? id : null;
+}
+
 /** عنوان يوم المجموعة بيوم الرياض — «اليوم/أمس — {التاريخ}» والأقدم تاريخ فقط. */
 function dayTitle(d: Date, todayKey: string, yesterdayKey: string): string {
   const key = ksaDayKey(d);
@@ -152,7 +163,9 @@ export async function MobileOwnerHome({
     getNotifications(),
     getTeamCommitment(fuWin, now),
     getTeamPresence(),
-    getAuditLog({ limit: 60 }),
+    // ٣٠ سجلًا: تُعرض آخر ١٥ بعد الفلترة، والهامش يمنع فراغ القائمة عند فلتر ضيّق
+    // (حرِج/النظام). السجل الكامل في /m/audit بحدّه الخاص (١٥٠).
+    getAuditLog({ limit: 30 }),
   ]);
   const inferred = await inferFollowupLeads(auditEntries);
   const names = await resolveAuditNames(auditEntries, Object.values(inferred));
@@ -196,7 +209,7 @@ export async function MobileOwnerHome({
   const todayKey = ksaDayKey(now);
   const yesterdayKey = ksaDayKey(new Date(nowMs - DAY_MS));
   const auditRows: AuditFeedRow[] = auditEntries.map((e) => {
-    const leadId = leadIdIn(e.summary, names) ?? inferred[e.id] ?? null;
+    const leadId = confirmedLeadId(e, names, inferred);
     return {
       id: e.id,
       kind: auditKind(e),
@@ -204,6 +217,7 @@ export async function MobileOwnerHome({
       badge: auditBadge(e.action, e.summary),
       head: resolveSummary(e.summary, names),
       leadId,
+      leadName: leadId ? (names.leadNames[leadId] ?? null) : null,
       whenText: `قبل ${elapsedLabel(e.createdAt, now)}`,
       fullWhen: formatDateTime(e.createdAt),
       group: dayTitle(e.createdAt, todayKey, yesterdayKey),

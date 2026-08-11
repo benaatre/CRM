@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
-import { toArabicDigits } from "@/lib/mobile-format";
 
 /**
  * «سجل التدقيق» برئيسية المالك v3 — عرض خالص فوق صفوف جاهزة من الخادم
@@ -21,7 +20,10 @@ export type AuditFeedRow = {
   badge: string;
   /** الجملة المعرّبة بعد حلّ الأسماء وتنظيف الأنماط الخام. */
   head: string;
+  /** معرّف عميل **محلول ومؤكّد** فقط — غيره null فلا يظهر السهم إطلاقًا. */
   leadId: string | null;
+  /** اسم العميل المحلول — لتسمية السهم كما في قائمة العملاء. */
+  leadName: string | null;
   /** «قبل ٣ د» — نسبي مختصر بجانب الصف. */
   whenText: string;
   /** الوقت المطلق الكامل — يظهر عند التوسيع. */
@@ -30,7 +32,8 @@ export type AuditFeedRow = {
   group: string;
 };
 
-const PAGE = 15;
+/** الرئيسية تعرض آخر ١٥ عملية فقط — والسجل الكامل في /m/audit. */
+const SHOWN = 15;
 
 const FILTERS: { key: "all" | AuditFeedRow["kind"]; label: string }[] = [
   { key: "all", label: "✓ الكل" },
@@ -50,15 +53,11 @@ function tone(kind: AuditFeedRow["kind"]) {
 
 export function AuditFeed({ rows }: { rows: AuditFeedRow[] }) {
   const [filter, setFilter] = useState<"all" | AuditFeedRow["kind"]>("all");
-  const [shown, setShown] = useState(PAGE);
   const [openId, setOpenId] = useState<string | null>(null);
 
+  // الفلاتر تسري على المجلوب ثم يُقتطع آخر ١٥ — بلا «تحميل المزيد».
   const visible = useMemo(
-    () => rows.filter((r) => filter === "all" || r.kind === filter).slice(0, shown),
-    [rows, filter, shown],
-  );
-  const filteredTotal = useMemo(
-    () => rows.filter((r) => filter === "all" || r.kind === filter).length,
+    () => rows.filter((r) => filter === "all" || r.kind === filter).slice(0, SHOWN),
     [rows, filter],
   );
 
@@ -73,7 +72,7 @@ export function AuditFeed({ rows }: { rows: AuditFeedRow[] }) {
             <button
               key={f.key}
               type="button"
-              onClick={() => { setFilter(f.key); setShown(PAGE); setOpenId(null); }}
+              onClick={() => { setFilter(f.key); setOpenId(null); }}
               className="m-press flex-none"
               style={{
                 boxSizing: "border-box", padding: "7px 12px", borderRadius: 16,
@@ -106,47 +105,53 @@ export function AuditFeed({ rows }: { rows: AuditFeedRow[] }) {
                 {r.group}
               </div>
             )}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setOpenId(open ? null : r.id)}
-              onKeyDown={(e) => { if (e.key === "Enter") setOpenId(open ? null : r.id); }}
-              className="relative flex cursor-pointer"
-              style={{ gap: 10, padding: "11px 14px", borderBottom: `1px solid ${MOBILE_COLORS.border}` }}
-            >
+            {/*
+              الحاوية غير تفاعلية: زر التوسيع والرابط **شقيقان** — لا رابط داخل عنصر
+              له onClick (كانت البنية الوحيدة في التطبيق التي تخالف كروت قائمة العملاء).
+              فالسهم الآن رابط مستقل تمامًا مثل leads-list — بلا stopPropagation.
+            */}
+            <div className="relative flex" style={{ gap: 10, padding: "11px 14px", borderBottom: `1px solid ${MOBILE_COLORS.border}` }}>
               {/* الخط الجانبي بلون النوع */}
               <span aria-hidden style={{ position: "absolute", top: 11, bottom: 11, insetInlineEnd: 0, width: 3, borderRadius: 3, background: c.base }} />
-              <span
-                className="flex flex-none items-center justify-center"
-                style={{ boxSizing: "border-box", width: 32, height: 32, borderRadius: 10, background: c.bg, color: c.base, fontSize: 13, fontWeight: 800 }}
+              <button
+                type="button"
+                onClick={() => setOpenId(open ? null : r.id)}
+                aria-expanded={open}
+                className="flex min-w-0 flex-1 items-start text-start"
+                style={{ gap: 10, background: "none", border: "none", padding: 0, cursor: "pointer" }}
               >
-                {r.kind === "sys" ? "🤖" : r.kind === "crit" ? "⚠️" : r.actor.trim().charAt(0)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center" style={{ gap: 6 }}>
-                  <span style={{ fontSize: "12.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>{r.actor}</span>
-                  <span style={{ boxSizing: "border-box", fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 7, background: c.bg, color: c.base }}>{r.badge}</span>
-                </div>
-                <div
-                  className={open ? "" : "truncate"}
-                  style={{ fontSize: 12, color: MOBILE_COLORS.textSecondary, marginTop: 4, lineHeight: 1.6, fontWeight: 600, whiteSpace: open ? "normal" : undefined }}
+                <span
+                  className="flex flex-none items-center justify-center"
+                  style={{ boxSizing: "border-box", width: 32, height: 32, borderRadius: 10, background: c.bg, color: c.base, fontSize: 13, fontWeight: 800 }}
                 >
-                  {r.head}
-                </div>
-                {open && (
-                  <div style={{ boxSizing: "border-box", marginTop: 8, padding: "9px 11px", borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, fontSize: 11, color: MOBILE_COLORS.textMuted, fontWeight: 600, lineHeight: 1.8 }}>
-                    الوقت: <b style={{ color: MOBILE_COLORS.textSecondary }}>{r.fullWhen}</b>
-                    <br />النص الكامل: <b style={{ color: MOBILE_COLORS.textSecondary }}>{r.head}</b>
-                  </div>
-                )}
-              </div>
+                  {r.kind === "sys" ? "🤖" : r.kind === "crit" ? "⚠️" : r.actor.trim().charAt(0)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center" style={{ gap: 6 }}>
+                    <span style={{ fontSize: "12.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>{r.actor}</span>
+                    <span style={{ boxSizing: "border-box", fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 7, background: c.bg, color: c.base }}>{r.badge}</span>
+                  </span>
+                  <span
+                    className={open ? "block" : "block truncate"}
+                    style={{ fontSize: 12, color: MOBILE_COLORS.textSecondary, marginTop: 4, lineHeight: 1.6, fontWeight: 600 }}
+                  >
+                    {r.head}
+                  </span>
+                  {open && (
+                    <span className="block" style={{ boxSizing: "border-box", marginTop: 8, padding: "9px 11px", borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, fontSize: 11, color: MOBILE_COLORS.textMuted, fontWeight: 600, lineHeight: 1.8 }}>
+                      الوقت: <b style={{ color: MOBILE_COLORS.textSecondary }}>{r.fullWhen}</b>
+                      <br />النص الكامل: <b style={{ color: MOBILE_COLORS.textSecondary }}>{r.head}</b>
+                    </span>
+                  )}
+                </span>
+              </button>
               <div className="flex flex-none flex-col items-center" style={{ gap: 7 }}>
                 <span style={{ fontSize: 10, color: MOBILE_COLORS.textMuted, fontWeight: 700 }}>{r.whenText}</span>
+                {/* السهم: نفس رابط كروت قائمة العملاء حرفيًا — ولا يظهر إلا لعميل مؤكّد */}
                 {r.leadId && (
                   <Link
                     href={`/m/leads/${r.leadId}`}
-                    aria-label="ملف العميل"
-                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`ملف العميل ${r.leadName ?? ""}`.trim()}
                     className="m-press flex items-center justify-center"
                     style={{ boxSizing: "border-box", width: 30, height: 30, borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 12 }}
                   >
@@ -159,16 +164,14 @@ export function AuditFeed({ rows }: { rows: AuditFeedRow[] }) {
         );
       })}
 
-      {shown < filteredTotal && (
-        <button
-          type="button"
-          onClick={() => setShown((n) => n + PAGE)}
-          className="m-press w-full text-center"
-          style={{ padding: 12, fontSize: 12, fontWeight: 800, color: MOBILE_COLORS.gold, background: "none", border: "none" }}
-        >
-          تحميل المزيد ({toArabicDigits(filteredTotal - shown)}) ↓
-        </button>
-      )}
+      {/* لا «تحميل المزيد» بالرئيسية — السجل الكامل له صفحته */}
+      <Link
+        href="/m/audit"
+        className="m-press block text-center"
+        style={{ padding: 12, fontSize: 12, fontWeight: 800, color: MOBILE_COLORS.gold, borderTop: `1px solid ${MOBILE_COLORS.border}` }}
+      >
+        السجل الكامل ←
+      </Link>
     </div>
   );
 }
