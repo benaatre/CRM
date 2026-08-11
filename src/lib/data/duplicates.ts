@@ -124,24 +124,36 @@ export async function getDuplicateLeads(): Promise<DuplicatesData> {
 
 // م-٥: كاش ٦٠ ثانية — الشارة تُحسب في layout المالك مع كل تنقّل/refresh وكانت تمسح الجدول كاملًا.
 const BADGE_CACHE_MS = 60_000;
-let badgeCache: { at: number; count: number } | null = null;
+let badgeCache: { at: number; counts: DuplicateCounts } | null = null;
+
+export type DuplicateCounts = {
+  /** كل المجموعات الحيّة (رقم الشارة والتراكم). */
+  total: number;
+  /** مجموعات انضاف لها سجل اليوم (بيوم الرياض) — بطاقة «مكرّرو اليوم» (نفس تعريف newTodayGroups). */
+  newToday: number;
+};
 
 /**
  * عدّاد شارة التنقّل: عدد مجموعات المكررين المعروضة بالصفحة — **نفس منطقها حرفيًا**
  * (صفوف حيّة، مجموعات >١، شاملًا «مكرر مع محجوز» — كانت مستثناة فيمرّ الحجب بصمت).
- * استعلام واحد (phone) + تجميع بالذاكرة + كاش ٦٠ث. تُستدعى للمالك فقط.
+ * توسعة معلنة (رئيسية المالك v3): createdAt في السيلكت + عدّاد newToday بيوم الرياض.
+ * استعلام واحد (phone+createdAt) + تجميع بالذاكرة + كاش ٦٠ث. تُستدعى للمالك فقط.
  */
-export async function activeDuplicateGroupCount(): Promise<number> {
-  if (badgeCache && Date.now() - badgeCache.at < BADGE_CACHE_MS) return badgeCache.count;
-  const leads = await prisma.lead.findMany({ where: LIVE_ROWS_ONLY, select: { phone: true } });
-  const byKey = new Map<string, number>();
+export async function activeDuplicateGroupCount(): Promise<DuplicateCounts> {
+  if (badgeCache && Date.now() - badgeCache.at < BADGE_CACHE_MS) return badgeCache.counts;
+  const todayStart = dayStartKSA(new Date());
+  const leads = await prisma.lead.findMany({ where: LIVE_ROWS_ONLY, select: { phone: true, createdAt: true } });
+  const byKey = new Map<string, { n: number; today: boolean }>();
   for (const l of leads) {
     const k = dedupeKey(l.phone);
     if (!k) continue;
-    byKey.set(k, (byKey.get(k) ?? 0) + 1);
+    const g = byKey.get(k) ?? { n: 0, today: false };
+    g.n++;
+    if (l.createdAt >= todayStart) g.today = true;
+    byKey.set(k, g);
   }
-  let count = 0;
-  for (const n of byKey.values()) if (n > 1) count++;
-  badgeCache = { at: Date.now(), count };
-  return count;
+  let total = 0, newToday = 0;
+  for (const g of byKey.values()) if (g.n > 1) { total++; if (g.today) newToday++; }
+  badgeCache = { at: Date.now(), counts: { total, newToday } };
+  return badgeCache.counts;
 }

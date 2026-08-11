@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Contact, CalendarCheck, Inbox, User } from "lucide-react";
+import { Home, Contact, CalendarCheck, Inbox, ScrollText, User } from "lucide-react";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 
@@ -28,16 +28,16 @@ const EMPLOYEE_TABS: Tab[] = [
   { href: "/m/more", label: "حسابي", icon: User },
 ];
 
-/** الإدارة: غير موزّعين مكان المتابعات (قرارها اليومي بشارته) — والتدقيق بلاطة في حسابي. */
+/** الإدارة: خمس خلايا (v3) — التدقيق صار خلية مباشرة، وبلاطته في «حسابي» باقية. */
 const MANAGER_TABS: Tab[] = [
   { href: "/m", label: "الرئيسية", icon: Home },
   { href: "/m/leads", label: "العملاء", icon: Contact },
   { href: "/m/unassigned", label: "غير موزّعين", icon: Inbox, badge: true },
+  { href: "/m/audit", label: "التدقيق", icon: ScrollText },
   { href: "/m/more", label: "حسابي", icon: User },
 ];
 
 const BAR_H = 58;
-const DROP = 58;
 const RISE = 34; // ارتفاع الأيقونة النشطة داخل القطرة
 export function MercuryNav({
   manager = false,
@@ -50,6 +50,9 @@ export function MercuryNav({
 }) {
   const pathname = usePathname();
   const tabs = manager ? MANAGER_TABS : EMPLOYEE_TABS;
+  // خمس خلايا (الإدارة): قطرة 56 وخط أصغر لتستوعب الأسماء بلا التفاف — الموظف كما هو.
+  const five = tabs.length >= 5;
+  const DROP = five ? 56 : 58;
 
   // «/m» تُطابَق تمامًا حتى لا تبقى الرئيسية نشطة داخل كل تبويب.
   const activeIdx = tabs.findIndex((t) => (t.href === "/m" ? pathname === "/m" : pathname.startsWith(t.href)));
@@ -165,7 +168,7 @@ export function MercuryNav({
                       </span>
                     )}
                   </span>
-                  <span style={{ fontSize: 11, fontWeight: active ? 700 : 500 }}>{tab.label}</span>
+                  <span className="whitespace-nowrap" style={{ fontSize: five ? 9 : 11, fontWeight: active ? 700 : 500 }}>{tab.label}</span>
                 </Link>
               </li>
             );

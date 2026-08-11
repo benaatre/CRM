@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import type {
   Channel,
   LeadStage,
@@ -568,12 +569,16 @@ export async function getBankCheckCount(): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
-/** أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات. */
-export async function getLeadCounts(): Promise<{
+/**
+ * أعداد التبويبات (جاري العمل / تم الحجز / مؤرشف / غير موزّع) ضمن صلاحية المستخدم — لشارات التبويبات.
+ * مغلّفة بـcache() (memoization لكل طلب): شارة الزئبق في layout وبطاقة «قرارك الآن» في
+ * الرئيسية تقرآن **نفس النتيجة من نفس اللحظة** — لا رقمين مختلفين بالشاشة الواحدة.
+ */
+export const getLeadCounts = cache(async (): Promise<{
   working: number; archived: number; hidden: number; unassigned: number;
   /** عدّادات المراحل (تبويب جاري العمل، ضمن النطاق) — لرقاقات قائمة الجوال v3. */
   stageCounts: Partial<Record<LeadStage, number>>;
-}> {
+}> => {
   const { where } = await scopeForUser();
   const ownerIds = await getOwnerIds();
   const dupIds = await duplicateLeadIds(); // لاستثناء المكررين من عدّاد «غير موزّعين» فقط
@@ -599,7 +604,7 @@ export async function getLeadCounts(): Promise<{
   ]);
   const stageCounts = Object.fromEntries(byStage.map((g) => [g.stage, g._count._all])) as Partial<Record<LeadStage, number>>;
   return { working, archived, hidden, unassigned, stageCounts };
-}
+});
 
 /** العملاء مجمّعين حسب المرحلة — للكانبان. */
 export async function getPipeline(): Promise<LeadRow[]> {

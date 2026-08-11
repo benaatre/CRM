@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 
 /**
@@ -92,68 +91,21 @@ function KpiCard({
   );
 }
 
-/** بانر «غير موزّعين»: تدرّج أحمر داكن + حد علوي مضيء + زر «وزّع الآن» ينبض. */
-function UnassignedBanner({ count }: { count: number }) {
-  const n = useCountUp(count);
-  return (
-    <Link
-      href="/m/distribution"
-      className="m-rise m-press relative flex items-center justify-between overflow-hidden"
-      style={{
-        boxSizing: "border-box",
-        background: `linear-gradient(160deg, ${MOBILE_STATUS.danger.bg} 0%, ${MOBILE_COLORS.card} 80%)`,
-        border: `1px solid ${MOBILE_STATUS.danger.border}`,
-        borderRadius: 18, padding: "15px 14px", gap: 10,
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          position: "absolute", top: 0, insetInline: 0, height: 2,
-          background: MOBILE_STATUS.danger.base,
-          boxShadow: `0 0 14px ${MOBILE_STATUS.danger.base}`,
-        }}
-      />
-      <div>
-        <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, color: MOBILE_STATUS.danger.fg }}>
-          {toArabicDigits(n)}
-        </div>
-        <div style={{ fontSize: "11.5px", color: MOBILE_STATUS.danger.fg, opacity: 0.85, marginTop: 6 }}>
-          عملاء غير موزّعين — ينتظرون قرارك
-        </div>
-      </div>
-      <span
-        className="m-ctapulse flex flex-none items-center"
-        style={{
-          boxSizing: "border-box", height: 40, padding: "0 18px", borderRadius: 12,
-          background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
-          fontSize: 13, fontWeight: 700,
-        }}
-      >
-        وزّع الآن ←
-      </span>
-    </Link>
-  );
-}
-
 export function OwnerKpis({
-  unassigned, total, conversion, bookings, visits,
+  total, conversion, bookings, visits,
 }: {
-  unassigned: number;
   total: number;
   conversion: number;
   bookings: number;
   visits: number;
 }) {
+  // بانر «غير موزّعين» انتقل لقسم «قرارك الآن» (v3) — الشبكة ٢×٢ فقط هنا.
   return (
-    <div className="flex flex-col" style={{ gap: 9 }}>
-      {unassigned > 0 && <UnassignedBanner count={unassigned} />}
-      <div className="grid grid-cols-2" style={{ gap: 9 }}>
-        <KpiCard label="إجمالي العملاء" value={total} color={MOBILE_COLORS.textPrimary} delayMs={90} />
-        <KpiCard label="معدل التحويل" value={conversion} suffix="٪" ring color={MOBILE_COLORS.gold} delayMs={160} />
-        <KpiCard label="عدد الحجوزات" value={bookings} color={MOBILE_COLORS.gold} delayMs={230} />
-        <KpiCard label="عدد الزيارات" value={visits} color={MOBILE_COLORS.textPrimary} delayMs={300} />
-      </div>
+    <div className="grid grid-cols-2" style={{ gap: 9 }}>
+      <KpiCard label="إجمالي العملاء" value={total} color={MOBILE_COLORS.textPrimary} delayMs={90} />
+      <KpiCard label="معدل التحويل" value={conversion} suffix="٪" ring color={MOBILE_COLORS.gold} delayMs={160} />
+      <KpiCard label="عدد الزيارات" value={visits} color={MOBILE_COLORS.textPrimary} delayMs={230} />
+      <KpiCard label="عدد الحجوزات" value={bookings} color={MOBILE_COLORS.gold} delayMs={300} />
     </div>
   );
 }

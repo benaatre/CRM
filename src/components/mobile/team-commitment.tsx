@@ -1,13 +1,12 @@
-"use client";
-
+import Link from "next/link";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
-import { useCountUp } from "@/components/mobile/owner-kpis";
 
 /**
- * كروت «متابعات الموظفين» — التزام كل موظف بمواعيده (أنجز/فاته/الكل + نسبة وشريط).
- * client لأجل rAF (العدّ والشريط) فقط — الصفوف تصل جاهزة ومرتّبة من الخادم.
- * الحركة: m-rise (دخول متتابع) + m-press (ضغط scale) — transform/opacity، تحترم تقليل الحركة.
+ * «التزام الموظفين بالمتابعات» v3 — صفوف مضغوطة مرتّبة **بالأسوأ أولًا** (من الخادم):
+ * أفاتار + الاسم (+ شارة «X فايتة») + سطر «أنجز N من M متابعة مجدولة» + النسبة
+ * بشريطها (أخضر/كهرماني/أحمر). من بلا مواعيد بالنافذة: سطر مصغّر واحد.
+ * server component خالص — الامتلاء بأنيميشن m-fillx (transform، يحترم تقليل الحركة).
  */
 
 export type CommitmentRow = {
@@ -20,85 +19,74 @@ export type CommitmentRow = {
   lastLabel: string;
 };
 
-/** خانة إحصاء صغيرة بلون حالتها (أنجز أخضر · فاته أحمر · الكل ذهبي). */
-function StatBox({ label, value, base, bg, fg, border }: {
-  label: string; value: number; base: string; bg: string; fg: string; border: string;
+const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)" };
+
+function pctTone(pct: number) {
+  if (pct >= 90) return MOBILE_STATUS.success.base;
+  if (pct >= 65) return MOBILE_STATUS.warning.base;
+  return MOBILE_STATUS.danger.base;
+}
+
+export function TeamCommitment({ rows, idleNames, teamHref = "/m/team" }: {
+  /** أصحاب المواعيد بالنافذة فقط — الأسوأ نسبةً أولًا (ترتيب الخادم). */
+  rows: CommitmentRow[];
+  /** من بلا مواعيد مجدولة بالنافذة — سطر مصغّر. */
+  idleNames: string[];
+  teamHref?: string;
 }) {
-  const n = useCountUp(value);
   return (
-    <div
-      className="flex flex-col items-center justify-center"
-      style={{
-        boxSizing: "border-box", minHeight: 52, gap: 3,
-        background: bg, border: `1px solid ${border}`, borderRadius: 11,
-      }}
-    >
-      <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: base }}>{toArabicDigits(n)}</span>
-      <span style={{ fontSize: "10.5px", color: fg }}>{label}</span>
-    </div>
-  );
-}
-
-function CommitmentCard({ row, delayMs }: { row: CommitmentRow; delayMs: number }) {
-  const pct = useCountUp(row.pct);
-  return (
-    <div
-      className="m-rise m-press relative flex flex-col overflow-hidden"
-      style={{
-        boxSizing: "border-box",
-        background: `linear-gradient(165deg, ${MOBILE_COLORS.goldBg} 0%, ${MOBILE_COLORS.card} 55%)`,
-        border: `1px solid ${MOBILE_COLORS.border}`,
-        borderRadius: 16, padding: "13px 14px", gap: 10,
-        animationDelay: `${delayMs}ms`,
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          position: "absolute", top: 0, insetInline: 10, height: 2, borderRadius: 2,
-          background: `linear-gradient(90deg, transparent, ${MOBILE_COLORS.gold}, transparent)`,
-          boxShadow: `0 0 10px ${MOBILE_COLORS.gold}`,
-        }}
-      />
-      <div className="flex items-baseline justify-between" style={{ gap: 8 }}>
-        <span className="truncate" style={{ fontSize: "14.5px", fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
-          {row.name}
-        </span>
-        <span className="flex-none" style={{ fontSize: "10.5px", color: MOBILE_COLORS.textMuted }}>
-          {row.lastLabel}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-3" style={{ gap: 7 }}>
-        <StatBox label="أنجز" value={row.done} base={MOBILE_STATUS.success.base} bg={MOBILE_STATUS.success.bg} fg={MOBILE_STATUS.success.fg} border={MOBILE_STATUS.success.border} />
-        <StatBox label="فاته" value={row.missed} base={MOBILE_STATUS.danger.base} bg={MOBILE_STATUS.danger.bg} fg={MOBILE_STATUS.danger.fg} border={MOBILE_STATUS.danger.border} />
-        <StatBox label="الكل" value={row.total} base={MOBILE_COLORS.gold} bg={MOBILE_COLORS.goldBg} fg={MOBILE_COLORS.goldLight} border={MOBILE_COLORS.goldBorder} />
-      </div>
-
-      <div className="flex items-center" style={{ gap: 9 }}>
-        <div className="flex-1 overflow-hidden" style={{ height: 6, borderRadius: 3, background: MOBILE_COLORS.line2 }}>
-          {/* الامتلاء بـscaleX (transform فقط) — الأصل يمين لاتجاه RTL، يتحرك مع نفس rAF النسبة */}
-          <div
-            style={{
-              height: "100%", borderRadius: 3, background: MOBILE_COLORS.gold,
-              transform: `scaleX(${pct / 100})`, transformOrigin: "right",
-            }}
-          />
+    <div className="overflow-hidden" style={{ borderRadius: 18, background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}` }}>
+      {rows.length === 0 && (
+        <div className="text-center" style={{ padding: 16, fontSize: 12, color: MOBILE_COLORS.textMuted }}>
+          ما فيه متابعات مجدولة بهذه النافذة
         </div>
-        <span style={{ fontSize: "11.5px", fontWeight: 700, color: MOBILE_COLORS.gold }}>
-          {toArabicDigits(pct)}٪
-        </span>
-      </div>
-    </div>
-  );
-}
-
-export function TeamCommitment({ rows }: { rows: CommitmentRow[] }) {
-  return (
-    <div className="flex flex-col" style={{ gap: 10 }}>
-      {rows.map((r, i) => (
-        <CommitmentCard key={r.id} row={r} delayMs={i * 70} />
-      ))}
+      )}
+      {rows.map((r, i) => {
+        const tone = pctTone(r.pct);
+        return (
+          <div key={r.id} className="m-rise flex items-center" style={{ gap: 11, padding: "12px 14px", borderBottom: `1px solid ${MOBILE_COLORS.border}`, animationDelay: `${i * 60}ms` }}>
+            <span className="flex flex-none items-center justify-center" style={{ boxSizing: "border-box", width: 38, height: 38, borderRadius: 12, background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, fontSize: 15, fontWeight: 800, ...ZAIN }}>
+              {r.name.trim().charAt(0)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center" style={{ gap: 6 }}>
+                <span className="truncate" style={{ fontSize: "13.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>{r.name}</span>
+                {r.missed > 0 && (
+                  <span className="flex-none" style={{ boxSizing: "border-box", fontSize: "9.5px", fontWeight: 800, padding: "3px 8px", borderRadius: 8, background: MOBILE_STATUS.danger.bg, color: MOBILE_STATUS.danger.base }}>
+                    {toArabicDigits(r.missed)} فايتة
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: MOBILE_COLORS.textMuted, marginTop: 4, fontWeight: 600 }}>
+                أنجز <b style={{ ...ZAIN, fontSize: "12.5px", color: MOBILE_COLORS.textSecondary }}>{toArabicDigits(r.done)}</b> من{" "}
+                <b style={{ ...ZAIN, fontSize: "12.5px", color: MOBILE_COLORS.textSecondary }}>{toArabicDigits(r.total)}</b> متابعة مجدولة
+                {r.missed > 0 && <> · <span style={{ color: MOBILE_STATUS.danger.base, fontWeight: 800 }}>{toArabicDigits(r.missed)} فاتت بلا نتيجة</span></>}
+              </div>
+            </div>
+            <div className="flex-none text-center" style={{ minWidth: 52 }}>
+              <div style={{ ...ZAIN, fontSize: 19, fontWeight: 800, color: tone }}>{toArabicDigits(r.pct)}٪</div>
+              <div className="overflow-hidden" style={{ height: 4, width: 52, borderRadius: 3, background: MOBILE_COLORS.line2, marginTop: 5 }}>
+                <div className="m-fillx" style={{ height: "100%", borderRadius: 3, background: tone, transform: `scaleX(${r.pct / 100})`, transformOrigin: "right", animationDelay: `${150 + i * 80}ms` }} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {idleNames.length > 0 && (
+        <div className="flex items-center" style={{ gap: 6, padding: "11px 14px", fontSize: 11, color: MOBILE_COLORS.textMuted, fontWeight: 700, borderBottom: `1px solid ${MOBILE_COLORS.border}` }}>
+          <span className="flex" aria-hidden>
+            {idleNames.slice(0, 5).map((n, i) => (
+              <span key={i} className="flex items-center justify-center" style={{ boxSizing: "border-box", width: 22, height: 22, borderRadius: 7, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, fontSize: 10, fontWeight: 800, color: MOBILE_COLORS.textMuted, marginInlineStart: i === 0 ? 0 : -6 }}>
+                {n.trim().charAt(0)}
+              </span>
+            ))}
+          </span>
+          <span style={{ marginInlineStart: 4 }}>{toArabicDigits(idleNames.length)} موظفين ما عندهم متابعات مجدولة بهذه النافذة</span>
+        </div>
+      )}
+      <Link href={teamHref} className="block text-center" style={{ padding: 12, fontSize: 12, fontWeight: 800, color: MOBILE_COLORS.gold }}>
+        عرض كل الفريق ←
+      </Link>
     </div>
   );
 }

@@ -37,18 +37,18 @@ export default async function AppLayout({
   const user = await requireUser();
   const manager = isManager(user.role);
   const owner = user.role === "OWNER"; // ميزة المكررين للمالك فقط
-  const [settings, employees, availability, dupCount, noResponseCount] = await Promise.all([
+  const [settings, employees, availability, dupCounts, noResponseCount] = await Promise.all([
     getSettings(),
     manager ? getEmployees() : Promise.resolve([]),
     getMyAvailability(),
-    owner ? activeDuplicateGroupCount() : Promise.resolve(0),
+    owner ? activeDuplicateGroupCount() : Promise.resolve({ total: 0, newToday: 0 }),
     owner ? getNoResponseCount() : Promise.resolve(0),
   ]);
 
   const nav = [
     { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true, badge: 0 },
     { href: "/leads", label: "كل العملاء", icon: Contact, show: true, badge: 0 },
-    { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, show: owner, badge: dupCount },
+    { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, show: owner, badge: dupCounts.total },
     { href: "/no-response", label: "لم يتم الرد", icon: PhoneMissed, show: owner, badge: noResponseCount },
     { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true, badge: 0 },
     { href: "/projects", label: "المشاريع", icon: Building2, show: true, badge: 0 },
@@ -120,7 +120,7 @@ export default async function AppLayout({
           isOwner={owner}
           employees={employees}
           availability={manager ? null : availability}
-          dupCount={dupCount}
+          dupCount={dupCounts.total}
         />
         <main className="w-full min-w-0 flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>

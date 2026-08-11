@@ -44,7 +44,7 @@ export default async function MobileMorePage() {
   const manager = isManager(user.role);
   const owner = user.role === "OWNER";
 
-  const [settings, counts, bookings, projects, avail, peers, dist, dupCount, noRespCount] = await Promise.all([
+  const [settings, counts, bookings, projects, avail, peers, dist, dupCounts, noRespCount] = await Promise.all([
     getSettings(),
     getLeadCounts(),
     getBookings(),          // محجَّمة بالدور داخلها (المبالغ تُحجب — ما نعرض منها إلا الأعداد).
@@ -53,7 +53,7 @@ export default async function MobileMorePage() {
     getChatPeers(),
     // «الفريق» — نفس DistEmployee من getDistributionConfig (requireManager داخلها).
     manager ? getDistributionConfig() : Promise.resolve(null),
-    owner ? activeDuplicateGroupCount() : Promise.resolve(0),
+    owner ? activeDuplicateGroupCount() : Promise.resolve({ total: 0, newToday: 0 }),
     owner ? getNoResponseCount() : Promise.resolve(0),
   ]);
 
@@ -108,8 +108,8 @@ export default async function MobileMorePage() {
       ? [
           {
             href: "/m/duplicates", label: "العملاء المكررون", icon: Copy,
-            sub: `${toArabicDigits(dupCount)} مجموعة`,
-            badge: dupCount,
+            sub: `${toArabicDigits(dupCounts.total)} مجموعة`,
+            badge: dupCounts.total,
           },
           {
             href: "/m/no-response", label: "لم يتم الرد", icon: PhoneMissed,
