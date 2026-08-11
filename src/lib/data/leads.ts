@@ -113,6 +113,16 @@ export type LeadActivity = {
   userName: string | null;
 };
 
+/** متابعة في الخط الزمني (ملف العميل بالجوال) — نفس صفوف الاستعلام الواحد، بحقول العرض. */
+export type LeadFollowUpItem = {
+  id: string;
+  result: FollowUpResult;
+  note: string | null;
+  nextDate: Date | null;
+  createdAt: Date;
+  userName: string | null;
+};
+
 export type LeadDetail = LeadRow & {
   // الخطوة ٣ج: وُزّع «كعميل جديد» (آخر إسناد _fresh) — يفعّل زر «كشف السجل» للمالك.
   freshDistributed: boolean;
@@ -133,6 +143,7 @@ export type LeadDetail = LeadRow & {
   bookingId: string | null;
   bookings: BookingSummary[];
   activities: LeadActivity[];
+  followUps: LeadFollowUpItem[];
 };
 
 export type BookingSummary = {
@@ -599,6 +610,13 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
     where: { id, ...where },
     include: {
       ...rowInclude,
+      // نفس استعلام rowInclude الواحد — توسعة select للملف فقط (لا استعلام جديد):
+      // id للمفاتيح، nextDate واسم المسجّل لعناصر الخط الزمني.
+      followUps: {
+        orderBy: { createdAt: "desc" as const },
+        take: 20,
+        select: { id: true, createdAt: true, result: true, note: true, nextDate: true, employee: { select: { name: true } } },
+      },
       leadSource: { select: { name: true } },
       bookings: {
         orderBy: { createdAt: "desc" },
@@ -625,6 +643,10 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
   const visibleActivities = isHidden && lead.assignedAt
     ? lead.activities.filter((a) => a.createdAt > lead.assignedAt!)
     : lead.activities;
+  // المتابعات (الخط الزمني): نفس قاعدة إخفاء الأنشطة حرفيًا — لا كشف لما قبل آخر إسناد.
+  const visibleFollowUps = isHidden && lead.assignedAt
+    ? lead.followUps.filter((f) => f.createdAt > lead.assignedAt!)
+    : lead.followUps;
   return {
     ...toRow(lead, ctx),
     freshDistributed,
@@ -678,6 +700,14 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
       note: a.note,
       createdAt: a.createdAt,
       userName: a.user?.name ?? null,
+    })),
+    followUps: visibleFollowUps.map((f) => ({
+      id: f.id,
+      result: f.result,
+      note: f.note,
+      nextDate: f.nextDate,
+      createdAt: f.createdAt,
+      userName: f.employee?.name ?? null,
     })),
   };
 }

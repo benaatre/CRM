@@ -4,9 +4,10 @@ import { ChevronLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth-guards";
 import { getLeadDetail } from "@/lib/data/leads";
 import { prisma } from "@/lib/prisma";
-import { stageLabel, channelLabel, priorityLabel } from "@/lib/labels";
+import type { FollowUpResult } from "@prisma/client";
+import { stageLabel, channelLabel, priorityLabel, activityTypeLabels, followUpResultLabels } from "@/lib/labels";
 import { stageChipClass, STAGE_HEX } from "@/lib/stage-colors";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits, waitingLabel, waitingBasisOf } from "@/lib/mobile-format";
 import { MobileProfileActions } from "@/components/mobile/profile-actions";
 
@@ -35,6 +36,13 @@ export default async function MobileLeadProfile({
   const firstContact = lead.firstContactStage === null && lead.followUpsCount === 0;
   // نص الانتظار يتبع أساسه (آخر تواصل أم الإسناد) — لا يُخمَّن.
   const basis = waitingBasisOf(lead);
+
+  // الخط الزمني الموحّد: دمج عرضي للمتابعات (المجلوبة أصلًا) مع الأنشطة — الأحدث أولًا.
+  const now = new Date();
+  const timeline = [
+    ...lead.followUps.map((f) => ({ kind: "fu" as const, at: f.createdAt, f })),
+    ...lead.activities.map((a) => ({ kind: "act" as const, at: a.createdAt, a })),
+  ].sort((x, y) => y.at.getTime() - x.at.getTime());
 
   const facts: { k: string; v: string; color?: string }[] = [
     { k: "الجوال", v: lead.phone },
@@ -131,52 +139,82 @@ export default async function MobileLeadProfile({
           <h2 style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary, marginBottom: 14 }}>
             الخط الزمني
           </h2>
-          {lead.activities.length === 0 ? (
+          {timeline.length === 0 ? (
             <p style={{ fontSize: "12.5px", color: MOBILE_COLORS.textMuted }}>
               ما فيه أحداث بعد — سجّل أول تواصل.
             </p>
           ) : (
             <div className="flex flex-col">
-              {lead.activities.map((e, i) => (
-                <div key={e.id} className="flex" style={{ gap: 12 }}>
+              {timeline.map((item, i) => (
+                <div key={item.kind === "fu" ? `f-${item.f.id}` : `a-${item.a.id}`} className="flex" style={{ gap: 12 }}>
                   <div className="flex flex-none flex-col items-center" style={{ width: 12 }}>
                     <span
                       style={{
                         width: 10, height: 10, borderRadius: 6, marginTop: 4,
-                        background: STAGE_HEX[lead.stage],
+                        background: item.kind === "fu" ? fuTone(item.f.result) : STAGE_HEX[lead.stage],
                       }}
                     />
-                    {i < lead.activities.length - 1 && (
+                    {i < timeline.length - 1 && (
                       <span style={{ flex: 1, width: "1.5px", background: MOBILE_COLORS.border }} />
                     )}
                   </div>
-                  <div style={{ flex: 1, paddingBottom: 20 }}>
-                    <div className="flex items-baseline justify-between" style={{ gap: 8 }}>
+                  {item.kind === "fu" ? (
+                    <div style={{ flex: 1, paddingBottom: 20 }}>
+                      {/* سطر النتيجة */}
+                      <div style={{ fontSize: "13.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>
+                        {followUpResultLabels[item.f.result]}
+                      </div>
+                      {/* الملاحظة — نص ثانوي (لا خافت) حفاظًا على التباين */}
+                      {item.f.note && (
+                        <div style={{ fontSize: 12, color: MOBILE_COLORS.textSecondary, marginTop: 5, lineHeight: 1.7 }}>
+                          {item.f.note}
+                        </div>
+                      )}
+                      {/* شارة الموعد القادم — تظهر فقط لموعد لم يحن بعد */}
+                      {item.f.nextDate && item.f.nextDate > now && (
+                        <span
+                          className="inline-block"
+                          style={{
+                            boxSizing: "border-box", marginTop: 7, borderRadius: 8,
+                            padding: "4px 9px", fontSize: "11.5px", fontWeight: 600,
+                            background: MOBILE_STATUS.info.bg,
+                            color: MOBILE_STATUS.info.fg,
+                            border: `1px solid ${MOBILE_STATUS.info.border}`,
+                          }}
+                        >
+                          🗓️ الموعد القادم: {fmtDateTime(item.f.nextDate)}
+                        </span>
+                      )}
+                      {/* الوقت + المسجّل — سطر مستقل أسفل المحتوى */}
+                      <div style={{ fontSize: "10.5px", color: MOBILE_COLORS.textMuted, marginTop: 6 }}>
+                        {fmtDateTime(item.f.createdAt)} · {item.f.userName ?? "النظام"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ flex: 1, paddingBottom: 20 }}>
                       <div style={{ fontSize: "13.5px", fontWeight: 600, color: MOBILE_COLORS.textPrimary }}>
-                        {e.type === "NOTE" ? "ملاحظة" : e.type}
+                        {activityTypeLabels[item.a.type]}
                       </div>
-                      <div className="whitespace-nowrap" style={{ fontSize: 11, color: MOBILE_COLORS.textMuted }}>
-                        {fmtDateTime(e.createdAt)}
+                      {item.a.note && (
+                        <div
+                          style={{
+                            boxSizing: "border-box",
+                            fontSize: "12.5px", color: MOBILE_COLORS.textSecondary,
+                            marginTop: 6, lineHeight: 1.65,
+                            background: MOBILE_COLORS.card,
+                            border: `1px solid ${MOBILE_COLORS.border}`,
+                            borderRadius: 12, padding: "9px 11px",
+                          }}
+                        >
+                          {item.a.note}
+                        </div>
+                      )}
+                      {/* الوقت + المسجّل — سطر مستقل (كان الوقت يزاحم العنوان يسارًا) */}
+                      <div style={{ fontSize: "10.5px", color: MOBILE_COLORS.textMuted, marginTop: 6 }}>
+                        {fmtDateTime(item.a.createdAt)} · {item.a.userName ?? "النظام"}
                       </div>
                     </div>
-                    {e.note && (
-                      <div
-                        style={{
-                          boxSizing: "border-box",
-                          fontSize: "12.5px", color: MOBILE_COLORS.textSecondary,
-                          marginTop: 6, lineHeight: 1.65,
-                          background: MOBILE_COLORS.card,
-                          border: `1px solid ${MOBILE_COLORS.border}`,
-                          borderRadius: 12, padding: "9px 11px",
-                        }}
-                      >
-                        {e.note}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 11, color: MOBILE_COLORS.textMuted, marginTop: 6 }}>
-                      {e.userName ?? "النظام"}
-                    </div>
-                  </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -185,6 +223,15 @@ export default async function MobileLeadProfile({
       </div>
     </div>
   );
+}
+
+/** لون نقطة المتابعة حسب طبيعة نتيجتها — تصنيف عرض فقط فوق رباعيات الحالة الموجودة. */
+function fuTone(result: FollowUpResult): string {
+  if (result.startsWith("NOT_INTERESTED")) return MOBILE_STATUS.danger.base;
+  if (result.startsWith("NOT_ANSWERED") || result === "NO_ANSWER_INTERESTED") return MOBILE_STATUS.warning.base;
+  if (result === "ON_HOLD" || result === "BANK_CHECK" || result === "CALL_LATER" || result === "VISIT_NO_SHOW_RESCHEDULED")
+    return MOBILE_STATUS.info.base;
+  return MOBILE_STATUS.success.base; // مهتم / زيارة / تفاوض / حجز / موعد
 }
 
 function fmtDateTime(d: Date): string {
