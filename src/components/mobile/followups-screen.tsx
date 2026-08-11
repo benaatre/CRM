@@ -38,6 +38,8 @@ export type FuLogItem = {
   id: string;
   leadId: string;
   leadName: string;
+  /** رقم العميل — زر الاتصال يبقى على الكرت المنجز في تبويب «اليوم». */
+  leadPhone: string;
   result: FollowUpResult;
   note: string | null;
   nextDate: Date | null;
@@ -102,10 +104,12 @@ const chipStyle = (on: boolean, base?: string, bg?: string) => ({
 });
 
 export function FollowupsScreen({
-  todayAppointments, missedOld, upcoming, log, unread, projects, initialTab,
+  todayAppointments, doneToday, missedOld, upcoming, log, unread, projects, initialTab,
 }: {
   /** مواعيد اليوم كاملة (بما فيها الفائتة اليوم) — من buildAgenda/buildDayAppointments. */
   todayAppointments: FuAppointment[];
+  /** منجزات اليوم (متابعة لكل عميل) — تبقى في تبويب «اليوم» بمظهر مكتمل حتى نهايته. */
+  doneToday: FuLogItem[];
   /** الفائت من الأيام السابقة (متابعات متأخرة + زيارات معلّقة قديمة). */
   missedOld: FuAppointment[];
   /** المواعيد المستقبلية (بعد اليوم) — تُجمَّع بالأيام هنا. */
@@ -175,10 +179,13 @@ export function FollowupsScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upcomingFiltered]);
 
+  // عدّاد اليوم «٣/٥»: أنجزت ٣ من ٥ — الكلي = المتبقي + المنجز (ما ينقص بالإنجاز).
+  const doneN = doneToday.length;
+  const todayTotal = todayAppointments.length + doneN;
   const summary = [
-    { key: "today" as TabKey, label: "اليوم", n: todayAppointments.length, base: MOBILE_COLORS.gold, bg: MOBILE_COLORS.goldBg, border: MOBILE_COLORS.goldBorder },
-    { key: "missed" as TabKey, label: "فاتت", n: missedAll.length, base: MOBILE_COLORS.rose, bg: MOBILE_COLORS.roseBg, border: MOBILE_COLORS.rose },
-    { key: "upcoming" as TabKey, label: "قادمة", n: upcoming.length, base: MOBILE_COLORS.sky, bg: MOBILE_COLORS.skyBg, border: MOBILE_COLORS.border },
+    { key: "today" as TabKey, label: "اليوم", n: doneN ? `${toArabicDigits(doneN)}/${toArabicDigits(todayTotal)}` : toArabicDigits(todayTotal), base: MOBILE_COLORS.gold, bg: MOBILE_COLORS.goldBg, border: MOBILE_COLORS.goldBorder },
+    { key: "missed" as TabKey, label: "فاتت", n: toArabicDigits(missedAll.length), base: MOBILE_COLORS.rose, bg: MOBILE_COLORS.roseBg, border: MOBILE_COLORS.rose },
+    { key: "upcoming" as TabKey, label: "قادمة", n: toArabicDigits(upcoming.length), base: MOBILE_COLORS.sky, bg: MOBILE_COLORS.skyBg, border: MOBILE_COLORS.border },
   ];
   const TABS: { key: TabKey; label: string }[] = [
     { key: "today", label: "اليوم" },
@@ -257,6 +264,72 @@ export function FollowupsScreen({
     );
   };
 
+  /** كرت منجز اليوم — يبقى حتى نهاية اليوم بمظهر مكتمل: ✓ خضراء، شطب خفيف،
+      النتيجة سطرًا واحدًا، زر الاتصال والسهم يبقيان، وزر «تمّت» انتهت مهمته. */
+  const DoneCard = ({ r }: { r: FuLogItem }) => {
+    const left = editMinutesLeft(r.createdAt, nowMs);
+    return (
+      <div
+        className="relative overflow-hidden"
+        style={{
+          boxSizing: "border-box", background: MOBILE_COLORS.card,
+          border: `1px solid ${MOBILE_COLORS.border}`, borderRadius: 15, padding: "12px 14px",
+        }}
+      >
+        <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 9, bottom: 9, width: 4, borderRadius: 3, background: MOBILE_COLORS.mint }} />
+        <div className="flex items-center" style={{ gap: 10 }}>
+          <div
+            className="flex-none text-center"
+            style={{ boxSizing: "border-box", borderRadius: 11, padding: "6px 10px", background: MOBILE_COLORS.mintBg }}
+          >
+            <div style={{ ...ZAIN, fontSize: 16, fontWeight: 800, lineHeight: 1, color: MOBILE_COLORS.mint }}>✓</div>
+            <div style={{ fontSize: 10, color: MOBILE_COLORS.textMuted, marginTop: 3 }}>{fmtClock(r.createdAt)}</div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <Link
+              href={`/m/leads/${r.leadId}`}
+              className="block min-w-0 truncate"
+              style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textSecondary, textDecoration: "line-through", textDecorationColor: MOBILE_COLORS.textMuted, textDecorationThickness: 1 }}
+            >
+              {r.leadName}
+            </Link>
+            <div className="truncate" style={{ fontSize: 12, color: MOBILE_COLORS.mint, marginTop: 3 }}>
+              {followUpResultLabels[r.result]}{r.note ? ` — ${r.note}` : ""}
+            </div>
+          </div>
+          <Link
+            href={`/m/leads/${r.leadId}`}
+            aria-label={`ملف العميل ${r.leadName}`}
+            className="m-press flex flex-none items-center justify-center"
+            style={{ boxSizing: "border-box", width: 40, height: 38, borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 14 }}
+          >
+            ←
+          </Link>
+        </div>
+        <div className="flex" style={{ gap: 8, marginTop: 10 }}>
+          <a
+            href={`tel:${r.leadPhone}`}
+            onClick={() => markCall(r.leadId)}
+            className="m-press flex flex-1 items-center justify-center"
+            style={{ boxSizing: "border-box", height: 38, borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 12.5, fontWeight: 700 }}
+          >
+            📞 اتصال
+          </a>
+          {left > 0 && (
+            <button
+              type="button"
+              onClick={() => setEditItem(r)}
+              className="m-press flex items-center justify-center"
+              style={{ boxSizing: "border-box", flex: 1.6, height: 38, borderRadius: 10, background: MOBILE_COLORS.goldBg, border: `1px solid ${MOBILE_COLORS.goldBorder}`, color: MOBILE_COLORS.gold, fontSize: 12.5, fontWeight: 700 }}
+            >
+              ✎ تعديل — متاح {toArabicDigits(left)} د
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="m-screen flex flex-col" style={{ gap: 13 }}>
       {/* ===== الترويسة ===== */}
@@ -264,7 +337,8 @@ export function FollowupsScreen({
         <div className="min-w-0">
           <h1 style={{ fontSize: 22, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>متابعاتي</h1>
           <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textSecondary, marginTop: 4 }}>
-            اليوم <span style={{ ...ZAIN, fontWeight: 800, color: MOBILE_COLORS.gold }}>{toArabicDigits(todayAppointments.length)}</span> مواعيد
+            اليوم <span style={{ ...ZAIN, fontWeight: 800, color: MOBILE_COLORS.gold }}>{toArabicDigits(todayTotal)}</span> مواعيد
+            {doneN > 0 && <> — أنجزت <span style={{ ...ZAIN, fontWeight: 800, color: MOBILE_COLORS.mint }}>{toArabicDigits(doneN)}</span></>}
             {" · "}
             فاتك <span style={{ ...ZAIN, fontWeight: 800, color: MOBILE_COLORS.rose }}>{toArabicDigits(missedAll.length)}</span>
           </div>
@@ -297,8 +371,14 @@ export function FollowupsScreen({
               border: `1px solid ${tab === s.key ? s.border : MOBILE_COLORS.border}`,
             }}
           >
-            <span style={{ ...ZAIN, fontSize: 26, fontWeight: 800, lineHeight: 1, color: s.base }}>{toArabicDigits(s.n)}</span>
+            <span style={{ ...ZAIN, fontSize: 26, fontWeight: 800, lineHeight: 1, color: s.base }}>{s.n}</span>
             <span style={{ fontSize: 11.5, color: MOBILE_COLORS.textSecondary }}>{s.label}</span>
+            {/* شريط تقدّم رفيع — بطاقة «اليوم» فقط وعند وجود إنجاز */}
+            {s.key === "today" && doneN > 0 && todayTotal > 0 && (
+              <span aria-hidden style={{ width: "72%", height: 3, borderRadius: 2, background: MOBILE_COLORS.border, overflow: "hidden", display: "block" }}>
+                <span style={{ display: "block", height: "100%", width: `${Math.round((doneN / todayTotal) * 100)}%`, borderRadius: 2, background: MOBILE_COLORS.mint }} />
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -343,8 +423,9 @@ export function FollowupsScreen({
       {/* ===== المحتوى ===== */}
       {tab === "today" && (
         <div className="flex flex-col" style={{ gap: 9 }}>
+          {/* المستحق والفائت أولًا — والمنجز يبقى أسفل القائمة حتى نهاية اليوم */}
           {todayAppointments.filter(kindOk).length === 0 ? (
-            <EmptyCard text="ما عندك مواعيد اليوم 🎉" />
+            <EmptyCard text={doneToday.length > 0 ? "خلّصت مواعيد اليوم كلها 👏" : "ما عندك مواعيد اليوم 🎉"} />
           ) : (
             [...todayAppointments]
               .filter(kindOk)
@@ -356,6 +437,14 @@ export function FollowupsScreen({
               .map((a) => (
                 <AppointmentCard key={`${a.leadId}-${a.kind}`} a={a} showMissedLine cta="✓ تمّت — سجّل النتيجة" />
               ))
+          )}
+          {doneToday.length > 0 && (
+            <>
+              <h2 style={{ fontSize: 12.5, fontWeight: 700, color: MOBILE_COLORS.mint, padding: "4px 2px 0" }}>
+                ✓ أنجزت اليوم · {toArabicDigits(doneToday.length)}
+              </h2>
+              {doneToday.map((r) => <DoneCard key={r.id} r={r} />)}
+            </>
           )}
         </div>
       )}

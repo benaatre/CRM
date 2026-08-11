@@ -210,6 +210,8 @@ export type MyRecentFollowUp = {
   /** توسعة v3 (شاشة المتابعات): الملاحظة وشارة الموعد القادم وزر التعديل. */
   note: string | null;
   nextDate: Date | null;
+  /** توسعة معلنة (منجزات «اليوم»): رقم العميل — زر الاتصال يبقى على الكرت المنجز. */
+  leadPhone: string;
 };
 
 /**
@@ -223,7 +225,7 @@ export async function getMyRecentFollowups(userId: string, take = 5, skip = 0): 
     orderBy: { createdAt: "desc" },
     take,
     skip,
-    select: { id: true, result: true, createdAt: true, note: true, nextDate: true, leadId: true, lead: { select: { name: true } } },
+    select: { id: true, result: true, createdAt: true, note: true, nextDate: true, leadId: true, lead: { select: { name: true, phone: true } } },
   });
   return rows.map((r) => ({
     id: r.id,
@@ -233,5 +235,6 @@ export async function getMyRecentFollowups(userId: string, take = 5, skip = 0): 
     nextDate: r.nextDate,
     leadId: r.leadId,
     leadName: r.lead.name,
+    leadPhone: r.lead.phone,
   }));
 }

@@ -62,6 +62,17 @@ export default async function MobileTodayPage({
     return { ...a, stage: l.stage, firstContact: l.stage === "NEW" && l.followUpsCount === 0 };
   });
 
+  // منجزات اليوم (بيوم الرياض): متابعات سجّلها اليوم — عرض خالص من السجل القائم بلا
+  // استعلام جديد ولا مساس بقواعد الأجندة. متابعة لكل عميل (الأحدث — السجل تنازلي):
+  // هي المرشّحة للتعديل ضمن النافذة، وتكرار الكروت لنفس العميل ضجيج.
+  const doneSeen = new Set<string>();
+  const doneToday = log.filter((f) => {
+    if (f.createdAt < dayStart || f.createdAt >= dayEnd) return false;
+    if (doneSeen.has(f.leadId)) return false;
+    doneSeen.add(f.leadId);
+    return true;
+  });
+
   // الفائت من الأيام السابقة: متابعات متأخرة (الأحدث أولًا — ترتيب الأجندة) + زيارات معلّقة قديمة.
   const oldVisits = leads
     .filter((l) => l.stage === "VISIT_SCHEDULED" && l.visitAt && l.visitAt < dayStart)
@@ -87,6 +98,7 @@ export default async function MobileTodayPage({
   return (
     <FollowupsScreen
       todayAppointments={todayAppointments}
+      doneToday={doneToday}
       missedOld={missedOld}
       upcoming={upcoming}
       log={log}
