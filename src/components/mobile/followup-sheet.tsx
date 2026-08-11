@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { NI_REASONS, buildNotInterestedBody } from "@/components/leads/not-interested-dialog";
@@ -47,6 +47,7 @@ export function FollowupSheet({
   stage,
   firstContact,
   projects,
+  initialKey = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -59,10 +60,14 @@ export function FollowupSheet({
   firstContact: boolean;
   /** مشاريع الاختيار عند «زيارة» — نفس قائمة الويب. */
   projects: { id: string; name: string }[];
+  /** فتح الورقة على نتيجة محددة مسبقًا (زر «تم الحجز» بملف العميل مثلًا). */
+  initialKey?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(initialKey);
+  // إعادة الضبط على النتيجة المسبقة عند كل فتح (الورقة تبقى مركّبة بين الفتحات).
+  useEffect(() => { if (open) setSel(initialKey); }, [open, initialKey]);
   const [step, setStep] = useState<InterestedStep | null>(null);
   const [visitAction, setVisitAction] = useState<"schedule" | "done" | null>(null);
   const [noShowChoice, setNoShowChoice] = useState<"resched" | "reject" | null>(null);

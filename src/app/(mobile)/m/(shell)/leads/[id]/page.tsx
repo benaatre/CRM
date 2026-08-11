@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { requireUser } from "@/lib/auth-guards";
+import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadDetail } from "@/lib/data/leads";
+import { getSettings } from "@/lib/data/settings";
 import { prisma } from "@/lib/prisma";
 import type { FollowUpResult } from "@prisma/client";
 import { stageLabel, channelLabel, priorityLabel, activityTypeLabels, followUpResultLabels } from "@/lib/labels";
@@ -10,6 +11,7 @@ import { stageChipClass, STAGE_HEX } from "@/lib/stage-colors";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits, waitingLabel, waitingBasisOf } from "@/lib/mobile-format";
 import { MobileProfileActions } from "@/components/mobile/profile-actions";
+import { LeadProfileV3, type ProfileData } from "@/components/mobile/lead-profile-v3";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +36,34 @@ export default async function MobileLeadProfile({
   });
 
   const firstContact = lead.firstContactStage === null && lead.followUpsCount === 0;
+
+  // ===== المرحلة د: نسخة الموظف v3 — المدير/المالك على العرض القائم حتى المرحلة هـ =====
+  if (!isManager(user.role)) {
+    const settings = await getSettings();
+    const profile: ProfileData = {
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      stage: lead.stage,
+      channel: lead.channel,
+      assignedAt: lead.assignedAt,
+      lastContact: lead.lastContact,
+      nextFollowup: lead.nextFollowup,
+      visitAt: lead.visitAt,
+      followUpsCount: lead.followUpsCount,
+      firstContact,
+      purchaseGoal: lead.purchaseGoal,
+      purchaseMethod: lead.purchaseMethod,
+      priceMin: lead.priceMin,
+      priceMax: lead.priceMax,
+      sourceId: lead.sourceId,
+      preferredAreas: lead.preferredAreas,
+      preferredProjects: lead.preferredProjects,
+      followUps: lead.followUps,
+      activities: lead.activities,
+    };
+    return <LeadProfileV3 lead={profile} projects={projects} falLicense={settings.falLicense ?? null} />;
+  }
   // نص الانتظار يتبع أساسه (آخر تواصل أم الإسناد) — لا يُخمَّن.
   const basis = waitingBasisOf(lead);
 
