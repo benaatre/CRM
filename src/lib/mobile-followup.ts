@@ -89,6 +89,33 @@ export function needsNote(key: string): boolean {
   return key === "onhold";
 }
 
+/**
+ * هل الاختيار الحالي كاملًا (النتيجة + تفرّعاتها) يفرض تاريخ موعد إلزاميًا؟
+ * مطابق لإلزامات الخادم (lib/followup-outcome — APPOINTMENT_DATE_REQUIRED_RESULTS):
+ *   موعد لاحق · جدولة زيارة (لا «تمت الزيارة») · مهتم بخطوة زيارة/اتصال ·
+ *   «ما حضر — إعادة جدولة» · «غير مهتم — نحاول لاحقًا».
+ * الباقي اختياري — الخادم يبقى خط الدفاع الأخير.
+ */
+export function requiresDate(args: {
+  key: string | null;
+  step: InterestedStep | null;
+  visitAction: "schedule" | "done" | null;
+  noShowChoice: "resched" | "reject" | null;
+  niRetry: "yes" | "no";
+  firstContact: boolean;
+}): boolean {
+  const { key, step, visitAction, noShowChoice, niRetry, firstContact } = args;
+  if (!key) return false;
+  const isNi = key === "notInterested" || (key === "noShow" && noShowChoice === "reject");
+  if (isNi) return niRetry === "yes";
+  if (firstContact) return false; // أول تواصل: الموعد اختياري بكل خياراته (السلوك القائم)
+  if (key === "appointment") return true;
+  if (key === "visit") return visitAction !== "done";
+  if (key === "interested") return step === "visit" || step === "call";
+  if (key === "noShow") return noShowChoice === "resched";
+  return false;
+}
+
 /** يبني جسم الطلب لنتيجة متابعة عادية — القيم كما في submit بالويب. */
 export function buildBody(args: {
   key: string;

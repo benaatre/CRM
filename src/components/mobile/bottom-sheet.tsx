@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { MobilePortal } from "@/components/mobile/portal";
 
@@ -37,7 +37,8 @@ export function BottomSheet({
   open: boolean;
   onClose: () => void;
   title: string;
-  subtitle?: string;
+  /** سطر تحت العنوان — نص أو عنصر (اسم العميل ورقمه في ورقة المتابعة مثلًا). */
+  subtitle?: React.ReactNode;
   maxHeight?: string;
   /**
    * الأوراق الطويلة (نماذج وجداول) — تفتح بارتفاع شبه كامل فورًا بدل ما تتمدّد
@@ -57,6 +58,40 @@ export function BottomSheet({
       document.body.style.overflow = prev;
     };
   }, [open]);
+
+  // زر رجوع أندرويد (Capacitor) يقفل الورقة بدل الخروج من التطبيق — لا أثر على الويب.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    let handle: { remove: () => void } | null = null;
+    let alive = true;
+    import("@capacitor/app")
+      .then(({ App }) => App.addListener("backButton", () => onCloseRef.current()))
+      .then((h) => { if (alive) handle = h; else h.remove(); })
+      .catch(() => {}); // خارج بيئة Capacitor — يتجاهل بصمت
+    return () => { alive = false; handle?.remove(); };
+  }, [open]);
+
+  // سحب المقبض/الرأس لأسفل يقفل — كان المقبض شكليًا بلا وظيفة.
+  const [dragY, setDragY] = useState(0);
+  const [interacted, setInteracted] = useState(false); // يُطفئ حركة الدخول كي لا تعيد التشغيل بعد السحب
+  const dragStart = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open) { setDragY(0); setInteracted(false); dragStart.current = null; }
+  }, [open]);
+  const onDragStart = (e: React.TouchEvent) => { dragStart.current = e.touches[0].clientY; setInteracted(true); };
+  const onDragMove = (e: React.TouchEvent) => {
+    if (dragStart.current == null) return;
+    const d = e.touches[0].clientY - dragStart.current;
+    setDragY(d > 0 ? d : 0);
+  };
+  const onDragEnd = () => {
+    const shouldClose = dragY > 80;
+    dragStart.current = null;
+    setDragY(0);
+    if (shouldClose) onCloseRef.current();
+  };
 
   if (!open) return null;
 
@@ -81,10 +116,19 @@ export function BottomSheet({
           borderRadius: "26px 26px 0 0",
           maxHeight,
           ...(tall ? { height: maxHeight } : {}),
+          // أثناء السحب: نطفئ حركة الدخول (fill: both كانت تقفل transform) ونتبع الإصبع.
+          ...(interacted ? { animation: "none" } : {}),
+          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: dragY > 0 ? "none" : "transform 0.18s ease-out",
         }}
       >
-        {/* ① الرأس — خارج منطقة التمرير فيبقى العنوان ظاهرًا */}
-        <div style={{ flex: "none", padding: "10px 18px 0" }}>
+        {/* ① الرأس — خارج منطقة التمرير فيبقى العنوان ظاهرًا؛ منطقة السحب-للإغلاق */}
+        <div
+          style={{ flex: "none", padding: "10px 18px 0", touchAction: "none" }}
+          onTouchStart={onDragStart}
+          onTouchMove={onDragMove}
+          onTouchEnd={onDragEnd}
+        >
           <div
             style={{
               boxSizing: "border-box", width: 38, height: 4, borderRadius: 2,
@@ -92,12 +136,31 @@ export function BottomSheet({
             }}
             aria-hidden
           />
-          <div style={{ fontSize: 19, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>{title}</div>
-          {subtitle ? (
-            <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textMuted, marginTop: 5 }}>
-              {subtitle}
+          <div className="flex items-start" style={{ gap: 10 }}>
+            {/* زر الإغلاق الدائم — يمين العنوان (أول عنصر = أقصى اليمين في RTL) */}
+            <button
+              type="button"
+              aria-label="إغلاق"
+              onClick={onClose}
+              className="m-press flex flex-none items-center justify-center"
+              style={{
+                boxSizing: "border-box", width: 36, height: 36, borderRadius: 10,
+                background: MOBILE_COLORS.card,
+                border: `1px solid ${MOBILE_COLORS.border}`,
+                color: MOBILE_COLORS.textSecondary, fontSize: 15,
+              }}
+            >
+              ✕
+            </button>
+            <div className="min-w-0" style={{ flex: 1 }}>
+              <div style={{ fontSize: 19, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>{title}</div>
+              {subtitle ? (
+                <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textMuted, marginTop: 5 }}>
+                  {subtitle}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
 
         {/* ② الجسم — التمرير هنا وحده، وبلا سحب الصفحة الأم عند بلوغ الحافة */}

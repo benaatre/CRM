@@ -98,6 +98,8 @@ export function MobileProfileActions({
         open={sheet === "fu"}
         onClose={() => setSheet(null)}
         leadId={leadId}
+        leadName={leadName}
+        phone={phone}
         stage={stage}
         firstContact={firstContact}
         projects={projects}
