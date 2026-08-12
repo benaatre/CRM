@@ -1,10 +1,13 @@
 import { Role } from "@prisma/client";
-import { Trophy } from "lucide-react";
 import Link from "next/link";
-import { requireUser } from "@/lib/auth-guards";
-import { getLeaderboard, weekStartKSA, WEIGHTS, DAILY_FOLLOWUP_CAP } from "@/lib/data/leaderboard";
+import { Zain } from "next/font/google";
+import { requireUser, isManager } from "@/lib/auth-guards";
+import { getLeaderboard, toBoardView, weekStartKSA, WEIGHTS, DAILY_FOLLOWUP_CAP } from "@/lib/data/leaderboard";
 import { toArabicDigits } from "@/lib/format";
-import { LeaderboardView } from "@/components/leaderboard/leaderboard-view";
+import { PeaksBoard } from "@/components/leaderboard/peaks-board";
+
+// خط الأرقام العرضية — يُحمَّل هنا وحده فلا يمسّ تخطيط الويب المشترك.
+const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], display: "swap" });
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +31,11 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
   }
 
   const board = await getLeaderboard(ref);
+  /*
+   * سدّ التسريب: الحمولة تمرّ بطبقة الخصوصية **قبل أي إرسال للعميل**. الموظف
+   * لا تصل متصفحه أرقام زملائه الخام إطلاقًا — النوع نفسه لا يحملها له.
+   */
+  const view = toBoardView(board, user.id, isManager(user.role));
   const weekEndShown = new Date(board.weekEnd.getTime() - DAY_MS); // آخر يوم معروض (السبت)
 
   // خيارات فلتر الأسابيع (المالك): الأسبوع الحالي + ٧ سابقة — حساب حي بلا تخزين.
@@ -39,15 +47,20 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
   });
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Trophy className="size-6 text-gold" />
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">لوحة الأسبوع</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {fmtDay(board.weekStart)} — {fmtDay(weekEndShown)} · الاجتهاد الفعلي يحكم — والجودة تكمّل
-            </p>
+    <div className="mx-auto max-w-[1080px]">
+      <header className="mb-3 flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <h1 className="text-[32px] font-bold tracking-tight text-foreground">لوحة الأسبوع</h1>
+          <p className="mt-1.5 text-[13.5px] text-muted-foreground">
+            الاجتهاد الفعلي يحكم — والجودة تُكمّل · ارتفاع برجك من درجتك
+          </p>
+        </div>
+        <div className="text-left">
+          <div className={`${zain.className} text-[15px] font-bold text-muted-foreground`} style={{ fontVariantNumeric: "tabular-nums" }}>
+            {fmtDay(board.weekStart)} — {fmtDay(weekEndShown)}
+          </div>
+          <div className="mt-0.5 text-[11.5px] text-muted-foreground/70">
+            {board.isCurrentWeek ? "تتصفّر السبت القادم" : "أسبوع سابق"}
           </div>
         </div>
         {/* فلتر الأسابيع السابقة — للمالك فقط */}
@@ -69,10 +82,10 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
         )}
       </header>
 
-      <LeaderboardView board={board} isOwner={user.role === Role.OWNER} weights={{ ...WEIGHTS }} />
+      <PeaksBoard view={view} zainClass={zain.className} />
 
       {/* المعادلة — شفافية كاملة */}
-      <div className="space-y-1 text-[11px] leading-5 text-muted-foreground">
+      <div className="mt-6 space-y-1 border-t border-white/[.055] pt-4 text-[12px] leading-6 text-muted-foreground/70">
         <p>
           <span className="font-medium text-foreground">الدرجة</span> = الإنجاز × معامل الجودة (٠٫٨–١٫٢). <span className="font-medium text-foreground">الإنجاز</span>: عميل تواصلت معه ×{toArabicDigits(WEIGHTS.contacted)} · متابعة ×{toArabicDigits(WEIGHTS.followup)} <span className="text-warning">(بسقف {toArabicDigits(DAILY_FOLLOWUP_CAP)}/يوم)</span> · نقل لمهتم ×{toArabicDigits(WEIGHTS.interested)} · موعد زيارة ×{toArabicDigits(WEIGHTS.visitAppt)} · زيارة تمّت ×{toArabicDigits(WEIGHTS.visitDone)} · حجز ×{toArabicDigits(WEIGHTS.booking)} · بيع ×{toArabicDigits(WEIGHTS.win)}.
         </p>
