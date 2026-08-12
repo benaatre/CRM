@@ -51,7 +51,7 @@ function Row({ l }: { l: RiverLead }) {
   return (
     <div className="group relative flex items-stretch rounded-2xl p-4 transition-colors hover:bg-secondary/40">
       {/* شعرة الفصل — تختفي عند المرور (بلا حدود حول العنصر) */}
-      <span aria-hidden className="absolute inset-x-3.5 bottom-0 h-px bg-white/[.055] transition-opacity group-hover:opacity-0" />
+      <span aria-hidden className="absolute inset-x-3.5 bottom-0 h-px bg-[var(--hairline)] transition-opacity group-hover:opacity-0" />
       {/* الخط الجانبي = لون مرحلة العميل */}
       <span aria-hidden className="me-3.5 w-[3px] flex-none rounded-sm" style={{ background: tone }} />
 
@@ -87,7 +87,7 @@ function Row({ l }: { l: RiverLead }) {
         <a
           href={`tel:${l.phone}`}
           aria-label={`اتصال بـ${l.name}`}
-          className="grid size-[38px] place-items-center rounded-xl bg-white/[.05] text-info transition-colors hover:bg-secondary"
+          className="grid size-[38px] place-items-center rounded-xl bg-[var(--elev)] text-info transition-colors hover:bg-secondary"
         >
           <Phone className="size-[15px]" strokeWidth={1.6} />
         </a>
@@ -96,7 +96,7 @@ function Row({ l }: { l: RiverLead }) {
           target="_blank"
           rel="noopener noreferrer"
           aria-label={`واتساب ${l.name}`}
-          className="grid size-[38px] place-items-center rounded-xl bg-white/[.05] text-success transition-colors hover:bg-secondary"
+          className="grid size-[38px] place-items-center rounded-xl bg-[var(--elev)] text-success transition-colors hover:bg-secondary"
         >
           <MessageCircle className="size-[15px]" strokeWidth={1.6} />
         </a>
@@ -224,7 +224,7 @@ function Chip({ on, n, onClick, children }: { on: boolean; n: number; onClick: (
       onClick={onClick}
       aria-pressed={on}
       className={`inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-[7px] text-[12.5px] font-medium transition-colors ${
-        on ? "bg-gold text-background" : "bg-white/[.05] text-muted-foreground hover:text-foreground"
+        on ? "bg-gold text-background" : "bg-[var(--elev)] text-muted-foreground hover:text-foreground"
       }`}
     >
       {children}
@@ -236,3 +236,4 @@ function Chip({ on, n, onClick, children }: { on: boolean; n: number; onClick: (
 }
 
 export default InterestedRiver;
+

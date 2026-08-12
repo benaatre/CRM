@@ -260,7 +260,7 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
                 className={`absolute inset-x-5 top-1/2 flex cursor-pointer items-center gap-[15px] rounded-[18px] border ${
                   active
                     ? `p-[22px_18px] shadow-2xl bg-gradient-to-br to-secondary ${late ? "border-destructive/45 from-destructive/15" : "border-gold/35 from-gold/15"}`
-                    : `p-[16px_18px] bg-secondary ${late ? "border-destructive/40" : "border-white/[.06]"}`
+                    : `p-[16px_18px] bg-secondary ${late ? "border-destructive/40" : "border-[var(--hairline)]"}`
                 }`}
                 style={{
                   marginTop: -46,
@@ -323,7 +323,7 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
                     aria-label={`ملف العميل ${a.name}`}
                     onClick={bump}
                     tabIndex={active ? 0 : -1}
-                    className="grid size-9 place-items-center rounded-[11px] bg-white/[.06] text-muted-foreground transition-colors hover:text-foreground"
+                    className="grid size-9 place-items-center rounded-[11px] bg-[var(--elev)] text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <ChevronLeft className="size-[14px]" strokeWidth={1.6} />
                   </Link>
@@ -335,7 +335,7 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
       </div>
 
       {/* شريط التقدّم */}
-      <div className="mt-3.5 h-0.5 overflow-hidden rounded-sm bg-white/[.07]">
+      <div className="mt-3.5 h-0.5 overflow-hidden rounded-sm bg-[var(--elev)]">
         <span ref={barRef} className="block h-full origin-right rounded-sm bg-gold" style={{ transform: "scaleX(0)" }} />
       </div>
 
@@ -348,7 +348,7 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
             aria-label={`المتابعة ${toArabicDigits(i + 1)}`}
             aria-current={i === cur}
             onClick={() => { goTo(i); bump(); }}
-            className={`h-1.5 rounded-full transition-all duration-300 ${i === cur ? "w-[26px] bg-gold" : "w-1.5 bg-white/[.16]"}`}
+            className={`h-1.5 rounded-full transition-all duration-300 ${i === cur ? "w-[26px] bg-gold" : "w-1.5 bg-[var(--elev-hover)]"}`}
           />
         ))}
         <span className="ms-auto text-[11.5px] text-muted-foreground" style={{ fontVariantNumeric: "tabular-nums" }}>
@@ -375,7 +375,7 @@ function Flat({ a, zainClass, nowMs }: { a: TodayAppointment; zainClass: string;
   const lateMs = nowMs - a.at.getTime();
   const late = lateMs > 0;
   return (
-    <div className={`flex items-center gap-[15px] rounded-[18px] border bg-secondary p-[16px_18px] ${late ? "border-destructive/40" : "border-white/[.06]"}`}>
+    <div className={`flex items-center gap-[15px] rounded-[18px] border bg-secondary p-[16px_18px] ${late ? "border-destructive/40" : "border-[var(--hairline)]"}`}>
       <span className={`${zainClass} w-[66px] shrink-0 text-[20px] font-extrabold leading-none tracking-tight ${late ? "text-destructive" : "text-muted-foreground"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
         {clock}
         <small className="mt-[3px] block font-sans text-[10.5px] font-normal tracking-normal text-muted-foreground/80">{mer}</small>
@@ -403,7 +403,7 @@ function Flat({ a, zainClass, nowMs }: { a: TodayAppointment; zainClass: string;
         <a href={`https://wa.me/${waPhone(a.phone)}`} target="_blank" rel="noopener noreferrer" aria-label={`واتساب ${a.name}`} className="grid size-9 place-items-center rounded-[11px] bg-success/15 text-success">
           <MessageCircle className="size-[14px]" strokeWidth={1.6} />
         </a>
-        <Link href={`/leads/${a.leadId}`} aria-label={`ملف العميل ${a.name}`} className="grid size-9 place-items-center rounded-[11px] bg-white/[.06] text-muted-foreground transition-colors hover:text-foreground">
+        <Link href={`/leads/${a.leadId}`} aria-label={`ملف العميل ${a.name}`} className="grid size-9 place-items-center rounded-[11px] bg-[var(--elev)] text-muted-foreground transition-colors hover:text-foreground">
           <ChevronLeft className="size-[14px]" strokeWidth={1.6} />
         </Link>
       </div>
@@ -412,3 +412,4 @@ function Flat({ a, zainClass, nowMs }: { a: TodayAppointment; zainClass: string;
 }
 
 export default FollowupsReel;
+

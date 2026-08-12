@@ -246,7 +246,7 @@ export function EmployeeDashboard({
             {data.waitingFirstContact.length === 0 ? (
               <p className="mt-6 text-[13.5px] text-muted-foreground">ما فيه عملاء ينتظرون أول تواصل.</p>
             ) : (
-              <div className="mt-4 divide-y divide-white/[.055]">
+              <div className="mt-4 divide-y divide-[var(--hairline)]">
                 {data.waitingFirstContact.map((l) => {
                   const days = l.createdAt ? Math.max(0, Math.floor((Date.now() - l.createdAt.getTime()) / DAY_MS)) : null;
                   const urgent = days != null && days >= 7;
@@ -406,3 +406,4 @@ function RowActions({ phone, leadId, name, primary, always, gold }: {
 }
 
 export default EmployeeDashboard;
+

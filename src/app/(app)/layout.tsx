@@ -1,29 +1,12 @@
-import Link from "next/link";
-import {
-  LayoutDashboard,
-  Users2,
-  Contact,
-  KanbanSquare,
-  Building2,
-  Handshake,
-  BarChart3,
-  ScrollText,
-  MessagesSquare,
-  Share2,
-  Copy,
-  PhoneMissed,
-  Settings as SettingsIcon,
-} from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { roleLabel } from "@/lib/labels";
 import { getSettings } from "@/lib/data/settings";
 import { getEmployees } from "@/lib/data/leads";
 import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
 import { getNoResponseCount } from "@/lib/data/no-response";
-import { toArabicDigits } from "@/lib/format";
 import { getMyAvailability } from "@/lib/actions/availability";
 import { Topbar } from "@/components/layout/topbar";
-import { Brand } from "@/components/layout/brand";
+import { SideRail, type RailItem } from "@/components/layout/side-rail";
 import { Heartbeat } from "@/components/layout/heartbeat";
 import { FloatingAssistant } from "@/components/layout/floating-assistant";
 import { NotificationCenter } from "@/components/layout/notification-center";
@@ -45,67 +28,34 @@ export default async function AppLayout({
     owner ? getNoResponseCount() : Promise.resolve(0),
   ]);
 
-  const nav = [
-    { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, show: true, badge: 0 },
-    { href: "/leads", label: "كل العملاء", icon: Contact, show: true, badge: 0 },
-    { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, show: owner, badge: dupCounts.total },
-    { href: "/no-response", label: "لم يتم الرد", icon: PhoneMissed, show: owner, badge: noResponseCount },
-    { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, show: true, badge: 0 },
-    { href: "/projects", label: "المشاريع", icon: Building2, show: true, badge: 0 },
-    { href: "/bookings", label: "خط المبيعات", icon: Handshake, show: true, badge: 0 },
-    { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, show: true, badge: 0 },
-    { href: "/analytics", label: "التحليلات", icon: BarChart3, show: true, badge: 0 },
-    { href: "/admin", label: "الفريق", icon: Users2, show: manager, badge: 0 },
-    { href: "/distribution", label: "التوزيع التلقائي", icon: Share2, show: manager, badge: 0 },
-    { href: "/audit", label: "سجل التدقيق", icon: ScrollText, show: manager, badge: 0 },
-    { href: "/settings", label: "الإعدادات", icon: SettingsIcon, show: manager, badge: 0 },
-  ].filter((n) => n.show);
+  // نفس الروابط والصلاحيات حرفيًا — الأيقونة مفتاح نصّي (لا تُسلسَل المكوّنات للعميل).
+  const nav: RailItem[] = ([
+    { href: "/dashboard", label: "لوحة التحكم", icon: "dashboard", show: true, badge: 0 },
+    { href: "/leads", label: "كل العملاء", icon: "leads", show: true, badge: 0 },
+    { href: "/leads/duplicates", label: "العملاء المكررون", icon: "duplicates", show: owner, badge: dupCounts.total },
+    { href: "/no-response", label: "لم يتم الرد", icon: "noResponse", show: owner, badge: noResponseCount },
+    { href: "/pipeline", label: "مراحل العملاء", icon: "pipeline", show: true, badge: 0 },
+    { href: "/projects", label: "المشاريع", icon: "projects", show: true, badge: 0 },
+    { href: "/bookings", label: "خط المبيعات", icon: "bookings", show: true, badge: 0 },
+    { href: "/chat", label: "الشات الداخلي", icon: "chat", show: true, badge: 0 },
+    { href: "/analytics", label: "التحليلات", icon: "analytics", show: true, badge: 0 },
+    { href: "/admin", label: "الفريق", icon: "team", show: manager, badge: 0 },
+    { href: "/distribution", label: "التوزيع التلقائي", icon: "distribution", show: manager, badge: 0 },
+    { href: "/audit", label: "سجل التدقيق", icon: "audit", show: manager, badge: 0 },
+    { href: "/settings", label: "الإعدادات", icon: "settings", show: manager, badge: 0 },
+  ] satisfies (RailItem & { show: boolean })[])
+    .filter((n) => n.show)
+    .map(({ href, label, icon, badge }) => ({ href, label, icon, badge }));
 
   return (
     <div className="flex min-h-dvh">
       <Heartbeat />
       <NotificationCenter />
       {/*
-        شريط جانبي ثابت (RTL — يظهر يمين) من ١٠٢٤ بكسل فقط.
-        كان يظهر من ٧٦٨ بينما زر ☰ يختفي عند ٧٦٨ أيضًا — فتنشأ منطقة ميتة على التابلت
-        (٧٦٨–١٠٢٣): شريط ٢٥٦ بكسل يلتهم الشاشة ولا سبيل للوصول للقائمة. الآن الحدّ
-        واحد (lg) للاثنين: تحته درج منزلق، وفوقه شريط ثابت.
+        الشريط الجانبي الزجاجي (RTL — يمين الشاشة) من ١٠٢٤ بكسل فقط؛ تحتها الدرج المنزلق.
+        خانته في الـflex ثابتة ٧٠px والتمدد بالمرور يقع **فوق** المحتوى لا يدفعه.
       */}
-      {/*
-        تثبيت الشريط (استثناء معلن): sticky بارتفاع الشاشة وتمرير داخلي عند طول القائمة.
-        سلوك بحت بلا تغيير بصري — والترويسة مثبّتة أصلًا (sticky top-0 في Topbar).
-      */}
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto border-l border-border bg-card p-5 lg:flex">
-        <div className="mb-8">
-          <Brand companyName={settings.companyName} logoUrl={settings.logoUrl} textClassName="text-2xl" imgClassName="h-10 w-auto" />
-          <p className="mt-0.5 text-xs text-muted-foreground">إدارة المبيعات العقارية</p>
-        </div>
-        <nav className="flex flex-1 flex-col gap-1">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <Icon className="size-4" />
-                <span className="flex-1">{item.label}</span>
-                {item.badge > 0 && (
-                  <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs font-bold text-gold">{toArabicDigits(item.badge)}</span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-        {/* رقم ترخيص فال (REGA) — دائمًا أسفل القائمة */}
-        {settings.falLicense && (
-          <div className="mt-4 rounded-xl border border-border bg-background/50 px-3 py-2 text-center">
-            <div className="text-[0.65rem] text-muted-foreground">ترخيص فال (REGA)</div>
-            <div className="text-xs font-medium text-gold" dir="ltr">{settings.falLicense}</div>
-          </div>
-        )}
-      </aside>
+      <SideRail items={nav} falLicense={settings.falLicense ?? null} brandName={settings.companyName} />
 
       {/*
         min-w-0: الإصلاح البنيوي الذي يغني عن قصّ المحتوى عالميًا.

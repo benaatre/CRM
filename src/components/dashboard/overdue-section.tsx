@@ -67,7 +67,7 @@ export function OverdueSection({ data, period, zainClass }: {
         <p className="mt-6 text-[13.5px] text-muted-foreground">ما فيه متأخرات في هالفترة.</p>
       ) : (
         <>
-          <div className="mt-4 divide-y divide-white/[.055]">
+          <div className="mt-4 divide-y divide-[var(--hairline)]">
             {rows.map((l) => {
               const urgent = l.daysLate > 7; // يحمرّ بعد أسبوع فقط
               return (
@@ -146,3 +146,4 @@ export function OverdueSection({ data, period, zainClass }: {
 }
 
 export default OverdueSection;
+

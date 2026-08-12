@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import { signOutAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
-import { NotificationBell } from "@/components/layout/notification-bell";
+import { NotificationsPanel } from "@/components/layout/notifications-panel";
+import { SuccessToast } from "@/components/layout/success-toast";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { Brand } from "@/components/layout/brand";
 import { SelfAvailabilityToggle } from "@/components/availability/self-availability";
@@ -44,12 +45,30 @@ export function Topbar({
 }) {
   const router = useRouter();
   const [dark, setDark] = useState(true);
-  const [lang, setLang] = useState<"ar" | "en">("ar");
   const [q, setQ] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [created, setCreated] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDark(!document.documentElement.classList.contains("light"));
+  }, []);
+
+  /**
+   * Ctrl/⌘+K يركّز البحث — ولا يعمل والتركيز داخل حقل إدخال آخر (حتى لا
+   * يخطف الاختصار من نموذج يكتب فيه المستخدم). المستمع مُنظَّف عند التفكيك.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "k" || !(e.ctrlKey || e.metaKey)) return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   function toggleTheme() {
@@ -66,7 +85,10 @@ export function Topbar({
   }
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-3 backdrop-blur-md lg:px-6">
+    <header
+      className="sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-3 backdrop-blur-2xl lg:px-6"
+      style={{ background: "var(--glass)" }}
+    >
       {/* يمين: اللوجو فقط (جوال) · المستخدم + خروج (سطح المكتب) */}
       <div className="flex items-center gap-3">
         <span className="lg:hidden"><Brand companyName={companyName} logoUrl={logoUrl} textClassName="text-lg" imgClassName="h-7 w-auto" /></span>
@@ -78,7 +100,7 @@ export function Topbar({
           <button
             type="submit"
             title="خروج"
-            className="flex items-center gap-1.5 rounded-xl border border-border px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive"
+            className="flex items-center gap-1.5 rounded-xl bg-[var(--elev)] px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:text-destructive"
           >
             <LogOut className="size-4" />
             <span className="hidden lg:inline">خروج</span>
@@ -90,28 +112,36 @@ export function Topbar({
       {/* يسار: أدوات */}
       <div className="flex items-center gap-2">
         <form onSubmit={search} className="relative hidden lg:block">
-          <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.6} />
           <input
+            ref={searchRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="بحث…"
-            className="w-44 rounded-xl border border-border bg-background py-2 pr-9 pl-3 text-sm outline-none focus:border-gold"
+            aria-label="بحث في العملاء"
+            className="w-52 rounded-xl bg-[var(--elev)] py-2 pr-9 pl-16 text-sm outline-none transition-colors focus:bg-[var(--elev-hover)]"
           />
+          {/* تلميح الاختصار — يختفي عند الكتابة */}
+          {!q && (
+            <kbd
+              aria-hidden
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 rounded-md bg-[var(--elev)] px-1.5 py-0.5 text-[11.5px] font-medium text-muted-foreground/70"
+              dir="ltr"
+            >
+              Ctrl K
+            </kbd>
+          )}
         </form>
 
-        {/* EN / ع */}
-        <div className="hidden items-center rounded-xl border border-border p-0.5 text-xs lg:flex">
-          <button onClick={() => setLang("ar")} className={`rounded-lg px-2 py-1 ${lang === "ar" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>ع</button>
-          <button onClick={() => setLang("en")} className={`rounded-lg px-2 py-1 ${lang === "en" ? "bg-secondary text-gold" : "text-muted-foreground"}`}>EN</button>
-        </div>
+        {/* مبدّل اللغة ع/EN حُذف: كان حالة محلية لا تفعل شيئًا (لا i18n بالمشروع). */}
 
-        <span className="hidden lg:inline-flex"><NotificationBell /></span>
+        <span className="hidden lg:inline-flex"><NotificationsPanel /></span>
 
         {/* ليل / نهار */}
         <button
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
-          className="hidden rounded-xl border border-border p-2 text-muted-foreground transition-colors hover:text-gold lg:block"
+          className="hidden rounded-xl bg-[var(--elev)] p-2 text-muted-foreground transition-colors hover:text-foreground lg:block"
         >
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
@@ -136,12 +166,12 @@ export function Topbar({
         >
           <Plus className="size-5" />
         </button>
-        <span className="lg:hidden"><NotificationBell /></span>
+        <span className="lg:hidden"><NotificationsPanel /></span>
         <button
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
           aria-label="تبديل الثيم"
-          className="flex size-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:text-gold lg:hidden"
+          className="flex size-11 items-center justify-center rounded-xl bg-[var(--elev)] text-muted-foreground transition-colors hover:text-foreground lg:hidden"
         >
           {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
         </button>
@@ -151,9 +181,14 @@ export function Topbar({
       <NewLeadDialog
         open={showNew}
         onClose={() => setShowNew(false)}
+        onCreated={() => setCreated(true)}
         isManager={isManager}
         employees={employees}
       />
+      {created && <SuccessToast message="أُضيف العميل — تلقاه في قائمة عملائك." onDone={() => setCreated(false)} />}
     </header>
   );
 }
+
+
+

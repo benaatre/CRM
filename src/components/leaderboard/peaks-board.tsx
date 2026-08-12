@@ -129,7 +129,7 @@ function Peak({ r, heightPct, tier, context, improved, entered, filled, delayMs,
       }}
     >
       {/* قمة البرج — ذهبية للمتصدر وحده */}
-      <span aria-hidden className={`h-1 flex-none ${first ? "bg-gold" : "bg-white/10"}`} />
+      <span aria-hidden className={`h-1 flex-none ${first ? "bg-gold" : "bg-[var(--elev-hover)]"}`} />
 
       <div className="flex h-full flex-col p-4 pt-4">
         <div className={`${zainClass} font-extrabold leading-none tracking-tight ${first ? "text-gold" : r.score === 0 ? "text-muted-foreground/70" : "text-foreground"}`} style={{ fontSize: scoreSize(r.rank), ...NUM }}>
@@ -187,3 +187,4 @@ function Bar({ label, value, width, gold }: { label: string; value: string; widt
 }
 
 export default PeaksBoard;
+

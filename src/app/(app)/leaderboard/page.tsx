@@ -85,7 +85,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
       <PeaksBoard view={view} zainClass={zain.className} />
 
       {/* المعادلة — شفافية كاملة */}
-      <div className="mt-6 space-y-1 border-t border-white/[.055] pt-4 text-[12px] leading-6 text-muted-foreground/70">
+      <div className="mt-6 space-y-1 border-t border-[var(--hairline)] pt-4 text-[12px] leading-6 text-muted-foreground/70">
         <p>
           <span className="font-medium text-foreground">الدرجة</span> = الإنجاز × معامل الجودة (٠٫٨–١٫٢). <span className="font-medium text-foreground">الإنجاز</span>: عميل تواصلت معه ×{toArabicDigits(WEIGHTS.contacted)} · متابعة ×{toArabicDigits(WEIGHTS.followup)} <span className="text-warning">(بسقف {toArabicDigits(DAILY_FOLLOWUP_CAP)}/يوم)</span> · نقل لمهتم ×{toArabicDigits(WEIGHTS.interested)} · موعد زيارة ×{toArabicDigits(WEIGHTS.visitAppt)} · زيارة تمّت ×{toArabicDigits(WEIGHTS.visitDone)} · حجز ×{toArabicDigits(WEIGHTS.booking)} · بيع ×{toArabicDigits(WEIGHTS.win)}.
         </p>
@@ -97,3 +97,4 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
     </div>
   );
 }
+
