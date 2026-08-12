@@ -11,12 +11,14 @@ import type { MyOverdue } from "@/lib/data/my-overdue";
 import type { MyRecentFollowUp } from "@/lib/data/my-log";
 import { stageLabels } from "@/lib/labels";
 import { STAGE_HEX } from "@/lib/stage-colors";
+import { INTEREST_UMBRELLA } from "@/lib/lead-filters";
 import { waPhone } from "@/lib/value-normalize";
 import { toArabicDigits } from "@/lib/format";
 import { DAY_MS } from "@/lib/ksa-time";
 import { NextAppointment } from "./next-appointment";
 import { TodayFollowups } from "./today-followups";
 import { OverdueSection } from "./overdue-section";
+import { InterestedRiver, type RiverLead } from "./interested-river";
 
 /**
  * داشبورد الموظف (المتصفح) — دليل التصميم ٢٠٢٦:
@@ -33,7 +35,7 @@ const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], display: "swap"
 const NUM = { fontVariantNumeric: "tabular-nums" as const };
 
 export function EmployeeDashboard({
-  data, alert, myRank, firstName, overdue, openAppts, doneToday, period,
+  data, alert, myRank, firstName, overdue, openAppts, doneToday, interested, period,
 }: {
   data: DashboardData;
   alert: MyNoResponseAlert;
@@ -45,6 +47,8 @@ export function EmployeeDashboard({
   openAppts: TodayAppointment[];
   /** منجزات اليوم من سجل الموظف. */
   doneToday: MyRecentFollowUp[];
+  /** عملاء مظلة «مهتم» — النهر الحي (الأنشط أولًا من فرز activity). */
+  interested: RiverLead[];
   period?: string;
 }) {
   const k = data.kpis;
@@ -269,6 +273,13 @@ export function EmployeeDashboard({
               </div>
             )}
           </section>
+
+          {/* عملاء مهتمون — النهر الحي، مباشرة تحت «ينتظرون أول تواصل» */}
+          <InterestedRiver
+            leads={interested}
+            umbrellaHref={`/leads?stages=${INTEREST_UMBRELLA.join(",")}&sort=activity`}
+            zainClass={zain.className}
+          />
         </div>
       </div>
 

@@ -104,6 +104,12 @@ export type LeadRow = {
   manualTransferred: boolean;
   /** آخر متابعة (المرئية للمستخدم) نتيجتها «حسبة البنك» — لفلتر bank=1. */
   bankCheck: boolean;
+  /**
+   * نص آخر متابعة **مرئية** للمستخدم (نفس نافذة الخصوصية المطبّقة على bankCheck
+   * وwaitingReason حرفيًا). قراءة فقط وبلا أي استعلام إضافي: `rowInclude.followUps`
+   * يجلب `note` أصلًا لآخر ٢٠ متابعة، فهذا الحقل يكشف قيمة محسوبة سلفًا لا أكثر.
+   */
+  lastNote: string | null;
 };
 
 export type LeadActivity = {
@@ -348,6 +354,8 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     manualTransferred: lastAssignReason === MANUAL_TRANSFER_FULL,
     // «حسبة البنك»: آخر متابعة مرئية (نفس نافذة الخصوصية أعلاه).
     bankCheck: latestVisibleFu?.result === "BANK_CHECK",
+    // نص آخر متابعة مرئية — من نفس latestVisibleFu المحسوب أعلاه (بلا استعلام).
+    lastNote: latestVisibleFu?.note?.trim() || null,
   };
 }
 
