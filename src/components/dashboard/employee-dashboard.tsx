@@ -2,17 +2,18 @@ import Link from "next/link";
 import { Zain } from "next/font/google";
 import {
   Phone, MessageCircle, ChevronLeft, AlertTriangle, Users, Building2,
-  ClipboardList, Check, TrendingUp, Clock, CalendarClock,
+  ClipboardList, Check, TrendingUp, Clock,
 } from "lucide-react";
-import type { DashboardData, TodayAppointment } from "@/lib/data/dashboard";
+import type { DashboardData } from "@/lib/data/dashboard";
 import type { MyNoResponseAlert } from "@/lib/data/no-response";
 import type { MyRank } from "@/lib/data/leaderboard";
 import { stageLabels } from "@/lib/labels";
 import { STAGE_HEX } from "@/lib/stage-colors";
 import { waPhone } from "@/lib/value-normalize";
-import { formatTime, toArabicDigits } from "@/lib/format";
+import { toArabicDigits } from "@/lib/format";
 import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
 import { NextAppointment } from "./next-appointment";
+import { FollowupsReel } from "./followups-reel";
 
 /**
  * داشبورد الموظف (المتصفح) — دليل التصميم ٢٠٢٦:
@@ -111,20 +112,8 @@ export function EmployeeDashboard({
             </section>
           )}
 
-          {/* باقي اليوم */}
-          {rest.length > 0 && (
-            <section className="rounded-3xl bg-card p-7">
-              <div className="flex items-baseline gap-2">
-                <h3 className="text-[16px] font-semibold text-foreground">باقي اليوم</h3>
-                <span className="text-[12.5px] text-muted-foreground" style={NUM}>
-                  {toArabicDigits(rest.length)} {rest.length === 1 ? "موعد قادم" : rest.length === 2 ? "موعدان قادمان" : "مواعيد قادمة"}
-                </span>
-              </div>
-              <div className="mt-4 space-y-1">
-                {rest.map((a) => <RestRow key={`${a.leadId}-${a.kind}-${a.at.getTime()}`} a={a} zainClass={zain.className} />)}
-              </div>
-            </section>
-          )}
+          {/* باقي اليوم — بكرة دوّارة (تتكفّل بحالاتها: ٠ فارغة · ١–٢ قائمة · ٣+ بكرة) */}
+          {next && <FollowupsReel items={rest} zainClass={zain.className} />}
 
           {/* متأخرة عن موعدها — عنوان صادق: ليست «اليوم» */}
           {overdue.length > 0 && (
@@ -407,38 +396,6 @@ function RowActions({ phone, leadId, name, primary }: { phone: string; leadId: s
       >
         <ChevronLeft className="size-[14px]" strokeWidth={1.6} />
       </Link>
-    </div>
-  );
-}
-
-/** صف «باقي اليوم» — وقت + اسم + نوع + آخر ملاحظة سطرًا واحدًا. */
-function RestRow({ a, zainClass }: { a: TodayAppointment; zainClass: string }) {
-  const isVisit = a.kind === "visit";
-  const t = formatTime(a.at);
-  return (
-    <div className="group flex items-start gap-4 border-t border-white/[.055] py-[18px] first:border-t-0">
-      <div className="w-16 shrink-0 text-center leading-none">
-        <b className={`${zainClass} text-[19px] font-extrabold text-foreground`} style={NUM}>{t.replace(/\s*[صم]$/, "")}</b>
-        <span className="mt-1 block text-[11.5px] text-muted-foreground">{/\sص$/.test(t) ? "صباحًا" : "مساءً"}</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/leads/${a.leadId}`} className="text-[16px] font-semibold text-foreground transition-colors hover:text-gold">{a.name}</Link>
-          <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11.5px] font-semibold ${isVisit ? "bg-warning/10 text-warning" : "bg-info/10 text-info"}`}>
-            {isVisit ? <Building2 className="size-[13px]" strokeWidth={1.6} /> : <CalendarClock className="size-[13px]" strokeWidth={1.6} />}
-            {isVisit ? "زيارة مشروع" : "متابعة اتصال"}
-          </span>
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5" dir="ltr"><Phone className="size-[14px]" strokeWidth={1.6} />{a.phone}</span>
-          <span className="inline-flex items-center gap-1.5">
-            <Clock className="size-[14px]" strokeWidth={1.6} />
-            {a.projectName ? `${a.projectName} · ${stageLabels[a.stage]}` : stageLabels[a.stage]}
-          </span>
-        </div>
-        {a.lastNote && <p className="mt-2 line-clamp-2 text-[13.5px] leading-6 text-muted-foreground/90">{a.lastNote.text}</p>}
-      </div>
-      <RowActions phone={a.phone} leadId={a.leadId} name={a.name} />
     </div>
   );
 }
