@@ -6,7 +6,11 @@ import { getMyNoResponseAlert } from "@/lib/data/no-response";
 import { getMyRank, getLeaderboard } from "@/lib/data/leaderboard";
 import { getMyOverdue, normalizeBucket } from "@/lib/data/my-overdue";
 import { getMyRecentFollowups } from "@/lib/data/my-log";
+import { getLeads } from "@/lib/data/leads";
+import { INTEREST_UMBRELLA } from "@/lib/lead-filters";
 import { dayStartKSA } from "@/lib/ksa-time";
+import { lastSeenAgo } from "@/lib/format";
+import type { RiverLead } from "@/components/dashboard/interested-river";
 import { toArabicDigits } from "@/lib/format";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
@@ -40,11 +44,27 @@ export default async function DashboardPage({
   if (user.role === Role.EMPLOYEE) {
     const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
     const bucket = normalizeBucket(sp.late);
-    const [overdue, recent] = await Promise.all([
+    const [overdue, recent, interestedRaw] = await Promise.all([
       getMyOverdue(bucket),
       // سجل متابعاته (هويته من الجلسة) — نقتطع منه منجزات اليوم فقط.
       getMyRecentFollowups(user.id, 50),
+      /*
+       * «عملاء مهتمون» — getLeads القائمة (محجّمة بالموظف تلقائيًا عبر scopeForUser)
+       * بمظلة INTEREST_UMBRELLA المعتمدة وفرز activity (الأنشط أولًا، بلا نشاط آخرًا).
+       * صفر استعلام جديد وصفر دالة جديدة.
+       */
+      getLeads({ tab: "working", sort: "activity", stages: [...INTEREST_UMBRELLA] }),
     ]);
+
+    // النص النسبي يُحسب على الخادم (توقيت الرياض) فلا يختلف بين خادم وعميل.
+    const interested: RiverLead[] = interestedRaw.map((l) => ({
+      id: l.id,
+      name: l.name,
+      phone: l.phone,
+      stage: l.stage,
+      lastNote: l.lastNote,
+      agoText: l.lastContact ? lastSeenAgo(l.lastContact) : "بلا تواصل",
+    }));
 
     // منجزات اليوم بيوم الرياض.
     const dayStart = dayStartKSA().getTime();
@@ -72,6 +92,7 @@ export default async function DashboardPage({
           overdue={overdue}
           openAppts={openAppts}
           doneToday={doneToday}
+          interested={interested}
           period={sp.period}
         />
       </div>
