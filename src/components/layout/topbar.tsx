@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { signOutAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
-import { NotificationBell } from "@/components/layout/notification-bell";
+import { NotificationsPanel } from "@/components/layout/notifications-panel";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { Brand } from "@/components/layout/brand";
 import { SelfAvailabilityToggle } from "@/components/availability/self-availability";
@@ -133,7 +133,7 @@ export function Topbar({
 
         {/* مبدّل اللغة ع/EN حُذف: كان حالة محلية لا تفعل شيئًا (لا i18n بالمشروع). */}
 
-        <span className="hidden lg:inline-flex"><NotificationBell /></span>
+        <span className="hidden lg:inline-flex"><NotificationsPanel /></span>
 
         {/* ليل / نهار */}
         <button
@@ -164,7 +164,7 @@ export function Topbar({
         >
           <Plus className="size-5" />
         </button>
-        <span className="lg:hidden"><NotificationBell /></span>
+        <span className="lg:hidden"><NotificationsPanel /></span>
         <button
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
@@ -185,4 +185,5 @@ export function Topbar({
     </header>
   );
 }
+
 
