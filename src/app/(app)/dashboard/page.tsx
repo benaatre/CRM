@@ -4,20 +4,25 @@ import { requireUser } from "@/lib/auth-guards";
 import { getDashboard, normalizePeriod } from "@/lib/data/dashboard";
 import { getMyNoResponseAlert } from "@/lib/data/no-response";
 import { getMyRank, getLeaderboard } from "@/lib/data/leaderboard";
+import { getMyOverdue, normalizeBucket } from "@/lib/data/my-overdue";
+import { getMyRecentFollowups } from "@/lib/data/my-log";
+import { dayStartKSA } from "@/lib/ksa-time";
 import { toArabicDigits } from "@/lib/format";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { NoResponseBanner } from "@/components/dashboard/no-response-banner";
+import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; late?: string }>;
 }) {
   const user = await requireUser();
-  const period = normalizePeriod((await searchParams).period);
+  const sp = await searchParams;
+  const period = normalizePeriod(sp.period);
   // بانر الإنذار للموظف فقط (المالك/المدير يشوفون لوحة «لم يتم الرد» الكاملة).
   const [data, alert, myRank, board] = await Promise.all([
     getDashboard(period),
@@ -27,6 +32,51 @@ export default async function DashboardPage({
     user.role !== Role.EMPLOYEE ? getLeaderboard() : Promise.resolve(null),
   ]);
   const top3 = board?.rows.slice(0, 3) ?? [];
+
+  /*
+   * داشبورد الموظف ٢٠٢٦ — شاشة مستقلة بلغة دليل التصميم الجديد. مسار المالك/المدير
+   * (DashboardView وبطاقة أعلى الثلاثة والبانر القديم) يبقى كما هو حرفيًا بلا لمسة.
+   */
+  if (user.role === Role.EMPLOYEE) {
+    const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
+    const bucket = normalizeBucket(sp.late);
+    const [overdue, recent] = await Promise.all([
+      getMyOverdue(bucket),
+      // سجل متابعاته (هويته من الجلسة) — نقتطع منه منجزات اليوم فقط.
+      getMyRecentFollowups(user.id, 50),
+    ]);
+
+    // منجزات اليوم بيوم الرياض.
+    const dayStart = dayStartKSA().getTime();
+    const doneToday = recent.filter((f) => f.createdAt.getTime() >= dayStart);
+
+    /*
+     * منع التكرار: المتابعة التي سُجّلت نتيجتها بلا موعد جديد يبقى `nextFollowup`
+     * على حاله فيظل العميل ضمن مواعيد اليوم — فيظهر «قادمًا/فائتًا» و«منجزًا» معًا.
+     * المطابقة بمعرّف العميل: كل عميل ظهر في منجزات اليوم يُستبعد من المواعيد.
+     */
+    const doneLeadIds = new Set(doneToday.map((f) => f.leadId));
+    const openAppts = data.todayAppointments.filter((a) => !doneLeadIds.has(a.leadId));
+
+    return (
+      <div className="mx-auto max-w-[1400px]">
+        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-[22px] font-semibold tracking-tight text-foreground">لوحتك</h1>
+          <PeriodFilter current={period} />
+        </header>
+        <EmployeeDashboard
+          data={data}
+          alert={alert}
+          myRank={myRank}
+          firstName={firstName}
+          overdue={overdue}
+          openAppts={openAppts}
+          doneToday={doneToday}
+          period={sp.period}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
