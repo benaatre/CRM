@@ -46,6 +46,9 @@ const ARCHIVE_REASON_CHIPS: { value: ArchiveReason; label: string }[] = [
 ];
 const PAGE_SIZE = 12;
 
+/** أرقام الواجهة: Zain + خانات جدولية (نفس وصفة الجدول واللوح). */
+const NUM: React.CSSProperties = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" };
+
 export function LeadsView({
   query, counts, notContacted, waiting, bankCheck, visitCount, tab, isManager, employees, filters,
 }: {
@@ -258,44 +261,52 @@ export function LeadsView({
         />
       </div>
 
-      {/* شريط أدوات التحديد — ظاهر دائمًا (مع عدّاد واضح + زر «تحديد الكل») */}
+      {/* عدّاد التحديد + «تحديد الكل» — الجوال وحده (سطح المكتب في شريط الأدوات أعلاه) */}
       {rows.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 px-4 py-2.5 text-sm">
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 px-4 py-2.5 text-sm md:hidden">
           <span className="font-medium text-foreground">محدّد: {toArabicDigits(sel.size)} من {toArabicDigits(rows.length)}</span>
           <button
             onClick={toggleSelectAll}
             className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${allSelected ? "border-gold bg-gold/15 text-gold" : "border-border text-foreground hover:bg-secondary"}`}
           >{allSelected ? "إلغاء تحديد الكل" : "تحديد الكل"}</button>
+        </div>
+      )}
+
+      {/*
+        أفعال الجملة — الغلاف البصري وحده تغيّر: نفس الاستدعاءات وحُرّاس الدور
+        والتأكيدات كما هي (تحويل · بركة التوزيع · أرشفة/إرجاع · حذف).
+      */}
+      {sel.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-gold/[0.07] px-3.5 py-2.5 text-sm">
+          <span className="text-[13px] font-medium text-gold">
+            {toArabicDigits(sel.size)} محدَّد
+          </span>
           <div className="flex-1" />
-          {sel.size > 0 && (
-            <>
-              {isManager && (
-                <button onClick={() => setTransfer({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">تحويل</button>
-              )}
-              {/* باب البركة ٢: غير الموزّعين فقط — لا يمسّ أي عميل مُسند. */}
-              {isManager && tab === "unassigned" && (
-                <button
-                  onClick={() => run(async () => { const r = await admitToAutoPool([...sel]); clearSel(); return r; })}
-                  disabled={pending}
-                  title="يدخلهم بركة التوزيع التلقائي — المحرك يوزّعهم بالدفعات والسقوف المضبوطة"
-                  className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
-                >أدخلهم التوزيع التلقائي</button>
-              )}
-              {tab === "hidden" ? (
-                <button onClick={() => setUnarchive({ ids: [...sel] })} disabled={pending} className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50">إرجاع من الأرشيف</button>
-              ) : (
-                <button onClick={() => run(async () => { const r = await bulkArchive([...sel]); clearSel(); return r; })} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">أرشفة</button>
-              )}
-              {isManager && (
-                <button
-                  onClick={() => { if (confirm(`متأكد تبي تحذف ${toArabicDigits(sel.size)} عميل نهائيًا؟ ما يمكن التراجع.`)) run(async () => { const r = await bulkDelete([...sel]); clearSel(); return r; }); }}
-                  disabled={pending}
-                  className="rounded-lg border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                >حذف</button>
-              )}
-              <button onClick={clearSel} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">إلغاء التحديد</button>
-            </>
+          {isManager && (
+            <button onClick={() => setTransfer({ ids: [...sel] })} disabled={pending} className="rounded-lg bg-[var(--elev)] px-3 py-1.5 text-[13px] text-foreground transition-colors hover:bg-[var(--elev-hover)] disabled:opacity-50">تحويل</button>
           )}
+          {/* باب البركة ٢: غير الموزّعين فقط — لا يمسّ أي عميل مُسند. */}
+          {isManager && tab === "unassigned" && (
+            <button
+              onClick={() => run(async () => { const r = await admitToAutoPool([...sel]); clearSel(); return r; })}
+              disabled={pending}
+              title="يدخلهم بركة التوزيع التلقائي — المحرك يوزّعهم بالدفعات والسقوف المضبوطة"
+              className="rounded-lg bg-gold/15 px-3 py-1.5 text-[13px] font-medium text-gold transition-colors hover:bg-gold/25 disabled:opacity-50"
+            >أدخلهم التوزيع التلقائي</button>
+          )}
+          {tab === "hidden" ? (
+            <button onClick={() => setUnarchive({ ids: [...sel] })} disabled={pending} className="rounded-lg bg-gold/15 px-3 py-1.5 text-[13px] font-medium text-gold transition-colors hover:bg-gold/25 disabled:opacity-50">إرجاع من الأرشيف</button>
+          ) : (
+            <button onClick={() => run(async () => { const r = await bulkArchive([...sel]); clearSel(); return r; })} disabled={pending} className="rounded-lg bg-[var(--elev)] px-3 py-1.5 text-[13px] text-foreground transition-colors hover:bg-[var(--elev-hover)] disabled:opacity-50">أرشفة</button>
+          )}
+          {isManager && (
+            <button
+              onClick={() => { if (confirm(`متأكد تبي تحذف ${toArabicDigits(sel.size)} عميل نهائيًا؟ ما يمكن التراجع.`)) run(async () => { const r = await bulkDelete([...sel]); clearSel(); return r; }); }}
+              disabled={pending}
+              className="rounded-lg bg-destructive/10 px-3 py-1.5 text-[13px] text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
+            >حذف</button>
+          )}
+          <button onClick={clearSel} className="rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">إلغاء التحديد</button>
         </div>
       )}
 
@@ -355,14 +366,16 @@ export function LeadsView({
         onTransfer={(ids) => setTransfer({ ids })}
       />
 
-      {/* ترقيم */}
+      {/* ترقيم — أرقامه بخط Zain وخانات جدولية، وأزراره طبقات بلا حدود */}
       {rows.length > 0 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <span>عرض {toArabicDigits((curPage - 1) * PAGE_SIZE + 1)}–{toArabicDigits(Math.min(curPage * PAGE_SIZE, rows.length))} من {toArabicDigits(rows.length)}</span>
-          <div className="flex items-center gap-1">
-            <button disabled={curPage === 1} onClick={() => setPage(curPage - 1)} className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">السابق</button>
-            <span className="px-2">{toArabicDigits(curPage)} / {toArabicDigits(pages)}</span>
-            <button disabled={curPage === pages} onClick={() => setPage(curPage + 1)} className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">التالي</button>
+        <div className="mt-4 flex items-center justify-between text-[13px] text-muted-foreground">
+          <span>
+            عرض <span style={NUM}>{toArabicDigits((curPage - 1) * PAGE_SIZE + 1)}–{toArabicDigits(Math.min(curPage * PAGE_SIZE, rows.length))}</span> من <span style={NUM}>{toArabicDigits(rows.length)}</span>
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button disabled={curPage === 1} onClick={() => setPage(curPage - 1)} className="rounded-lg bg-[var(--elev)] px-3 py-1.5 transition-colors hover:bg-[var(--elev-hover)] hover:text-foreground disabled:opacity-40 disabled:hover:bg-[var(--elev)]">السابق</button>
+            <span className="px-2" style={NUM}>{toArabicDigits(curPage)} / {toArabicDigits(pages)}</span>
+            <button disabled={curPage === pages} onClick={() => setPage(curPage + 1)} className="rounded-lg bg-[var(--elev)] px-3 py-1.5 transition-colors hover:bg-[var(--elev-hover)] hover:text-foreground disabled:opacity-40 disabled:hover:bg-[var(--elev)]">التالي</button>
           </div>
         </div>
       )}
