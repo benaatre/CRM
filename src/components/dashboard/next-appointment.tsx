@@ -51,14 +51,22 @@ export function NextAppointment({ appt, zainClass }: { appt: TodayAppointment; z
 
   return (
     <section className="rounded-3xl bg-card p-7">
-      {/* الكيكر: نوع الموعد بنص + أيقونة (لا لون وحده) */}
-      <div className="flex items-center gap-2 text-[12.5px] font-medium text-muted-foreground">
-        موعدك القادم
+      {/*
+        العنوان يتبع الحالة الفعلية لا الاسم الثابت: الموعد الذي مضى وقته يُسمّى
+        «موعد متأخر» بالأحمر (مع الحلقة الحمراء)، وغير الفائت «موعدك القادم» بالذهبي.
+      */}
+      <div className="flex items-center gap-2 text-[12.5px] font-medium">
+        <span className={st.late ? "font-semibold text-destructive" : "font-semibold text-gold"}>
+          {st.late ? "موعد متأخر" : "موعدك القادم"}
+        </span>
         <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12.5px] font-semibold ${isVisit ? "bg-warning/10 text-warning" : "bg-info/10 text-info"}`}>
           {isVisit ? <Building2 className="size-[13px]" strokeWidth={1.6} /> : <Phone className="size-[13px]" strokeWidth={1.6} />}
           {isVisit ? "زيارة مشروع" : "متابعة اتصال"}
         </span>
       </div>
+      {st.late && (
+        <p className="mt-1.5 text-[13.5px] text-destructive">فات موعده — تواصل الآن</p>
+      )}
 
       {/* البطل: الوقت + العميل + حلقة العدّ */}
       <div className="mt-5 flex flex-wrap items-center gap-6">
@@ -118,9 +126,13 @@ export function NextAppointment({ appt, zainClass }: { appt: TodayAppointment; z
 
       {/* الأفعال */}
       <div className="mt-6 flex flex-wrap items-center gap-2.5">
+        {/*
+          الفعل الرئيسي بلون accent الذهبي (‎.btn.call = var(--accent) في التصميم المعتمد).
+          الأزرق دلالة **وسم** نوع الموعد (شريحة «متابعة اتصال») لا لون زر رئيسي.
+        */}
         <a
           href={`tel:${appt.phone}`}
-          className="inline-flex h-12 items-center gap-2 rounded-2xl bg-info px-6 text-[14.5px] font-semibold text-background transition-opacity hover:opacity-90"
+          className="inline-flex h-12 items-center gap-2 rounded-2xl bg-gold px-6 text-[14.5px] font-semibold text-background transition-opacity hover:opacity-90"
         >
           <Phone className="size-[17px]" strokeWidth={1.6} /> اتصال
         </a>
@@ -139,9 +151,10 @@ export function NextAppointment({ appt, zainClass }: { appt: TodayAppointment; z
         >
           <ChevronLeft className="size-[17px]" strokeWidth={1.6} />
         </Link>
+        {/* ثانوي مخطّط (‎.btn.done في التصميم) — الذهبي محجوز لعنصر واحد هو زر الاتصال */}
         <Link
           href={`/leads/${appt.leadId}`}
-          className="inline-flex h-12 items-center gap-2 rounded-2xl bg-gold px-6 text-[14.5px] font-semibold text-background transition-opacity hover:opacity-90"
+          className="inline-flex h-12 items-center gap-2 rounded-2xl border border-dashed border-success/35 px-6 text-[14.5px] font-semibold text-success transition-colors hover:bg-success/10 ms-auto"
         >
           <Check className="size-[17px]" strokeWidth={1.6} /> سجّل النتيجة
         </Link>
