@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, X } from "lucide-react";
 
 /**
@@ -14,6 +15,7 @@ const LIFE_MS = 12_000;
 
 export function SuccessToast({ message, onDone }: { message: string; onDone: () => void }) {
   const [shown, setShown] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const arm = () => {
@@ -23,6 +25,7 @@ export function SuccessToast({ message, onDone }: { message: string; onDone: () 
   const hold = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
 
   useEffect(() => {
+    setMounted(true);
     const raf = requestAnimationFrame(() => setShown(true));
     arm();
     return () => {
@@ -32,7 +35,14 @@ export function SuccessToast({ message, onDone }: { message: string; onDone: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
+  if (!mounted) return null;
+
+  /*
+   * بوّابة إلى body: التوست يُركَّب داخل الترويسة الزجاجية، و`backdrop-filter`
+   * عليها ينشئ حاوية احتواء لعناصر `fixed` — فكان يلتصق بزاوية الترويسة لا
+   * بزاوية الشاشة. الخروج للـbody يعيد قياسه من الشاشة.
+   */
+  return createPortal(
     <div
       role="status"
       aria-live="polite"
@@ -54,7 +64,8 @@ export function SuccessToast({ message, onDone }: { message: string; onDone: () 
       >
         <X className="size-[14px]" strokeWidth={1.6} />
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
