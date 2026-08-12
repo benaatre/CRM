@@ -92,7 +92,7 @@ export function NotificationsPanel() {
         onClick={toggle}
         aria-label="الإشعارات"
         aria-expanded={open}
-        className="relative rounded-xl bg-white/[.05] p-2 text-muted-foreground transition-colors hover:text-foreground"
+        className="relative rounded-xl bg-[var(--elev)] p-2 text-muted-foreground transition-colors hover:text-foreground"
       >
         <Bell className="size-4" strokeWidth={1.6} />
         {unread > 0 && (
@@ -128,7 +128,7 @@ export function NotificationsPanel() {
                   onClick={() => setTab(t.key)}
                   aria-pressed={on}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors ${
-                    on ? "bg-gold text-background" : "bg-white/[.05] text-muted-foreground hover:text-foreground"
+                    on ? "bg-gold text-background" : "bg-[var(--elev)] text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {t.label}
@@ -161,7 +161,7 @@ export function NotificationsPanel() {
                 const cls = `block px-4 py-3 ${n.read ? "" : "bg-gold/5"}`;
                 const style = { borderInlineStartWidth: 3, borderInlineStartColor: eventColor(n.type) };
                 return n.link ? (
-                  <Link key={n.id} href={n.link} onClick={() => setOpen(false)} className={`${cls} transition-colors hover:bg-white/[.04]`} style={style}>
+                  <Link key={n.id} href={n.link} onClick={() => setOpen(false)} className={`${cls} transition-colors hover:bg-[var(--elev)]`} style={style}>
                     {inner}
                   </Link>
                 ) : (
@@ -177,3 +177,4 @@ export function NotificationsPanel() {
 }
 
 export default NotificationsPanel;
+

@@ -73,7 +73,7 @@ export function SideRail({ items, falLicense, brandName }: {
                 title={it.badge > 0 ? `${it.label} (${toArabicDigits(it.badge)})` : it.label}
                 aria-current={active ? "page" : undefined}
                 className={`relative flex h-11 flex-none items-center gap-3.5 rounded-xl px-[11px] transition-colors ${
-                  active ? "bg-gold/10 text-gold" : "text-muted-foreground hover:bg-white/[.04] hover:text-foreground"
+                  active ? "bg-gold/10 text-gold" : "text-muted-foreground hover:bg-[var(--elev)] hover:text-foreground"
                 }`}
               >
                 <span className="relative grid size-[22px] flex-none place-items-center">
@@ -123,3 +123,4 @@ export function SideRail({ items, falLicense, brandName }: {
 }
 
 export default SideRail;
+

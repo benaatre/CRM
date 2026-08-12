@@ -100,7 +100,7 @@ export function Topbar({
           <button
             type="submit"
             title="خروج"
-            className="flex items-center gap-1.5 rounded-xl bg-white/[.05] px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:text-destructive"
+            className="flex items-center gap-1.5 rounded-xl bg-[var(--elev)] px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:text-destructive"
           >
             <LogOut className="size-4" />
             <span className="hidden lg:inline">خروج</span>
@@ -119,13 +119,13 @@ export function Topbar({
             onChange={(e) => setQ(e.target.value)}
             placeholder="بحث…"
             aria-label="بحث في العملاء"
-            className="w-52 rounded-xl bg-white/[.05] py-2 pr-9 pl-16 text-sm outline-none transition-colors focus:bg-white/[.08]"
+            className="w-52 rounded-xl bg-[var(--elev)] py-2 pr-9 pl-16 text-sm outline-none transition-colors focus:bg-[var(--elev-hover)]"
           />
           {/* تلميح الاختصار — يختفي عند الكتابة */}
           {!q && (
             <kbd
               aria-hidden
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 rounded-md bg-white/[.06] px-1.5 py-0.5 text-[11.5px] font-medium text-muted-foreground/70"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 rounded-md bg-[var(--elev)] px-1.5 py-0.5 text-[11.5px] font-medium text-muted-foreground/70"
               dir="ltr"
             >
               Ctrl K
@@ -141,7 +141,7 @@ export function Topbar({
         <button
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
-          className="hidden rounded-xl bg-white/[.05] p-2 text-muted-foreground transition-colors hover:text-foreground lg:block"
+          className="hidden rounded-xl bg-[var(--elev)] p-2 text-muted-foreground transition-colors hover:text-foreground lg:block"
         >
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
@@ -171,7 +171,7 @@ export function Topbar({
           onClick={toggleTheme}
           title={dark ? "الوضع النهاري" : "الوضع الليلي"}
           aria-label="تبديل الثيم"
-          className="flex size-11 items-center justify-center rounded-xl bg-white/[.05] text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+          className="flex size-11 items-center justify-center rounded-xl bg-[var(--elev)] text-muted-foreground transition-colors hover:text-foreground lg:hidden"
         >
           {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
         </button>
@@ -189,5 +189,6 @@ export function Topbar({
     </header>
   );
 }
+
 
 
