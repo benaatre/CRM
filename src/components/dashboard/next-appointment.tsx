@@ -44,7 +44,8 @@ export function NextAppointment({ appt, zainClass }: { appt: TodayAppointment; z
   const st = statusOf(diff);
   // نسبة الامتلاء: صفر خارج النافذة، وتزيد كلما اقترب الموعد؛ الفائت ممتلئ.
   const pct = diff <= 0 ? 100 : Math.max(0, Math.min(100, Math.round((1 - diff / WINDOW_MS) * 100)));
-  const R = 23;
+  // نصف القطر لحلقة ٧٢px بسماكة ٤ (الأقصى ٣٤ — ٣١ يترك هامشًا داخليًا للرقم).
+  const R = 31;
   const C = 2 * Math.PI * R;
   const tone = st.late ? "text-destructive" : "text-gold";
   const isVisit = appt.kind === "visit";
@@ -94,20 +95,32 @@ export function NextAppointment({ appt, zainClass }: { appt: TodayAppointment; z
           </div>
         </div>
 
-        <div className="relative grid size-[54px] shrink-0 place-items-center">
-          <svg width="54" height="54" className="-rotate-90" aria-hidden>
-            <circle cx="27" cy="27" r={R} fill="none" strokeWidth="4" className="stroke-secondary" />
-            <circle
-              cx="27" cy="27" r={R} fill="none" strokeWidth="4" strokeLinecap="round"
-              className={st.late ? "stroke-destructive" : "stroke-gold"}
-              strokeDasharray={C}
-              strokeDashoffset={C * (1 - pct / 100)}
-              style={{ transition: "stroke-dashoffset 1s cubic-bezier(.32,.72,0,1)" }}
-            />
-          </svg>
-          <span className="absolute grid place-items-center text-center leading-none">
-            <b className={`${zainClass} text-[15px] font-extrabold ${tone}`} style={{ fontVariantNumeric: "tabular-nums" }}>{st.label}</b>
-            <i className="mt-0.5 text-[9.5px] not-italic text-muted-foreground">{st.sub}</i>
+        {/*
+          الحلقة: الرقم وحده داخلها بمقاس مقروء، ونص الوحدة **تحتها** لا بداخلها —
+          كان النصان محشورين في ٥٤px فيتجاوز النص الحلقة ويصير غير مقروء.
+          نبضة تلاشٍ على الرقم عند التأخير فقط (motion-safe تحترم تقليل الحركة).
+        */}
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          <div className="relative grid size-[72px] place-items-center">
+            <svg width="72" height="72" className="-rotate-90" aria-hidden>
+              <circle cx="36" cy="36" r={R} fill="none" strokeWidth="4" className="stroke-secondary" />
+              <circle
+                cx="36" cy="36" r={R} fill="none" strokeWidth="4" strokeLinecap="round"
+                className={st.late ? "stroke-destructive" : "stroke-gold"}
+                strokeDasharray={C}
+                strokeDashoffset={C * (1 - pct / 100)}
+                style={{ transition: "stroke-dashoffset 1s cubic-bezier(.32,.72,0,1)" }}
+              />
+            </svg>
+            <b
+              className={`absolute ${zainClass} text-[27px] font-extrabold leading-none ${tone} ${st.late ? "motion-safe:animate-pulse" : ""}`}
+              style={{ fontVariantNumeric: "tabular-nums" }}
+            >
+              {st.label}
+            </b>
+          </div>
+          <span className={`whitespace-nowrap text-center text-[11.5px] font-medium ${st.late ? "text-destructive" : "text-muted-foreground"}`}>
+            {st.sub}
           </span>
         </div>
       </div>
