@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
-import {
-  DEFAULT_LEAD_SORT, VISIT_FILTER_STAGES, collapseStagesParam, dateRangeApplies,
-  type ArchiveReason, type LeadFilterValues,
-} from "@/lib/lead-filters";
+import { VISIT_FILTER_STAGES, dateRangeApplies, type ArchiveReason, type LeadFilterValues } from "@/lib/lead-filters";
+import { buildLeadsHref } from "./filters-url";
 import { STAGE_HEX, WAITING_HEX, BANK_HEX } from "@/lib/stage-colors";
 import { avatarColor } from "@/lib/mobile-avatar";
 import { DateRangeChip } from "./date-range-chip";
@@ -99,37 +97,8 @@ export function LeadsSidebar({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  // بناء الرابط — نفس منطق شريط الفلاتر حرفيًا، مع حفظ التبويب وسبب الأرشفة.
-  function build(next: Partial<LeadFilterValues>): string {
-    const p = new URLSearchParams();
-    if (tab !== "working") p.set("tab", tab);
-    const q = next.q ?? filters.q;
-    if (q) p.set("q", q);
-    const stages = next.stages ?? filters.stages;
-    if (stages.length) p.set("stages", collapseStagesParam(stages).join(",")); // زوج الزيارة ⟵ "visit"
-    const emps = next.emps ?? filters.emps;
-    if (emps.length) p.set("emps", emps.join(","));
-    const sort = next.sort ?? filters.sort;
-    if (sort !== DEFAULT_LEAD_SORT) p.set("sort", sort);
-    const wait = next.wait ?? filters.wait;
-    if (wait) p.set("wait", "1");
-    const tr = next.tr ?? filters.tr;
-    if (tr) p.set("tr", "1");
-    const bank = next.bank ?? filters.bank;
-    if (bank) p.set("bank", "1");
-    const ar = next.ar ?? filters.ar;
-    if (tab === "hidden" && ar) p.set("ar", ar);
-    // النطاق الزمني يُحمل ما دام فلتر «زيارة»/«موعد لاحق» مفعّلًا (يتصفّر مع إلغائه).
-    if (dateRangeApplies(stages)) {
-      const range = next.range ?? filters.range;
-      const from = next.from ?? filters.from;
-      const to = next.to ?? filters.to;
-      if (range) p.set("range", range);
-      else { if (from) p.set("from", from); if (to) p.set("to", to); }
-    }
-    const s = p.toString();
-    return s ? `${basePath}?${s}` : basePath;
-  }
+  // بناء الرابط من المصدر المشترك (filters-url) — نفس مفاتيح lead-filters حرفيًا.
+  const build = (next: Partial<LeadFilterValues>) => buildLeadsHref(basePath, tab, filters, next);
   function go(next: Partial<LeadFilterValues>) {
     startTransition(() => router.push(build(next)));
   }
