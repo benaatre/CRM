@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { LeadStage } from "@prisma/client";
 import {
   purchaseMethodLabels, purchaseGoalLabels,
   stageLabels, stageColor,
@@ -49,7 +50,8 @@ export function LeadsView({
   query, counts, notContacted, waiting, bankCheck, visitCount, tab, isManager, employees, filters,
 }: {
   query: string;
-  counts: { working: number; archived: number; hidden: number; unassigned: number };
+  /** أعداد التبويبات + عدّادات المراحل (من getLeadCounts — نطاق «جاري العمل» ضمن صلاحية المستخدم). */
+  counts: { working: number; archived: number; hidden: number; unassigned: number; stageCounts: Partial<Record<LeadStage, number>> };
   notContacted: number;
   /** عدد «في الانتظار» (آخر متابعة لم يستجب/في الانتظار) — ضمن صلاحية المستخدم. */
   waiting?: number;
