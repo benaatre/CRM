@@ -300,6 +300,116 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
 
 function HOUR(n: number): number { return n * 3_600_000; }
 
+// ===================== طبقة الخصوصية (تحويل قبل مغادرة الخادم) =====================
+
+/**
+ * صف اللوحة **كما يراه المشاهد** — النوع نفسه لا يعرّف الأرقام الخام لغير المستحق،
+ * فهي لا تُسلسَل في حمولة RSC أصلًا ولا تصل متصفحه بأي حال.
+ *
+ * القاعدة: المالك/المدير يرى كل شيء خامًا · الموظف يرى **أرقامه هو** خامًا فقط،
+ * وزملاؤه نِسبًا محسوبة على الخادم. الدرجة والمعامل والترتيب والحجوزات والمبيعات
+ * تبقى للجميع — هي جوهر اللوحة وغرضها المعلن.
+ */
+export type BoardViewRow = {
+  id: string;
+  name: string;
+  rank: number;
+  ranked: boolean;
+  score: number;
+  qualityFactor: number;
+  bookings: number;
+  wins: number;
+  streakDays: number;
+  delta: number;
+  /** صف المشاهد نفسه — يفتح عرض أرقامه الخام. */
+  isSelf: boolean;
+  /** الأرقام الخام — موجودة فقط للمالك/المدير أو لصف الموظف نفسه. */
+  raw?: {
+    achievement: number;
+    qualityPct: number;
+    contacted: number;
+    interested: number;
+    visitAppts: number;
+    visitsDone: number;
+    followups: number;
+    cappedFollowups: number;
+    parts: EfficiencyParts;
+  };
+  /** النِسب — بديل الأرقام الخام لصفوف الزملاء عند الموظف. */
+  share?: {
+    /** نسبة تواصله من إجمالي تواصل الفريق هذا الأسبوع (٠–١٠٠). */
+    contactShare: number;
+    /** نسبة مهتميه من إجمالي مهتمي الفريق (٠–١٠٠). */
+    interestedShare: number;
+  };
+};
+
+export type BoardView = {
+  weekStart: Date;
+  weekEnd: Date;
+  isCurrentWeek: boolean;
+  rows: BoardViewRow[];
+  unranked: { id: string; name: string }[];
+  mostImprovedId: string | null;
+  /** المشاهد مدير/مالك — لعرض التفاصيل الكاملة. */
+  managerView: boolean;
+  /** صاحب أعلى معامل جودة بالفريق (سطر سياق «أعلى جودة بالفريق»). */
+  topQualityId: string | null;
+};
+
+const pct = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 100) : 0);
+
+/**
+ * يحوّل حمولة اللوحة الكاملة إلى ما يحقّ للمشاهد رؤيته — **قبل أي إرسال للعميل**.
+ * الأرقام الخام لغير المستحق لا تُنسخ إلى الناتج إطلاقًا (لا إخفاء بالواجهة).
+ */
+export function toBoardView(board: Leaderboard, viewerId: string, manager: boolean): BoardView {
+  // إجمالي الفريق للنِسب — من الصفوف المرتَّبة وغير المرتَّبة معًا (كل نشاط الأسبوع).
+  const all = [...board.rows, ...board.unranked];
+  const totalContacted = all.reduce((s, r) => s + r.contacted, 0);
+  const totalInterested = all.reduce((s, r) => s + r.interested, 0);
+  const topQuality = [...board.rows].sort((a, b) => b.qualityFactor - a.qualityFactor)[0] ?? null;
+
+  const toRow = (r: LeaderboardRow): BoardViewRow => {
+    const isSelf = r.id === viewerId;
+    const base: BoardViewRow = {
+      id: r.id, name: r.name, rank: r.rank, ranked: r.ranked,
+      score: r.score, qualityFactor: r.qualityFactor,
+      bookings: r.bookings, wins: r.wins, streakDays: r.streakDays, delta: r.delta,
+      isSelf,
+    };
+    // المستحق للأرقام الخام: المدير/المالك دائمًا، والموظف على صفه وحده.
+    if (manager || isSelf) {
+      base.raw = {
+        achievement: r.achievement, qualityPct: r.qualityPct,
+        contacted: r.contacted, interested: r.interested,
+        visitAppts: r.visitAppts, visitsDone: r.visitsDone,
+        followups: r.followups, cappedFollowups: r.cappedFollowups,
+        parts: r.parts,
+      };
+      return base;
+    }
+    // غير المستحق: نِسب فقط — ولا حقل خام واحد في الناتج.
+    base.share = {
+      contactShare: pct(r.contacted, totalContacted),
+      interestedShare: pct(r.interested, totalInterested),
+    };
+    return base;
+  };
+
+  return {
+    weekStart: board.weekStart,
+    weekEnd: board.weekEnd,
+    isCurrentWeek: board.isCurrentWeek,
+    rows: board.rows.map(toRow),
+    // خارج الترتيب: أسماء بلا أي رقم للجميع (كما بالمرجع).
+    unranked: board.unranked.map((r) => ({ id: r.id, name: r.name })),
+    mostImprovedId: board.mostImprovedId,
+    managerView: manager,
+    topQualityId: topQuality?.id ?? null,
+  };
+}
+
 export type MyRank = {
   rank: number;
   total: number;
