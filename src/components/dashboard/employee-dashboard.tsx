@@ -121,52 +121,6 @@ export function EmployeeDashboard({
           {/* متأخرة عن موعدها — صفوف كاملة بفلاتر مدة بعدّادات حقيقية */}
           <OverdueSection data={overdue} period={period} zainClass={zain.className} />
 
-          {/* ينتظرون أول تواصل */}
-          <section className="rounded-3xl bg-card p-7">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <div className="text-[16px] font-semibold text-foreground">
-                  <b className={`${zain.className} me-1.5 text-[22px] font-extrabold text-foreground`} style={NUM}>
-                    {toArabicDigits(data.waitingCount)}
-                  </b>
-                  عميل ينتظرون أول تواصل
-                </div>
-                <p className="mt-1.5 text-[13.5px] text-muted-foreground">الأقدم أولًا — سرعة الرد ترفع فرصة التحويل</p>
-              </div>
-              <Link href="/leads?stages=NEW&sort=oldest" className="inline-flex items-center gap-1 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground">
-                عرض الكل <ChevronLeft className="size-4" strokeWidth={1.6} />
-              </Link>
-            </div>
-
-            {data.waitingFirstContact.length === 0 ? (
-              <p className="mt-6 text-[13.5px] text-muted-foreground">ما فيه عملاء ينتظرون أول تواصل.</p>
-            ) : (
-              <div className="mt-4 divide-y divide-white/[.055]">
-                {data.waitingFirstContact.map((l) => {
-                  const days = l.createdAt ? Math.max(0, Math.floor((Date.now() - l.createdAt.getTime()) / DAY_MS)) : null;
-                  const urgent = days != null && days >= 7;
-                  return (
-                    <div key={l.id} className="group flex items-center gap-4 py-[18px]">
-                      <div className="grid w-12 shrink-0 place-items-center text-center leading-none">
-                        <b className={`${zain.className} text-[20px] font-extrabold ${urgent ? "text-destructive" : "text-foreground"}`} style={NUM}>
-                          {days != null ? toArabicDigits(days) : "—"}
-                        </b>
-                        <span className="mt-1 text-[11.5px] text-muted-foreground">يوم</span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <Link href={`/leads/${l.id}`} className="text-[16px] font-semibold text-foreground transition-colors hover:text-gold">{l.name}</Link>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-muted-foreground">
-                          <span className="inline-flex items-center gap-1.5" dir="ltr"><Phone className="size-[14px]" strokeWidth={1.6} />{l.phone}</span>
-                          <span className="inline-flex items-center gap-1.5"><Clock className="size-[14px]" strokeWidth={1.6} />{stageLabels[l.stage]}</span>
-                        </div>
-                      </div>
-                      <RowActions phone={l.phone} leadId={l.id} name={l.name} primary="اتصال أول" />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
         </div>
 
         {/* يسار: الأرقام */}
@@ -266,6 +220,54 @@ export function EmployeeDashboard({
                 ));
               })()}
             </div>
+          </section>
+
+          {/* ينتظرون أول تواصل */}
+          <section className="rounded-3xl bg-card p-7">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-[16px] font-semibold text-foreground">
+                  <b className={`${zain.className} me-1.5 text-[22px] font-extrabold text-foreground`} style={NUM}>
+                    {toArabicDigits(data.waitingCount)}
+                  </b>
+                  عميل ينتظرون أول تواصل
+                </div>
+                <p className="mt-1.5 text-[13.5px] text-muted-foreground">الأقدم أولًا — سرعة الرد ترفع فرصة التحويل</p>
+              </div>
+              <Link href="/leads?stages=NEW&sort=oldest" className="inline-flex items-center gap-1 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+                عرض الكل <ChevronLeft className="size-4" strokeWidth={1.6} />
+              </Link>
+            </div>
+
+            {data.waitingFirstContact.length === 0 ? (
+              <p className="mt-6 text-[13.5px] text-muted-foreground">ما فيه عملاء ينتظرون أول تواصل.</p>
+            ) : (
+              <div className="mt-4 divide-y divide-white/[.055]">
+                {data.waitingFirstContact.map((l) => {
+                  const days = l.createdAt ? Math.max(0, Math.floor((Date.now() - l.createdAt.getTime()) / DAY_MS)) : null;
+                  const urgent = days != null && days >= 7;
+                  return (
+                    <div key={l.id} className="group flex items-center gap-4 py-[18px]">
+                      <div className="grid w-12 shrink-0 place-items-center text-center leading-none">
+                        <b className={`${zain.className} text-[20px] font-extrabold ${urgent ? "text-destructive" : "text-foreground"}`} style={NUM}>
+                          {days != null ? toArabicDigits(days) : "—"}
+                        </b>
+                        <span className="mt-1 text-[11.5px] text-muted-foreground">يوم</span>
+                      </div>
+                      {/* العمود أضيق بعد النقل — الاسم يُقتطع والسطر الثانوي يلتف */}
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/leads/${l.id}`} className="block truncate text-[15.5px] font-semibold text-foreground transition-colors hover:text-gold">{l.name}</Link>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5" dir="ltr"><Phone className="size-[13px]" strokeWidth={1.6} />{l.phone}</span>
+                          <span className="inline-flex items-center gap-1.5"><Clock className="size-[13px]" strokeWidth={1.6} />{stageLabels[l.stage]}</span>
+                        </div>
+                      </div>
+                      <RowActions phone={l.phone} leadId={l.id} name={l.name} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </div>
       </div>
