@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createLead } from "@/lib/actions/leads";
 import { fetchSources } from "@/lib/actions/sources";
@@ -30,10 +31,13 @@ export function NewLeadDialog({
   const [sourceSel, setSourceSel] = useState("");
   // «في أي حي تفضّل التملك؟» — اختياري، بلا إلزام.
   const [areas, setAreas] = useState<string[]>([]);
+  // بوّابة الخروج للـbody — انظر تعليق العرض أسفل الملف.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => { if (open) { fetchSources().then(setSources).catch(() => {}); setAreas([]); } }, [open]);
+  useEffect(() => { setMounted(true); }, []);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,9 +56,20 @@ export function NewLeadDialog({
     });
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+  /*
+   * عطلان أُصلحا معًا:
+   * ١) `fixed` لا يُقاس من الشاشة إذا كان أحد أجداده يحمل backdrop-filter/filter/
+   *    transform — فهذه تُنشئ **حاوية احتواء** لعناصر fixed. الترويسة الزجاجية
+   *    (backdrop-blur) صارت جدًّا للنموذج، فتموضع داخلها لا في الشاشة. الحل:
+   *    بوّابة (portal) إلى document.body — تخرجه من أي جدّ مهما كانت مرشّحاته.
+   * ٢) المحتوى الأطول من الشاشة كان يُقصّ من الأعلى بلا وصول: مركز flex يفيض
+   *    في الاتجاهين. الحل: الغلاف يمرّر (overflow-y-auto) والتوسيط عبر
+   *    min-h-full — فيتوسّط إن اتّسع، ويمرّر من أعلاه إن طال.
+   */
+  return createPortal(
+    <div className="fixed inset-0 z-[100] overflow-y-auto overscroll-contain">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 flex min-h-full items-center justify-center p-4">
       <div className="glass relative z-10 w-full max-w-lg rounded-2xl p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-bold text-foreground">عميل جديد</h2>
@@ -110,7 +125,9 @@ export function NewLeadDialog({
           </div>
         </form>
       </div>
-    </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
