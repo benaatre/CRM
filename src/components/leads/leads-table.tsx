@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Phone, MessageCircle, ClipboardCheck, MoreHorizontal } from "lucide-react";
 import type { LeadRow } from "@/lib/data/leads";
 import { purchaseMethodLabels, purchaseGoalLabels, stageLabels } from "@/lib/labels";
-import { formatDate, toArabicDigits, daysAgoLabel } from "@/lib/format";
+import { formatDate, toArabicDigits } from "@/lib/format";
 import { STAGE_HEX } from "@/lib/stage-colors";
 import { WAITING_TONE } from "@/lib/stage-colors";
 import { waPhone } from "@/lib/value-normalize";
@@ -118,16 +118,19 @@ export function LeadsTable({
                     {/* الجوال — خانته الخاصة بأرقام جدولية (لا لون ذهبي: الذهبي للفعّال وحده) */}
                     <td className="cell-keep px-3 py-2.5 text-[13.5px] text-foreground/90" dir="ltr" style={NUM}>{l.phone}</td>
 
-                    {/* الاستلام: لحظة استلام الموظف + سطر خافت (المدير يرى تاريخ الإضافة، والموظف «منذ كذا») */}
+                    {/*
+                      الاستلام: لحظة استلام الموظف الحالي. سطر «أُضيف» للمدير وحده
+                      (تاريخ دخول النظام محجوب عن الموظف على الخادم). عدّاد daysWaiting
+                      لا يُعرض هنا: قياسه «منذ الاستلام أو آخر تواصل» فيتصفّر بأي متابعة،
+                      فيقرأ كأنه يناقض التاريخ فوقه — وللموظف تاريخ استلامه أصدق.
+                    */}
                     <td className="px-3 py-2.5">
                       <span className="block truncate text-[13px] text-muted-foreground" style={NUM}>
                         {l.assignedAt ? formatDate(l.assignedAt) : "—"}
                       </span>
-                      <span className="block truncate text-[12.5px] text-muted-foreground/60">
-                        {isManager
-                          ? (l.createdAt ? `أُضيف ${formatDate(l.createdAt)}` : "")
-                          : daysAgoLabel(l.daysWaiting)}
-                      </span>
+                      {isManager && l.createdAt && (
+                        <span className="block truncate text-[12.5px] text-muted-foreground/60">أُضيف {formatDate(l.createdAt)}</span>
+                      )}
                     </td>
 
                     {/* الشراء + الهدف في عمود واحد (سطران) */}
