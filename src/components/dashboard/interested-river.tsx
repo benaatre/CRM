@@ -32,7 +32,14 @@ export type RiverLead = {
   agoText: string;
 };
 
-const CYCLE_MS = 44_000;
+/**
+ * سرعة النهر بالبكسل/الثانية — **لا مدة ثابتة**.
+ * المدة الثابتة (٤٤ث للدورة) تجعل السرعة تتضاعف مع طول القائمة: عشرة صفوف تمرّ
+ * هادئة، ومئة صف تمرّ كالبرق لأن المسافة عشرة أضعاف في نفس الزمن. بتثبيت السرعة
+ * يبقى الإيقاع واحدًا مهما كان عدد العملاء، وتُحسب المدة من ارتفاع المحتوى.
+ */
+const SPEED_PX_PER_SEC = 16;
+const MIN_CYCLE_MS = 30_000;
 const LOOP_MIN = 6; // أقل من ٦ (أي ٥ فأقل) = قائمة ثابتة بلا حركة
 const NUM = { fontVariantNumeric: "tabular-nums" as const };
 
@@ -133,9 +140,12 @@ export function InterestedRiver({ leads, umbrellaHref, zainClass }: {
   useEffect(() => {
     const el = flowRef.current;
     if (!el || !loop || typeof el.animate !== "function") return;
+    // المسافة = ارتفاع نسخة واحدة (النسختان معًا هما scrollHeight)، والمدة منها بالسرعة الثابتة.
+    const distance = el.scrollHeight / 2;
+    const duration = Math.max(MIN_CYCLE_MS, (distance / SPEED_PX_PER_SEC) * 1000);
     const anim = el.animate(
       [{ transform: "translateY(0)" }, { transform: "translateY(-50%)" }],
-      { duration: CYCLE_MS, iterations: Infinity, easing: "linear" },
+      { duration, iterations: Infinity, easing: "linear" },
     );
     animRef.current = anim;
     return () => {
