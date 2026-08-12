@@ -8,7 +8,6 @@ import { purchaseMethodLabels, purchaseGoalLabels, stageLabels } from "@/lib/lab
 import { formatDate, toArabicDigits, daysAgoLabel } from "@/lib/format";
 import { STAGE_HEX } from "@/lib/stage-colors";
 import { WAITING_TONE } from "@/lib/stage-colors";
-import { avatarInitials } from "@/lib/mobile-avatar";
 import { waPhone } from "@/lib/value-normalize";
 import { Clip } from "@/components/ui/clip";
 import { TransferStar, TransferBadge } from "./transfer-star";
@@ -98,30 +97,21 @@ export function LeadsTable({
                     </td>
                     <td className="cell-keep px-2 py-2.5 text-[12.5px] text-muted-foreground/60" style={NUM}>{toArabicDigits(startIndex + i + 1)}</td>
 
-                    {/* الاسم: صورة رمزية حية (حرف/حرفان بلون المرحلة) + الاسم + شاراته */}
+                    {/* الاسم + شاراته (بلا صورة رمزية — لون المرحلة يظهر في عمود المرحلة) */}
                     <td className="px-3 py-2.5">
-                      <span className="flex items-center gap-2.5">
-                        <span
-                          aria-hidden
-                          className="grid size-[34px] flex-none place-items-center rounded-full text-[13px] font-bold"
-                          style={{ background: STAGE_HEX[l.stage], color: "#0F0F11" }}
-                        >
-                          {avatarInitials(l.name)}
-                        </span>
-                        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                          <span className="min-w-0 max-w-full truncate text-[16.5px] font-semibold text-foreground" title={l.name}>{l.name}</span>
-                          <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
-                          <TransferBadge show={l.manualTransferred} />
-                          <SweepCountdown info={l.sweepPull} manager={isManager} />
-                          {!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}
-                          {l.inAutoPool && <Tag tone="bg-gold/10 text-gold" title="داخل بركة التوزيع التلقائي">تلقائي</Tag>}
-                          {l.marketer && <Tag tone="bg-destructive/12 text-destructive">مسوّق</Tag>}
-                          {l.waiting && (
-                            <Tag tone={WAITING_TONE.chip} title="آخر متابعة: في الانتظار">
-                              في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}
-                            </Tag>
-                          )}
-                        </span>
+                      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        <span className="min-w-0 max-w-full truncate text-[16.5px] font-semibold text-foreground" title={l.name}>{l.name}</span>
+                        <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
+                        <TransferBadge show={l.manualTransferred} />
+                        <SweepCountdown info={l.sweepPull} manager={isManager} />
+                        {!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}
+                        {l.inAutoPool && <Tag tone="bg-gold/10 text-gold" title="داخل بركة التوزيع التلقائي">تلقائي</Tag>}
+                        {l.marketer && <Tag tone="bg-destructive/12 text-destructive">مسوّق</Tag>}
+                        {l.waiting && (
+                          <Tag tone={WAITING_TONE.chip} title="آخر متابعة: في الانتظار">
+                            في الانتظار{l.waitingCount > 1 ? ` ×${toArabicDigits(l.waitingCount)}` : ""}
+                          </Tag>
+                        )}
                       </span>
                     </td>
 
