@@ -52,7 +52,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
   // الترتيب نفس التصميم: تحويل · إجمالي · غير موزّعين · حجوزات · زيارات · مقفولة
   // «غير موزّعين» بيانات إدارية — تظهر للمالك/المدير فقط (الموظف يشوف نطاقه هو).
   const cards = [
-    { label: "معدل التحويل", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false, show: true },
+    { label: "تحويل الزيارات إلى حجوزات", value: `${toArabicDigits(k.conversion)}٪`, unit: "", fill: Math.min(k.conversion, 100), up: true, chip: null as string | null, action: false, show: true },
     { label: "إجمالي العملاء", value: formatCount(k.totalClients), unit: "عميل", fill: 100, up: true, chip: null, action: false, show: true },
     { label: "غير موزّعين", value: toArabicDigits(k.unassigned), unit: "ليد", fill: pct(k.unassigned), up: false, chip: k.unassigned > 0 ? toArabicDigits(k.unassigned) : null, action: data.manager && k.unassigned > 0, show: data.manager },
     // البطاقات المرتبطة بمراحل تحمل لون مرحلتها من المصدر الموحّد (stage-colors).

@@ -53,7 +53,7 @@ export function EmployeeKpis({ team }: { team: Team }) {
           <div key={t.id} className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center justify-between">
               <span className="font-medium text-foreground">{t.name}</span>
-              <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs text-gold">تحويل {toArabicDigits(t.conversion)}٪</span>
+              <span title="تحويل الزيارات إلى حجوزات" className="rounded-full bg-gold/15 px-2 py-0.5 text-xs text-gold">حجز/زيارة {toArabicDigits(t.conversion)}٪</span>
             </div>
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
               <Cell label="عملاء" v={t.assigned} />
@@ -76,7 +76,7 @@ export function EmployeeKpis({ team }: { team: Team }) {
               <th className="w-[6rem] px-4 py-3 font-medium">المتابعات</th>
               <th className="w-[5.5rem] px-4 py-3 font-medium">الزيارات</th>
               <th className="w-[5.5rem] px-4 py-3 font-medium">الحجوزات</th>
-              <th className="w-[7rem] px-4 py-3 font-medium">معدل التحويل</th>
+              <th title="تحويل الزيارات إلى حجوزات" className="w-[7rem] px-4 py-3 font-medium">حجز/زيارة</th>
               <th className="w-[12rem] px-4 py-3 font-medium">الهدف الشهري</th>
             </tr>
           </thead>

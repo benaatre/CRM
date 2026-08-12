@@ -129,9 +129,9 @@ export function EmployeeDashboard({
 
         {/* يسار: الأرقام */}
         <div className="min-w-0 space-y-6">
-          {/* معدل التحويل */}
+          {/* تحويل الزيارات إلى حجوزات (الحجوزات ÷ الزيارات) */}
           <section className="rounded-3xl bg-card p-7">
-            <div className="text-[12.5px] font-medium text-muted-foreground">معدل التحويل</div>
+            <div className="text-[12.5px] font-medium text-muted-foreground">تحويل الزيارات إلى حجوزات</div>
             <div className="mt-3 flex items-end gap-3">
               <div className={`${zain.className} text-[46px] font-extrabold leading-none tracking-tight text-foreground`} style={NUM}>
                 {toArabicDigits(k.conversion)}<sup className="text-[20px]">٪</sup>

@@ -82,7 +82,7 @@ export default async function MobileAnalyticsPage() {
               <Kpi value={toArabicDigits(me.followups)} label="المتابعات" color={MOBILE_COLORS.gold} />
               <Kpi value={toArabicDigits(me.visits)} label="الزيارات" />
               <Kpi value={toArabicDigits(me.bookings)} label="الحجوزات" color={MOBILE_STATUS.success.fg} />
-              <Kpi value={`${toArabicDigits(me.conversion)}٪`} label="معدل التحويل" color={MOBILE_COLORS.gold} />
+              <Kpi value={`${toArabicDigits(me.conversion)}٪`} label="تحويل الزيارات إلى حجوزات" color={MOBILE_COLORS.gold} />
               <Kpi
                 value={me.targetPct != null ? `${toArabicDigits(me.targetPct)}٪` : "—"}
                 label={`نحو الهدف (${toArabicDigits(me.target)})`}
@@ -153,7 +153,7 @@ export default async function MobileAnalyticsPage() {
             <div className="flex items-center justify-between">
               <span style={{ fontSize: 13, fontWeight: 600, color: MOBILE_COLORS.textPrimary }}>{t.name}</span>
               <span style={{ fontSize: "11.5px", fontWeight: 600, color: MOBILE_COLORS.gold }}>
-                تحويل {toArabicDigits(t.conversion)}٪
+                حجز/زيارة {toArabicDigits(t.conversion)}٪
               </span>
             </div>
             <div style={{ fontSize: 11, color: MOBILE_COLORS.textMuted, marginTop: 3 }}>
