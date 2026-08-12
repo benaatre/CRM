@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { toArabicDigits } from "@/lib/format";
-import { VISIT_FILTER_STAGES, dateRangeApplies, type ArchiveReason, type LeadFilterValues } from "@/lib/lead-filters";
+import { INTEREST_UMBRELLA, VISIT_FILTER_STAGES, dateRangeApplies, type ArchiveReason, type LeadFilterValues } from "@/lib/lead-filters";
 import { buildLeadsHref } from "./filters-url";
 import { STAGE_HEX, WAITING_HEX, BANK_HEX } from "@/lib/stage-colors";
 import { avatarColor } from "@/lib/mobile-avatar";
@@ -23,7 +23,7 @@ const NUM: React.CSSProperties = { fontFamily: "var(--font-zain), var(--font-san
  * والذهبي محجوز للصف الفعّال وحده (دليل ٢٠٢٦).
  */
 function Row({
-  label, dot, count, active, onClick, title,
+  label, dot, count, active, onClick, title, indent = false,
 }: {
   label: string;
   /** لون النقطة (hex من مصدر ألوان المراحل) — بلا نقطة إن لم يُمرَّر. */
@@ -33,6 +33,8 @@ function Row({
   active: boolean;
   onClick: () => void;
   title?: string;
+  /** صفّ فرعي تحت مظلّة «مهتم» — إزاحة من اليمين تبيّن انتماءه لها. */
+  indent?: boolean;
 }) {
   return (
     <button
@@ -40,7 +42,7 @@ function Row({
       onClick={onClick}
       title={title}
       aria-pressed={active}
-      className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-[7px] text-right text-[13.5px] transition-colors ${
+      className={`flex w-full items-center gap-2.5 rounded-xl py-[7px] text-right text-[13.5px] transition-colors ${indent ? "pl-2.5 pr-6" : "px-2.5"} ${
         active ? "bg-gold/10 font-semibold text-gold" : "text-muted-foreground hover:bg-[var(--elev)] hover:text-foreground"
       }`}
     >
@@ -105,6 +107,19 @@ export function LeadsSidebar({
 
   // «زيارة» شريحة واحدة: المرحلتان تُضافان وتُزالان معًا (الرابط يحملهما "visit").
   const visitActive = VISIT_FILTER_STAGES.every((s) => filters.stages.includes(s));
+
+  /**
+   * مظلّة «مهتم» — نفس تعريف شريط الجوال حرفيًا (INTEREST_UMBRELLA في lead-filters):
+   * كل المتفاعلين بضغطة. نشطة فقط والمراحل الخمس كلها محدّدة، وتُضاف/تُزال دفعة واحدة.
+   */
+  const umbrellaActive = INTEREST_UMBRELLA.every((s) => filters.stages.includes(s));
+  function toggleUmbrella() {
+    go({
+      stages: umbrellaActive
+        ? filters.stages.filter((x) => !(INTEREST_UMBRELLA as string[]).includes(x))
+        : [...new Set([...filters.stages, ...INTEREST_UMBRELLA])],
+    });
+  }
   function toggleStage(s: LeadStage) {
     if ((VISIT_FILTER_STAGES as string[]).includes(s)) {
       go({
@@ -123,6 +138,7 @@ export function LeadsSidebar({
     || filters.wait || filters.tr || filters.bank || !!filters.ar || !!purchase;
   const customRangeActive = !filters.range && (!!filters.from || !!filters.to);
   const visitCount = showCounts ? (stageCounts.VISIT_SCHEDULED ?? 0) + (stageCounts.VIEWING ?? 0) : undefined;
+  const umbrellaCount = showCounts ? INTEREST_UMBRELLA.reduce((n, s) => n + (stageCounts[s] ?? 0), 0) : undefined;
 
   return (
     <div className="space-y-5">
@@ -139,28 +155,51 @@ export function LeadsSidebar({
           active={filters.stages.length === 0}
           onClick={() => go({ stages: [] })}
         />
-        {stageOrder.map((s) =>
-          s === "VIEWING" ? null : s === "VISIT_SCHEDULED" ? (
-            <Row
-              key="visit"
-              label="زيارة"
-              dot={STAGE_HEX.VISIT_SCHEDULED}
-              count={visitCount}
-              active={visitActive}
-              onClick={() => toggleStage("VISIT_SCHEDULED")}
-              title="موعد زيارة + زار المشروع"
-            />
-          ) : (
+        {stageOrder.map((s) => {
+          // مرحلة داخل المظلّة ⟵ صفّ فرعي مُزاح تحتها.
+          const sub = (INTEREST_UMBRELLA as string[]).includes(s);
+          if (s === "VIEWING") return null; // مدموجة في صفّ «زيارة» الموحّد
+          if (s === "VISIT_SCHEDULED") {
+            return (
+              <Row
+                key="visit"
+                label="زيارة"
+                dot={STAGE_HEX.VISIT_SCHEDULED}
+                count={visitCount}
+                active={visitActive}
+                onClick={() => toggleStage("VISIT_SCHEDULED")}
+                title="موعد زيارة + زار المشروع"
+                indent={sub}
+              />
+            );
+          }
+          const row = (
             <Row
               key={s}
-              label={stageLabels[s]}
+              // «مهتم فقط» تمييزًا لمرحلتها الحرفية عن المظلّة فوقها (نفس المنطق، اسم أوضح).
+              label={s === "INTERESTED" ? "مهتم فقط" : stageLabels[s]}
               dot={STAGE_HEX[s]}
               count={showCounts ? stageCounts[s] ?? 0 : undefined}
               active={filters.stages.includes(s)}
               onClick={() => toggleStage(s)}
+              indent={sub}
             />
-          ),
-        )}
+          );
+          // مظلّة «مهتم» تسبق مراحلها: كل المتفاعلين بضغطة، والتفصيل تحتها.
+          return s === "INTERESTED" ? (
+            <div key="interest-umbrella" className="contents">
+              <Row
+                label={stageLabels.INTERESTED}
+                dot={STAGE_HEX.INTERESTED}
+                count={umbrellaCount}
+                active={umbrellaActive}
+                onClick={toggleUmbrella}
+                title="كل المتفاعلين: مهتم + موعد لاحق + زيارة + تفاوض"
+              />
+              {row}
+            </div>
+          ) : row;
+        })}
       </Group>
 
       {/* الموعد — يظهر مع «زيارة» (على موعد الزيارة) أو «موعد لاحق» (على موعد المتابعة) */}
