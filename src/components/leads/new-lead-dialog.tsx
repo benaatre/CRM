@@ -12,11 +12,14 @@ type Employee = { id: string; name: string };
 export function NewLeadDialog({
   open,
   onClose,
+  onCreated,
   isManager,
   employees,
 }: {
   open: boolean;
   onClose: () => void;
+  /** يُستدعى بعد نجاح الإضافة (للتوست) — اختياري فلا يتأثر أي مستدعٍ قائم. */
+  onCreated?: () => void;
   isManager: boolean;
   employees: Employee[];
 }) {
@@ -42,6 +45,7 @@ export function NewLeadDialog({
       if (res.ok) {
         router.refresh();
         onClose();
+        onCreated?.();
       } else {
         setError(res.error ?? "صار خطأ");
       }

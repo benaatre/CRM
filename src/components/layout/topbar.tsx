@@ -12,6 +12,7 @@ import {
 import { signOutAction } from "@/lib/actions/auth";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
 import { NotificationsPanel } from "@/components/layout/notifications-panel";
+import { SuccessToast } from "@/components/layout/success-toast";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { Brand } from "@/components/layout/brand";
 import { SelfAvailabilityToggle } from "@/components/availability/self-availability";
@@ -46,6 +47,7 @@ export function Topbar({
   const [dark, setDark] = useState(true);
   const [q, setQ] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [created, setCreated] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -179,9 +181,11 @@ export function Topbar({
       <NewLeadDialog
         open={showNew}
         onClose={() => setShowNew(false)}
+        onCreated={() => setCreated(true)}
         isManager={isManager}
         employees={employees}
       />
+      {created && <SuccessToast message="أُضيف العميل — تلقاه في قائمة عملائك." onDone={() => setCreated(false)} />}
     </header>
   );
 }
