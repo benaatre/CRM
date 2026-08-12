@@ -84,9 +84,15 @@ export function Topbar({
     if (q.trim()) router.push(`/leads?q=${encodeURIComponent(q.trim())}`);
   }
 
+  /*
+   * الترويسة **داخل عمود المحتوى** (بعد الشريط الجانبي في صف الـflex) لا فوق
+   * الصفحة كلها — فلا تتداخل مع الشريط في RTL، وعرضها = عرض العمود تلقائيًا.
+   * z-30: أعلى من المحتوى وأدنى من الشريط (z-40) وأدنى من النوافذ (z-50+).
+   * شعرة سفلية بلون التوكن (كما بالمرجع) تفصلها عن المحتوى بلا إطار ثقيل.
+   */
   return (
     <header
-      className="sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-3 backdrop-blur-2xl lg:px-6"
+      className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[var(--hairline)] px-4 py-3 backdrop-blur-2xl lg:px-6"
       style={{ background: "var(--glass)" }}
     >
       {/* يمين: اللوجو فقط (جوال) · المستخدم + خروج (سطح المكتب) */}
