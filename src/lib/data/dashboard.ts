@@ -50,6 +50,12 @@ export type MiniLead = {
   createdAt: Date;
   nextFollowup: Date | null;
   assignedToName: string | null;
+  /**
+   * توسعة معلنة (صفوف المتأخرات): اسم مشروع العميل — **اختياري**، فالمستهلكون
+   * القائمون (لوحة المالك DashboardView) يتجاهلونه بلا أي تغيير. غير المحدَّد = null
+   * ويُخفى سطره بالواجهة (لا «—» ولا نص بديل).
+   */
+  projectName: string | null;
 };
 
 export type TeamRow = {
@@ -307,7 +313,8 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     where: { ...where, stage: { notIn: CLOSED }, nextFollowup: { lt: ksaDayEnd } },
     orderBy: [{ priority: "asc" }, { nextFollowup: "asc" }],
     take: 8,
-    include: { assignedTo: { select: { name: true, role: true } } },
+    // توسعة select معلنة: اسم المشروع لصفوف المتأخرات (اختياري — لا يمس أي مستهلك قائم).
+    include: { assignedTo: { select: { name: true, role: true } }, project: { select: { name: true } } },
   });
 
   // ليدات تنتظر أول تواصل (NEW + مُسند) + العدد الكلي
@@ -316,7 +323,8 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
       where: waitingWhere,
       orderBy: { createdAt: "asc" },
       take: 8,
-      include: { assignedTo: { select: { name: true, role: true } } },
+      // نفس شكل استعلام المتابعات ليشتركا في toMini (project اختياري بالنوع).
+      include: { assignedTo: { select: { name: true, role: true } }, project: { select: { name: true } } },
     }),
     prisma.lead.count({ where: waitingWhere }),
   ]);
@@ -330,6 +338,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     createdAt: l.createdAt,
     nextFollowup: l.nextFollowup,
     assignedToName: l.assignedTo && l.assignedTo.role !== "OWNER" ? l.assignedTo.name : null,
+    projectName: l.project?.name ?? null,
   });
 
   // قمع المبيعات — م-٣: كل المراحل التسع (مجموع الأشرطة = إجمالي العملاء)

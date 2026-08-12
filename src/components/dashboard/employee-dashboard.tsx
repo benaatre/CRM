@@ -4,16 +4,19 @@ import {
   Phone, MessageCircle, ChevronLeft, AlertTriangle, Users, Building2,
   ClipboardList, Check, TrendingUp, Clock,
 } from "lucide-react";
-import type { DashboardData } from "@/lib/data/dashboard";
+import type { DashboardData, TodayAppointment } from "@/lib/data/dashboard";
 import type { MyNoResponseAlert } from "@/lib/data/no-response";
 import type { MyRank } from "@/lib/data/leaderboard";
+import type { MyOverdue } from "@/lib/data/my-overdue";
+import type { MyRecentFollowUp } from "@/lib/data/my-log";
 import { stageLabels } from "@/lib/labels";
 import { STAGE_HEX } from "@/lib/stage-colors";
 import { waPhone } from "@/lib/value-normalize";
 import { toArabicDigits } from "@/lib/format";
-import { dayStartKSA, DAY_MS } from "@/lib/ksa-time";
+import { DAY_MS } from "@/lib/ksa-time";
 import { NextAppointment } from "./next-appointment";
-import { FollowupsReel } from "./followups-reel";
+import { TodayFollowups } from "./today-followups";
+import { OverdueSection } from "./overdue-section";
 
 /**
  * داشبورد الموظف (المتصفح) — دليل التصميم ٢٠٢٦:
@@ -30,23 +33,23 @@ const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], display: "swap"
 const NUM = { fontVariantNumeric: "tabular-nums" as const };
 
 export function EmployeeDashboard({
-  data, alert, myRank, firstName,
+  data, alert, myRank, firstName, overdue, openAppts, doneToday, period,
 }: {
   data: DashboardData;
   alert: MyNoResponseAlert;
   myRank: MyRank | null;
   firstName: string;
+  /** متأخرات ما قبل اليوم — عدّاداتها وصفوفها من getMyOverdue (نطاق الموظف). */
+  overdue: MyOverdue;
+  /** مواعيد اليوم بعد استبعاد من سُجّلت نتيجته (منع التكرار على الخادم). */
+  openAppts: TodayAppointment[];
+  /** منجزات اليوم من سجل الموظف. */
+  doneToday: MyRecentFollowUp[];
+  period?: string;
 }) {
   const k = data.kpis;
-  const appts = data.todayAppointments;
-  const [next, ...rest] = appts;
-
-  // ===== «اليوم» يعني يوم الرياض فعلًا =====
-  // todayAppointments محصورة أصلًا بين بداية يوم الرياض ونهايته (المصدر الصادق).
-  // followupsToday تشمل كل ما فات موعده بلا حدّ أدنى — فما قبل بداية اليوم يُعرض
-  // تحت عنوان «متأخرة عن موعدها» لا تحت «اليوم».
-  const dayStart = dayStartKSA().getTime();
-  const overdue = data.followupsToday.filter((l) => l.nextFollowup && l.nextFollowup.getTime() < dayStart);
+  // «موعدك القادم» = أقرب موعد مفتوح (الفائت يظهر بعنوانه الأحمر داخل البطاقة).
+  const next = openAppts[0];
 
   const stats = [
     { k: "عملائي", v: k.totalClients, u: `${toArabicDigits(data.waitingCount)} ينتظرون أول تواصل`, Icon: Users },
@@ -112,56 +115,11 @@ export function EmployeeDashboard({
             </section>
           )}
 
-          {/* باقي اليوم — بكرة دوّارة (تتكفّل بحالاتها: ٠ فارغة · ١–٢ قائمة · ٣+ بكرة) */}
-          {next && <FollowupsReel items={rest} zainClass={zain.className} />}
+          {/* متابعات اليوم بثلاث حالات: فاتت ← قادمة (البكرة) ← منجزة */}
+          <TodayFollowups appts={openAppts} done={doneToday} zainClass={zain.className} />
 
-          {/* متأخرة عن موعدها — عنوان صادق: ليست «اليوم» */}
-          {overdue.length > 0 && (
-            <section className="rounded-3xl bg-card p-7">
-              <div className="flex items-baseline gap-2">
-                <h3 className="text-[16px] font-semibold text-foreground">متأخرة عن موعدها</h3>
-                <span className="text-[12.5px] text-muted-foreground">فات موعدها قبل اليوم — الأقدم أولًا</span>
-              </div>
-              <div className="mt-4 divide-y divide-white/[.055]">
-                {overdue.map((l) => {
-                  // أيام التأخير بحدود يوم الرياض (لا بفارق الساعات) — «أمس» تعني اليوم التقويمي السابق.
-                  const days = l.nextFollowup
-                    ? Math.max(1, Math.round((dayStart - dayStartKSA(l.nextFollowup).getTime()) / DAY_MS))
-                    : 1;
-                  const urgent = days > 7; // يحمرّ بعد أسبوع فقط
-                  return (
-                    <div key={l.id} className="flex items-center gap-4 py-[18px]">
-                      <div className="grid w-14 shrink-0 place-items-center text-center leading-none">
-                        {days === 1 ? (
-                          <span className={`text-[13.5px] font-semibold ${urgent ? "text-destructive" : "text-foreground"}`}>أمس</span>
-                        ) : (
-                          <>
-                            <b className={`${zain.className} text-[20px] font-extrabold ${urgent ? "text-destructive" : "text-foreground"}`} style={NUM}>
-                              {toArabicDigits(days)}
-                            </b>
-                            <span className="mt-1 text-[11.5px] text-muted-foreground">يوم تأخير</span>
-                          </>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link href={`/leads/${l.id}`} className="text-[16px] font-semibold text-foreground transition-colors hover:text-gold">{l.name}</Link>
-                          <span className="inline-flex items-center rounded-lg bg-secondary/60 px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground">
-                            {stageLabels[l.stage]}
-                          </span>
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-muted-foreground">
-                          <span className="inline-flex items-center gap-1.5" dir="ltr"><Phone className="size-[14px]" strokeWidth={1.6} />{l.phone}</span>
-                        </div>
-                      </div>
-                      {/* المتأخرات عاجلة — أزرارها ظاهرة دائمًا لا عند المرور */}
-                      <RowActions phone={l.phone} leadId={l.id} name={l.name} always gold />
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+          {/* متأخرة عن موعدها — صفوف كاملة بفلاتر مدة بعدّادات حقيقية */}
+          <OverdueSection data={overdue} period={period} zainClass={zain.className} />
 
           {/* ينتظرون أول تواصل */}
           <section className="rounded-3xl bg-card p-7">
