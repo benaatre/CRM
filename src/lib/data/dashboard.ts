@@ -75,8 +75,24 @@ export type RecentSale = {
   finalPrice: number;
 };
 
-/** موعد اليوم لشريط الموظف: متابعة (من nextFollowup) أو زيارة (متابعة نوع زيارة بموعد اليوم). */
-export type TodayAppointment = { leadId: string; name: string; at: Date; kind: "followup" | "visit" };
+/**
+ * موعد اليوم لشريط الموظف: متابعة (من nextFollowup) أو زيارة (متابعة نوع زيارة بموعد اليوم).
+ *
+ * توسعة معلنة (داشبورد الموظف ٢٠٢٦): الحقول التالية إضافة **select** على الاستعلامين
+ * القائمين نفسيهما (لا استعلام جديد ولا دالة جديدة) — بطاقة «موعدك القادم» تحتاج
+ * بيانات العميل وآخر ملاحظة لتغني عن فتح الملف.
+ */
+export type TodayAppointment = {
+  leadId: string;
+  name: string;
+  at: Date;
+  kind: "followup" | "visit";
+  phone: string;
+  stage: LeadStage;
+  projectName: string | null;
+  /** آخر متابعة مسجّلة على العميل — نصها ووقتها (null إن ما فيه نص). */
+  lastNote: { text: string; at: Date } | null;
+};
 
 /** صف «متابعات اليوم للفريق» (للمالك/المدير): مواعيد اليوم لكل موظف وحالتها. */
 export type TeamFollowupsRow = { id: string; name: string; total: number; done: number; remaining: number; missed: number };
@@ -401,10 +417,21 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
 
   let todayAppointments: TodayAppointment[] = [];
   if (!manager) {
+    // توسعة select معلنة (بطاقة «موعدك القادم»): جوال/مرحلة/مشروع + آخر ملاحظة —
+    // كلها حقول على نفس الاستعلامين، وآخر متابعة عبر select متداخل take:1.
+    const lastNoteSelect = {
+      orderBy: { createdAt: "desc" as const },
+      take: 1,
+      select: { note: true, createdAt: true },
+    };
     const [fuLeads, visitFus] = await Promise.all([
       prisma.lead.findMany({
         where: { assignedToId: user.id, isArchived: false, stage: { notIn: CLOSED }, nextFollowup: { gte: dayStart, lt: dayEnd } },
-        select: { id: true, name: true, nextFollowup: true },
+        select: {
+          id: true, name: true, nextFollowup: true,
+          phone: true, stage: true, project: { select: { name: true } },
+          followUps: lastNoteSelect,
+        },
       }),
       prisma.followUp.findMany({
         // «الزيارة زيارة»: مواعيد المحرّك (نتائج موعد الزيارة) تظهر في شريط اليوم مثل
@@ -414,16 +441,37 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
           nextDate: { gte: dayStart, lt: dayEnd },
           lead: { assignedToId: user.id, isArchived: false },
         },
-        select: { leadId: true, nextDate: true, type: true, result: true, lead: { select: { name: true, visitAt: true } } },
+        select: {
+          leadId: true, nextDate: true, type: true, result: true,
+          lead: {
+            select: {
+              name: true, visitAt: true,
+              phone: true, stage: true, project: { select: { name: true } },
+              followUps: lastNoteSelect,
+            },
+          },
+        },
       }),
     ]);
+    // آخر ملاحظة: نص آخر متابعة إن وُجد نصّها (الفارغة تُسقط — لا نعرض عنصرًا فارغًا).
+    const noteOf = (rows: { note: string | null; createdAt: Date }[]) => {
+      const f = rows[0];
+      return f?.note?.trim() ? { text: f.note.trim(), at: f.createdAt } : null;
+    };
     todayAppointments = [
-      ...fuLeads.map((l) => ({ leadId: l.id, name: l.name, at: l.nextFollowup as Date, kind: "followup" as const })),
+      ...fuLeads.map((l) => ({
+        leadId: l.id, name: l.name, at: l.nextFollowup as Date, kind: "followup" as const,
+        phone: l.phone, stage: l.stage, projectName: l.project?.name ?? null, lastNote: noteOf(l.followUps),
+      })),
       ...visitFus
         .filter((f) =>
           (VISIT_TYPES as string[]).includes(f.type)
           || (f.lead.visitAt && f.nextDate && f.lead.visitAt.getTime() === f.nextDate.getTime()))
-        .map((f) => ({ leadId: f.leadId, name: f.lead.name, at: f.nextDate as Date, kind: "visit" as const })),
+        .map((f) => ({
+          leadId: f.leadId, name: f.lead.name, at: f.nextDate as Date, kind: "visit" as const,
+          phone: f.lead.phone, stage: f.lead.stage, projectName: f.lead.project?.name ?? null,
+          lastNote: noteOf(f.lead.followUps),
+        })),
     ].sort((a, b) => a.at.getTime() - b.at.getTime());
   }
 

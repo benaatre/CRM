@@ -8,6 +8,7 @@ import { toArabicDigits } from "@/lib/format";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { NoResponseBanner } from "@/components/dashboard/no-response-banner";
+import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,23 @@ export default async function DashboardPage({
     user.role !== Role.EMPLOYEE ? getLeaderboard() : Promise.resolve(null),
   ]);
   const top3 = board?.rows.slice(0, 3) ?? [];
+
+  /*
+   * داشبورد الموظف ٢٠٢٦ — شاشة مستقلة بلغة دليل التصميم الجديد. مسار المالك/المدير
+   * (DashboardView وبطاقة أعلى الثلاثة والبانر القديم) يبقى كما هو حرفيًا بلا لمسة.
+   */
+  if (user.role === Role.EMPLOYEE) {
+    const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
+    return (
+      <div className="mx-auto max-w-[1400px]">
+        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-[22px] font-semibold tracking-tight text-foreground">لوحتك</h1>
+          <PeriodFilter current={period} />
+        </header>
+        <EmployeeDashboard data={data} alert={alert} myRank={myRank} firstName={firstName} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
