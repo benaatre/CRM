@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
@@ -24,6 +24,8 @@ import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmplo
 import { admitToAutoPool } from "@/lib/actions/distribution";
 import { Clip } from "@/components/ui/clip";
 import { LeadsFilterBar } from "./leads-filter-bar";
+import { LeadsSidebar } from "./leads-sidebar";
+import { purchaseBucketOf, PURCHASE_BUCKETS, type PurchaseBucket } from "./purchase-buckets";
 import { FilterChip } from "./filter-chip";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
@@ -65,8 +67,20 @@ export function LeadsView({
   filters: Filters;
 }) {
   const router = useRouter();
-  const { leads: rows, loading, reload } = useLeads(query);
+  const { leads: allRows, loading, reload } = useLeads(query);
   const [pending, startTransition] = useTransition();
+  // فلتر «طريقة الشراء» — محلي على الصفوف المحمّلة (اللوح الجانبي، سطح المكتب).
+  const [purchase, setPurchase] = useState<PurchaseBucket | "">("");
+  // العدّادات تُحسب قبل تطبيق الفلتر نفسه — فلا تنهار أرقام بقية الدلاء عند اختيار واحد.
+  const purchaseCounts = useMemo(() => {
+    const c = Object.fromEntries(PURCHASE_BUCKETS.map((b) => [b.key, 0])) as Record<PurchaseBucket, number>;
+    for (const r of allRows) { const b = purchaseBucketOf(r.purchaseMethod); if (b) c[b]++; }
+    return c;
+  }, [allRows]);
+  const rows = useMemo(
+    () => (purchase ? allRows.filter((r) => purchaseBucketOf(r.purchaseMethod) === purchase) : allRows),
+    [allRows, purchase],
+  );
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -114,6 +128,8 @@ export function LeadsView({
     startTransition(() => router.push(`/leads?${p.toString()}`));
   }
 
+  // تبويب «غير موزّعين» له أدواته الخاصة ومرحلته واحدة (جديد) — بلا لوح فلاتر.
+  const showSidebar = !(tab === "unassigned" && isManager);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const curPage = Math.min(page, pages);
   const pageRows = rows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
@@ -140,7 +156,7 @@ export function LeadsView({
 
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-[1600px]">
       <header className="mb-4 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-foreground">العملاء</h1>
         <button onClick={() => setShowNew(true)} className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
@@ -172,7 +188,9 @@ export function LeadsView({
           onChanged={() => { reload(); router.refresh(); }}
         />
       ) : (
-        <div className="mb-4">
+        // الجوال: شريط الشرائح الأفقي كما هو (خارج نطاق إعادة التصميم).
+        // سطح المكتب: اللوح الجانبي بالأسفل بدله.
+        <div className="mb-4 md:hidden">
           <LeadsFilterBar
             basePath="/leads"
             isManager={isManager}
@@ -203,6 +221,32 @@ export function LeadsView({
         </div>
       )}
 
+      {/*
+        سطح المكتب: لوح الفلاتر يمينًا (لاصق) والجدول يسارًا. الجوال: عمود واحد
+        (اللوح مخفي، وشريط الشرائح أعلاه يقوم مقامه) — منطق البطاقات لم يُمسّ.
+      */}
+      <div className="md:flex md:items-start md:gap-5">
+        {showSidebar && (
+          <aside className="sticky top-20 hidden w-[15.5rem] shrink-0 md:block">
+            <LeadsSidebar
+              basePath="/leads"
+              tab={tab}
+              isManager={isManager}
+              employees={employees}
+              filters={filters}
+              stageCounts={counts.stageCounts}
+              showCounts={tab === "working"}
+              notContacted={tab === "working" ? notContacted : undefined}
+              waiting={tab === "working" ? waiting : undefined}
+              bankCheck={tab === "working" ? bankCheck : undefined}
+              purchase={purchase}
+              purchaseCounts={purchaseCounts}
+              onPurchase={setPurchase}
+            />
+          </aside>
+        )}
+
+        <div className="min-w-0 flex-1">
       {/* شريط أدوات التحديد — ظاهر دائمًا (مع عدّاد واضح + زر «تحديد الكل») */}
       {rows.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 px-4 py-2.5 text-sm">
@@ -392,6 +436,8 @@ export function LeadsView({
           </div>
         </div>
       )}
+        </div>
+      </div>
 
       {transfer && (
         <TransferDialog
