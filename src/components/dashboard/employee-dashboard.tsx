@@ -123,18 +123,42 @@ export function EmployeeDashboard({
                 <span className="text-[12.5px] text-muted-foreground">فات موعدها قبل اليوم — الأقدم أولًا</span>
               </div>
               <div className="mt-4 divide-y divide-white/[.055]">
-                {overdue.map((l) => (
-                  <div key={l.id} className="group flex items-center gap-3 py-[18px]">
-                    <div className="min-w-0 flex-1">
-                      <Link href={`/leads/${l.id}`} className="text-[16px] font-semibold text-foreground transition-colors hover:text-gold">{l.name}</Link>
-                      <div className="mt-1 text-[13.5px] text-muted-foreground">{stageLabels[l.stage]}</div>
+                {overdue.map((l) => {
+                  // أيام التأخير بحدود يوم الرياض (لا بفارق الساعات) — «أمس» تعني اليوم التقويمي السابق.
+                  const days = l.nextFollowup
+                    ? Math.max(1, Math.round((dayStart - dayStartKSA(l.nextFollowup).getTime()) / DAY_MS))
+                    : 1;
+                  const urgent = days > 7; // يحمرّ بعد أسبوع فقط
+                  return (
+                    <div key={l.id} className="flex items-center gap-4 py-[18px]">
+                      <div className="grid w-14 shrink-0 place-items-center text-center leading-none">
+                        {days === 1 ? (
+                          <span className={`text-[13.5px] font-semibold ${urgent ? "text-destructive" : "text-foreground"}`}>أمس</span>
+                        ) : (
+                          <>
+                            <b className={`${zain.className} text-[20px] font-extrabold ${urgent ? "text-destructive" : "text-foreground"}`} style={NUM}>
+                              {toArabicDigits(days)}
+                            </b>
+                            <span className="mt-1 text-[11.5px] text-muted-foreground">يوم تأخير</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link href={`/leads/${l.id}`} className="text-[16px] font-semibold text-foreground transition-colors hover:text-gold">{l.name}</Link>
+                          <span className="inline-flex items-center rounded-lg bg-secondary/60 px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground">
+                            {stageLabels[l.stage]}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5" dir="ltr"><Phone className="size-[14px]" strokeWidth={1.6} />{l.phone}</span>
+                        </div>
+                      </div>
+                      {/* المتأخرات عاجلة — أزرارها ظاهرة دائمًا لا عند المرور */}
+                      <RowActions phone={l.phone} leadId={l.id} name={l.name} always gold />
                     </div>
-                    <span className="shrink-0 text-[12.5px] text-destructive" style={NUM}>
-                      {l.nextFollowup ? `متأخر ${toArabicDigits(Math.max(1, Math.floor((Date.now() - l.nextFollowup.getTime()) / DAY_MS)))} يوم` : ""}
-                    </span>
-                    <RowActions phone={l.phone} leadId={l.id} name={l.name} />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
@@ -369,14 +393,24 @@ function SecTitle({ title, sub, href }: { title: string; sub: string; href?: str
   );
 }
 
-/** أزرار الصف — تظهر عند المرور (الشاشة ساكنة حتى تُحتاج)، وتبقى ظاهرة على اللمس. */
-function RowActions({ phone, leadId, name, primary }: { phone: string; leadId: string; name: string; primary?: string }) {
+/**
+ * أزرار الصف — تظهر عند المرور افتراضيًا (الشاشة ساكنة حتى تُحتاج).
+ * `always`: ظاهرة دائمًا (الصفوف العاجلة كالمتأخرات) · `gold`: زر الاتصال بلون accent.
+ */
+function RowActions({ phone, leadId, name, primary, always, gold }: {
+  phone: string; leadId: string; name: string; primary?: string; always?: boolean; gold?: boolean;
+}) {
+  const reveal = always
+    ? ""
+    : "md:translate-x-1.5 md:opacity-0 md:transition-all md:group-hover:translate-x-0 md:group-hover:opacity-100 md:group-focus-within:translate-x-0 md:group-focus-within:opacity-100";
   return (
-    <div className="flex shrink-0 items-center gap-1.5 opacity-100 transition-opacity md:translate-x-1.5 md:opacity-0 md:transition-all md:group-hover:translate-x-0 md:group-hover:opacity-100 md:group-focus-within:translate-x-0 md:group-focus-within:opacity-100">
+    <div className={`flex shrink-0 items-center gap-1.5 opacity-100 transition-opacity ${reveal}`}>
       <a
         href={`tel:${phone}`}
         aria-label={`اتصال بـ${name}`}
-        className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-info/15 px-3.5 text-[12.5px] font-semibold text-info transition-colors hover:bg-info/25"
+        className={`inline-flex h-10 items-center gap-1.5 rounded-xl px-3.5 text-[12.5px] font-semibold transition-colors ${
+          gold ? "bg-gold text-background hover:opacity-90" : "bg-info/15 text-info hover:bg-info/25"
+        }`}
       >
         <Phone className="size-[14px]" strokeWidth={1.6} />{primary ?? "اتصال"}
       </a>

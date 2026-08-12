@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Phone, MessageCircle, ChevronLeft, ChevronUp, ChevronDown } from "lucide-react";
+import { Phone, MessageCircle, ChevronLeft, ChevronUp, ChevronDown, Building2, AlertTriangle } from "lucide-react";
 import type { TodayAppointment } from "@/lib/data/dashboard";
 import { stageLabels } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
 import { formatTime, toArabicDigits } from "@/lib/format";
+import { DAY_MS } from "@/lib/ksa-time";
 
 /**
  * بكرة «باقي اليوم» — متابعات اليوم على محور رأسي ثلاثي الأبعاد (perspective +
@@ -46,9 +47,27 @@ function subtitleOf(a: TodayAppointment): string {
   return a.lastNote ? `${head} — ${a.lastNote.text}` : head;
 }
 
+/** «فات من X» — دقائق تحت الساعة، ثم ساعات، ثم أيام (صياغة عربية دقيقة). */
+function lateLabel(ms: number): string {
+  const mins = Math.max(1, Math.floor(ms / 60_000));
+  if (mins < 60) return `فات من ${toArabicDigits(mins)} ${mins <= 10 ? "دقائق" : "دقيقة"}`;
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 24) {
+    return `فات من ${hours === 1 ? "ساعة" : hours === 2 ? "ساعتين" : `${toArabicDigits(hours)} ${hours <= 10 ? "ساعات" : "ساعة"}`}`;
+  }
+  const days = Math.floor(ms / DAY_MS);
+  return `فات من ${days === 1 ? "يوم" : days === 2 ? "يومين" : `${toArabicDigits(days)} ${days <= 10 ? "أيام" : "يومًا"}`}`;
+}
+
 export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[]; zainClass: string }) {
   const count = items.length;
   const [cur, setCur] = useState(0);
+  // ساعة حيّة لحساب «فات من X» — مؤقّت مستقل بتنظيفه (لا يتوقف مع الدوران).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const [hovering, setHovering] = useState(false);
   const [held, setHeld] = useState(false);
   const [inView, setInView] = useState(true);
@@ -170,7 +189,7 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
       <section className="rounded-3xl bg-card p-7">
         <Head />
         <div className="mt-5 space-y-3">
-          {items.map((a) => <Flat key={`${a.leadId}-${a.kind}-${a.at.getTime()}`} a={a} zainClass={zainClass} />)}
+          {items.map((a) => <Flat key={`${a.leadId}-${a.kind}-${a.at.getTime()}`} a={a} zainClass={zainClass} nowMs={nowMs} />)}
         </div>
       </section>
     );
@@ -224,6 +243,10 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
             const d = i - cur;
             const active = d === 0;
             const { clock, mer } = timeParts(a.at);
+            const isVisit = a.kind === "visit";
+            // المدة بين لحظتين مطلقتين لا تتأثر بالمنطقة الزمنية — فهي صحيحة بتوقيت الرياض بحكم التعريف.
+            const lateMs = nowMs - a.at.getTime();
+            const late = lateMs > 0;
             return (
               <div
                 key={`${a.leadId}-${a.kind}-${a.at.getTime()}`}
@@ -234,10 +257,10 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
                   if ((e.target as HTMLElement).closest("a,button")) return;
                   goTo(i); bump();
                 }}
-                className={`absolute inset-x-5 top-1/2 flex cursor-pointer items-center gap-[15px] rounded-[18px] border backface-hidden ${
+                className={`absolute inset-x-5 top-1/2 flex cursor-pointer items-center gap-[15px] rounded-[18px] border ${
                   active
-                    ? "border-gold/35 bg-gradient-to-br from-gold/15 to-secondary p-[22px_18px] shadow-2xl"
-                    : "border-white/[.06] bg-secondary p-[16px_18px]"
+                    ? `p-[22px_18px] shadow-2xl bg-gradient-to-br to-secondary ${late ? "border-destructive/45 from-destructive/15" : "border-gold/35 from-gold/15"}`
+                    : `p-[16px_18px] bg-secondary ${late ? "border-destructive/40" : "border-white/[.06]"}`
                 }`}
                 style={{
                   marginTop: -46,
@@ -246,13 +269,31 @@ export function FollowupsReel({ items, zainClass }: { items: TodayAppointment[];
                   ...slotStyle(d),
                 }}
               >
-                <span className={`${zainClass} w-[66px] shrink-0 font-extrabold leading-none tracking-tight ${active ? "text-[23px] text-gold" : "text-[20px] text-muted-foreground"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
+                <span
+                  className={`${zainClass} w-[66px] shrink-0 font-extrabold leading-none tracking-tight ${
+                    late ? "text-destructive" : active ? "text-gold" : "text-muted-foreground"
+                  } ${active ? "text-[23px]" : "text-[20px]"}`}
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                >
                   {clock}
                   <small className="mt-[3px] block font-sans text-[10.5px] font-normal tracking-normal text-muted-foreground/80">{mer}</small>
                 </span>
 
                 <div className="min-w-0 flex-1">
-                  <div className={`truncate font-semibold text-foreground ${active ? "text-[17px]" : "text-[15.5px]"}`}>{a.name}</div>
+                  <div className="flex flex-wrap items-center gap-y-1">
+                    <span className={`truncate font-semibold text-foreground ${active ? "text-[17px]" : "text-[15.5px]"}`}>{a.name}</span>
+                    {/* شارة النوع: زيارة كهرماني · متابعة أزرق — نص + أيقونة معًا */}
+                    <span className={`ms-2 inline-flex items-center gap-[5px] rounded-md px-2 py-[3px] text-[10px] font-semibold ${isVisit ? "bg-warning/15 text-warning" : "bg-info/15 text-info"}`}>
+                      {isVisit ? <Building2 className="size-[11px]" strokeWidth={1.6} /> : <Phone className="size-[11px]" strokeWidth={1.6} />}
+                      {isVisit ? "زيارة" : "متابعة"}
+                    </span>
+                    {late && (
+                      <span className="ms-2 inline-flex items-center gap-[5px] rounded-[7px] bg-destructive/15 px-[9px] py-[3px] text-[10.5px] font-semibold text-destructive">
+                        <AlertTriangle className="size-[11px]" strokeWidth={1.6} />
+                        {lateLabel(lateMs)}
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-1.5 truncate text-[12px] text-muted-foreground">{subtitleOf(a)}</div>
                 </div>
 
@@ -328,16 +369,31 @@ function Head() {
 }
 
 /** صف مسطّح — للحالة الحدّية (متابعة أو اثنتان) حيث البكرة بلا معنى. */
-function Flat({ a, zainClass }: { a: TodayAppointment; zainClass: string }) {
+function Flat({ a, zainClass, nowMs }: { a: TodayAppointment; zainClass: string; nowMs: number }) {
   const { clock, mer } = timeParts(a.at);
+  const isVisit = a.kind === "visit";
+  const lateMs = nowMs - a.at.getTime();
+  const late = lateMs > 0;
   return (
-    <div className="flex items-center gap-[15px] rounded-[18px] border border-white/[.06] bg-secondary p-[16px_18px]">
-      <span className={`${zainClass} w-[66px] shrink-0 text-[20px] font-extrabold leading-none tracking-tight text-muted-foreground`} style={{ fontVariantNumeric: "tabular-nums" }}>
+    <div className={`flex items-center gap-[15px] rounded-[18px] border bg-secondary p-[16px_18px] ${late ? "border-destructive/40" : "border-white/[.06]"}`}>
+      <span className={`${zainClass} w-[66px] shrink-0 text-[20px] font-extrabold leading-none tracking-tight ${late ? "text-destructive" : "text-muted-foreground"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
         {clock}
         <small className="mt-[3px] block font-sans text-[10.5px] font-normal tracking-normal text-muted-foreground/80">{mer}</small>
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15.5px] font-semibold text-foreground">{a.name}</div>
+        <div className="flex flex-wrap items-center gap-y-1">
+          <span className="truncate text-[15.5px] font-semibold text-foreground">{a.name}</span>
+          <span className={`ms-2 inline-flex items-center gap-[5px] rounded-md px-2 py-[3px] text-[10px] font-semibold ${isVisit ? "bg-warning/15 text-warning" : "bg-info/15 text-info"}`}>
+            {isVisit ? <Building2 className="size-[11px]" strokeWidth={1.6} /> : <Phone className="size-[11px]" strokeWidth={1.6} />}
+            {isVisit ? "زيارة" : "متابعة"}
+          </span>
+          {late && (
+            <span className="ms-2 inline-flex items-center gap-[5px] rounded-[7px] bg-destructive/15 px-[9px] py-[3px] text-[10.5px] font-semibold text-destructive">
+              <AlertTriangle className="size-[11px]" strokeWidth={1.6} />
+              {lateLabel(lateMs)}
+            </span>
+          )}
+        </div>
         <div className="mt-1.5 truncate text-[12px] text-muted-foreground">{subtitleOf(a)}</div>
       </div>
       <div className="flex shrink-0 gap-[7px]">

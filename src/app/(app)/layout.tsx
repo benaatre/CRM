@@ -71,7 +71,11 @@ export default async function AppLayout({
         (٧٦٨–١٠٢٣): شريط ٢٥٦ بكسل يلتهم الشاشة ولا سبيل للوصول للقائمة. الآن الحدّ
         واحد (lg) للاثنين: تحته درج منزلق، وفوقه شريط ثابت.
       */}
-      <aside className="hidden w-64 shrink-0 flex-col border-l border-border bg-card p-5 lg:flex">
+      {/*
+        تثبيت الشريط (استثناء معلن): sticky بارتفاع الشاشة وتمرير داخلي عند طول القائمة.
+        سلوك بحت بلا تغيير بصري — والترويسة مثبّتة أصلًا (sticky top-0 في Topbar).
+      */}
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto border-l border-border bg-card p-5 lg:flex">
         <div className="mb-8">
           <Brand companyName={settings.companyName} logoUrl={settings.logoUrl} textClassName="text-2xl" imgClassName="h-10 w-auto" />
           <p className="mt-0.5 text-xs text-muted-foreground">إدارة المبيعات العقارية</p>
