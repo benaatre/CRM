@@ -56,7 +56,7 @@ export type AnalyticsData = {
     visits: number;     // الزيارات
     bookings: number;   // الحجوزات
     closed: number;     // صفقات مقفولة
-    conversion: number; // معدل التحويل % — الصيغة الموحّدة: الحجوزات ÷ الزيارات (م-٣)
+    conversion: number; // «تحويل الزيارات إلى حجوزات» % — الصيغة الموحّدة: الحجوزات ÷ الزيارات (م-٣)
     target: number;     // الهدف الشهري
     progress: number | null; // % نحو الهدف
   }[];
@@ -290,7 +290,9 @@ export type EmployeePerformance = {
   visits: number;     // زياراته
   bookings: number;   // حجوزاته
   closed: number;     // صفقاته المقفولة
-  conversion: number; // معدل تحويله %
+  // ⚠️ صيغة مختلفة عن الموحّدة: «نسبة الإغلاق من المسنَد» (المقفول ÷ المسنَد).
+  // الدالة الحاوية (getEmployeePerformance) بلا أي مستهلك — لا تُعرض بأي شاشة.
+  conversion: number;
   target: number;     // هدفه الشهري
   progress: number | null; // % نحو الهدف
 };
@@ -571,7 +573,7 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
   // النتائج
   const closed = myLeads.filter((l) => l.stage === "CLOSED_WON").length;
   const sales = myBookings.filter((b) => b.stage === "SOLD" || b.stage === "DELIVERED").length;
-  // م-٣: الصيغة الموحّدة لمعدل التحويل في النظام كله = الحجوزات ÷ الزيارات.
+  // م-٣: «تحويل الزيارات إلى حجوزات» — الصيغة الموحّدة في النظام كله = الحجوزات ÷ الزيارات.
   const conversion = visits > 0 ? Math.round((myBookings.length / visits) * 100) : 0;
   const target = me.targetDeals;
   const targetPct = target > 0 ? Math.round((closed / target) * 100) : null;

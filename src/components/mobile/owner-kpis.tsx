@@ -103,7 +103,7 @@ export function OwnerKpis({
   return (
     <div className="grid grid-cols-2" style={{ gap: 9 }}>
       <KpiCard label="إجمالي العملاء" value={total} color={MOBILE_COLORS.textPrimary} delayMs={90} />
-      <KpiCard label="معدل التحويل" value={conversion} suffix="٪" ring color={MOBILE_COLORS.gold} delayMs={160} />
+      <KpiCard label="تحويل الزيارات إلى حجوزات" value={conversion} suffix="٪" ring color={MOBILE_COLORS.gold} delayMs={160} />
       <KpiCard label="عدد الزيارات" value={visits} color={MOBILE_COLORS.textPrimary} delayMs={230} />
       <KpiCard label="عدد الحجوزات" value={bookings} color={MOBILE_COLORS.gold} delayMs={300} />
     </div>

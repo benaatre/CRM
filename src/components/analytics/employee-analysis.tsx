@@ -82,7 +82,7 @@ export function EmployeeAnalysisView({ data: d }: { data: EmployeeDeepAnalysis }
           <Stat label="مقفول-بيع" v={d.closed} cls="text-success" />
           <div className="rounded-xl bg-secondary/50 py-3 text-center">
             <div className="text-2xl font-bold text-gold">{toArabicDigits(d.conversion)}٪</div>
-            <div className="text-xs text-muted-foreground">معدل التحويل</div>
+            <div className="text-xs text-muted-foreground">تحويل الزيارات إلى حجوزات</div>
           </div>
         </div>
         <div className="mt-4">
@@ -101,7 +101,7 @@ export function EmployeeAnalysisView({ data: d }: { data: EmployeeDeepAnalysis }
         <div className="grid gap-4 lg:grid-cols-2">
           {/* مقارنة بالفريق */}
           <div className="space-y-3">
-            <Compare label="معدل التحويل" mine={`${toArabicDigits(d.conversion)}٪`} team={`${toArabicDigits(d.teamAvgConversion)}٪`} better={d.conversion >= d.teamAvgConversion} />
+            <Compare label="تحويل الزيارات إلى حجوزات" mine={`${toArabicDigits(d.conversion)}٪`} team={`${toArabicDigits(d.teamAvgConversion)}٪`} better={d.conversion >= d.teamAvgConversion} />
             <Compare label="سرعة الاستجابة (أقل أفضل)" mine={hrs(d.avgResponseHours)} team={hrs(d.teamAvgResponseHours)} better={d.avgResponseHours != null && d.teamAvgResponseHours != null ? d.avgResponseHours <= d.teamAvgResponseHours : false} />
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
               <div className="text-sm font-bold text-destructive">{toArabicDigits(d.lost)} عميل ضائع (مهمل/خاسر)</div>

@@ -282,7 +282,8 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     prisma.lead.count({ where: { ...where, stage: "CLOSED_WON", ...(inPeriod ? { updatedAt: inPeriod } : {}) } }),
   ]);
 
-  // م-٣: الصيغة الموحّدة الوحيدة لمعدل التحويل في النظام = الحجوزات ÷ الزيارات.
+  // م-٣: «تحويل الزيارات إلى حجوزات» — الصيغة الموحّدة الوحيدة في النظام: الحجوزات ÷ الزيارات.
+  // (الاسم القديم «معدل التحويل» كان مضلّلًا: المقياس يقيس إغلاق الزيارة لا تحويل القمع كله.)
   const conversion = visits > 0 ? Math.round((bookings / visits) * 100) : 0;
   const newInPeriod = totalClients;
 
