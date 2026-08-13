@@ -78,13 +78,15 @@ export function LeadsTable({
                 />
               </th>
               <th className="w-[2.5rem] px-2 py-2.5 font-medium">#</th>
-              <th className="w-[14.5rem] px-3 py-2.5 font-medium">الاسم</th>
+              {/* شاشة المالك أكثر أعمدة: يتنازل عمود الاسم عن ١٦px لصالح أعمدة التواريخ */}
+              <th className={`px-3 py-2.5 font-medium ${isManager ? "w-[13.5rem]" : "w-[14.5rem]"}`}>الاسم</th>
               <th className="w-[8rem] px-3 py-2.5 font-medium">الجوال</th>
-              <th className="px-3 py-2.5 font-medium">الاستلام</th>
+              {/* عمودا التاريخ بحشوة أضيق: التاريخ الكامل «١٢ أغسطس ٢٠٢٦» لا يُقصّ */}
+              <th className="px-2 py-2.5 font-medium">الاستلام</th>
               <th className="px-3 py-2.5 font-medium">الشراء والهدف</th>
               <th className="px-3 py-2.5 font-medium">المرحلة</th>
               <th className="w-[4.5rem] px-2 py-2.5 font-medium">المتابعات</th>
-              <th className="px-3 py-2.5 font-medium">أول تواصل</th>
+              <th className="px-2 py-2.5 font-medium">أول تواصل</th>
               {isManager && <th className="px-3 py-2.5 font-medium">{tab === "hidden" ? "آخر موظف" : "الموظف"}</th>}
               <th className={`px-3 py-2.5 font-medium ${isManager ? "w-[5.5rem]" : "w-[8.5rem]"}`}>{isManager ? "إجراء" : "تواصل"}</th>
               {isManager && <th className="w-[3.5rem] px-2 py-2.5 font-medium">خيارات</th>}
@@ -137,7 +139,7 @@ export function LeadsTable({
                       لا يُعرض هنا: قياسه «منذ الاستلام أو آخر تواصل» فيتصفّر بأي متابعة،
                       فيقرأ كأنه يناقض التاريخ فوقه — وللموظف تاريخ استلامه أصدق.
                     */}
-                    <td className="px-3 py-2.5">
+                    <td className="px-2 py-2.5">
                       <span className="block truncate text-[13px] text-muted-foreground" style={NUM}>
                         {l.assignedAt ? formatDate(l.assignedAt) : "—"}
                       </span>
@@ -179,7 +181,7 @@ export function LeadsTable({
                       )}
                     </td>
 
-                    <td className="px-3 py-2.5 text-[13px] text-muted-foreground" style={NUM}>
+                    <td className="px-2 py-2.5 text-[13px] text-muted-foreground" style={NUM}>
                       <span className="block truncate">{l.firstContactDate ? formatDate(l.firstContactDate) : "—"}</span>
                     </td>
 
