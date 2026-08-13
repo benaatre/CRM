@@ -25,6 +25,7 @@ import { EmployeeStrip, type EmployeeLoad } from "./employee-strip";
 import { LeadsToolbar } from "./leads-toolbar";
 import { LeadsTable } from "./leads-table";
 import { purchaseBucketOf, PURCHASE_BUCKETS, type PurchaseBucket } from "./purchase-buckets";
+import { avatarColor } from "@/lib/mobile-avatar";
 import { FilterChip } from "./filter-chip";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { FollowUpsDrawer } from "./followups-drawer";
@@ -301,8 +302,17 @@ export function LeadsView({
             {toArabicDigits(sel.size)} محدَّد
           </span>
           <div className="flex-1" />
+          {/* «تحويل للمحدَّدين» فعل رئيسي في «غير موزّعين» (نفس الاستدعاء والحارس) */}
           {isManager && (
-            <button onClick={() => setTransfer({ ids: [...sel] })} disabled={pending} className="rounded-lg bg-[var(--elev)] px-3 py-1.5 text-[13px] text-foreground transition-colors hover:bg-[var(--elev-hover)] disabled:opacity-50">تحويل</button>
+            <button
+              onClick={() => setTransfer({ ids: [...sel] })}
+              disabled={pending}
+              className={`rounded-lg px-3 py-1.5 text-[13px] transition-colors disabled:opacity-50 ${
+                tab === "unassigned"
+                  ? "bg-gold/15 font-semibold text-gold hover:bg-gold/25"
+                  : "bg-[var(--elev)] text-foreground hover:bg-[var(--elev-hover)]"
+              }`}
+            >{tab === "unassigned" ? "تحويل للمحدَّدين" : "تحويل"}</button>
           )}
           {/* باب البركة ٢: غير الموزّعين فقط — لا يمسّ أي عميل مُسند. */}
           {isManager && tab === "unassigned" && (
@@ -490,27 +500,30 @@ function UnassignedTools({
   const overCap = (loads ?? []).some((e) => e.remaining != null && (Number(alloc[e.id]) || 0) > e.remaining);
 
   return (
-    <div className="mb-4 space-y-3 rounded-2xl border border-border bg-card p-4">
-      {/* طرق الإضافة */}
+    <div className="mb-4 space-y-3 rounded-2xl bg-card p-4">
+      {/* صف «طرق الإضافة» */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-foreground">طرق الإضافة:</span>
-        <button onClick={onNew} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">عميل جديد</button>
-        <button onClick={onImport} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary">استيراد (Excel / لصق / رابط Sheets)</button>
+        <span className="w-[5.5rem] text-[12.5px] font-medium text-muted-foreground/70">طرق الإضافة</span>
+        <button onClick={onNew} className="rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">عميل جديد</button>
+        <button onClick={onImport} className="rounded-xl bg-[var(--elev)] px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-[var(--elev-hover)]">استيراد (Excel / لصق / رابط Sheets)</button>
       </div>
 
-      {/* التوزيع */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <span className="text-sm font-medium text-foreground">التوزيع:</span>
+      {/* فاصل: شعرة التوكن — فصل بالطبقة لا بإطار ثقيل */}
+      <div aria-hidden className="h-px bg-[var(--hairline)]" />
+
+      {/* صف «التوزيع» */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="w-[5.5rem] text-[12.5px] font-medium text-muted-foreground/70">التوزيع</span>
         {/* الوضع يُسأل مرة لكل دفعة قبل التنفيذ — لا توزيع صامت بضغطة. */}
-        <button onClick={() => setAskMode("equal")} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">بالتساوي</button>
-        <button onClick={() => setAskMode("least")} disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">الأقل عملاءً</button>
-        <button onClick={openCustom} className={`rounded-lg border px-3 py-1.5 text-xs ${custom ? "border-gold bg-gold/15 text-gold" : "border-border text-foreground hover:bg-secondary"}`}>مخصص</button>
-        <span className="text-xs text-muted-foreground">— أو يدويًا: حدّد عملاء بالأسفل ثم «تحويل».</span>
+        <button onClick={() => setAskMode("equal")} disabled={pending} className="rounded-xl bg-[var(--elev)] px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-[var(--elev-hover)] disabled:opacity-50">بالتساوي</button>
+        <button onClick={() => setAskMode("least")} disabled={pending} className="rounded-xl bg-[var(--elev)] px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-[var(--elev-hover)] disabled:opacity-50">الأقل عملاءً</button>
+        <button onClick={openCustom} className={`rounded-xl px-3.5 py-2 text-[13px] transition-colors ${custom ? "bg-gold/15 font-semibold text-gold" : "bg-[var(--elev)] text-foreground hover:bg-[var(--elev-hover)]"}`}>مخصص</button>
+        <span className="text-[12.5px] text-muted-foreground/70">— أو يدويًا: حدّد عملاء بالأسفل ثم «تحويل».</span>
       </div>
 
       {/* جدول التوزيع المخصّص */}
       {custom && (
-        <div className="space-y-2 rounded-xl border border-gold/30 bg-gold/5 p-3">
+        <div className="space-y-2 rounded-xl bg-gold/[0.07] p-3">
           {loads === null ? (
             <p className="py-2 text-center text-xs text-muted-foreground">جارٍ التحميل…</p>
           ) : loads.length === 0 ? (
@@ -530,10 +543,15 @@ function UnassignedTools({
                   {loads.map((e) => {
                     const rowOver = e.remaining != null && (Number(alloc[e.id]) || 0) > e.remaining;
                     return (
-                      <tr key={e.id} className="border-t border-border">
-                        <td className="px-2 py-2 text-foreground">{e.name}</td>
-                        <td className="px-2 py-2 text-muted-foreground">{toArabicDigits(e.count)}</td>
-                        <td className="px-2 py-2 text-muted-foreground">{e.remaining == null ? "بلا حد" : toArabicDigits(e.remaining)}</td>
+                      <tr key={e.id} className="border-t border-[var(--hairline)]">
+                        <td className="px-2 py-2 text-foreground">
+                          <span className="flex items-center gap-2">
+                            <span aria-hidden className="size-2 flex-none rounded-full" style={{ background: avatarColor(e.id) }} />
+                            {e.name}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground" style={NUM}>{toArabicDigits(e.count)}</td>
+                        <td className="px-2 py-2 text-muted-foreground" style={NUM}>{e.remaining == null ? "بلا حد" : toArabicDigits(e.remaining)}</td>
                         <td className="px-2 py-2">
                           <input
                             value={alloc[e.id] ?? ""}
