@@ -16,6 +16,7 @@ import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { NoResponseBanner } from "@/components/dashboard/no-response-banner";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
+import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,10 @@ export default async function DashboardPage({
           <h1 className="text-[22px] font-semibold tracking-tight text-foreground">لوحتك</h1>
           <PeriodFilter current={period} />
         </header>
+        {/* تسجيل الدوام — بصمة جغرافية، القراءة لحظة الضغط فقط */}
+        <div className="mb-6 max-w-md">
+          <AttendanceCard theme="web" />
+        </div>
         <EmployeeDashboard
           data={data}
           alert={alert}
@@ -111,6 +116,13 @@ export default async function DashboardPage({
         </div>
         <PeriodFilter current={period} />
       </header>
+
+      {/* تسجيل الدوام — للمدير فقط؛ المالك مراقب لا يبصم */}
+      {user.role === Role.ADMIN && (
+        <div className="max-w-md">
+          <AttendanceCard theme="web" />
+        </div>
+      )}
 
       {/* بطاقة لوحة الأسبوع المصغّرة — للمالك/المدير: أعلى ثلاثة بدرجاتهم */}
       {top3.length > 0 && (

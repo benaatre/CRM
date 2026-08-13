@@ -1,0 +1,73 @@
+/**
+ * لغة ألوان شاشات الدوام — قشرتان لمكوّن واحد.
+ *
+ * بطاقة البصم تُركّب في مكانين بثيمين مختلفين: تطبيق الجوال (/m) الذي يعرّف
+ * `--m-*` في `mobile.css`، وشاشات الويب التي تعرّف `--card/--border/--gold…`
+ * في `globals.css`. بدل تكرار المكوّن، نبدّل خريطة المتغيّرات فقط — فكل قشرة
+ * تتبع ثيمها (ليلي/نهاري) تلقائيًا بلا كود لون واحد مكتوب هنا.
+ */
+
+export type AttendanceTheme = "mobile" | "web";
+
+export type AttendancePalette = {
+  card: string;
+  sheet: string;
+  border: string;
+  text1: string;
+  text2: string;
+  text3: string;
+  gold: string;
+  /** لون النص فوق الذهبي المصمت. */
+  onGold: string;
+  success: string;
+  danger: string;
+  warning: string;
+  info: string;
+};
+
+export const ATTENDANCE_PALETTE: Record<AttendanceTheme, AttendancePalette> = {
+  mobile: {
+    card: "var(--m-card)",
+    sheet: "var(--m-sheet)",
+    border: "var(--m-border)",
+    text1: "var(--m-text1)",
+    text2: "var(--m-text2)",
+    text3: "var(--m-text3)",
+    gold: "var(--m-gold)",
+    onGold: "var(--m-bg)",
+    success: "var(--m-success)",
+    danger: "var(--m-danger)",
+    warning: "var(--m-warning)",
+    info: "var(--m-info)",
+  },
+  web: {
+    card: "var(--card)",
+    sheet: "var(--secondary)",
+    border: "var(--border)",
+    text1: "var(--foreground)",
+    text2: "var(--muted-foreground)",
+    text3: "var(--muted-foreground)",
+    gold: "var(--gold)",
+    onGold: "var(--primary-foreground)",
+    success: "var(--success)",
+    danger: "var(--destructive)",
+    warning: "var(--warning)",
+    info: "var(--info)",
+  },
+};
+
+/**
+ * خلفية باهتة مشتقّة من لون التوكن — `color-mix` تعمل على `var(...)` بخلاف دمج
+ * السلاسل النصّية (`${gold}30` لا ينتج لونًا)، فتكفينا عن توكن خلفية لكل حالة
+ * في كل قشرة.
+ */
+export function tint(color: string, percent = 12): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+}
+
+/** نبرة الرسالة المعروضة بعد البصم. */
+export type FeedbackTone = "success" | "danger" | "warning" | "info";
+
+export function toneColor(p: AttendancePalette, tone: FeedbackTone): string {
+  return tone === "success" ? p.success : tone === "danger" ? p.danger : tone === "warning" ? p.warning : p.info;
+}

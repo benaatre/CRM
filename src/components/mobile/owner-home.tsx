@@ -18,6 +18,7 @@ import { TeamCommitment, type CommitmentRow } from "@/components/mobile/team-com
 import { TeamStrip, type StripTile } from "@/components/mobile/team-strip";
 import { AuditFeed, type AuditFeedRow } from "@/components/mobile/audit-feed";
 import { OwnerFunnel } from "@/components/mobile/owner-funnel";
+import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 /**
  * رئيسية المالك/المدير v3 — «قرارك الآن» + أرقامك + شريط الفريق الحي +
@@ -252,6 +253,9 @@ export async function MobileOwnerHome({
         </div>
         <MobileHeaderActions unread={notif.unread} />
       </header>
+
+      {/* ===== تسجيل الدوام — للمدير فقط؛ المالك مراقب لا يبصم ===== */}
+      {!owner && <AttendanceCard theme="mobile" />}
 
       {/* ===== قرارك الآن ===== */}
       <Sec color={MOBILE_STATUS.danger.base} title="قرارك الآن" cnt="اليوم" />

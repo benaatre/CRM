@@ -263,6 +263,8 @@ model User {
   followUps     FollowUp[] @relation("FollowUpCreator")
   sentMessages     ChatMessage[] @relation("ChatSender")
   receivedMessages ChatMessage[] @relation("ChatRecipient")
+  attendanceEvents   AttendanceEvent[]
+  attendanceSessions AttendanceSession[]
 
   @@index([role])
 }
@@ -818,4 +820,105 @@ model DeviceToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ===================== حوكمة الدوام (Geofence Attendance) =====================
+// جداول مستقلة تمامًا — لا ALTER على أي جدول قائم ولا مساس بـ Lead.
+// القراءة تحدث لحظة ضغط الزر فقط (لا تتبّع بالخلفية)، والسيرفر يعيد حساب
+// المسافة دائمًا ولا يثق بأي «داخل الدائرة» قادم من الجوال.
+
+/// نوع موقع الدوام: مقر الشركة أو مشروع.
+enum AttendanceLocationType {
+  HQ // مقر الشركة
+  PROJECT // مشروع
+}
+
+/// نوع البصمة: حضور/انصراف رسمي، أو دخول/خروج زيارة مشروع.
+enum AttendanceEventType {
+  CHECK_IN // بصمة حضور
+  CHECK_OUT // بصمة انصراف
+  PROJECT_IN // دخول زيارة مشروع
+  PROJECT_OUT // خروج زيارة مشروع
+}
+
+/// من أين جاءت البصمة: متصفح الويب أو تطبيق الجوال.
+enum AttendanceSource {
+  WEB
+  NATIVE
+}
+
+/// موقع معتمد للبصم — دائرة (مركز + نصف قطر بالأمتار) يضيفها المالك.
+model AttendanceLocation {
+  id           String                 @id @default(cuid())
+  name         String
+  type         AttendanceLocationType @default(PROJECT)
+  lat          Float
+  lng          Float
+  radiusMeters Int                    @default(150)
+  isActive     Boolean                @default(true)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  events AttendanceEvent[]
+}
+
+/// إعدادات الدوام (سجل واحد singleton) — يضبطها المالك.
+model AttendanceSettings {
+  id                     String   @id @default("singleton")
+  /// بداية الدوام كدقائق من منتصف الليل بتوقيت الرياض (٥٤٠ = ٩:٠٠ صباحًا)
+  workStartMinutes       Int      @default(540)
+  /// نهاية الدوام كدقائق من منتصف الليل (١٠٢٠ = ٥:٠٠ مساءً)
+  workEndMinutes         Int      @default(1020)
+  /// بعد هذا الفارق من بداية الدوام تُعتبر البصمة تأخيرًا
+  lateThresholdMinutes   Int      @default(15)
+  /// هل يُقبل الحضور/الانصراف الرسمي من مواقع المشاريع أم من المقر فقط
+  allowProjectAttendance Boolean  @default(true)
+  /// أسوأ دقة GPS مقبولة بالأمتار — أسوأ منها نطلب إعادة القراءة
+  minAccuracyMeters      Int      @default(100)
+  /// منع البصم المتكرر بنفس النية خلال هذه المدة
+  cooldownSeconds        Int      @default(120)
+  updatedAt              DateTime @updatedAt
+}
+
+/// بصمة واحدة — تُسجَّل بوقت السيرفر ومسافة محسوبة بالسيرفر.
+/// البصمة خارج كل الدوائر تُسجَّل أيضًا (outOfZone=true) للمراجعة، لا تُرفض بصمت.
+model AttendanceEvent {
+  id             String              @id @default(cuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id])
+  locationId     String?
+  location       AttendanceLocation? @relation(fields: [locationId], references: [id])
+  type           AttendanceEventType
+  /// وقت السيرفر (UTC) — هو المرجع، لا ساعة الجوال
+  timestamp      DateTime            @default(now())
+  lat            Float
+  lng            Float
+  accuracy       Float
+  /// المسافة لمركز الموقع المطابق — محسوبة بالسيرفر (Haversine)
+  distanceMeters Float
+  source         AttendanceSource    @default(WEB)
+  isMock         Boolean             @default(false)
+  /// بصمة خارج كل الدوائر
+  outOfZone      Boolean             @default(false)
+  isLate         Boolean             @default(false)
+  createdAt      DateTime            @default(now())
+
+  @@index([userId, timestamp])
+}
+
+/// جلسة دوام = بصمة حضور + بصمة انصرافها (إن وُجدت).
+model AttendanceSession {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  checkInEventId  String    @unique
+  checkOutEventId String?   @unique
+  startedAt       DateTime
+  endedAt         DateTime?
+  workedMinutes   Int?
+  wasLate         Boolean   @default(false)
+  /// أُغلقت آليًا (نسي الانصراف)
+  autoClosed      Boolean   @default(false)
+
+  @@index([userId, startedAt])
 }

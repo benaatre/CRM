@@ -13,6 +13,7 @@ import {
   PhoneMissed,
   Trophy,
   History,
+  MapPin,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -41,6 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/analytics", label: "التحليلات", icon: BarChart3, managerOnly: false },
   { href: "/admin", label: "الفريق", icon: Users2, managerOnly: true },
   { href: "/distribution", label: "التوزيع التلقائي", icon: Share2, managerOnly: true },
+  { href: "/attendance", label: "حوكمة الدوام", icon: MapPin, managerOnly: true, ownerOnly: true },
   { href: "/audit", label: "سجل التدقيق", icon: ScrollText, managerOnly: true },
   { href: "/settings", label: "الإعدادات", icon: SettingsIcon, managerOnly: true },
 ];

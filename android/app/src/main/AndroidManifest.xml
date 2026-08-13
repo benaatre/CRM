@@ -47,4 +47,12 @@
         إطلاقًا، ولازم تُطلب وقت التشغيل كذلك (PushNotifications.requestPermissions).
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+        حوكمة الدوام: قراءة الموقع لحظة ضغط زر البصم فقط (التطبيق مفتوح) —
+        بلا ACCESS_BACKGROUND_LOCATION، فلا تتبّع بالخلفية إطلاقًا.
+        FINE للدقة داخل دائرة ١٥٠م، وCOARSE احتياط لو منع المستخدم الدقيقة.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>
