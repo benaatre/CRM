@@ -21,6 +21,7 @@ import { distributeUnassigned, distributeLeastLoaded, distributeCustom, getEmplo
 import { admitToAutoPool } from "@/lib/actions/distribution";
 import { LeadsFilterBar } from "./leads-filter-bar";
 import { LeadsSidebar } from "./leads-sidebar";
+import { EmployeeStrip, type EmployeeLoad } from "./employee-strip";
 import { LeadsToolbar } from "./leads-toolbar";
 import { LeadsTable } from "./leads-table";
 import { purchaseBucketOf, PURCHASE_BUCKETS, type PurchaseBucket } from "./purchase-buckets";
@@ -50,7 +51,7 @@ const PAGE_SIZE = 12;
 const NUM: React.CSSProperties = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" };
 
 export function LeadsView({
-  query, counts, notContacted, waiting, bankCheck, visitCount, tab, isManager, employees, filters,
+  query, counts, notContacted, waiting, bankCheck, visitCount, tab, isManager, employees, employeeLoads = [], filters,
 }: {
   query: string;
   /** أعداد التبويبات + عدّادات المراحل (من getLeadCounts — نطاق «جاري العمل» ضمن صلاحية المستخدم). */
@@ -65,6 +66,8 @@ export function LeadsView({
   tab: Tab;
   isManager: boolean;
   employees: Employee[];
+  /** أحمال الموظفين (getEmployeeLoads) — للمالك فقط؛ تصل فارغة للموظف. */
+  employeeLoads?: EmployeeLoad[];
   filters: Filters;
 }) {
   const router = useRouter();
@@ -231,8 +234,6 @@ export function LeadsView({
             <LeadsSidebar
               basePath="/leads"
               tab={tab}
-              isManager={isManager}
-              employees={employees}
               filters={filters}
               stageCounts={counts.stageCounts}
               showCounts={tab === "working"}
@@ -247,6 +248,24 @@ export function LeadsView({
         )}
 
         <div className="min-w-0 flex-1">
+      {/*
+        شريط الفريق — للمالك/المدير وحده وفي تبويبات المُسنَدين (لا معنى له في
+        «غير موزّعين»). القائمة والأحمال لا تصل الموظف من الخادم أصلًا.
+      */}
+      {isManager && tab !== "unassigned" && (
+        <div className="hidden md:block">
+          <EmployeeStrip
+            basePath="/leads"
+            tab={tab}
+            employees={employees}
+            loads={employeeLoads}
+            filters={filters}
+            total={counts.working}
+            showCounts={tab === "working"}
+          />
+        </div>
+      )}
+
       {/* شريط أدوات الجدول (بحث Ctrl K + فرز + سطر التحديد) — سطح المكتب */}
       <div className="hidden md:block">
         <LeadsToolbar

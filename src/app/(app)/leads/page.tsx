@@ -1,6 +1,7 @@
 import { Zain } from "next/font/google";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadCounts, getEmployees, getNotContactedCount, getWaitingCount, getBankCheckCount, getVisitStagesCount } from "@/lib/data/leads";
+import { getEmployeeLoads } from "@/lib/actions/team";
 import { parseLeadFilters, buildLeadsQuery } from "@/lib/lead-filters";
 import { LeadsView } from "@/components/leads/leads-view";
 
@@ -24,9 +25,13 @@ export default async function LeadsPage({
     sp.tab === "archived" ? "archived" : sp.tab === "hidden" ? "hidden" : sp.tab === "unassigned" && manager ? "unassigned" : "working";
   const { values, assigneeIds } = parseLeadFilters(sp);
 
-  const [counts, employees, notContacted, waiting, bankCheck, visitCount] = await Promise.all([
+  const [counts, employees, loads, notContacted, waiting, bankCheck, visitCount] = await Promise.all([
     getLeadCounts(),
     manager ? getEmployees() : Promise.resolve([]),
+    // أحمال الموظفين لشريط المالك — استدعاء قائم بحارسه (requireManager بداخله).
+    // يستثني الموقوفين عن الاستقبال من قائمته، وهذا بالضبط ما يشتقّ منه الشريط
+    // علامة «موقوف الاستقبال»: موجود في getEmployees وغائب هنا ⟵ موقوف.
+    manager ? getEmployeeLoads() : Promise.resolve([]),
     getNotContactedCount(assigneeIds),
     getWaitingCount(),
     getBankCheckCount(),
@@ -49,6 +54,7 @@ export default async function LeadsPage({
         tab={tab}
         isManager={manager}
         employees={employees}
+        employeeLoads={loads.map((e) => ({ id: e.id, count: e.count }))}
         filters={values}
       />
     </div>

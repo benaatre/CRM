@@ -8,11 +8,9 @@ import { toArabicDigits } from "@/lib/format";
 import { INTEREST_UMBRELLA, VISIT_FILTER_STAGES, dateRangeApplies, type ArchiveReason, type LeadFilterValues } from "@/lib/lead-filters";
 import { buildLeadsHref } from "./filters-url";
 import { STAGE_HEX, WAITING_HEX, BANK_HEX } from "@/lib/stage-colors";
-import { avatarColor } from "@/lib/mobile-avatar";
 import { DateRangeChip } from "./date-range-chip";
 import { PURCHASE_BUCKETS, type PurchaseBucket } from "./purchase-buckets";
 
-type Employee = { id: string; name: string };
 type Tab = "working" | "archived" | "hidden" | "unassigned";
 
 /** أرقام اللوح بخط Zain وأرقام جدولية — لا تهتزّ خانتها بين صف وصف. */
@@ -73,17 +71,15 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  * كل الفلاتر الخادمية تمرّ بالرابط كما هي اليوم (نفس مفاتيح lead-filters بالضبط)؛
  * «طريقة الشراء» وحدها حالة محلية تُطبَّق على الصفوف المحمَّلة (بلا لمس الخادم).
  *
- * الدور: `isManager` قادم من الخادم (requireUser في الصفحة) — مجموعة الموظفين لا
- * تُبنى أصلًا للموظف، وقائمة الموظفين تصل فارغة من الخادم في حالته.
+ * لا شيء هنا يخصّ دورًا: فلترة الفريق (للمالك) انتقلت إلى الشريط الأفقي، فاللوح
+ * واحد للجميع — والصفحة أصلًا لا تمرّر قائمة الموظفين للموظف.
  */
 export function LeadsSidebar({
-  basePath, tab, isManager, employees, filters, stageCounts, showCounts,
+  basePath, tab, filters, stageCounts, showCounts,
   notContacted, waiting, bankCheck, purchase, purchaseCounts, onPurchase,
 }: {
   basePath: string;
   tab: Tab;
-  isManager: boolean;
-  employees: Employee[];
   filters: LeadFilterValues;
   /** عدّادات المراحل — نطاق «جاري العمل» ضمن صلاحية المستخدم. */
   stageCounts: Partial<Record<LeadStage, number>>;
@@ -251,29 +247,11 @@ export function LeadsSidebar({
         </Group>
       )}
 
-      {/* الموظفون — للمدير/المالك فقط (الموظف لا تصله القائمة من الخادم أصلًا) */}
-      {isManager && employees.length > 0 && (
-        <Group title="الموظفون">
-          <Row label="كل الموظفين" active={filters.emps.length === 0} onClick={() => go({ emps: [] })} />
-          {employees.map((e) => (
-            <Row
-              key={e.id}
-              label={e.name}
-              dot={avatarColor(e.id)}
-              active={filters.emps.includes(e.id)}
-              onClick={() => go({ emps: filters.emps.includes(e.id) ? filters.emps.filter((x) => x !== e.id) : [...filters.emps, e.id] })}
-            />
-          ))}
-          {/* «غير موزّع» لا معنى له في «جاري العمل» (كله مُسند) — كما في شريط الجوال */}
-          {tab !== "working" && (
-            <Row
-              label="غير موزّع"
-              active={filters.emps.includes("none")}
-              onClick={() => go({ emps: filters.emps.includes("none") ? filters.emps.filter((x) => x !== "none") : [...filters.emps, "none"] })}
-            />
-          )}
-        </Group>
-      )}
+      {/*
+        مجموعة «الموظفون» انتقلت إلى الشريط الأفقي فوق الجدول (EmployeeStrip):
+        فلترة الفريق قرار يومي للمالك يستحق مكانًا فوق الجدول لا داخل قائمة
+        طويلة — ونفس بارامتر `emps` يحمله الشريط حرفيًا.
+      */}
 
       {hasFilters && (
         <button
