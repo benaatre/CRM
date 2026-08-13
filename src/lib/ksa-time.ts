@@ -40,6 +40,15 @@ export function ksaHourOf(d: Date): number {
   return new Date(d.getTime() + KSA_OFFSET_MS).getUTCHours();
 }
 
+/**
+ * دقائق اللحظة من منتصف ليل الرياض (٠–١٤٣٩) — لمقارنة أوقات الدوام المخزَّنة
+ * كدقائق (workStartMinutes / workEndMinutes) بوقت السيرفر لا بساعة الجوال.
+ */
+export function ksaMinutesOfDay(d: Date): number {
+  const k = new Date(d.getTime() + KSA_OFFSET_MS);
+  return k.getUTCHours() * 60 + k.getUTCMinutes();
+}
+
 /** مفتاح اليوم بتوقيت الرياض (YYYY-MM-DD) — للتجميع اليومي (سقف المتابعات مثلًا). */
 export function ksaDayKey(d: Date): string {
   return new Date(d.getTime() + KSA_OFFSET_MS).toISOString().slice(0, 10);

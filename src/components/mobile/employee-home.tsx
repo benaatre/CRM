@@ -12,6 +12,7 @@ import { MobileHeaderActions } from "@/components/mobile/header-actions";
 import { NextAppointmentBanner } from "@/components/mobile/next-appointment-banner";
 import { AppointmentsWheel } from "@/components/mobile/appointments-wheel";
 import { EmployeeKpis } from "@/components/mobile/employee-kpis";
+import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 /**
  * رئيسية الموظف v2 (التصميم المعتمد) — server component يجمّع الأقسام:
@@ -89,6 +90,9 @@ export function EmployeeHome({
 
       {/* ===== ٢) البانر المثبّت «موعدك القادم» — يظهر فقط داخل نافذته الزمنية ===== */}
       <NextAppointmentBanner appointments={appointments} />
+
+      {/* ===== ٢.١) تسجيل الدوام — بصمة جغرافية بقراءة لحظة الضغط ===== */}
+      <AttendanceCard theme="mobile" />
 
       {/* ===== ٣) المربعات الأربعة ===== */}
       <EmployeeKpis total={kpis.total} visits={kpis.visits} bookings={kpis.bookings} closed={kpis.closed} />
