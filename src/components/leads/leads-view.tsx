@@ -383,6 +383,10 @@ export function LeadsView({
         onToggleAll={toggleSelectAll}
         onFollowUp={setFuLead}
         onTransfer={(ids) => setTransfer({ ids })}
+        /* أفعال الصف للمالك = نفس استدعاءات الجملة بمصفوفة من عنصر واحد:
+           bulkArchive بحارسه، وunarchiveLeads عبر نافذته الثلاثية القائمة. */
+        onArchive={(ids) => run(async () => { const r = await bulkArchive(ids); clearSel(); return r; })}
+        onUnarchive={(ids) => setUnarchive({ ids })}
       />
 
       {/* ترقيم — أرقامه بخط Zain وخانات جدولية، وأزراره طبقات بلا حدود */}

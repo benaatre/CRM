@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Phone, MessageCircle, ClipboardCheck, MoreHorizontal } from "lucide-react";
+import { Phone, MessageCircle, ClipboardCheck, MoreHorizontal, Archive, ArchiveRestore } from "lucide-react";
 import type { LeadRow } from "@/lib/data/leads";
 import { purchaseMethodLabels, purchaseGoalLabels, stageLabels } from "@/lib/labels";
 import { formatDate, toArabicDigits } from "@/lib/format";
 import { STAGE_HEX } from "@/lib/stage-colors";
+import { avatarColor } from "@/lib/mobile-avatar";
 import { WAITING_TONE } from "@/lib/stage-colors";
 import { waPhone } from "@/lib/value-normalize";
 import { Clip } from "@/components/ui/clip";
@@ -37,7 +38,7 @@ const ACTION_BTN = "grid size-[34px] place-items-center rounded-xl bg-[var(--ele
  */
 export function LeadsTable({
   pageRows, startIndex, loading, isManager, tab, sel, allSelected, someSelected,
-  onToggle, onToggleAll, onFollowUp, onTransfer,
+  onToggle, onToggleAll, onFollowUp, onTransfer, onArchive, onUnarchive,
 }: {
   pageRows: LeadRow[];
   /** رقم أول صف في الصفحة (للعمود #). */
@@ -52,14 +53,20 @@ export function LeadsTable({
   onToggleAll: () => void;
   onFollowUp: (l: LeadRow) => void;
   onTransfer: (ids: string[]) => void;
+  /** أرشفة عميل واحد — نفس استدعاء الجملة bulkArchive بمصفوفة من عنصر. */
+  onArchive: (ids: string[]) => void;
+  /** إرجاع من الأرشيف — يفتح نافذة الأوضاع الثلاثة القائمة (unarchiveLeads). */
+  onUnarchive: (ids: string[]) => void;
 }) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // المالك لا يكلّم العميل من القائمة: مكان أزرار الاتصال/واتساب تأخذه أفعاله
+  // (أرشفة/إرجاع) — والاتصال متاح داخل ملف العميل كما هو.
   const cols = 11 + (isManager ? 2 : 0);
 
   return (
     <>
       <div className="hidden scroll-x rounded-2xl bg-card md:block">
-        <table className={`crm-table text-sm ${isManager ? "min-w-[1225px]" : "min-w-[1010px]"}`}>
+        <table className={`crm-table text-sm ${isManager ? "min-w-[1180px]" : "min-w-[1010px]"}`}>
           <thead className="text-[12.5px] text-muted-foreground/70">
             <tr className="border-b border-[var(--hairline)]">
               <th className="w-[2.75rem] px-3 py-2.5">
@@ -79,7 +86,7 @@ export function LeadsTable({
               <th className="w-[4.5rem] px-2 py-2.5 font-medium">المتابعات</th>
               <th className="px-3 py-2.5 font-medium">أول تواصل</th>
               {isManager && <th className="px-3 py-2.5 font-medium">{tab === "hidden" ? "آخر موظف" : "الموظف"}</th>}
-              <th className="w-[8.5rem] px-3 py-2.5 font-medium">تواصل</th>
+              <th className={`px-3 py-2.5 font-medium ${isManager ? "w-[5.5rem]" : "w-[8.5rem]"}`}>{isManager ? "إجراء" : "تواصل"}</th>
               {isManager && <th className="w-[3.5rem] px-2 py-2.5 font-medium">خيارات</th>}
               <th className="w-[4.25rem] px-3 py-2.5"></th>
             </tr>
@@ -90,9 +97,15 @@ export function LeadsTable({
             ) : (
               pageRows.map((l, i) => {
                 const picked = sel.has(l.id);
+                /*
+                  خط حافة الصف بلون موظفه (RTL: الحافة اليمنى = بداية الصف) — يقرأ
+                  المالك «لمن هذا الصف» بلمحة قبل ما يصل عمود الموظف. لا خط في
+                  «غير موزّعين»: ما فيه موظف يُنسب إليه اللون.
+                */
+                const edge = isManager && tab !== "unassigned" && l.assignedTo ? avatarColor(l.assignedTo.id) : null;
                 return (
                   <tr key={l.id} className={`transition-colors ${picked ? "bg-gold/[0.06]" : "hover:bg-[var(--elev)]"}`}>
-                    <td className="cell-keep px-3 py-2.5">
+                    <td className="cell-keep px-3 py-2.5" style={edge ? { boxShadow: `inset -3px 0 0 ${edge}` } : undefined}>
                       <input type="checkbox" checked={picked} onChange={() => onToggle(l.id)} aria-label={`تحديد ${l.name}`} className="size-4 accent-[var(--gold)]" />
                     </td>
                     <td className="cell-keep px-2 py-2.5 text-[12.5px] text-muted-foreground/60" style={NUM}>{toArabicDigits(startIndex + i + 1)}</td>
@@ -170,32 +183,64 @@ export function LeadsTable({
                       <span className="block truncate">{l.firstContactDate ? formatDate(l.firstContactDate) : "—"}</span>
                     </td>
 
-                    {/* الموظف — للمدير/المالك فقط */}
+                    {/* الموظف — للمدير/المالك فقط: نقطة بلونه + اسمه، أو «غير موزّع» كهرمانيًا */}
                     {isManager && (
-                      <td className="px-3 py-2.5 text-[13px] text-muted-foreground">
-                        <Clip title={l.assignedTo?.name ?? "غير موزّع"}>{l.assignedTo?.name ?? "غير موزّع"}</Clip>
+                      <td className="px-3 py-2.5 text-[13px]">
+                        {l.assignedTo ? (
+                          <span className="flex items-center gap-2">
+                            <span aria-hidden className="size-2 flex-none rounded-full" style={{ background: avatarColor(l.assignedTo.id) }} />
+                            <Clip title={l.assignedTo.name}><span className="text-muted-foreground">{l.assignedTo.name}</span></Clip>
+                          </span>
+                        ) : (
+                          // كهرماني من توكن --warning (ينقلب مع الوضع النهاري بلا فقد تباين)
+                          <span className="cell-keep rounded-md bg-warning/12 px-1.5 py-px text-[12.5px] font-semibold text-warning">غير موزّع</span>
+                        )}
                       </td>
                     )}
 
-                    {/* التواصل: اتصال · واتساب · تسجيل متابعة (بلا مغادرة الصفحة) */}
+                    {/*
+                      الموظف: اتصال · واتساب · تسجيل متابعة (بلا مغادرة الصفحة).
+                      المالك: لا يكلّم من القائمة — مكانها فعله الإداري (أرشفة/إرجاع)
+                      بنفس استدعاء الجملة القائم بمصفوفة من عنصر واحد.
+                    */}
                     <td className="cell-keep px-3 py-2.5">
                       <span className="flex items-center gap-1.5">
-                        <a href={`tel:${l.phone}`} title="اتصال" aria-label={`اتصال بـ${l.name}`} className={`${ACTION_BTN} text-info`}>
-                          <Phone className="size-4" strokeWidth={1.6} />
-                        </a>
-                        <a
-                          href={`https://wa.me/${waPhone(l.phone)}`} target="_blank" rel="noopener noreferrer"
-                          title="واتساب" aria-label={`واتساب لـ${l.name}`}
-                          className={ACTION_BTN} style={{ color: "#25D366" }}
-                        >
-                          <MessageCircle className="size-4" strokeWidth={1.6} />
-                        </a>
-                        <button
-                          onClick={() => onFollowUp(l)} title="تسجيل متابعة" aria-label={`تسجيل متابعة لـ${l.name}`}
-                          className={`${ACTION_BTN} text-muted-foreground hover:text-foreground`}
-                        >
-                          <ClipboardCheck className="size-4" strokeWidth={1.6} />
-                        </button>
+                        {isManager ? (
+                          tab === "hidden" ? (
+                            <button
+                              onClick={() => onUnarchive([l.id])} title="إرجاع من الأرشيف" aria-label={`إرجاع ${l.name} من الأرشيف`}
+                              className={`${ACTION_BTN} text-gold`}
+                            >
+                              <ArchiveRestore className="size-4" strokeWidth={1.6} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => onArchive([l.id])} title="أرشفة" aria-label={`أرشفة ${l.name}`}
+                              className={`${ACTION_BTN} text-muted-foreground hover:text-foreground`}
+                            >
+                              <Archive className="size-4" strokeWidth={1.6} />
+                            </button>
+                          )
+                        ) : (
+                          <>
+                            <a href={`tel:${l.phone}`} title="اتصال" aria-label={`اتصال بـ${l.name}`} className={`${ACTION_BTN} text-info`}>
+                              <Phone className="size-4" strokeWidth={1.6} />
+                            </a>
+                            <a
+                              href={`https://wa.me/${waPhone(l.phone)}`} target="_blank" rel="noopener noreferrer"
+                              title="واتساب" aria-label={`واتساب لـ${l.name}`}
+                              className={ACTION_BTN} style={{ color: "#25D366" }}
+                            >
+                              <MessageCircle className="size-4" strokeWidth={1.6} />
+                            </a>
+                            <button
+                              onClick={() => onFollowUp(l)} title="تسجيل متابعة" aria-label={`تسجيل متابعة لـ${l.name}`}
+                              className={`${ACTION_BTN} text-muted-foreground hover:text-foreground`}
+                            >
+                              <ClipboardCheck className="size-4" strokeWidth={1.6} />
+                            </button>
+                          </>
+                        )}
                       </span>
                     </td>
 
