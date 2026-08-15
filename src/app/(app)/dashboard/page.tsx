@@ -1,9 +1,8 @@
 import { Role } from "@prisma/client";
-import Link from "next/link";
 import { requireUser } from "@/lib/auth-guards";
 import { getDashboard, normalizePeriod } from "@/lib/data/dashboard";
 import { getMyNoResponseAlert } from "@/lib/data/no-response";
-import { getMyRank, getLeaderboard } from "@/lib/data/leaderboard";
+import { getMyRank } from "@/lib/data/leaderboard";
 import { getMyOverdue, normalizeBucket } from "@/lib/data/my-overdue";
 import { getMyRecentFollowups } from "@/lib/data/my-log";
 import { getLeads } from "@/lib/data/leads";
@@ -11,32 +10,35 @@ import { INTEREST_UMBRELLA } from "@/lib/lead-filters";
 import { dayStartKSA } from "@/lib/ksa-time";
 import { lastSeenAgo } from "@/lib/format";
 import type { RiverLead } from "@/components/dashboard/interested-river";
-import { toArabicDigits } from "@/lib/format";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
-import { DashboardView } from "@/components/dashboard/dashboard-view";
-import { NoResponseBanner } from "@/components/dashboard/no-response-banner";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
-import { AttendanceCard } from "@/components/attendance/attendance-card";
+import { OwnerDashboard } from "@/components/owner/owner-dashboard";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; late?: string }>;
+  searchParams: Promise<{ period?: string; late?: string; dp?: string; df?: string; dt?: string }>;
 }) {
   const user = await requireUser();
   const sp = await searchParams;
+
+  /*
+   * لوحة المالك ٢٠٢٦ (المرجع owner-final-structure.html) — استبدال كامل لمسار
+   * المالك/المدير: الأرقام النطاقية والدلتا وبقية الأقسام داخل OwnerDashboard.
+   * مسار الموظف أدناه باقٍ حرفيًا بلا لمسة.
+   */
+  if (user.role !== Role.EMPLOYEE) {
+    return <OwnerDashboard userRole={user.role} sp={{ dp: sp.dp, df: sp.df, dt: sp.dt }} />;
+  }
+
   const period = normalizePeriod(sp.period);
-  // بانر الإنذار للموظف فقط (المالك/المدير يشوفون لوحة «لم يتم الرد» الكاملة).
-  const [data, alert, myRank, board] = await Promise.all([
+  const [data, alert, myRank] = await Promise.all([
     getDashboard(period),
-    user.role === Role.EMPLOYEE ? getMyNoResponseAlert(user.id) : Promise.resolve({ lines: [], late: 0, pulled: 0, warningCount: 0, warningMinHoursLeft: null }),
-    user.role === Role.EMPLOYEE ? getMyRank(user.id) : Promise.resolve(null),
-    // أعلى ثلاثة للوحة المالك/المدير المصغّرة.
-    user.role !== Role.EMPLOYEE ? getLeaderboard() : Promise.resolve(null),
+    getMyNoResponseAlert(user.id),
+    getMyRank(user.id),
   ]);
-  const top3 = board?.rows.slice(0, 3) ?? [];
 
   /*
    * داشبورد الموظف ٢٠٢٦ — شاشة مستقلة بلغة دليل التصميم الجديد. مسار المالك/المدير
@@ -102,64 +104,6 @@ export default async function DashboardPage({
     );
   }
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <NoResponseBanner warningCount={alert.warningCount} warningMinHoursLeft={alert.warningMinHoursLeft} pulled={alert.pulled} />
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">هلا {user.name}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {data.manager ? "نظرة عامة على كل النشاط." : "نظرة على عملائك ومتابعاتك."}
-          </p>
-        </div>
-        <PeriodFilter current={period} />
-      </header>
-
-      {/* تسجيل الدوام — للمدير فقط؛ المالك مراقب لا يبصم */}
-      {user.role === Role.ADMIN && (
-        <div className="max-w-md">
-          <AttendanceCard theme="web" />
-        </div>
-      )}
-
-      {/* بطاقة لوحة الأسبوع المصغّرة — للمالك/المدير: أعلى ثلاثة بدرجاتهم */}
-      {top3.length > 0 && (
-        <Link href="/leaderboard" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3 transition-colors hover:bg-gold/10">
-          <div className="text-sm font-bold text-foreground">🏆 لوحة الأسبوع — أعلى الثلاثة</div>
-          <div className="flex flex-wrap items-center gap-4">
-            {top3.map((r, i) => (
-              <span key={r.id} className="flex items-center gap-1.5 text-sm">
-                <span>{["🥇", "🥈", "🥉"][i]}</span>
-                <span className="font-medium text-foreground">{r.name.split(" ")[0]}</span>
-                <span className="font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(r.score)}</span>
-              </span>
-            ))}
-          </div>
-        </Link>
-      )}
-
-      {/* بطاقة لوحة الأسبوع المصغّرة — للموظف: ترتيبه بالكفاءة + الفارق عن اللي قدامه */}
-      {myRank?.ranked && (
-        <Link href="/leaderboard" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3 transition-colors hover:bg-gold/10">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{myRank.rank === 1 ? "🥇" : myRank.rank === 2 ? "🥈" : myRank.rank === 3 ? "🥉" : "🏆"}</span>
-            <div>
-              <div className="text-sm font-bold text-foreground">ترتيبك هالأسبوع: {toArabicDigits(myRank.rank)} من {toArabicDigits(myRank.total)}</div>
-              <div className="text-xs text-muted-foreground">
-                {myRank.gapToNext
-                  ? `تحتاج ${toArabicDigits(myRank.gapToNext.pts)} درجة تعدّي ${myRank.gapToNext.name}`
-                  : "أنت الأول — حافظ على الصدارة 🔥"}
-              </div>
-            </div>
-          </div>
-          <div className="text-left">
-            <div className="text-xl font-bold text-gold" style={{ fontVariantNumeric: "tabular-nums" }}>{toArabicDigits(myRank.score)}</div>
-            <div className="text-[11px] text-muted-foreground">درجة</div>
-          </div>
-        </Link>
-      )}
-
-      <DashboardView data={data} />
-    </div>
-  );
+  // غير مُدرَك: غير الموظف عاد من فرع لوحة المالك أعلاه — الشرط باقٍ لتصغير الفرق.
+  return null;
 }
