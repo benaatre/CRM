@@ -2,9 +2,11 @@ import { Role } from "@prisma/client";
 import { Zain } from "next/font/google";
 import {
   getOwnerKpis, getOwnerFollowups, getOwnerAudit, getOwnerChannels, getOwnerWeekTrend,
-  getOwnerTeamFollowups, normalizeOwnerPeriod, ownerPeriodLabels,
+  getOwnerTeamFollowups, getOwnerActivity, normalizeOwnerPeriod, ownerPeriodLabels,
 } from "@/lib/data/owner-dashboard";
 import { OwnerAnalytics } from "@/components/owner/owner-analytics";
+import { OwnerAttendance } from "@/components/owner/owner-attendance";
+import { OwnerActivity } from "@/components/owner/owner-activity";
 import { OwnerDateFilter } from "@/components/owner/owner-date-filter";
 import { KpiCards } from "@/components/owner/kpi-cards";
 import { OwnerFollowups } from "@/components/owner/owner-followups";
@@ -69,13 +71,14 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
   const empPeriod = normalizeOwnerPeriod(sp.ep);
   // فترة المنصّات الافتراضية «أسبوع» — عنوان المرجع: «مصدر العملاء هذا الأسبوع».
   const chPeriod = normalizeOwnerPeriod(sp.ap ?? "week");
-  const [kpis, followups, audit, channels, trend, teamFu] = await Promise.all([
+  const [kpis, followups, audit, channels, trend, teamFu, activity] = await Promise.all([
     getOwnerKpis(period, sp.df, sp.dt),
     getOwnerFollowups(fuPeriod, sp.ff, sp.ft),
     getOwnerAudit(30),
     getOwnerChannels(chPeriod, sp.af, sp.at),
     getOwnerWeekTrend(),
     getOwnerTeamFollowups(empPeriod, sp.ef, sp.et),
+    getOwnerActivity(),
   ]);
 
   return (
@@ -95,28 +98,39 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
         </div>
       )}
 
-      {/* ١) الأرقام الأساسية */}
-      <SecHeader title="الأرقام الأساسية">
-        <OwnerDateFilter period={kpis.range.period} fromKey={kpis.range.fromKey} toKey={kpis.range.toKey} />
-      </SecHeader>
-      <KpiCards kpis={kpis} />
+      {/* الغلاف الرئيسي — mainshell من المرجع: المحتوى + عمود جانبي ٢٩٠px (يسارًا في RTL) */}
+      <div className="grid items-start gap-[22px] xl:grid-cols-[minmax(0,1fr)_290px]">
+        <div className="min-w-0">
+          {/* ١) الأرقام الأساسية */}
+          <SecHeader title="الأرقام الأساسية">
+            <OwnerDateFilter period={kpis.range.period} fromKey={kpis.range.fromKey} toKey={kpis.range.toKey} />
+          </SecHeader>
+          <KpiCards kpis={kpis} />
 
-      {/* ٢) متابعات اليوم + سجل التدقيق الحي — follow-layout من المرجع (1.5fr/1fr) */}
-      <SecHeader
-        title="متابعات اليوم — كل العملاء"
-        count={`${toArabicDigits(followups.rows.length)} عميل عليهم متابعة بالفترة · مرتّبة بالوقت`}
-      >
-        <OwnerDateFilter
-          period={followups.range.period}
-          fromKey={followups.range.fromKey}
-          toKey={followups.range.toKey}
-          keys={["fp", "ff", "ft"]}
-          compact
-        />
-      </SecHeader>
-      <div className="grid items-start gap-4 xl:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
-        <OwnerFollowups rows={followups.rows} />
-        <OwnerAuditFeed rows={audit} />
+          {/* ٢) متابعات اليوم + سجل التدقيق الحي — follow-layout من المرجع (1.5fr/1fr) */}
+          <SecHeader
+            title="متابعات اليوم — كل العملاء"
+            count={`${toArabicDigits(followups.rows.length)} عميل عليهم متابعة بالفترة · مرتّبة بالوقت`}
+          >
+            <OwnerDateFilter
+              period={followups.range.period}
+              fromKey={followups.range.fromKey}
+              toKey={followups.range.toKey}
+              keys={["fp", "ff", "ft"]}
+              compact
+            />
+          </SecHeader>
+          <div className="grid items-start gap-4 2xl:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
+            <OwnerFollowups rows={followups.rows} />
+            <OwnerAuditFeed rows={audit} />
+          </div>
+        </div>
+
+        {/* العمود الجانبي: الدوام (عدّاد حي) + معدّل النشاط — sticky كما بالمرجع */}
+        <aside className="min-w-0 xl:sticky xl:top-20">
+          <OwnerAttendance />
+          <OwnerActivity rows={activity} />
+        </aside>
       </div>
 
       {/* ٣) التحليلات */}

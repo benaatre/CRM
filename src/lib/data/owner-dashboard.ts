@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { dayStartKSA, weekStartKSA, KSA_OFFSET_MS, DAY_MS, parseRiyadhLocal } from "@/lib/ksa-time";
-import { formatTime, formatDate, lastSeenAgo } from "@/lib/format";
+import { formatTime, formatDate, lastSeenAgo, ONLINE_THRESHOLD_MS } from "@/lib/format";
 import { getAuditLog, inferFollowupLeads, resolveAuditNames } from "@/lib/data/audit";
 import { channelLabel } from "@/lib/labels";
 import { ksaDayKey } from "@/lib/ksa-time";
@@ -329,6 +329,46 @@ export async function getOwnerTeamFollowups(p: OwnerPeriod, fromKey?: string, to
     byEmp.set(id, row);
   }
   return { range, rows: [...byEmp.values()].sort((a, b) => b.missed - a.missed || b.total - a.total) };
+}
+
+/* ===================== معدّل النشاط (User.lastSeenAt) ===================== */
+
+export type OwnerActivityState = "online" | "recent" | "idle";
+
+export type OwnerActivityRow = {
+  id: string;
+  name: string;
+  state: OwnerActivityState;
+  /** «متصل الآن» / «منذ ١٢ دقيقة» … — من lastSeenAgo. */
+  agoText: string;
+  /** عرض شريط الحداثة (٪) — تمثيل بصري لقِدم آخر نبضة، لا مقياس مُخترع. */
+  recencyPct: number;
+};
+
+/**
+ * نشاط الموظفين داخل النظام — من نبضة `User.lastSeenAt` (heartbeat كل دقيقتين،
+ * «متصل» = خلال ٥ دقائق: نفس عتبة getTeamPresence والتوزيع التلقائي).
+ */
+export async function getOwnerActivity(): Promise<OwnerActivityRow[]> {
+  const user = await requireUser();
+  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+
+  const users = await prisma.user.findMany({
+    where: { role: { in: ["EMPLOYEE", "ADMIN"] }, active: true },
+    select: { id: true, name: true, lastSeenAt: true },
+  });
+  const now = Date.now();
+  const rows = users.map((u) => {
+    const ms = u.lastSeenAt ? now - u.lastSeenAt.getTime() : Infinity;
+    const state: OwnerActivityState = ms <= ONLINE_THRESHOLD_MS ? "online" : ms <= 3_600_000 ? "recent" : "idle";
+    const recencyPct =
+      ms <= ONLINE_THRESHOLD_MS ? 100 : ms <= 15 * 60_000 ? 70 : ms <= 3_600_000 ? 45 : ms <= 3 * 3_600_000 ? 25 : 8;
+    return { id: u.id, name: u.name, state, agoText: lastSeenAgo(u.lastSeenAt), recencyPct };
+  });
+  // المتصل أولًا ثم الأحدث ظهورًا.
+  const orderKey = (r: OwnerActivityRow) => (r.state === "online" ? 0 : r.state === "recent" ? 1 : 2);
+  rows.sort((a, b) => orderKey(a) - orderKey(b) || a.name.localeCompare(b.name, "ar"));
+  return rows;
 }
 
 /* ===================== سجل التدقيق الحي ===================== */
