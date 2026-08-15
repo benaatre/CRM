@@ -62,6 +62,43 @@ export function verifyMissedText(
   return `${base} — آخر موقع معروف: ${lastKnown.locationName ?? "خارج النطاق"} ${lastKnown.timeText}`;
 }
 
+/* ═══════════ الدفعة الثالثة — التوقف ونداء الوصول ═══════════ */
+
+/** «استأذن سعود للخروج بإذن الإدارة الساعة ١:٣٠ م» / «غادر سعود موقع العمل بإذن …» */
+export function pauseStartText(
+  name: string,
+  kind: "EXCUSED" | "LEFT",
+  authorizerLabel: string,
+  timeText: string,
+): string {
+  return kind === "EXCUSED"
+    ? `استأذن ${name} للخروج بإذن ${authorizerLabel} الساعة ${timeText}`
+    : `غادر ${name} موقع العمل بإذن ${authorizerLabel} الساعة ${timeText}`;
+}
+
+/** «رجع سعود وكمّل دوامه بعد ساعة و٢٠ دقيقة» */
+export function pauseResumeText(name: string, pausedMinutes: number): string {
+  return `رجع ${name} وكمّل دوامه بعد ${durationArabic(pausedMinutes)}`;
+}
+
+/** «سعود ما أكّد وصوله للمشروع» */
+export function arrivalMissedText(name: string): string {
+  return `${name} ما أكّد وصوله للمشروع`;
+}
+
+/** «انصرف سعود الساعة ٣:٣٠ م من المقر الرئيسي — قبل إكمال دوامه» (انصراف من النداء) */
+export function checkoutText(
+  name: string,
+  timeText: string,
+  locationName: string | null,
+  beforeTarget: boolean,
+): string {
+  return `انصرف ${name} الساعة ${timeText} من ${locationName ?? "خارج النطاق"}${beforeTarget ? " — قبل إكمال دوامه" : ""}`;
+}
+
+/** تذكير الموقوف — نص واحد موحّد، للموظف نفسه. */
+export const PAUSE_REMINDER_TEXT = "لا زلت مستأذنًا — رجعت؟";
+
 /** «سعود غيّر موقعه خارج النطاق — يبعد ١.٤ كم عن مشروع السلطان ٧٩» (الدفعة الثانية) */
 export function locationChangeOutOfZoneText(
   name: string,

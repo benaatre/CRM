@@ -133,8 +133,14 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.no_show": "staff",
   "attendance.verify_missed": "staff",
   "attendance.verify_out_of_zone": "staff",
+  // الدفعة الثانية والثالثة — تغيير الموقع خارج النطاق، التوقف والرجوع.
+  "attendance.out_of_zone": "staff",
+  "attendance.paused": "staff",
+  "attendance.resumed": "staff",
   // نداء التحقق نفسه للموظف — عاجل بمهلة قصيرة، فيأخذ أقوى قناة (منبثق + صوت).
   "attendance.verify": "pull_warn",
+  // تذكير الموقوف «رجعت؟» — للموظف، فعل مطلوب لكنه ليس إنذارًا.
+  "attendance.pause_reminder": "appointments",
 };
 
 /**
@@ -174,7 +180,11 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "attendance.no_show": "موظف ما داوم",
   "attendance.verify_missed": "نداء تحقق فائت",
   "attendance.verify_out_of_zone": "رد تحقق خارج النطاق",
+  "attendance.out_of_zone": "تغيير موقع خارج النطاق",
+  "attendance.paused": "استئذان/مغادرة موظف",
+  "attendance.resumed": "رجوع موظف لدوامه",
   "attendance.verify": "نداء تحقق (للموظف)",
+  "attendance.pause_reminder": "تذكير الموقوف (للموظف)",
 };
 
 /**

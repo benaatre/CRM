@@ -34,6 +34,7 @@
   --att-late: #f0b04e; /* متأخر */
   --att-miss: #f87171; /* لم يسجّل */
   --att-exc: #a78bfa; /* مستثنى */
+  --att-pause: #c084fc; /* موقوف — استئذان/مغادرة (الدفعة الثالثة) */
   --att-done: #9b96a0; /* أنهى دوامه */
 
   /* ===== خط اليوم والمقاطع ===== */
@@ -71,6 +72,7 @@
   --att-late: #a96f14;
   --att-miss: #c24545;
   --att-exc: #7358c9;
+  --att-pause: #8d47c9;
   --att-done: #837e74;
 
   --att-esp-bg: #f6f3ec;
@@ -169,6 +171,20 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.06'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* شريط مهلة النداء الإجباري — ينكمش خطّيًا حتى الصفر (المدة تُضبط inline). */
+@keyframes att-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+.att-shrink {
+  transform-origin: right;
+  animation: att-shrink linear forwards;
+}
+
 /* ===== احترام تفضيل تقليل الحركة — يعطّل الحلقات والنبضات والعدادات ===== */
 @media (prefers-reduced-motion: reduce) {
   .att-ring {
@@ -176,7 +192,8 @@
   }
   .att-pulse,
   .att-tick,
-  .att-row-in {
+  .att-row-in,
+  .att-shrink {
     animation: none;
   }
   .att-tile {

@@ -13,7 +13,25 @@ const prisma = new PrismaClient();
 const DEFAULT_START_MINUTES = 540; // ٩:٠٠ صباحًا
 const DEFAULT_SHIFT_MINUTES = 480; // ٨ ساعات
 
+/** الجهات الثلاث الافتراضية للدفعة الثالثة — تُزرع مرة ولا تتكرر (مطابقة بالاسم). */
+const DEFAULT_AUTHORIZERS = ["الإدارة", "الموارد البشرية", "محمد وجيه"];
+
+async function seedAuthorizers() {
+  const existing = await prisma.attendanceAuthorizer.findMany({ select: { label: true } });
+  const have = new Set(existing.map((a) => a.label));
+  let added = 0;
+  for (let i = 0; i < DEFAULT_AUTHORIZERS.length; i++) {
+    const label = DEFAULT_AUTHORIZERS[i];
+    if (have.has(label)) continue;
+    await prisma.attendanceAuthorizer.create({ data: { label, sortOrder: i } });
+    added++;
+  }
+  console.log(`جهات الإذن: ${added} جديدة (${existing.length} كانت موجودة).\n`);
+}
+
 async function main() {
+  await seedAuthorizers();
+
   const users = await prisma.user.findMany({
     where: { role: { not: "OWNER" } },
     select: { id: true, name: true, active: true },

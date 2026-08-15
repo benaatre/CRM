@@ -16,6 +16,7 @@ const RANGES: Record<string, [number, number]> = {
   noShowAfterMinutes: [30, 720],
   verificationPerDay: [0, 10],
   verificationWindowMinutes: [5, 120],
+  arrivalConfirmMinutes: [5, 180],
 };
 
 /** رموز أيام الأسبوع المقبولة في weekendDays. */

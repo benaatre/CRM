@@ -76,16 +76,19 @@ export function AttendanceEmployeeFile({ file }: { file: EmployeeFile }) {
             </p>
           </div>
         </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          الشهر
-          <input
-            type="month"
-            value={file.month}
-            onChange={(e) => e.target.value && router.push(`/attendance/${file.user.id}?month=${e.target.value}`)}
-            dir="ltr"
-            className="h-9 rounded-xl border border-input bg-background px-2.5 text-sm text-foreground outline-none focus:border-ring"
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <TriggerCallButton userId={file.user.id} />
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            الشهر
+            <input
+              type="month"
+              value={file.month}
+              onChange={(e) => e.target.value && router.push(`/attendance/${file.user.id}?month=${e.target.value}`)}
+              dir="ltr"
+              className="h-9 rounded-xl border border-input bg-background px-2.5 text-sm text-foreground outline-none focus:border-ring"
+            />
+          </label>
+        </div>
       </header>
 
       {/* ===== إحصاءات الشهر ===== */}
@@ -282,6 +285,49 @@ function DayLog({ days }: { days: EmployeeFile["days"] }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/** «أرسل نداء تحقق الآن» — نداء يدوي فوري؛ السيرفر يشترط جلسة مفتوحة ولا يكرر. */
+function TriggerCallButton({ userId }: { userId: string }) {
+  const [phase, setPhase] = useState<"idle" | "busy" | "sent">("idle");
+  const [note, setNote] = useState<string | null>(null);
+
+  const fire = async () => {
+    if (phase !== "idle") return;
+    setPhase("busy");
+    setNote(null);
+    try {
+      const res = await fetch("/api/attendance/verification/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (data.ok) setPhase("sent");
+      else {
+        setPhase("idle");
+        setNote(data.error ?? "ما انرسل النداء");
+      }
+    } catch {
+      setPhase("idle");
+      setNote("تعذّر الاتصال");
+    }
+  };
+
+  return (
+    <span className="flex items-center gap-2">
+      {note && <span className="text-[11px] font-medium text-warning">{note}</span>}
+      <button
+        type="button"
+        onClick={() => void fire()}
+        disabled={phase !== "idle"}
+        className="flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-xs font-bold text-foreground disabled:opacity-70"
+      >
+        <ShieldQuestion aria-hidden size={14} strokeWidth={1.8} />
+        {phase === "busy" ? "جاري الإرسال…" : phase === "sent" ? "انرسل النداء" : "أرسل نداء تحقق الآن"}
+      </button>
+    </span>
   );
 }
 

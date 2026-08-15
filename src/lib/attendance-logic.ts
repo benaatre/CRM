@@ -260,6 +260,42 @@ export function planVerificationTimes(
   return times;
 }
 
+/* ═══════════ الساعات النشطة — خصم التوقف (الدفعة الثالثة) ═══════════ */
+
+/** الشكل الأدنى لفترة التوقف — endedAt=null يعني التوقف جارٍ الآن. */
+export type PauseLike = { startedAt: Date; endedAt: Date | null };
+
+/**
+ * **الدالة المشتركة الوحيدة لحساب الساعات** — كل شاشة/مسار يحسب دقائق دوام
+ * يمرّ من هنا: `workedMinutes = (endedAt − startedAt) − مجموع فترات التوقف`.
+ *
+ * التوافق الرجعي مضمون: جلسة بلا فترات توقف = وقت متصل كما كان تمامًا.
+ * التوقف المفتوح يمتد حتى `endedAt ?? now`، وكل فترة تُقصّ على حدود الجلسة
+ * فلا يخصم توقفٌ خارجَها شيئًا.
+ */
+export function activeWorkedMinutes(
+  startedAt: Date,
+  endedAt: Date | null,
+  pauses: PauseLike[],
+  now: Date = new Date(),
+): number {
+  const start = startedAt.getTime();
+  const end = (endedAt ?? now).getTime();
+  if (end <= start) return 0;
+  return Math.max(0, Math.round((end - start - pausedMsWithin(pauses, start, end, now)) / 60_000));
+}
+
+/** مجموع ميلي ثواني التوقف المتقاطعة مع [start, end] — للعدادات الحية. */
+export function pausedMsWithin(pauses: PauseLike[], start: number, end: number, now: Date): number {
+  let paused = 0;
+  for (const p of pauses) {
+    const ps = Math.max(p.startedAt.getTime(), start);
+    const pe = Math.min((p.endedAt ?? now).getTime(), end);
+    if (pe > ps) paused += pe - ps;
+  }
+  return paused;
+}
+
 /* ═══════════════ المحطات — «تغيير موقعي» (الدفعة الثانية) ═══════════════ */
 
 /** الشكل الأدنى للحدث كما يحتاجه اشتقاق المحطات. */

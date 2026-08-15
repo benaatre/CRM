@@ -38,6 +38,7 @@ function chipRange(chip: Chip): { from: string; to: string } | null {
 const STATE_LABEL: Record<TileState, string> = {
   on: "مداوم",
   late: "متأخر",
+  paused: "موقوف",
   miss: "لم يسجّل",
   exc: "مستثنى",
   done: "أنهى دوامه",
@@ -54,6 +55,7 @@ const EXC_LABEL: Record<string, string> = {
 const STATE_VAR: Record<TileState, string> = {
   on: "var(--att-on)",
   late: "var(--att-late)",
+  paused: "var(--att-pause)",
   miss: "var(--att-miss)",
   exc: "var(--att-exc)",
   done: "var(--att-done)",
@@ -328,9 +330,17 @@ function Indicator({ label, value, sub, color }: { label: string; value: string;
 function TodayTile({ row, now, onOpen }: { row: LiveBoardRow; now: number; onOpen: () => void }) {
   const color = STATE_VAR[row.state];
   const active = row.state === "on" || row.state === "late";
+  const onShift = active || row.state === "paused";
 
   return (
-    <button type="button" onClick={onOpen} className="att-tile relative overflow-hidden rounded-2xl border border-[var(--att-line)] bg-[var(--att-card)] p-4 text-right">
+    /* غلاف div لا button — بداخله زر النداء اليدوي، والأزرار لا تتداخل */
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen()}
+      className="att-tile relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--att-line)] bg-[var(--att-card)] p-4 text-right"
+    >
       <span aria-hidden className="att-halo" style={{ "--halo": color } as React.CSSProperties} />
 
       {/* ===== الرأس الثابت ===== */}
@@ -341,7 +351,7 @@ function TodayTile({ row, now, onOpen }: { row: LiveBoardRow; now: number; onOpe
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-bold text-[var(--att-text)]">{row.name}</span>
           <span className="mt-0.5 block text-[11px] text-[var(--att-muted)]">
-            {active && row.startedAtText
+            {onShift && row.startedAtText
               ? `حضر ${row.startedAtText}`
               : `دوامه ${row.scheduledStartText} · ${targetLabel(row.targetMinutes)}`}
           </span>
@@ -357,6 +367,7 @@ function TodayTile({ row, now, onOpen }: { row: LiveBoardRow; now: number; onOpe
       {/* ===== الجسم حسب الحالة ===== */}
       <div className="relative mt-3.5">
         {active && <OnBody row={row} now={now} />}
+        {row.state === "paused" && <PausedBody row={row} now={now} />}
         {row.state === "miss" && <MissBody row={row} now={now} />}
         {row.state === "exc" && <ExcBody row={row} />}
         {row.state === "done" && <DoneBody row={row} />}
@@ -365,7 +376,76 @@ function TodayTile({ row, now, onOpen }: { row: LiveBoardRow; now: number; onOpe
       {row.outOfZoneToday && (
         <p className="relative mt-2.5 text-[10.5px] font-bold text-[var(--att-miss)]">فيه محاولة بصم خارج النطاق اليوم</p>
       )}
-    </button>
+
+      {/* نداء تحقق يدوي — لمن على رأس دوامه (السيرفر يشترط جلسة مفتوحة) */}
+      {onShift && <TriggerCallButton userId={row.id} />}
+    </div>
+  );
+}
+
+/** «أرسل نداء تحقق الآن» — نداء يدوي فوري من المالك، بلا تكرار على نداء نشط. */
+function TriggerCallButton({ userId }: { userId: string }) {
+  const [phase, setPhase] = useState<"idle" | "busy" | "sent" | "error">("idle");
+  const [note, setNote] = useState<string | null>(null);
+
+  const fire = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (phase === "busy" || phase === "sent") return;
+    setPhase("busy");
+    setNote(null);
+    try {
+      const res = await fetch("/api/attendance/verification/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (data.ok) {
+        setPhase("sent");
+      } else {
+        setPhase("error");
+        setNote(data.error ?? "ما انرسل النداء");
+      }
+    } catch {
+      setPhase("error");
+      setNote("تعذّر الاتصال");
+    }
+  };
+
+  return (
+    <div className="relative mt-3">
+      <button
+        type="button"
+        onClick={(e) => void fire(e)}
+        disabled={phase === "busy" || phase === "sent"}
+        className="w-full rounded-xl border border-[var(--att-line)] px-3 py-2 text-[11.5px] font-bold text-[var(--att-muted)] transition-colors hover:text-[var(--att-text)] disabled:opacity-70"
+      >
+        {phase === "busy" ? "جاري الإرسال…" : phase === "sent" ? "انرسل النداء — بانتظار رده" : "أرسل نداء تحقق الآن"}
+      </button>
+      {note && <p className="mt-1 text-[10.5px] font-medium text-[var(--att-late)]">{note}</p>}
+    </div>
+  );
+}
+
+/** موقوف: الرقم المجمّد بنفسجيًا + مدة التوقف الحية + الجهة ووقت البداية. */
+function PausedBody({ row, now }: { row: LiveBoardRow; now: number }) {
+  const elapsed = netElapsedMinutes(row, now);
+  const pauseSince = row.activePause ? Math.max(0, Math.floor((now - new Date(row.activePause.startedIso).getTime()) / 60_000)) : 0;
+
+  return (
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-3 gap-2">
+        <Cell label="أنجز (موقوف)" value={hmLabel(elapsed, toArabicDigits)} valueColor="var(--att-pause)" />
+        <Cell label="مدة التوقف" value={hmLabel(pauseSince, toArabicDigits)} />
+        <Cell label="من الساعة" value={row.activePause?.startedText ?? "—"} />
+      </div>
+      <p className="text-[11px] text-[var(--att-muted)]">
+        <span className="font-bold" style={{ color: "var(--att-pause)" }}>
+          {row.activePause?.kind === "LEFT" ? "غادر موقع العمل" : "مستأذن"}
+        </span>{" "}
+        — بإذن {row.activePause?.authorizerLabel ?? "—"}
+      </p>
+    </div>
   );
 }
 
@@ -374,10 +454,19 @@ function targetLabel(minutes: number): string {
   return minutes % 60 === 0 ? `${toArabicDigits(minutes / 60)} ساعات` : `${hmLabel(minutes, toArabicDigits)} ساعة`;
 }
 
+/**
+ * المنجز الحي صافيًا من التوقف — نفس معادلة الدالة المشتركة على الخادم:
+ * now − البداية − المخصوم المغلق − (توقف نشط؟ now − بدايته).
+ */
+function netElapsedMinutes(row: LiveBoardRow, now: number): number {
+  if (!row.startedAtIso) return 0;
+  const activeDelta = row.activePause ? Math.max(0, now - new Date(row.activePause.startedIso).getTime()) : 0;
+  return Math.max(0, Math.floor((now - new Date(row.startedAtIso).getTime() - row.pausedMsBase - activeDelta) / 60_000));
+}
+
 /** مداوم/متأخر: الحلقة + شبكة 2×2 + شريط التقدم + سطر الموقع. */
 function OnBody({ row, now }: { row: LiveBoardRow; now: number }) {
-  const startedMs = row.startedAtIso ? new Date(row.startedAtIso).getTime() : now;
-  const elapsed = Math.max(0, Math.floor((now - startedMs) / 60_000));
+  const elapsed = netElapsedMinutes(row, now);
   const target = Math.max(1, row.targetMinutes);
   const remaining = Math.max(0, target - elapsed);
   const pct = Math.min(100, Math.round((elapsed / target) * 100));

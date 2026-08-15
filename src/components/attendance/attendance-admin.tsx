@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, CalendarDays, Crosshair, MapPin, Power, SlidersHorizontal, Users } from "lucide-react";
 import type { AttendanceLocation, AttendanceSettings } from "@prisma/client";
@@ -312,6 +312,7 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
   const [verifyOn, setVerifyOn] = useState(settings.verificationEnabled);
   const [verifyPerDay, setVerifyPerDay] = useState(String(settings.verificationPerDay));
   const [verifyWindow, setVerifyWindow] = useState(String(settings.verificationWindowMinutes));
+  const [arrivalMinutes, setArrivalMinutes] = useState(String(settings.arrivalConfirmMinutes));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const toggleWeekendDay = (code: string) => {
@@ -346,6 +347,7 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
           verificationEnabled: verifyOn,
           verificationPerDay: Number(verifyPerDay),
           verificationWindowMinutes: Number(verifyWindow),
+          arrivalConfirmMinutes: Number(arrivalMinutes),
         }),
       });
       const data = (await res.json()) as { ok: boolean; error?: string };
@@ -493,6 +495,16 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
                 className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
               />
             </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">مهلة تأكيد الوصول للمشروع (دقيقة)</span>
+              <input
+                value={arrivalMinutes}
+                onChange={(e) => setArrivalMinutes(e.target.value)}
+                inputMode="numeric"
+                dir="ltr"
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+            </label>
           </div>
         )}
       </div>
@@ -508,6 +520,178 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
       >
         {pending ? "جاري الحفظ…" : "حفظ الإعدادات"}
       </button>
+
+      {/* ===== جهات الإذن بالخروج (الدفعة الثالثة) ===== */}
+      <AuthorizersSection />
+    </div>
+  );
+}
+
+/* ═══════════════════ جهات الإذن ═══════════════════ */
+
+type Authorizer = { id: string; label: string; isActive: boolean; sortOrder: number };
+
+/**
+ * إدارة جهات الإذن بالخروج — قائمة شاشة «مين أذن لك؟» عند الموظف.
+ * الحذف تعطيل لا مسحًا: سجلات التوقف تحمل نسخة نصية من الاسم فتبقى مقروءة.
+ */
+function AuthorizersSection() {
+  const [list, setList] = useState<Authorizer[] | null>(null);
+  const [newLabel, setNewLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const res = await fetch("/api/attendance/authorizers?all=1", { cache: "no-store" });
+      const data = (await res.json()) as { ok: boolean; authorizers?: Authorizer[] };
+      if (data.ok && data.authorizers) setList(data.authorizers);
+    } catch {
+      /* تُعاد المحاولة بأي عملية قادمة */
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const call = async (input: RequestInfo, init?: RequestInit) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(input, init);
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (!data.ok) setError(data.error ?? "ما نفذت العملية");
+      await load();
+    } catch {
+      setError("تعذّر الاتصال — حاول مرة ثانية");
+    }
+    setBusy(false);
+  };
+
+  const add = () => {
+    const label = newLabel.trim();
+    if (!label) return;
+    setNewLabel("");
+    void call("/api/attendance/authorizers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+    });
+  };
+
+  const move = (a: Authorizer, dir: -1 | 1) => {
+    if (!list) return;
+    const active = list.filter((x) => x.isActive);
+    const i = active.findIndex((x) => x.id === a.id);
+    const other = active[i + dir];
+    if (!other) return;
+    void (async () => {
+      await call(`/api/attendance/authorizers/${a.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sortOrder: other.sortOrder }),
+      });
+      await call(`/api/attendance/authorizers/${other.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sortOrder: a.sortOrder }),
+      });
+    })();
+  };
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-secondary/50 p-3">
+      <div>
+        <span className="block text-sm font-medium text-foreground">جهات الإذن بالخروج</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">
+          القائمة التي يختار منها الموظف «مين أذن لك؟» — الحذف تعطيل يحفظ السجلات القديمة.
+        </span>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          placeholder="اسم الجهة — مثال: الإدارة"
+          className="h-10 flex-1 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={busy || !newLabel.trim()}
+          className="h-10 rounded-xl border border-border px-4 text-xs font-bold text-foreground disabled:opacity-50"
+        >
+          إضافة
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {list === null ? (
+        <p className="py-2 text-xs text-muted-foreground">جاري تحميل الجهات…</p>
+      ) : list.length === 0 ? (
+        <p className="py-2 text-xs text-muted-foreground">ما فيه جهات بعد — أضف الأولى فوق</p>
+      ) : (
+        <ul className="space-y-1">
+          {list.map((a) => (
+            <li
+              key={a.id}
+              className={`flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 ${a.isActive ? "" : "opacity-50"}`}
+            >
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{a.label}</span>
+              {a.isActive ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => move(a, -1)}
+                    disabled={busy}
+                    aria-label="فوق"
+                    className="rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground disabled:opacity-50"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(a, 1)}
+                    disabled={busy}
+                    aria-label="تحت"
+                    className="rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground disabled:opacity-50"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void call(`/api/attendance/authorizers/${a.id}`, { method: "DELETE" })
+                    }
+                    disabled={busy}
+                    className="rounded-lg border border-destructive/40 px-2.5 py-1 text-xs font-bold text-destructive disabled:opacity-50"
+                  >
+                    تعطيل
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void call(`/api/attendance/authorizers/${a.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ isActive: true }),
+                    })
+                  }
+                  disabled={busy}
+                  className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold text-foreground disabled:opacity-50"
+                >
+                  تفعيل
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

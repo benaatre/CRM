@@ -268,6 +268,7 @@ model User {
   attendanceSchedule      AttendanceSchedule?
   attendanceExceptions    AttendanceException[]
   attendanceVerifications AttendanceVerification[]
+  attendancePauses        AttendancePause[]
 
   @@index([role])
 }
@@ -891,6 +892,10 @@ model AttendanceSettings {
   verificationPerDay        Int     @default(2)
   /// مهلة الرد على النداء بالدقائق قبل اعتباره فائتًا
   verificationWindowMinutes Int     @default(15)
+  /// مهلة تأكيد الوصول للمشروع بعد ردّ «ذاهب لمشروع»
+  arrivalConfirmMinutes     Int     @default(30)
+  /// إظهار خيار «غادرت موقع العمل» في النداء الإجباري
+  allowLeftOption           Boolean @default(true)
   updatedAt              DateTime @updatedAt
 }
 
@@ -927,13 +932,53 @@ enum AttendanceExceptionType {
   MODIFIED_SHIFT // دوام معدّل (ساعات أقل لفترة)
 }
 
-/// دورة حياة نداء التحقق العشوائي.
+/// دورة حياة نداء التحقق.
 enum AttendanceVerificationStatus {
   PENDING // مجدول لم يُرسل
   SENT // أُرسل الإشعار وننتظر الرد
   CONFIRMED // ردّ وداخل النطاق
   OUT_OF_ZONE // ردّ لكنه خارج النطاق
   MISSED // ما ردّ خلال المهلة
+  PAUSED // ردّ باستئذان/مغادرة — فتح توقفًا
+  EN_ROUTE // ردّ بـ«ذاهب لمشروع» — جُدول له نداء وصول
+}
+
+/// نوع توقف العدّاد — استئذان أو مغادرة، وكلاهما بإذن جهة.
+enum AttendancePauseKind {
+  EXCUSED // استأذن للخروج
+  LEFT // غادر موقع العمل
+}
+
+/// فترة توقف داخل جلسة دوام — تُخصم من الساعات النشطة.
+model AttendancePause {
+  id              String              @id @default(cuid())
+  sessionId       String
+  session         AttendanceSession   @relation(fields: [sessionId], references: [id])
+  userId          String
+  user            User                @relation(fields: [userId], references: [id])
+  kind            AttendancePauseKind
+  authorizerId    String? // من جدول الجهات
+  /// نسخة نصية محفوظة — تبقى السجلات مقروءة حتى لو حُذفت الجهة
+  authorizerLabel String
+  reason          String? // اختياري
+  startedAt       DateTime
+  /// null = التوقف جارٍ الآن
+  endedAt         DateTime?
+  autoClosed      Boolean             @default(false)
+  /// تذكيرات «لا زلت مستأذنًا — رجعت؟» المرسلة (الحد مرتان، كل ٦٠ دقيقة)
+  remindersSent   Int                 @default(0)
+  createdAt       DateTime            @default(now())
+
+  @@index([sessionId])
+  @@index([userId, startedAt])
+}
+
+/// جهات الإذن بالخروج — يديرها المالك من الإعدادات، والحذف تعطيل لا مسح.
+model AttendanceAuthorizer {
+  id        String  @id @default(cuid())
+  label     String
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
 }
 
 /// دوام الموظف المحدد — بداية مخصصة + عدد ساعات («الـ ٨ ساعات» هي العمود).
@@ -973,6 +1018,10 @@ model AttendanceVerification {
   userId         String
   user           User                         @relation(fields: [userId], references: [id])
   sessionId      String?
+  /// RANDOM (عشوائي مجدول) | MANUAL (من المالك) | ARRIVAL (تأكيد وصول لمشروع)
+  kind           String                       @default("RANDOM")
+  /// نداء الوصول يشير لنداء «ذاهب لمشروع» الذي ولّده
+  parentId       String?
   /// الوقت العشوائي المجدول
   scheduledAt    DateTime
   /// متى أُرسل الإشعار فعليًا
@@ -1005,6 +1054,8 @@ model AttendanceSession {
   wasLate         Boolean   @default(false)
   /// أُغلقت آليًا (نسي الانصراف)
   autoClosed      Boolean   @default(false)
+
+  pauses AttendancePause[]
 
   @@index([userId, startedAt])
 }

@@ -12,6 +12,7 @@ import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
 import { getAttendanceSettings, getActiveLocations } from "@/lib/data/attendance";
 import {
+  activeWorkedMinutes,
   effectiveDay,
   isLateCheckIn,
   parseWeekendDays,
@@ -288,9 +289,22 @@ export async function POST(req: Request) {
 
   const location = candidates.find((l) => l.id === match.id) ?? null;
 
-  // للانصراف: تُحسب قبل المعاملة لتُستعمل في إشعار الاكتمال بعدها.
+  /*
+   * للانصراف: الدقائق **صافية من التوقف** عبر الدالة المشتركة (الدفعة الثالثة).
+   * توقف نشط لحظة الانصراف يُقفل أولًا عند لحظة الانصراف نفسها — فمدته كلها
+   * مخصومة. تُحسب قبل المعاملة لتُستعمل في إشعار الاكتمال بعدها.
+   */
+  const sessionPauses =
+    openSession && body.intent === AttendanceEventType.CHECK_OUT
+      ? await prisma.attendancePause.findMany({ where: { sessionId: openSession.id } })
+      : [];
   const workedMinutes = openSession
-    ? Math.max(0, Math.round((now.getTime() - openSession.startedAt.getTime()) / 60_000))
+    ? activeWorkedMinutes(
+        openSession.startedAt,
+        now,
+        sessionPauses.map((p) => ({ startedAt: p.startedAt, endedAt: p.endedAt ?? now })),
+        now,
+      )
     : 0;
 
   // ===== ٩) التسجيل + الجلسة — معاملة واحدة فلا تبقى بصمة بلا جلستها =====
@@ -330,6 +344,11 @@ export async function POST(req: Request) {
         }
       }
     } else if (body.intent === AttendanceEventType.CHECK_OUT && openSession) {
+      // الانصراف أثناء توقف يقفل التوقف أولًا — عند لحظة الانصراف.
+      await tx.attendancePause.updateMany({
+        where: { sessionId: openSession.id, endedAt: null },
+        data: { endedAt: now },
+      });
       await tx.attendanceSession.update({
         where: { id: openSession.id },
         data: { checkOutEventId: created.id, endedAt: now, workedMinutes },
