@@ -7,7 +7,7 @@ import {
 } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { matchLocation, nearestLocation } from "@/lib/geofence";
+import { distanceMeters, matchLocation, nearestLocation } from "@/lib/geofence";
 import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
 import { getAttendanceSettings, getActiveLocations } from "@/lib/data/attendance";
@@ -17,7 +17,12 @@ import {
   parseWeekendDays,
   planVerificationTimes,
 } from "@/lib/attendance-logic";
-import { checkedInText, completedText, lateCheckInText } from "@/lib/attendance-notify";
+import {
+  checkedInText,
+  completedText,
+  lateCheckInText,
+  locationChangeOutOfZoneText,
+} from "@/lib/attendance-notify";
 import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -45,6 +50,7 @@ type Body = {
   isMock?: unknown;
   source?: unknown;
   intent?: unknown;
+  targetLocationId?: unknown;
 };
 
 type Parsed = {
@@ -54,6 +60,8 @@ type Parsed = {
   isMock: boolean;
   source: AttendanceSource;
   intent: AttendanceEventType;
+  /** «تغيير موقعي»: الموقع الذي اختاره الموظف من الشيت — ادّعاء يعاد حسابه هنا. */
+  targetLocationId: string | null;
 };
 
 /** يقرأ ويتحقق من جسم الطلب — يرجّع null لو غير صالح. */
@@ -85,6 +93,10 @@ async function parseBody(req: Request): Promise<Parsed | null> {
     isMock: raw.isMock === true,
     source: source as AttendanceSource,
     intent: intent as AttendanceEventType,
+    targetLocationId:
+      typeof raw.targetLocationId === "string" && raw.targetLocationId.length > 0 && raw.targetLocationId.length <= 64
+        ? raw.targetLocationId
+        : null,
   };
 }
 
@@ -154,6 +166,10 @@ export async function POST(req: Request) {
   if (body.intent === AttendanceEventType.CHECK_OUT && !openSession) {
     return refuse("not_checked_in", "ما عندك حضور مفتوح — سجّل حضورك أول");
   }
+  // «تغيير موقعي» محطة داخل جلسة — بلا جلسة مفتوحة لا معنى له.
+  if (body.intent === AttendanceEventType.LOCATION_CHANGE && !openSession) {
+    return refuse("not_checked_in", "ما عندك حضور مفتوح — سجّل حضورك أول");
+  }
 
   // ===== ٥) المواقع المرشّحة — الحضور الرسمي من المقر فقط لو المشاريع مقفلة =====
   const active = await getActiveLocations();
@@ -163,12 +179,33 @@ export async function POST(req: Request) {
       : active;
 
   // ===== ٦) المطابقة بالسيرفر =====
-  const match = matchLocation(body.lat, body.lng, body.accuracy, candidates);
+  const isLocationChange = body.intent === AttendanceEventType.LOCATION_CHANGE;
+  /*
+   * «تغيير موقعي» باختيار صريح من الشيت: الادّعاء هو الموقع المختار، والخادم
+   * يعيد حساب المسافة إليه هو — لا لأقرب دائرة صدفةً. بلا اختيار (أو لبقية
+   * الأنواع): المطابقة العادية ضد كل المرشّحين.
+   */
+  const chosenTarget =
+    isLocationChange && body.targetLocationId
+      ? (candidates.find((l) => l.id === body.targetLocationId) ?? null)
+      : null;
+  if (isLocationChange && body.targetLocationId && !chosenTarget) {
+    return refuse("invalid", "الموقع المختار غير معروف أو معطّل");
+  }
+  const match = chosenTarget
+    ? (() => {
+        const d = distanceMeters(body.lat, body.lng, chosenTarget.lat, chosenTarget.lng);
+        return d <= chosenTarget.radiusMeters + body.accuracy ? { id: chosenTarget.id, distance: d } : null;
+      })()
+    : matchLocation(body.lat, body.lng, body.accuracy, candidates);
   const now = new Date();
 
-  // ===== ٧) خارج كل الدوائر: تُسجَّل للمراجعة ثم تُرفض بوضوح =====
+  // ===== ٧) خارج كل الدوائر =====
   if (!match) {
-    const nearest = nearestLocation(body.lat, body.lng, candidates);
+    const nearest = chosenTarget
+      ? { id: chosenTarget.id, distance: distanceMeters(body.lat, body.lng, chosenTarget.lat, chosenTarget.lng) }
+      : nearestLocation(body.lat, body.lng, candidates);
+
     await prisma.attendanceEvent.create({
       data: {
         userId,
@@ -185,6 +222,36 @@ export async function POST(req: Request) {
         isLate: false,
       },
     });
+
+    /*
+     * قرار المالك: «تغيير موقعي» خارج النطاق **يُسجَّل ولا يوقف الدوام** —
+     * محطة «خارج النطاق» حمراء + إشعار للمالك. بقية الأنواع تُرفض كما كانت.
+     */
+    if (isLocationChange) {
+      try {
+        const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+        const targetName = chosenTarget?.name ?? candidates.find((l) => l.id === nearest?.id)?.name ?? null;
+        await notify(
+          prisma,
+          await ownerIds(prisma),
+          "attendance.out_of_zone",
+          locationChangeOutOfZoneText(me?.name ?? "موظف", nearest?.distance ?? null, targetName),
+          undefined,
+          `/attendance/${userId}`,
+        );
+      } catch (e) {
+        console.error("[attendance] فشل إشعار خارج النطاق", e);
+      }
+      return NextResponse.json({
+        ok: true,
+        type: body.intent,
+        locationName: null,
+        timeKSA: formatTime(now),
+        isLate: false,
+        outOfZone: true,
+      });
+    }
+
     return refuse("out_of_zone", "أنت خارج الموقع — اقترب من الشركة أو المشروع عشان تسجّل", {
       distance: nearest ? Math.round(nearest.distance) : null,
     });
@@ -270,7 +337,8 @@ export async function POST(req: Request) {
       // انصرف — نداءات اليوم التي لم تُرسل بعد صارت بلا معنى.
       await tx.attendanceVerification.deleteMany({ where: { userId, status: "PENDING" } });
     }
-    // زيارة المشروع (PROJECT_IN/OUT): حدث فقط بلا جلسة.
+    // تغيير الموقع (LOCATION_CHANGE) وزيارة المشروع التاريخية (PROJECT_IN/OUT):
+    // حدث فقط بلا لمس للجلسة — المحطات تُشتق من تسلسل الأحداث.
 
     return created;
   });
@@ -309,5 +377,6 @@ export async function POST(req: Request) {
     locationName: location?.name ?? null,
     timeKSA: formatTime(now),
     isLate,
+    outOfZone: false,
   });
 }

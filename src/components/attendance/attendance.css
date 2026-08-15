@@ -1,0 +1,185 @@
+/**
+ * ثيم مكوّنات الدوام — المصدر الوحيد لألوانها (صفر hex داخل المكوّنات).
+ *
+ * مجموعتان: `.att-scope` (الليلي — الحالي) وتجاوزات `[data-theme="light"]`
+ * (النهاري: ورق كريمي دافئ، ذهب أغمق للتباين، سماوي أعمق). على الجوال تتفعّل
+ * النهارية تلقائيًا من سمة data-theme القائمة على غلاف (mobile)؛ وعلى الويب
+ * تبقى الليلية (قشرة الديسكتوب أوبسيديان مجمّدة بقرار المالك) — والبنية تمهّد
+ * لثيمي Blossom/Glass لاحقًا بتبديل قيم المتغيرات فقط.
+ */
+
+/* نسبة حلقة التقدم — @property تجعلها قابلة للتحريك بالانتقالات. */
+@property --att-p {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+.att-scope {
+  /* ===== الأرضية والنص (بلاط لوحة المالك يتبع قشرة الويب) ===== */
+  --att-bg: var(--background);
+  --att-card: var(--card);
+  --att-card2: var(--secondary);
+  --att-line: var(--border);
+  --att-text: var(--foreground);
+  --att-muted: var(--muted-foreground);
+
+  /* ===== الهوية ===== */
+  --att-gold: var(--gold, #cba45e);
+  --att-on-gold: var(--primary-foreground, #14100c);
+  --att-teal: #38bdc9;
+
+  /* ===== ألوان الحالات الخمس — مصدر واحد لكل الشاشات ===== */
+  --att-on: #34d399; /* مداوم */
+  --att-late: #f0b04e; /* متأخر */
+  --att-miss: #f87171; /* لم يسجّل */
+  --att-exc: #a78bfa; /* مستثنى */
+  --att-done: #9b96a0; /* أنهى دوامه */
+
+  /* ===== خط اليوم والمقاطع ===== */
+  --att-rail: color-mix(in srgb, var(--att-text) 10%, transparent);
+  --att-seg-hq: var(--att-gold);
+  --att-seg-project: var(--att-teal);
+  --att-seg-out: var(--att-miss);
+
+  /* ===== بطاقة الموظف الإسبريسو (الدفعة الثانية) ===== */
+  --att-esp-bg: #171008;
+  --att-esp-bg2: #221709;
+  --att-esp-card: rgba(255, 246, 229, 0.035);
+  --att-esp-line: rgba(203, 164, 94, 0.16);
+  --att-esp-glow: rgba(203, 164, 94, 0.55);
+  --att-esp-text: #f4ecdd;
+  --att-esp-muted: #b3a68e;
+  --att-esp-grain-blend: overlay;
+}
+
+/* ===== النهاري — يتفعّل بسمة الثيم القائمة (غلاف الجوال أو <html>) ===== */
+[data-theme="light"] .att-scope,
+.att-scope[data-theme="light"] {
+  --att-bg: #f6f3ec;
+  --att-card: #fffdf8;
+  --att-card2: #f1ece1;
+  --att-line: #e3dccb;
+  --att-text: #2b2417;
+  --att-muted: #7d7461;
+
+  --att-gold: #a9822f;
+  --att-on-gold: #fffdf8;
+  --att-teal: #0f7c8c;
+
+  --att-on: #178a5c;
+  --att-late: #a96f14;
+  --att-miss: #c24545;
+  --att-exc: #7358c9;
+  --att-done: #837e74;
+
+  --att-esp-bg: #f6f3ec;
+  --att-esp-bg2: #efe7d6;
+  --att-esp-card: rgba(66, 50, 22, 0.04);
+  --att-esp-line: rgba(169, 130, 47, 0.28);
+  --att-esp-glow: rgba(169, 130, 47, 0.5);
+  --att-esp-text: #2b2417;
+  --att-esp-muted: #6f6551;
+  --att-esp-grain-blend: multiply;
+}
+
+/* ═══════════════ البلاط الموحّد ═══════════════ */
+
+/* ضغطة البلاطة المعتمدة. */
+.att-tile {
+  transition: transform 0.35s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.att-tile:active {
+  transform: scale(0.985);
+}
+
+/* الهالة العلوية بلون الحالة — radial مع blur خفيف. */
+.att-halo {
+  position: absolute;
+  inset: -30% -20% auto -20%;
+  height: 70%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 0%, var(--halo, transparent) 0%, transparent 70%);
+  opacity: 0.5;
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+/* حلقة التقدم conic — القناع يفرّغ المنتصف. */
+.att-ring {
+  background: conic-gradient(var(--ring, var(--att-gold)) var(--att-p, 0%), var(--att-rail) 0);
+  -webkit-mask: radial-gradient(closest-side, transparent 72%, #000 73%);
+  mask: radial-gradient(closest-side, transparent 72%, #000 73%);
+  transition: --att-p 0.9s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* النقطة النابضة (الشريط المباشر / شارة «الآن» / نقطة السهم). */
+@keyframes att-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+.att-pulse {
+  animation: att-pulse 1.9s ease-in-out infinite;
+}
+
+/* نبضة خانة العداد عند تغيّر قيمتها. */
+@keyframes att-tick {
+  0% {
+    transform: translateY(-14%);
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.att-tick {
+  animation: att-tick 0.45s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* دخول صفوف السجل متدرجًا. */
+@keyframes att-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.att-row-in {
+  animation: att-row-in 0.4s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* حبيبات بطاقة الإسبريسو — SVG noise مضمّن، وضع الدمج من المتغير. */
+.att-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: var(--att-esp-grain-blend);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.06'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ===== احترام تفضيل تقليل الحركة — يعطّل الحلقات والنبضات والعدادات ===== */
+@media (prefers-reduced-motion: reduce) {
+  .att-ring {
+    transition: none;
+  }
+  .att-pulse,
+  .att-tick,
+  .att-row-in {
+    animation: none;
+  }
+  .att-tile {
+    transition: none;
+  }
+}

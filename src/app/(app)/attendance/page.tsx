@@ -19,14 +19,27 @@ export const dynamic = "force-dynamic";
  * بيانات، وكل مسار API خلف هذي الشاشة يعيد الفحص بنفسه (إخفاء الرابط من القائمة
  * ليس صلاحية).
  */
-export default async function AttendancePage() {
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+export default async function AttendancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
   await requireRole(Role.OWNER);
 
+  // فلتر الفترة في الـURL (?from=&to=) — نفس تحقق مسار live حرفيًا.
+  const sp = await searchParams;
+  const range =
+    sp.from && sp.to && DAY_KEY.test(sp.from) && DAY_KEY.test(sp.to) && sp.from <= sp.to
+      ? { fromKey: sp.from, toKey: sp.to }
+      : null;
+
   const month = currentMonthKSA();
-  const [locations, settings, liveRows, teamRows, appSettings] = await Promise.all([
+  const [locations, settings, live, teamRows, appSettings] = await Promise.all([
     getAllLocations(),
     getAttendanceSettings(),
-    getLiveBoard(),
+    getLiveBoard(range),
     getTeamSummary(month),
     getSettings(),
   ]);
@@ -43,7 +56,7 @@ export default async function AttendancePage() {
       <AttendanceAdmin
         locations={locations}
         settings={settings}
-        liveRows={liveRows}
+        live={live}
         teamMonth={month}
         teamRows={teamRows}
       />

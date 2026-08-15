@@ -8,9 +8,9 @@ import { toArabicDigits } from "@/lib/format";
 import { DEFAULT_RADIUS_M, splitCoords } from "@/lib/attendance-location-input";
 import { minutesToTime, timeToMinutes } from "@/lib/attendance-ui";
 import { WEEKDAY_CODES } from "@/lib/attendance-logic";
-import { LiveTab, type LiveRow } from "@/components/attendance/attendance-live";
+import { LiveTab } from "@/components/attendance/attendance-live";
 import { TeamTab } from "@/components/attendance/attendance-team";
-import type { TeamSummaryRow } from "@/lib/data/attendance";
+import type { LiveBoardPayload, TeamSummaryRow } from "@/lib/data/attendance";
 
 /**
  * لوحة «حوكمة الدوام» للمالك — أربعة تبويبات: مداوم الآن (الافتراضي) · الكل ·
@@ -43,13 +43,13 @@ const WEEKDAY_LABELS: Record<string, string> = {
 export function AttendanceAdmin({
   locations,
   settings,
-  liveRows,
+  live,
   teamMonth,
   teamRows,
 }: {
   locations: AttendanceLocation[];
   settings: AttendanceSettings;
-  liveRows: LiveRow[];
+  live: LiveBoardPayload;
   teamMonth: string;
   teamRows: TeamSummaryRow[];
 }) {
@@ -82,7 +82,7 @@ export function AttendanceAdmin({
         })}
       </div>
 
-      {tab === "live" && <LiveTab initialRows={liveRows} />}
+      {tab === "live" && <LiveTab initial={live} />}
       {tab === "team" && <TeamTab initialMonth={teamMonth} initialRows={teamRows} />}
       {tab === "locations" && <LocationsTab locations={locations} />}
       {tab === "settings" && <SettingsTab settings={settings} />}

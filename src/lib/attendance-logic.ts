@@ -1,4 +1,4 @@
-import { KSA_OFFSET_MS, ksaDayKey } from "@/lib/ksa-time";
+import { DAY_MS, KSA_OFFSET_MS, ksaDayKey } from "@/lib/ksa-time";
 
 /**
  * منطق حساب الدوام المحدد — المرحلة ٢.
@@ -178,6 +178,40 @@ export function monthDaysKSA(month: string, until: Date = new Date()): MonthDay[
   return days;
 }
 
+/**
+ * أيام مدى [fromKey, toKey] بتوقيت الرياض حتى `until` — تعميم monthDaysKSA
+ * لفلتر الفترة المخصصة في لوحة المالك. مدى غير صالح أو مقلوب يرجع [].
+ */
+export function rangeDaysKSA(fromKey: string, toKey: string, until: Date = new Date()): MonthDay[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromKey) || !/^\d{4}-\d{2}-\d{2}$/.test(toKey)) return [];
+  if (fromKey > toKey) return [];
+  const untilKey = ksaDayKey(until);
+  const days: MonthDay[] = [];
+  // نمشي يومًا بيوم من بداية from (مقيّدين بسنة كحد أقصى — حارس من مدى خيالي).
+  let cursor = new Date(`${fromKey}T00:00:00Z`).getTime();
+  const last = new Date(`${toKey}T00:00:00Z`).getTime();
+  if (!Number.isFinite(cursor) || !Number.isFinite(last)) return [];
+  for (let i = 0; cursor <= last && i < 366; i++, cursor += DAY_MS) {
+    const key = new Date(cursor).toISOString().slice(0, 10);
+    if (key > untilKey) break;
+    days.push({
+      start: new Date(cursor - KSA_OFFSET_MS),
+      key,
+      dayOfWeek: new Date(cursor).getUTCDay(),
+    });
+  }
+  return days;
+}
+
+/** حدود مدى [fromKey, toKey] بتوقيت الرياض [start, end) — للاستعلام بمدى واحد. */
+export function rangeBoundsKSA(fromKey: string, toKey: string): { start: Date; end: Date } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromKey) || !/^\d{4}-\d{2}-\d{2}$/.test(toKey) || fromKey > toKey) return null;
+  const start = new Date(`${fromKey}T00:00:00Z`).getTime();
+  const end = new Date(`${toKey}T00:00:00Z`).getTime() + DAY_MS;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start: new Date(start - KSA_OFFSET_MS), end: new Date(end - KSA_OFFSET_MS) };
+}
+
 /** حدود شهر `YYYY-MM` بتوقيت الرياض [start, end) — للاستعلام بمدى واحد. */
 export function monthRangeKSA(month: string): { start: Date; end: Date } | null {
   if (!/^\d{4}-\d{2}$/.test(month)) return null;
@@ -224,6 +258,111 @@ export function planVerificationTimes(
     times.push(new Date(windowStart + slice * i + random() * slice));
   }
   return times;
+}
+
+/* ═══════════════ المحطات — «تغيير موقعي» (الدفعة الثانية) ═══════════════ */
+
+/** الشكل الأدنى للحدث كما يحتاجه اشتقاق المحطات. */
+export type StationEvent = {
+  type: "CHECK_IN" | "CHECK_OUT" | "PROJECT_IN" | "PROJECT_OUT" | "LOCATION_CHANGE";
+  timestamp: Date;
+  locationId: string | null;
+  locationName: string | null;
+  /** HQ | PROJECT — من جدول المواقع؛ null لبصمة خارج النطاق */
+  locationType: "HQ" | "PROJECT" | null;
+  outOfZone: boolean;
+};
+
+/** نوع مقطع المحطة في خط اليوم — ذهبي للمقر، سماوي للمشروع، أحمر خارج النطاق. */
+export type StationKind = "HQ" | "PROJECT" | "OUT";
+
+/** محطة واحدة داخل الجلسة: من ← إلى (null = المحطة الحالية). */
+export type Station = {
+  kind: StationKind;
+  locationId: string | null;
+  name: string;
+  from: Date;
+  to: Date | null;
+};
+
+/**
+ * يشتق محطات اليوم من أحداثه (مرتّبة تصاعديًا) — قاعدة معتمدة من المالك:
+ * بصمة الحضور واحدة تفتح الجلسة، والتنقلات محطات داخلها لا بصمات جديدة،
+ * والعدّاد لا يتوقف أثناء التنقل.
+ *
+ * - `CHECK_IN` يفتح أول محطة (لا يصل هنا outOfZone — البصم يرفضه قبل التسجيل).
+ * - `LOCATION_CHANGE` يقفل المحطة الحالية ويفتح الجديدة؛ خارج النطاق يفتح
+ *   محطة «خارج النطاق» حمراء — تُسجَّل ولا توقف الدوام.
+ * - التاريخ القديم: `PROJECT_IN` يفتح محطة المشروع و`PROJECT_OUT` يرجع
+ *   للمحطة التي قبلها — فيبقى سجل ما قبل نموذج المحطات مقروءًا كما هو.
+ * - `CHECK_OUT` يقفل المحطة الأخيرة.
+ */
+export function buildStations(events: StationEvent[]): Station[] {
+  const stations: Station[] = [];
+  /** المحطة التي نرجع لها بعد PROJECT_OUT التاريخية. */
+  let beforeProject: { kind: StationKind; locationId: string | null; name: string } | null = null;
+
+  const open = (e: StationEvent): Station => {
+    const kind: StationKind = e.outOfZone || !e.locationId ? "OUT" : (e.locationType ?? "PROJECT");
+    return {
+      kind,
+      locationId: e.outOfZone ? null : e.locationId,
+      name: kind === "OUT" ? "خارج النطاق" : (e.locationName ?? "موقع غير معروف"),
+      from: e.timestamp,
+      to: null,
+    };
+  };
+  const closeLast = (at: Date) => {
+    const last = stations[stations.length - 1];
+    if (last && last.to === null) last.to = at;
+  };
+
+  for (const e of events) {
+    if (e.type === "CHECK_IN") {
+      closeLast(e.timestamp);
+      beforeProject = null;
+      stations.push(open(e));
+    } else if (e.type === "LOCATION_CHANGE") {
+      const last = stations[stations.length - 1];
+      // نفس الموقع مرة ثانية — لا محطة جديدة، البقاء أبلغ من التكرار.
+      if (last && last.to === null && !e.outOfZone && last.locationId === e.locationId) continue;
+      closeLast(e.timestamp);
+      beforeProject = null;
+      if (stations.length > 0) stations.push(open(e));
+    } else if (e.type === "PROJECT_IN") {
+      const last = stations[stations.length - 1];
+      if (last && last.to === null) {
+        beforeProject = { kind: last.kind, locationId: last.locationId, name: last.name };
+      }
+      closeLast(e.timestamp);
+      if (stations.length > 0) stations.push(open(e));
+    } else if (e.type === "PROJECT_OUT") {
+      closeLast(e.timestamp);
+      if (beforeProject && stations.length > 0) {
+        stations.push({ ...beforeProject, from: e.timestamp, to: null });
+        beforeProject = null;
+      }
+    } else if (e.type === "CHECK_OUT") {
+      closeLast(e.timestamp);
+      beforeProject = null;
+    }
+  }
+
+  return stations;
+}
+
+/** عدد زيارات المشاريع من المحطات (محطات PROJECT) — للبلاطة وصف الإحصاءات. */
+export function countProjectVisits(stations: Station[]): number {
+  return stations.filter((s) => s.kind === "PROJECT").length;
+}
+
+/** دقائق خارج المقر (مشاريع + خارج النطاق) حتى `now` — لصف «خارج المقر». */
+export function minutesAwayFromHQ(stations: Station[], now: Date): number {
+  return Math.round(
+    stations
+      .filter((s) => s.kind !== "HQ")
+      .reduce((sum, s) => sum + Math.max(0, (s.to ?? now).getTime() - s.from.getTime()), 0) / 60_000,
+  );
 }
 
 /** «٤:٣٥» — دقائق ⟵ نص ساعات:دقائق (بأرقام لاتينية؛ التعريب عند العرض). */

@@ -3,10 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CalendarClock, Search, ShieldQuestion, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarClock, ChevronDown, Search, ShieldQuestion, Trash2 } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
 import { hmLabel, minuteLabel, minutesToTime, timeToMinutes } from "@/lib/attendance-ui";
+import { StationsLog } from "@/components/attendance/attendance-stations";
 import type { DayLogEntry, EmployeeFile } from "@/lib/data/attendance";
+import "./attendance.css";
 
 /**
  * ملف الموظف — التصميم المعتمد: رأس الإحصاءات، بطاقة «دوامه المحدد» مع تعديل،
@@ -273,43 +275,77 @@ function DayLog({ days }: { days: EmployeeFile["days"] }) {
           {days.length === 0 ? "ما فيه أيام بهذا الشهر بعد" : "ما فيه يوم يطابق البحث"}
         </p>
       ) : (
-        <ul>
-          {visible.map((d) => {
-            const meta = STATUS_META[d.status];
-            return (
-              <li key={d.key} className="border-b border-border/60 px-4 py-3 last:border-0">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-bold text-foreground">{dayLabelOf(d.key)}</span>
-                  <span className={`flex-none rounded-lg border px-2 py-0.5 text-[11px] font-bold ${meta.cls}`}>
-                    {meta.label}
-                  </span>
-                </div>
-
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  {d.checkInText ? (
-                    <span>
-                      {d.checkInText} ← {d.checkOutText ?? "…"}
-                    </span>
-                  ) : d.exceptionType ? (
-                    <span>{EXCEPTION_LABEL[d.exceptionType]}</span>
-                  ) : null}
-                  {d.locationName && <span>{d.locationName}</span>}
-                  {d.workedMinutes > 0 && (
-                    <span className="tabular-nums">
-                      {hmLabel(d.workedMinutes, toArabicDigits)} من {hmLabel(d.targetMinutes, toArabicDigits)}
-                    </span>
-                  )}
-                  {d.visitNames.length > 0 && <span>زار: {d.visitNames.join("، ")}</span>}
-                  {d.late && <span className="text-warning">تأخر</span>}
-                  {d.earlyIn && <span className="text-info">حضر بدري</span>}
-                  {d.lateOut && <span className="text-info">مشى متأخر</span>}
-                </div>
-              </li>
-            );
-          })}
+        <ul className="att-scope">
+          {visible.map((d) => (
+            <DayRow key={d.key} d={d} />
+          ))}
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * صف يوم واحد في السجل — المحطات (سجل التحركات) نفس مكوّن بطاقة الموظف
+ * حرفيًا، تنفتح بضغطة على الصف عند وجود تحركات.
+ */
+function DayRow({ d }: { d: DayLogEntry }) {
+  const [open, setOpen] = useState(false);
+  const meta = STATUS_META[d.status];
+  const expandable = d.stations.length > 0;
+
+  return (
+    <li className="border-b border-border/60 last:border-0">
+      <button
+        type="button"
+        onClick={() => expandable && setOpen((v) => !v)}
+        className={`w-full px-4 py-3 text-right ${expandable ? "cursor-pointer hover:bg-secondary/30" : "cursor-default"}`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-sm font-bold text-foreground">
+            {dayLabelOf(d.key)}
+            {expandable && (
+              <ChevronDown
+                aria-hidden
+                size={14}
+                strokeWidth={1.8}
+                className="text-muted-foreground"
+                style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s cubic-bezier(0.23,1,0.32,1)" }}
+              />
+            )}
+          </span>
+          <span className={`flex-none rounded-lg border px-2 py-0.5 text-[11px] font-bold ${meta.cls}`}>
+            {meta.label}
+          </span>
+        </div>
+
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {d.checkInText ? (
+            <span>
+              {d.checkInText} ← {d.checkOutText ?? "…"}
+            </span>
+          ) : d.exceptionType ? (
+            <span>{EXCEPTION_LABEL[d.exceptionType]}</span>
+          ) : null}
+          {d.locationName && <span>{d.locationName}</span>}
+          {d.workedMinutes > 0 && (
+            <span className="tabular-nums">
+              {hmLabel(d.workedMinutes, toArabicDigits)} من {hmLabel(d.targetMinutes, toArabicDigits)}
+            </span>
+          )}
+          {d.visitNames.length > 0 && <span>زار: {d.visitNames.join("، ")}</span>}
+          {d.late && <span className="text-warning">تأخر</span>}
+          {d.earlyIn && <span className="text-info">حضر بدري</span>}
+          {d.lateOut && <span className="text-info">مشى متأخر</span>}
+        </div>
+      </button>
+
+      {open && expandable && (
+        <div className="px-4 pb-3">
+          <StationsLog stations={d.stations} now={Date.now()} />
+        </div>
+      )}
+    </li>
   );
 }
 

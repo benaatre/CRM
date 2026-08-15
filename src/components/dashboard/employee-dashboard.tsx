@@ -19,6 +19,7 @@ import { NextAppointment } from "./next-appointment";
 import { TodayFollowups } from "./today-followups";
 import { OverdueSection } from "./overdue-section";
 import { InterestedRiver, type RiverLead } from "./interested-river";
+import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 /**
  * داشبورد الموظف (المتصفح) — دليل التصميم ٢٠٢٦:
@@ -127,27 +128,11 @@ export function EmployeeDashboard({
 
         </div>
 
-        {/* يسار: الأرقام */}
+        {/* يسار: الأرقام — الترتيب مقفول بقرار المالك: بطاقة الدوام ← شبكة
+            الأرقام 2×2 ← الصف الأخير جنبًا إلى جنب (التحويل + الترتيب). */}
         <div className="min-w-0 space-y-6">
-          {/* تحويل الزيارات إلى حجوزات (الحجوزات ÷ الزيارات) */}
-          <section className="rounded-3xl bg-card p-7">
-            <div className="text-[12.5px] font-medium text-muted-foreground">تحويل الزيارات إلى حجوزات</div>
-            <div className="mt-3 flex items-end gap-3">
-              <div className={`${zain.className} text-[46px] font-extrabold leading-none tracking-tight text-foreground`} style={NUM}>
-                {toArabicDigits(k.conversion)}<sup className="text-[20px]">٪</sup>
-              </div>
-              <div className="mb-1.5 inline-flex items-center gap-1 text-[12.5px] text-muted-foreground">
-                <TrendingUp className="size-4" strokeWidth={1.6} /> حجوزات ÷ زيارات
-              </div>
-            </div>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-secondary">
-              <div className="h-full rounded-full bg-gold" style={{ width: `${Math.min(k.conversion, 100)}%` }} />
-            </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-muted-foreground">
-              <span style={NUM}>حجزت {toArabicDigits(k.bookings)}</span>
-              <span style={NUM}>من {toArabicDigits(k.visits)} زيارة</span>
-            </div>
-          </section>
+          {/* بطاقة الدوام — أول بطاقة في العمود */}
+          <AttendanceCard theme="web" />
 
           {/* أرقامك */}
           <div className="grid grid-cols-2 gap-4">
@@ -167,35 +152,55 @@ export function EmployeeDashboard({
             ))}
           </div>
 
-          {/* ترتيبك */}
-          {myRank?.ranked && (
-            <Link href="/leaderboard" className="block rounded-3xl bg-card p-7 transition-colors hover:bg-card/70">
-              <div className="flex items-center gap-4">
-                <span className={`${zain.className} grid size-11 shrink-0 place-items-center rounded-2xl bg-secondary/60 text-[19px] font-extrabold text-foreground`} style={NUM}>
-                  {toArabicDigits(myRank.rank)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[16px] font-semibold text-foreground">ترتيبك هالأسبوع</div>
-                  <div className="mt-1 text-[13.5px] text-muted-foreground">
-                    {myRank.gapToNext
-                      ? `تحتاج ${toArabicDigits(myRank.gapToNext.pts)} درجة تعدّي ${myRank.gapToNext.name}`
-                      : "أنت الأول — حافظ على الصدارة"}
-                  </div>
+          {/* الصف الأخير جنبًا إلى جنب: تحويل الزيارات + ترتيبك هالأسبوع */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <section className="rounded-3xl bg-card p-6">
+              <div className="text-[12.5px] font-medium text-muted-foreground">تحويل الزيارات إلى حجوزات</div>
+              <div className="mt-3 flex items-end gap-3">
+                <div className={`${zain.className} text-[38px] font-extrabold leading-none tracking-tight text-foreground`} style={NUM}>
+                  {toArabicDigits(k.conversion)}<sup className="text-[18px]">٪</sup>
                 </div>
-                <div className="shrink-0 text-center leading-none">
-                  <b className={`${zain.className} text-[22px] font-extrabold text-foreground`} style={NUM}>{toArabicDigits(myRank.score)}</b>
-                  <span className="mt-1 block text-[11.5px] text-muted-foreground">درجة</span>
+                <div className="mb-1 inline-flex items-center gap-1 text-[12px] text-muted-foreground">
+                  <TrendingUp className="size-4" strokeWidth={1.6} /> حجوزات ÷ زيارات
                 </div>
-                <ChevronLeft className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.6} />
               </div>
               <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-secondary">
-                <div
-                  className="h-full rounded-full bg-gold"
-                  style={{ width: `${myRank.total > 0 ? Math.round(((myRank.total - myRank.rank + 1) / myRank.total) * 100) : 0}%` }}
-                />
+                <div className="h-full rounded-full bg-gold" style={{ width: `${Math.min(k.conversion, 100)}%` }} />
               </div>
-            </Link>
-          )}
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
+                <span style={NUM}>حجزت {toArabicDigits(k.bookings)}</span>
+                <span style={NUM}>من {toArabicDigits(k.visits)} زيارة</span>
+              </div>
+            </section>
+
+            {myRank?.ranked && (
+              <Link href="/leaderboard" className="block rounded-3xl bg-card p-6 transition-colors hover:bg-card/70">
+                <div className="flex items-center gap-3">
+                  <span className={`${zain.className} grid size-10 shrink-0 place-items-center rounded-2xl bg-secondary/60 text-[17px] font-extrabold text-foreground`} style={NUM}>
+                    {toArabicDigits(myRank.rank)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[14.5px] font-semibold text-foreground">ترتيبك هالأسبوع</div>
+                    <div className="mt-1 truncate text-[12px] text-muted-foreground">
+                      {myRank.gapToNext
+                        ? `تحتاج ${toArabicDigits(myRank.gapToNext.pts)} درجة تعدّي ${myRank.gapToNext.name}`
+                        : "أنت الأول — حافظ على الصدارة"}
+                    </div>
+                  </div>
+                  <ChevronLeft className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.6} />
+                </div>
+                <div className="mt-3.5 flex items-center gap-3">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-gold"
+                      style={{ width: `${myRank.total > 0 ? Math.round(((myRank.total - myRank.rank + 1) / myRank.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <b className={`${zain.className} text-[17px] font-extrabold leading-none text-foreground`} style={NUM}>{toArabicDigits(myRank.score)}</b>
+                </div>
+              </Link>
+            )}
+          </div>
 
           {/* قمع عملائي */}
           <section className="rounded-3xl bg-card p-7">

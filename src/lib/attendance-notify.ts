@@ -62,6 +62,17 @@ export function verifyMissedText(
   return `${base} — آخر موقع معروف: ${lastKnown.locationName ?? "خارج النطاق"} ${lastKnown.timeText}`;
 }
 
+/** «سعود غيّر موقعه خارج النطاق — يبعد ١.٤ كم عن مشروع السلطان ٧٩» (الدفعة الثانية) */
+export function locationChangeOutOfZoneText(
+  name: string,
+  distanceMeters: number | null,
+  targetName: string | null,
+): string {
+  const base = `${name} غيّر موقعه خارج النطاق`;
+  if (distanceMeters == null || !targetName) return base;
+  return `${base} — يبعد ${distanceArabic(distanceMeters)} عن ${targetName}`;
+}
+
 /** «سعود ردّ على نداء التحقق من خارج النطاق — يبعد ١.٤ كم عن المقر الرئيسي» */
 export function verifyOutOfZoneText(
   name: string,

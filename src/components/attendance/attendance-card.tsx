@@ -1,31 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { BellRing, Crosshair, LogIn, LogOut, MapPin, ShieldCheck } from "lucide-react";
+import { Zain } from "next/font/google";
 import {
-  ATTENDANCE_PALETTE,
-  hmLabel,
-  tint,
-  toneColor,
-  type AttendanceTheme,
-  type FeedbackTone,
-} from "@/lib/attendance-ui";
+  BellRing,
+  Building2,
+  ChevronDown,
+  LogIn,
+  LogOut,
+  MapPin,
+  Route,
+  ShieldCheck,
+} from "lucide-react";
+import { hmLabel, type AttendanceTheme } from "@/lib/attendance-ui";
 import { toArabicDigits } from "@/lib/format";
+import { DayLine, StationsLog, type StationDto, type VerificationDto } from "@/components/attendance/attendance-stations";
+import { LocationSheet, type NearbyLocation } from "@/components/attendance/location-sheet";
+import "./attendance.css";
+
+const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], display: "swap" });
 
 /**
- * بطاقة «تسجيل الدوام» — الواجهة الوحيدة للبصم (الويب والتطبيق).
+ * بطاقة «تسجيل الدوام» — التصميم الإسبريسو المعتمد (الدفعة الثانية).
  *
  * القراءة تحدث **لحظة الضغط فقط** والتطبيق مفتوح — لا تتبّع بالخلفية ولا
  * watchPosition. البطاقة ترسل الإحداثيات والدقّة كما هي، والسيرفر يقرّر
- * المطابقة والتأخير بوقته؛ فلا حالة «داخل الدائرة» تُحسب هنا أبدًا.
+ * المطابقة والتأخير والمحطات بوقته؛ فلا حالة «داخل الدائرة» تُحسب هنا أبدًا.
  *
- * الموافقة الأولى تُحفظ محليًا (localStorage) وتُعرض قبل أي قراءة موقع.
+ * الألوان كلها من متغيرات `attendance.css` (النهاري يتفعّل بسمة data-theme
+ * القائمة)؛ prop الثيم بقيت للتوافق مع مواضع التركيب ولا تغيّر الألوان.
  */
 
 const CONSENT_KEY = "attendance-geo-consent";
 
-type Intent = "CHECK_IN" | "CHECK_OUT" | "PROJECT_IN" | "PROJECT_OUT";
+type Intent = "CHECK_IN" | "CHECK_OUT" | "LOCATION_CHANGE";
 
 type StatusPayload = {
   ok: boolean;
@@ -38,11 +47,12 @@ type StatusPayload = {
     wasLate: boolean;
     locationName: string | null;
   } | null;
-  projectOpen: boolean;
-  projectLocationName: string | null;
-  /** «الـ ٨ ساعات»: هدف اليوم الفعّال + نهاية دوامه (لجلسة مفتوحة). */
   targetMinutes: number;
   shiftEndText: string | null;
+  stations: StationDto[];
+  visitsCount: number;
+  awayMinutes: number;
+  verifications: VerificationDto[];
 };
 
 type PendingVerification = {
@@ -55,11 +65,24 @@ type PunchResult = {
   ok: boolean;
   reason?: string;
   message?: string;
-  type?: Intent;
+  type?: string;
   locationName?: string | null;
   timeKSA?: string;
   isLate?: boolean;
+  outOfZone?: boolean;
 };
+
+type FeedbackTone = "success" | "danger" | "warning" | "info";
+
+const TONE_VAR: Record<FeedbackTone, string> = {
+  success: "var(--att-on)",
+  danger: "var(--att-miss)",
+  warning: "var(--att-late)",
+  info: "var(--att-teal)",
+};
+
+/** خلفية باهتة من لون التوكن — color-mix يشتغل على var() بخلاف دمج النصوص. */
+const soft = (color: string, pct = 12) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
 /** قراءة موقع واحدة بأعلى دقة متاحة — بلا كاش (maximumAge:0) ومهلة ١٥ ثانية. */
 function readPosition(): Promise<GeolocationPosition> {
@@ -84,23 +107,36 @@ function geoErrorMessage(err: unknown): string {
   return "ما قدرنا نحدد موقعك — تأكد أن خدمة الموقع مشغّلة وحاول مرة ثانية";
 }
 
-export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }) {
-  const p = ATTENDANCE_PALETTE[theme];
-
+export function AttendanceCard({ theme: _theme = "mobile" }: { theme?: AttendanceTheme }) {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [statusFailed, setStatusFailed] = useState(false);
   const [consent, setConsent] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState<Intent | null>(null);
+  const [busy, setBusy] = useState<Intent | "nearby" | null>(null);
   const [feedback, setFeedback] = useState<{ tone: FeedbackTone; text: string } | null>(null);
   const [pendingVerify, setPendingVerify] = useState<PendingVerification | null>(null);
   const [verifyBusy, setVerifyBusy] = useState(false);
-  // دقيقة واحدة تكفي لتحريك شريط التقدم — لا ثواني تستهلك البطارية.
+  const [logOpen, setLogOpen] = useState(false);
+  const [movesSeen, setMovesSeen] = useState(false);
+  const [sheet, setSheet] = useState<{ open: boolean; locations: NearbyLocation[] }>({ open: false, locations: [] });
+  const lastPosRef = useRef<GeolocationPosition | null>(null);
+  // دقيقة للتقدم والسجل؛ وثانية للعداد الكبير أثناء الدوام فقط.
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [secTick, setSecTick] = useState(() => Date.now());
+
+  const checkedIn = status?.state === "in";
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
+
+  // عدّاد الثواني يعمل فقط والجلسة مفتوحة — reduced-motion يكتفي بالدقيقة.
+  useEffect(() => {
+    if (!checkedIn) return;
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setSecTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [checkedIn]);
 
   // الموافقة تُقرأ بعد التركيب لا أثناء العرض — قراءة localStorage في العرض تكسر الترطيب.
   useEffect(() => {
@@ -181,6 +217,7 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
           tone: data.status === "CONFIRMED" ? "success" : "warning",
           text: data.message ?? "تم إرسال ردك",
         });
+        void loadStatus();
       } else {
         // no_pending: انتهت المهلة قبل الرد — نحدّث البانر بدل تركه يكذب.
         if (data.status === undefined) void loadVerification();
@@ -201,13 +238,14 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
     setConsent(true);
   };
 
-  const punch = async (intent: Intent) => {
+  /** بصمة حضور/انصراف أو تغيير موقع — كلها نفس المسار والخادم يحكم. */
+  const punch = async (intent: Intent, targetLocationId?: string, presetPos?: GeolocationPosition) => {
     setBusy(intent);
     setFeedback({ tone: "info", text: "جاري تحديد موقعك…" });
 
     let pos: GeolocationPosition;
     try {
-      pos = await readPosition();
+      pos = presetPos ?? (await readPosition());
     } catch (err) {
       setFeedback({ tone: "danger", text: geoErrorMessage(err) });
       setBusy(null);
@@ -225,6 +263,7 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
           isMock: false,
           source: Capacitor.isNativePlatform() ? "NATIVE" : "WEB",
           intent,
+          ...(targetLocationId ? { targetLocationId } : {}),
         }),
       });
 
@@ -237,13 +276,14 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
       const data = (await res.json()) as PunchResult;
 
       if (!data.ok) {
-        // الرفض المتوقّع (خارج النطاق/إشارة ضعيفة/فاصل) يرجع بنصّه العربي من الخادم.
         const tone: FeedbackTone = data.reason === "out_of_zone" ? "danger" : "warning";
         setFeedback({ tone, text: data.message ?? "ما قدرنا نسجّل البصمة — حاول مرة ثانية" });
       } else {
-        setFeedback({ tone: data.isLate ? "warning" : "success", text: successText(data) });
+        setFeedback({
+          tone: data.outOfZone ? "warning" : data.isLate ? "warning" : "success",
+          text: successText(data),
+        });
         await loadStatus();
-        // الانصراف يلغي نداءات اليوم المعلّقة — نحدّث البانر معه.
         void loadVerification();
       }
     } catch {
@@ -252,23 +292,56 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
     setBusy(null);
   };
 
-  const state = status?.state ?? "none";
-  const checkedIn = state === "in";
-  const projectOpen = status?.projectOpen ?? false;
-  const mainIntent: Intent = checkedIn ? "CHECK_OUT" : "CHECK_IN";
-  const projectIntent: Intent = projectOpen ? "PROJECT_OUT" : "PROJECT_IN";
-  const working = busy !== null;
+  /** «تغيير موقعي»: قراءة واحدة ← قائمة الأقرب من الخادم ← شيت الاختيار. */
+  const openLocationSheet = async () => {
+    setBusy("nearby");
+    setFeedback({ tone: "info", text: "جاري تحديد موقعك…" });
+    let pos: GeolocationPosition;
+    try {
+      pos = await readPosition();
+    } catch (err) {
+      setFeedback({ tone: "danger", text: geoErrorMessage(err) });
+      setBusy(null);
+      return;
+    }
+    lastPosRef.current = pos;
+    try {
+      const res = await fetch("/api/attendance/locations/nearby", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        }),
+      });
+      const data = (await res.json()) as { ok: boolean; locations?: NearbyLocation[]; message?: string };
+      if (!data.ok || !data.locations) {
+        setFeedback({ tone: "warning", text: data.message ?? "ما قدرنا نجيب المواقع — حاول مرة ثانية" });
+      } else {
+        setFeedback(null);
+        setSheet({ open: true, locations: data.locations });
+      }
+    } catch {
+      setFeedback({ tone: "danger", text: "تعذّر الاتصال — تأكد من الإنترنت وحاول مرة ثانية" });
+    }
+    setBusy(null);
+  };
 
-  // «الـ ٨ ساعات»: المنجز يتحرك كل دقيقة من بداية الجلسة على العميل.
+  const pickLocation = async (loc: NearbyLocation) => {
+    setSheet((s) => ({ ...s, open: false }));
+    // نفس القراءة التي رتّبت القائمة — والخادم يعيد الحساب على كل حال.
+    await punch("LOCATION_CHANGE", loc.id, lastPosRef.current ?? undefined);
+  };
+
+  const working = busy !== null;
   const startedMs = status?.session?.startedAt ? new Date(status.session.startedAt).getTime() : null;
   const targetMinutes = Math.max(1, status?.targetMinutes ?? 480);
   const elapsedMinutes = checkedIn && startedMs ? Math.max(0, Math.floor((nowTick - startedMs) / 60_000)) : 0;
-  const progress = Math.min(1, elapsedMinutes / targetMinutes);
+  const progressPct = Math.min(100, Math.round((elapsedMinutes / targetMinutes) * 100));
   const targetDone = elapsedMinutes >= targetMinutes;
-  const targetLabel =
-    targetMinutes % 60 === 0
-      ? `${toArabicDigits(targetMinutes / 60)} ساعات`
-      : `${hmLabel(targetMinutes, toArabicDigits)} ساعة`;
+  const shiftEndIso = startedMs ? new Date(startedMs + targetMinutes * 60_000).toISOString() : null;
+  const hasMoves = (status?.stations.length ?? 0) > 1;
 
   const verifyRemainingMinutes = pendingVerify
     ? Math.max(0, Math.ceil((new Date(pendingVerify.deadlineAtIso).getTime() - nowTick) / 60_000))
@@ -278,67 +351,86 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
     <section
       dir="rtl"
       aria-label="تسجيل الدوام"
+      className="att-scope relative overflow-hidden"
       style={{
         boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
         gap: 12,
-        background: p.card,
-        border: `1px solid ${p.border}`,
-        borderRadius: 16,
-        padding: "14px 15px",
+        borderRadius: 18,
+        padding: "15px 15px 14px",
+        border: "1px solid var(--att-esp-line)",
+        background:
+          "radial-gradient(130% 100% at 85% -20%, var(--att-esp-bg2) 0%, transparent 55%), radial-gradient(120% 90% at 0% 110%, var(--att-esp-bg2) 0%, transparent 50%), var(--att-esp-bg)",
+        // توكنات المكوّنات المشتركة تتبع الإسبريسو داخل هذي البطاقة فقط.
+        ["--att-text" as string]: "var(--att-esp-text)",
+        ["--att-muted" as string]: "var(--att-esp-muted)",
+        ["--att-line" as string]: "var(--att-esp-line)",
+        ["--att-card2" as string]: "var(--att-esp-card)",
       }}
     >
-      {/* ===== الترويسة: العنوان + حالة اليوم ===== */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <MapPin aria-hidden size={17} strokeWidth={1.8} style={{ color: p.text2, flex: "none" }} />
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: p.text1 }}>تسجيل الدوام</h2>
+      {/* الإطار العلوي المضيء + الحبيبات */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          insetInline: "10%",
+          top: 0,
+          height: 1,
+          background: "linear-gradient(90deg, transparent, var(--att-esp-glow), transparent)",
+        }}
+      />
+      <span aria-hidden className="att-grain" />
+
+      {/* ===== الرأس: أيقونة + العنوان + وسم الحالة ===== */}
+      <div className="relative flex items-start justify-between gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex size-9 flex-none items-center justify-center rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)]">
+            <MapPin aria-hidden size={16} strokeWidth={1.5} style={{ color: "var(--att-gold)" }} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-[15.5px] font-extrabold text-[var(--att-esp-text)]">تسجيل الدوام</h2>
+            <p className="mt-0.5 truncate text-[12px] text-[var(--att-esp-muted)]">
+              {statusFailed && !status ? "ما قدرنا نقرأ حالتك الحين" : statusLine(status)}
+            </p>
           </div>
-          <p style={{ fontSize: 13, color: p.text2, marginTop: 5, lineHeight: 1.6 }}>
-            {statusFailed && !status ? "ما قدرنا نقرأ حالتك الحين" : statusLine(status)}
-          </p>
         </div>
-        {checkedIn && (
+        {status && status.state !== "none" && (
           <span
+            className="flex-none rounded-lg px-2 py-1 text-[10.5px] font-bold"
             style={{
-              boxSizing: "border-box",
-              flex: "none",
-              borderRadius: 8,
-              padding: "4px 9px",
-              fontSize: 11,
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-              color: status?.session?.wasLate ? p.warning : p.success,
-              background: tint(status?.session?.wasLate ? p.warning : p.success, 14),
+              color: checkedIn ? (status.session?.wasLate ? "var(--att-late)" : "var(--att-on)") : "var(--att-done)",
+              background: soft(
+                checkedIn ? (status.session?.wasLate ? "var(--att-late)" : "var(--att-on)") : "var(--att-done)",
+                14,
+              ),
             }}
           >
-            {status?.session?.wasLate ? "حاضر — مسجّل تأخير" : "حاضر"}
+            {checkedIn ? (status.session?.wasLate ? "مداوم — مسجّل تأخير" : "مداوم") : "منصرف"}
           </span>
         )}
       </div>
 
-      {/* ===== بانر نداء التحقق — بارز أعلى البطاقة، زر واحد يقرأ ويرسل ===== */}
+      {/* ===== بانر نداء التحقق — بارز، زر واحد يقرأ ويرسل ===== */}
       {consent === true && pendingVerify && (
         <div
           role="alert"
+          className="relative"
           style={{
-            boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
             gap: 10,
-            border: `1px solid ${p.warning}`,
-            background: tint(p.warning, 12),
+            border: "1px solid var(--att-late)",
+            background: soft("var(--att-late)", 12),
             borderRadius: 13,
             padding: "12px 13px",
           }}
         >
-          <div style={{ display: "flex", gap: 8 }}>
-            <BellRing aria-hidden size={17} strokeWidth={1.8} style={{ color: p.warning, flex: "none", marginTop: 2 }} />
-            <p style={{ fontSize: 13, fontWeight: 800, color: p.text1, lineHeight: 1.6 }}>
+          <div className="flex gap-2">
+            <BellRing aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-late)", flex: "none", marginTop: 2 }} />
+            <p className="text-[13px] font-extrabold leading-relaxed text-[var(--att-esp-text)]">
               نداء تحقق — أكّد موقعك
-              <span style={{ display: "block", marginTop: 3, fontSize: 12, fontWeight: 500, color: p.text2 }}>
+              <span className="mt-0.5 block text-[12px] font-medium text-[var(--att-esp-muted)]">
                 {verifyRemainingMinutes > 0
                   ? `باقي ${toArabicDigits(verifyRemainingMinutes)} دقيقة على انتهاء المهلة`
                   : "المهلة على وشك الانتهاء"}
@@ -349,15 +441,11 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
             type="button"
             onClick={() => void respondVerify()}
             disabled={verifyBusy || working}
+            className="min-h-11 rounded-xl text-sm font-extrabold"
             style={{
-              boxSizing: "border-box",
-              minHeight: 44,
-              borderRadius: 11,
               border: "none",
-              background: p.warning,
-              color: p.card,
-              fontSize: 14,
-              fontWeight: 800,
+              background: "var(--att-late)",
+              color: "var(--att-esp-bg)",
               cursor: verifyBusy || working ? "default" : "pointer",
               opacity: verifyBusy || working ? 0.6 : 1,
             }}
@@ -369,38 +457,18 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
 
       {/* ===== الموافقة الأولى — تسبق أي قراءة موقع ===== */}
       {consent === false ? (
-        <div
-          style={{
-            boxSizing: "border-box",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            background: p.sheet,
-            border: `1px solid ${p.border}`,
-            borderRadius: 13,
-            padding: "12px 13px",
-          }}
-        >
-          <div style={{ display: "flex", gap: 8 }}>
-            <ShieldCheck aria-hidden size={17} strokeWidth={1.8} style={{ color: p.text2, flex: "none", marginTop: 2 }} />
-            <p style={{ fontSize: 12.5, color: p.text2, lineHeight: 1.75 }}>
+        <div className="relative flex flex-col gap-2.5 rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)] p-3">
+          <div className="flex gap-2">
+            <ShieldCheck aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-esp-muted)", flex: "none", marginTop: 2 }} />
+            <p className="text-[12.5px] leading-relaxed text-[var(--att-esp-muted)]">
               التطبيق يقرأ موقعك لحظة تسجيل الحضور فقط، للتحقق أنك داخل موقع العمل. لا يتم تتبعك خارج ذلك.
             </p>
           </div>
           <button
             type="button"
             onClick={acceptConsent}
-            style={{
-              boxSizing: "border-box",
-              minHeight: 42,
-              borderRadius: 11,
-              border: "none",
-              background: p.gold,
-              color: p.onGold,
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            className="min-h-10 cursor-pointer rounded-xl border-0 text-sm font-bold"
+            style={{ background: "var(--att-gold)", color: "var(--att-on-gold)" }}
           >
             موافق
           </button>
@@ -408,101 +476,100 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
       ) : (
         consent === true && (
           <>
-            {/* ===== الزر الرئيسي (العنصر الذهبي الوحيد) ===== */}
-            <button
-              type="button"
-              onClick={() => void punch(mainIntent)}
-              disabled={working}
-              style={{
-                boxSizing: "border-box",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                minHeight: 48,
-                borderRadius: 13,
-                border: "none",
-                background: p.gold,
-                color: p.onGold,
-                fontSize: 15,
-                fontWeight: 800,
-                cursor: working ? "default" : "pointer",
-                opacity: working ? 0.6 : 1,
-              }}
-            >
-              {checkedIn ? (
-                <LogOut aria-hidden size={18} strokeWidth={2} />
-              ) : (
-                <LogIn aria-hidden size={18} strokeWidth={2} />
-              )}
-              {busy === mainIntent
-                ? "جاري تحديد موقعك…"
-                : checkedIn
-                  ? "تسجيل انصراف"
-                  : "تسجيل حضور"}
-            </button>
+            {/* ===== العداد الكبير + خط اليوم — أثناء الدوام فقط ===== */}
+            {checkedIn && startedMs && shiftEndIso && (
+              <div className="relative flex flex-col gap-3">
+                <BigCountdown
+                  startedMs={startedMs}
+                  targetMinutes={targetMinutes}
+                  now={secTick}
+                  zainClass={zain.className}
+                  done={targetDone}
+                />
+                <DayLine
+                  stations={status.stations}
+                  startIso={status.session!.startedAt}
+                  shiftEndIso={shiftEndIso}
+                  now={nowTick}
+                  startLabel={`حضرت ${status.session!.startedAtText}`}
+                  endLabel={`نهاية دوامك ${status.shiftEndText ?? "—"}`}
+                />
 
-            {/* ===== زيارة مشروع (ثانوي — بلا ذهبي) ===== */}
-            <button
-              type="button"
-              onClick={() => void punch(projectIntent)}
-              disabled={working}
-              style={{
-                boxSizing: "border-box",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 7,
-                minHeight: 44,
-                borderRadius: 12,
-                background: p.sheet,
-                border: `1px solid ${p.border}`,
-                color: p.text1,
-                fontSize: 13.5,
-                fontWeight: 600,
-                cursor: working ? "default" : "pointer",
-                opacity: working ? 0.6 : 1,
-              }}
-            >
-              <Crosshair aria-hidden size={16} strokeWidth={1.8} />
-              {busy === projectIntent
-                ? "جاري تحديد موقعك…"
-                : projectOpen
-                  ? `إنهاء زيارة ${status?.projectLocationName ?? "المشروع"}`
-                  : "زيارة مشروع"}
-            </button>
-
-            {/* ===== شريط «أنجزت ٤:٣٥ من ٨ ساعات» + نهاية دوامك ===== */}
-            {checkedIn && startedMs && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div
-                  style={{
-                    height: 6,
-                    borderRadius: 999,
-                    background: p.sheet,
-                    overflow: "hidden",
+                {/* ===== صف الإحصاءات — كله قابل للنقر يفتح السجل ===== */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogOpen((v) => !v);
+                    setMovesSeen(true);
                   }}
+                  className="flex w-full items-center gap-2 rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)] px-3 py-2.5 text-right"
                 >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${Math.round(progress * 100)}%`,
-                      borderRadius: 999,
-                      background: p.success,
-                      transition: "width 0.4s ease",
-                    }}
-                  />
-                </div>
-                <p style={{ fontSize: 12, color: p.text2, lineHeight: 1.6 }}>
-                  أنجزت{" "}
-                  <b style={{ fontWeight: 800, color: targetDone ? p.success : p.text1 }}>
-                    {hmLabel(elapsedMinutes, toArabicDigits)}
-                  </b>{" "}
-                  من {targetLabel}
-                  {status?.shiftEndText && <> · نهاية دوامك {status.shiftEndText}</>}
-                </p>
+                  <StatCell label="أنجزت" value={hmLabel(elapsedMinutes, toArabicDigits)} zainClass={zain.className} />
+                  <StatCell label="زيارات مشاريع" value={toArabicDigits(status.visitsCount)} zainClass={zain.className} />
+                  <StatCell label="خارج المقر" value={hmLabel(status.awayMinutes, toArabicDigits)} zainClass={zain.className} />
+                  <StatCell label="التقدم" value={`${toArabicDigits(progressPct)}٪`} zainClass={zain.className} />
+                  <span className="relative flex-none text-[var(--att-esp-muted)]">
+                    <ChevronDown
+                      aria-hidden
+                      size={16}
+                      strokeWidth={1.8}
+                      style={{
+                        transform: logOpen ? "rotate(180deg)" : "none",
+                        transition: "transform 0.35s cubic-bezier(0.23,1,0.32,1)",
+                      }}
+                    />
+                    {hasMoves && !movesSeen && !logOpen && (
+                      <span
+                        aria-hidden
+                        className="att-pulse absolute -left-1 -top-1 size-2 rounded-full"
+                        style={{ background: "var(--att-teal)" }}
+                      />
+                    )}
+                  </span>
+                </button>
+
+                {/* ===== سجل التحركات القابل للطي ===== */}
+                {logOpen && (
+                  <StationsLog stations={status.stations} verifications={status.verifications} now={nowTick} />
+                )}
               </div>
             )}
+
+            {/* ===== الأزرار ===== */}
+            <div className="relative flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void punch(checkedIn ? "CHECK_OUT" : "CHECK_IN")}
+                disabled={working}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-[13px] border-0 text-[15px] font-extrabold"
+                style={{
+                  background: "var(--att-gold)",
+                  color: "var(--att-on-gold)",
+                  cursor: working ? "default" : "pointer",
+                  opacity: working ? 0.6 : 1,
+                }}
+              >
+                {checkedIn ? <LogOut aria-hidden size={18} strokeWidth={2} /> : <LogIn aria-hidden size={18} strokeWidth={2} />}
+                {busy === "CHECK_IN" || busy === "CHECK_OUT"
+                  ? "جاري تحديد موقعك…"
+                  : checkedIn
+                    ? "تسجيل انصراف"
+                    : "تسجيل حضور"}
+              </button>
+
+              {checkedIn && (
+                <button
+                  type="button"
+                  onClick={() => void openLocationSheet()}
+                  disabled={working}
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)] text-[13.5px] font-semibold text-[var(--att-esp-text)]"
+                  style={{ cursor: working ? "default" : "pointer", opacity: working ? 0.6 : 1 }}
+                >
+                  <Route aria-hidden size={16} strokeWidth={1.5} />
+                  {busy === "nearby" || busy === "LOCATION_CHANGE" ? "جاري تحديد موقعك…" : "تغيير موقعي"}
+                </button>
+              )}
+            </div>
           </>
         )
       )}
@@ -511,20 +578,86 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
       {feedback && (
         <p
           role="status"
-          style={{
-            boxSizing: "border-box",
-            borderRadius: 11,
-            padding: "9px 11px",
-            fontSize: 12.5,
-            lineHeight: 1.7,
-            color: toneColor(p, feedback.tone),
-            background: tint(toneColor(p, feedback.tone), 12),
-          }}
+          className="relative rounded-xl px-3 py-2.5 text-[12.5px] leading-relaxed"
+          style={{ color: TONE_VAR[feedback.tone], background: soft(TONE_VAR[feedback.tone], 12) }}
         >
           {feedback.text}
         </p>
       )}
+
+      {/* شيت «وين أنت الآن؟» */}
+      <LocationSheet
+        open={sheet.open}
+        locations={sheet.locations}
+        busy={working}
+        onPick={(l) => void pickLocation(l)}
+        onClose={() => setSheet((s) => ({ ...s, open: false }))}
+      />
     </section>
+  );
+}
+
+/* ═══════════════════ العداد الكبير H:MM:SS ═══════════════════ */
+
+/**
+ * الباقي من دوامه — كل خانة تُحدَّث منفردة وتنبض عند تغيّرها (المفتاح
+ * موضع+قيمة فيعاد تركيب الخانة المتغيّرة وحدها فتجري حركة att-tick).
+ * الاتجاه LTR داخل حاوية معزولة، أرقام Zain tabular.
+ */
+function BigCountdown({
+  startedMs,
+  targetMinutes,
+  now,
+  zainClass,
+  done,
+}: {
+  startedMs: number;
+  targetMinutes: number;
+  now: number;
+  zainClass: string;
+  done: boolean;
+}) {
+  const remaining = Math.max(0, targetMinutes * 60 - Math.floor((now - startedMs) / 1000));
+  const h = Math.floor(remaining / 3600);
+  const m = Math.floor((remaining % 3600) / 60);
+  const s = remaining % 60;
+  const text = `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  const chars = useMemo(() => toArabicDigits(text).split(""), [text]);
+
+  return (
+    <div className="text-center">
+      <p className="text-[10.5px] font-medium text-[var(--att-esp-muted)]">{done ? "أكملت دوامك اليوم" : "الباقي من دوامك"}</p>
+      <div dir="ltr" className="mt-1 flex items-baseline justify-center" style={{ unicodeBidi: "isolate" }}>
+        {chars.map((c, i) => (
+          <span
+            key={`${i}-${c}`}
+            className={`${zainClass} att-tick inline-block text-[38px] font-extrabold leading-none`}
+            style={{
+              color: done ? "var(--att-on)" : "var(--att-esp-text)",
+              fontVariantNumeric: "tabular-nums",
+              minWidth: c === ":" ? undefined : "0.62em",
+              textAlign: "center",
+            }}
+          >
+            {c}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatCell({ label, value, zainClass }: { label: string; value: string; zainClass: string }) {
+  return (
+    <span className="block min-w-0 flex-1">
+      <span className="block truncate text-[9.5px] text-[var(--att-esp-muted)]">{label}</span>
+      <span
+        className={`${zainClass} mt-0.5 block truncate text-[14px] font-bold text-[var(--att-esp-text)]`}
+        style={{ fontVariantNumeric: "tabular-nums" }}
+      >
+        {value}
+      </span>
+    </span>
   );
 }
 
@@ -532,8 +665,9 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
 function statusLine(status: StatusPayload | null): string {
   if (!status) return "جاري قراءة حالتك…";
   if (status.state === "in") {
-    const where = status.session?.locationName;
-    return `حاضر منذ ${status.session?.startedAtText ?? "—"}${where ? ` — ${where}` : ""}`;
+    const current = status.stations.find((s) => s.toIso === null);
+    const where = current?.name ?? status.session?.locationName;
+    return `مداوم منذ ${status.session?.startedAtText ?? "—"}${where ? ` — ${where}` : ""}`;
   }
   if (status.state === "out") {
     const from = status.session?.startedAtText;
@@ -551,8 +685,12 @@ function successText(data: PunchResult): string {
     return `تم تسجيل حضورك ${at}${where}${data.isLate ? " · مسجّل تأخير" : ""}`;
   }
   if (data.type === "CHECK_OUT") return `تم تسجيل انصرافك ${at}${where}`;
-  if (data.type === "PROJECT_IN") return `سجّلنا دخولك للمشروع ${at}${where}`;
-  return `سجّلنا خروجك من المشروع ${at}${where}`;
+  if (data.type === "LOCATION_CHANGE") {
+    return data.outOfZone
+      ? "سجّلنا موقعك خارج النطاق — دوامك مستمر وتم إشعار الإدارة"
+      : `تم تغيير موقعك ${at}${where}`;
+  }
+  return `تم التسجيل ${at}${where}`;
 }
 
 export default AttendanceCard;

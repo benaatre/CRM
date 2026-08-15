@@ -85,10 +85,8 @@ export default async function DashboardPage({
           <h1 className="text-[22px] font-semibold tracking-tight text-foreground">لوحتك</h1>
           <PeriodFilter current={period} />
         </header>
-        {/* تسجيل الدوام — بصمة جغرافية، القراءة لحظة الضغط فقط */}
-        <div className="mb-6 max-w-md">
-          <AttendanceCard theme="web" />
-        </div>
+        {/* بطاقة الدوام انتقلت لعمود الإحصائيات داخل EmployeeDashboard —
+            الترتيب المقفول: الدوام ← شبكة 2×2 ← التحويل + الترتيب جنبًا إلى جنب. */}
         <EmployeeDashboard
           data={data}
           alert={alert}

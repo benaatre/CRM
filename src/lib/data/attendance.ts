@@ -3,10 +3,14 @@ import { AttendanceEventType, Role } from "@prisma/client";
 import type { AttendanceException, AttendanceSession } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dayStartKSA, ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
-import { formatTime } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 import {
   DEFAULT_SHIFT_MINUTES,
   DEFAULT_START_MINUTES,
+  buildStations,
+  countProjectVisits,
+  currentMonthKSA,
+  minutesAwayFromHQ,
   dayStatus,
   effectiveDay,
   minutesToDate,
@@ -14,9 +18,15 @@ import {
   monthLastDayKey,
   monthRangeKSA,
   parseWeekendDays,
+  rangeBoundsKSA,
+  rangeDaysKSA,
   type DayStatus,
   type EffectiveDay,
+  type MonthDay,
+  type Station,
+  type StationEvent,
 } from "@/lib/attendance-logic";
+import { DAY_MS } from "@/lib/ksa-time";
 
 /**
  * طبقة قراءة حوكمة الدوام — مصدر واحد لإعدادات الدوام وحالة الموظف واللوحة.
@@ -58,8 +68,9 @@ export async function getAllLocations() {
  */
 export async function getMyAttendanceStatus(userId: string) {
   const dayStart = dayStartKSA();
+  const now = new Date();
 
-  const [openSession, todaySession, todayEvents, eff] = await Promise.all([
+  const [openSession, todaySession, todayEvents, eff, todayVerifs] = await Promise.all([
     prisma.attendanceSession.findFirst({
       where: { userId, endedAt: null },
       orderBy: { startedAt: "desc" },
@@ -71,9 +82,13 @@ export async function getMyAttendanceStatus(userId: string) {
     prisma.attendanceEvent.findMany({
       where: { userId, timestamp: { gte: dayStart } },
       orderBy: { timestamp: "desc" },
-      include: { location: { select: { name: true } } },
+      include: { location: { select: { name: true, type: true } } },
     }),
     getEffectiveDayFor(userId),
+    prisma.attendanceVerification.findMany({
+      where: { userId, scheduledAt: { gte: dayStart }, status: { not: "PENDING" } },
+      orderBy: { scheduledAt: "asc" },
+    }),
   ]);
 
   const session = openSession ?? todaySession;
@@ -100,6 +115,9 @@ export async function getMyAttendanceStatus(userId: string) {
 
   const last = todayEvents[0] ?? null;
 
+  // محطات اليوم — الاستعلام تنازلي والاشتقاق يحتاج الترتيب الزمني التصاعدي.
+  const stations = stationsOfDay([...todayEvents].reverse());
+
   return {
     state,
     session: session
@@ -115,12 +133,31 @@ export async function getMyAttendanceStatus(userId: string) {
       : null,
     /*
      * «الـ ٨ ساعات» للبطاقة: الهدف الفعّال اليوم + نهاية دوامه (بداية جلسته +
-     * الهدف). العميل يحسب المنجز/الباقي كل دقيقة من startedAt — لا عدّاد سيرفر.
+     * الهدف). العميل يحسب المنجز/الباقي من startedAt — لا عدّاد سيرفر.
      */
     targetMinutes: eff.targetMinutes,
     shiftEndText: openSession
       ? formatTime(new Date(openSession.startedAt.getTime() + eff.targetMinutes * 60_000))
       : null,
+    /*
+     * محطات اليوم (الدفعة الثانية): خط اليوم متعدد المواقع + السجل القابل
+     * للطي + العدادات — الاشتقاق بالسيرفر من نفس دالة اللوحة والملف.
+     */
+    stations: stations.map((s) => ({
+      kind: s.kind,
+      name: s.name,
+      fromIso: s.from.toISOString(),
+      fromText: formatTime(s.from),
+      toIso: s.to?.toISOString() ?? null,
+      toText: s.to ? formatTime(s.to) : null,
+    })),
+    visitsCount: countProjectVisits(stations),
+    awayMinutes: minutesAwayFromHQ(stations, now),
+    verifications: todayVerifs.map((v) => ({
+      status: v.status,
+      atIso: (v.respondedAt ?? v.sentAt ?? v.scheduledAt).toISOString(),
+      atText: formatTime(v.respondedAt ?? v.sentAt ?? v.scheduledAt),
+    })),
     projectOpen,
     projectLocationName: projectOpen ? (lastProject?.location?.name ?? null) : null,
     lastEvent: last
@@ -240,102 +277,300 @@ export async function getEffectiveDayFor(userId: string, ref: Date = new Date())
   return effectiveDay(schedule, exceptions, dayKey, ksaDayOfWeek(ref), parseWeekendDays(settings.weekendDays));
 }
 
-/** وسوم بطاقة «مداوم الآن» — عرض فقط، ليست مخالفات. */
-export type LiveState = "on" | "done" | "leave" | "none";
+/** حالة بلاطة «البلاط الموحّد» — خمس حالات بألوان هالتها. */
+export type TileState = "on" | "late" | "miss" | "exc" | "done";
+
+/** حدث Prisma بحقول الموقع ⟵ شكل اشتقاق المحطات النقي. */
+function toStationEvent(e: {
+  type: AttendanceEventType;
+  timestamp: Date;
+  locationId: string | null;
+  outOfZone: boolean;
+  location: { name: string; type: "HQ" | "PROJECT" } | null;
+}): StationEvent {
+  return {
+    type: e.type,
+    timestamp: e.timestamp,
+    locationId: e.locationId,
+    locationName: e.location?.name ?? null,
+    locationType: e.location?.type ?? null,
+    outOfZone: e.outOfZone,
+  };
+}
+
+/** المحطات المشتقة من أحداث يوم لمستخدم — نقطة الاشتقاق الوحيدة في الطبقة. */
+export function stationsOfDay(
+  events: Parameters<typeof toStationEvent>[0][],
+): Station[] {
+  return buildStations(events.map(toStationEvent));
+}
 
 /**
- * لوحة «مداوم الآن»: لكل مداوم بيانات العداد (البداية/الهدف/نهاية دوامه)
- * والتقدم والوسوم؛ ولغير المداومين حالتهم (لم يسجّل/منصرف/إجازة).
- * العميل يحرّك العداد كل دقيقة من `startedAtIso` — السيرفر لا يرسل «الباقي».
+ * لوحة «مداوم الآن» — البلاط الموحّد: بلاطة لكل موظف أيًّا كانت حالته.
+ *
+ * وضعان: اليوم (لحظي — مؤشرات الشريط المباشر + بيانات العداد والمحطة الحالية
+ * وسلسلة الغياب) أو فترة `[fromKey, toKey]` (ملخّص المدى لكل موظف). العميل
+ * يحرّك العدادات من `*Iso` — السيرفر لا يرسل «الباقي» يشيخ بين تحديثين.
  */
-export async function getLiveBoard() {
+export async function getLiveBoard(range?: { fromKey: string; toKey: string } | null) {
+  if (range) return getRangeBoard(range.fromKey, range.toKey);
+
   const now = new Date();
   const dayStart = dayStartKSA(now);
   const todayKey = ksaDayKey(now);
+  const month = currentMonthKSA(now);
+  const monthRange = monthRangeKSA(month)!;
+  // نافذة السلسلة والإحصاءات: بداية الشهر أو ٣٠ يومًا للوراء — الأبعد.
+  const histStart = new Date(Math.min(monthRange.start.getTime(), dayStart.getTime() - 30 * DAY_MS));
+  const histFromKey = ksaDayKey(histStart);
 
-  const [users, sessions, events, schedules, settings, exceptions] = await Promise.all([
+  const [users, sessions, events, schedules, settings, exceptions, verifications] = await Promise.all([
     prisma.user.findMany({
       where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
       select: { id: true, name: true, role: true },
       orderBy: { name: "asc" },
     }),
+    // جلسات النافذة التاريخية كلها + أي جلسة مفتوحة (ولو بدأت قبلها)
     prisma.attendanceSession.findMany({
-      where: { OR: [{ startedAt: { gte: dayStart } }, { endedAt: null }] },
+      where: { OR: [{ startedAt: { gte: histStart } }, { endedAt: null }] },
       orderBy: { startedAt: "asc" },
     }),
     prisma.attendanceEvent.findMany({
       where: { timestamp: { gte: dayStart } },
-      orderBy: { timestamp: "desc" },
-      include: { location: { select: { name: true } } },
+      orderBy: { timestamp: "asc" },
+      include: { location: { select: { name: true, type: true } } },
     }),
     prisma.attendanceSchedule.findMany(),
     getAttendanceSettings(),
-    exceptionsOverlapping(undefined, todayKey, todayKey),
+    exceptionsOverlapping(undefined, histFromKey, todayKey),
+    prisma.attendanceVerification.findMany({
+      where: { scheduledAt: { gte: dayStart } },
+      orderBy: { scheduledAt: "asc" },
+    }),
   ]);
 
   const weekend = parseWeekendDays(settings.weekendDays);
   const dow = ksaDayOfWeek(now);
   const scheduleByUser = new Map(schedules.map((s) => [s.userId, s]));
+  const monthDays = monthDaysKSA(month, now);
 
-  return users.map((u) => {
-    const eff = effectiveDay(
-      scheduleByUser.get(u.id),
-      exceptions.filter((e) => e.userId === u.id),
-      todayKey,
-      dow,
-      weekend,
-    );
+  const rows = users.map((u) => {
+    const myExceptions = exceptions.filter((e) => e.userId === u.id);
+    const eff = effectiveDay(scheduleByUser.get(u.id), myExceptions, todayKey, dow, weekend);
 
     const mine = sessions.filter((s) => s.userId === u.id);
     const open = mine.find((s) => s.endedAt === null) ?? null;
-    const closedToday = mine.filter((s) => s.endedAt !== null && s.startedAt >= dayStart);
+    const todaySessions = mine.filter((s) => s.startedAt >= dayStart || s.endedAt === null);
+    const closedToday = todaySessions.filter((s) => s.endedAt !== null);
+    const myEvents = events.filter((e) => e.userId === u.id);
 
-    // زيارة مشروع مفتوحة ⟺ آخر بصمة مشروع اليوم دخول لا خروج (نفس قاعدة getMyAttendanceStatus).
-    const lastProject = events.find(
-      (e) =>
-        e.userId === u.id &&
-        (e.type === AttendanceEventType.PROJECT_IN || e.type === AttendanceEventType.PROJECT_OUT),
+    // ===== المحطات: المحطة الحالية + عدد الزيارات =====
+    const stations = stationsOfDay(myEvents);
+    const current = open ? ([...stations].reverse().find((s) => s.to === null) ?? null) : null;
+    const visitsCount = countProjectVisits(stations);
+
+    // ===== إحصاءات الشهر الجاري (نفس مصدر ملف الموظف — buildMonthLog) =====
+    const monthLog = buildDaysLog({
+      days: monthDays,
+      now,
+      schedule: scheduleByUser.get(u.id),
+      exceptions: myExceptions,
+      sessions: mine.filter((s) => s.startedAt >= monthRange.start),
+      weekend,
+    });
+    const monthStats = summarizeMonth(monthLog);
+
+    // ===== سلسلة الغياب المتتالي: أيام عمل ماضية بلا جلسة، من أمس للوراء =====
+    const daysByKey = new Map(
+      buildDaysLog({
+        days: rangeDaysKSA(histFromKey, todayKey, now),
+        now,
+        schedule: scheduleByUser.get(u.id),
+        exceptions: myExceptions,
+        sessions: mine,
+        weekend,
+      }).map((d) => [d.key, d] as const),
     );
-    const inProject = lastProject?.type === AttendanceEventType.PROJECT_IN;
-
-    const state: LiveState = open ? "on" : closedToday.length > 0 ? "done" : eff.onLeave ? "leave" : "none";
-
-    let checkInLocationName: string | null = null;
-    if (open) {
-      const checkInEvent = events.find((e) => e.id === open.checkInEventId);
-      checkInLocationName = checkInEvent?.location?.name ?? null;
+    let absenceStreak = 0;
+    for (let t = dayStart.getTime() - DAY_MS; t >= histStart.getTime(); t -= DAY_MS) {
+      const d = daysByKey.get(ksaDayKey(new Date(t)));
+      if (!d) break;
+      if (d.status === "WEEKEND" || d.status === "LEAVE") continue; // لا تقطع السلسلة ولا تُحتسب
+      if (d.status === "ABSENT") absenceStreak++;
+      else break;
     }
+
+    // آخر حضور معروف داخل النافذة (قبل اليوم).
+    const lastPast = [...mine].reverse().find((s) => s.startedAt < dayStart) ?? null;
+
+    // ===== نداءات التحقق اليوم =====
+    const myVerifs = verifications.filter((v) => v.userId === u.id);
+    const verification = {
+      total: myVerifs.length,
+      confirmed: myVerifs.filter((v) => v.status === "CONFIRMED").length,
+      missed: myVerifs.filter((v) => v.status === "MISSED").length,
+      outOfZone: myVerifs.filter((v) => v.status === "OUT_OF_ZONE").length,
+    };
+
+    // ===== حالة البلاطة =====
+    const state: TileState = open
+      ? open.wasLate
+        ? "late"
+        : "on"
+      : closedToday.length > 0
+        ? "done"
+        : eff.onLeave || eff.isWeekend || eff.hasExcuse || eff.modifiedShift
+          ? "exc"
+          : "miss";
 
     const doneMinutes = closedToday.reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
     const lastClosed = closedToday[closedToday.length - 1] ?? null;
+    const checkInMin = open ? ksaMinutesOfDay(open.startedAt) : null;
+    const todayException = myExceptions.find((e) => exceptionCoversToday(e, todayKey)) ?? null;
 
     return {
       id: u.id,
       name: u.name,
       role: u.role,
       state,
+      // رأس البلاطة: دوامه المحدد أو وقت حضوره
       targetMinutes: eff.targetMinutes,
       scheduledStartText: formatTime(minutesToDate(todayKey, eff.startMinutes)),
-      // ===== مداوم الآن =====
+      startedAtText: open
+        ? formatTime(open.startedAt)
+        : todaySessions[0]
+          ? formatTime(todaySessions[0].startedAt)
+          : null,
+      // مداوم/متأخر
       startedAtIso: open ? open.startedAt.toISOString() : null,
-      startedAtText: open ? formatTime(open.startedAt) : null,
-      endsAtText: open
-        ? formatTime(new Date(open.startedAt.getTime() + eff.targetMinutes * 60_000))
+      endsAtText: open ? formatTime(new Date(open.startedAt.getTime() + eff.targetMinutes * 60_000)) : null,
+      lateMinutes:
+        open && open.wasLate && checkInMin != null ? Math.max(0, checkInMin - eff.accountStartMinutes) : null,
+      earlyIn: open ? (checkInMin ?? 0) < eff.startMinutes : false,
+      station: current
+        ? { kind: current.kind, name: current.name, sinceIso: current.from.toISOString() }
         : null,
-      locationName: checkInLocationName,
-      wasLate: open?.wasLate ?? false,
-      earlyIn: open ? ksaMinutesOfDay(open.startedAt) < eff.startMinutes : false,
-      inProject,
-      projectName: inProject ? (lastProject?.location?.name ?? null) : null,
-      // ===== منصرف =====
-      doneMinutes: state === "done" ? doneMinutes : null,
+      visitsCount,
+      // لم يسجّل
+      accountStartIso: minutesToDate(todayKey, eff.accountStartMinutes).toISOString(),
+      lastSeenText: lastPast
+        ? `${formatDate(lastPast.startedAt)} — ${formatTime(lastPast.startedAt)}`
+        : null,
+      absenceStreak,
+      // مستثنى
+      exceptionType: eff.onLeave
+        ? ("FULL_DAY_LEAVE" as const)
+        : eff.isWeekend && !open && closedToday.length === 0
+          ? ("WEEKEND" as const)
+          : todayException?.type ?? null,
+      // أنهى دوامه
+      doneMinutes,
       endedAtText: lastClosed?.endedAt ? formatTime(lastClosed.endedAt) : null,
-      outOfZoneToday: events.some((e) => e.userId === u.id && e.outOfZone),
+      // مشترك
+      monthStats,
+      verification,
+      outOfZoneToday: myEvents.some((e) => e.outOfZone),
     };
   });
+
+  // الترتيب المعتمد: متأخر → مداوم → لم يسجّل (الأكثر تأخيرًا أولًا) → مستثنى → أنهى.
+  const order: Record<TileState, number> = { late: 0, on: 1, miss: 2, exc: 3, done: 4 };
+  rows.sort((a, b) =>
+    order[a.state] !== order[b.state]
+      ? order[a.state] - order[b.state]
+      : a.state === "miss"
+        ? a.accountStartIso.localeCompare(b.accountStartIso)
+        : a.name.localeCompare(b.name, "ar"),
+  );
+
+  // ===== مؤشرات الشريط المباشر الخمسة =====
+  const onDuty = rows.filter((r) => r.state === "on" || r.state === "late");
+  const lateRows = rows.filter((r) => r.lateMinutes != null && r.lateMinutes > 0);
+  const nowMs = now.getTime();
+  const liveMinutes = (r: (typeof rows)[number]) =>
+    r.startedAtIso ? Math.max(0, Math.floor((nowMs - new Date(r.startedAtIso).getTime()) / 60_000)) : 0;
+  const totalMinutesToday = rows.reduce((sum, r) => sum + r.doneMinutes + liveMinutes(r), 0);
+  const attendedCount = rows.filter((r) => r.doneMinutes > 0 || r.startedAtIso).length;
+
+  return {
+    mode: "today" as const,
+    nowIso: now.toISOString(),
+    summary: {
+      onDuty: onDuty.length,
+      lateCount: lateRows.length,
+      avgLateMinutes: lateRows.length
+        ? Math.round(lateRows.reduce((s, r) => s + (r.lateMinutes ?? 0), 0) / lateRows.length)
+        : 0,
+      missCount: rows.filter((r) => r.state === "miss").length,
+      inProjects: rows.filter((r) => r.station?.kind === "PROJECT").length,
+      visitsToday: rows.reduce((s, r) => s + r.visitsCount, 0),
+      totalMinutesToday,
+      avgMinutesToday: attendedCount ? Math.round(totalMinutesToday / attendedCount) : 0,
+    },
+    rows,
+  };
 }
 
-export type LiveBoardRow = Awaited<ReturnType<typeof getLiveBoard>>[number];
+/** هل يغطي الاستثناء اليوم؟ (مفاتيح أعمدة @db.Date تُقارن نصًّا). */
+function exceptionCoversToday(e: AttendanceException, todayKey: string): boolean {
+  return (
+    e.dateFrom.toISOString().slice(0, 10) <= todayKey && todayKey <= e.dateTo.toISOString().slice(0, 10)
+  );
+}
+
+/** وضع الفترة: ملخّص المدى لكل موظف (ساعات/أيام/تأخير/غياب) — بلا شريط مباشر. */
+async function getRangeBoard(fromKey: string, toKey: string) {
+  const bounds = rangeBoundsKSA(fromKey, toKey);
+  const now = new Date();
+  if (!bounds) return { mode: "range" as const, fromKey, toKey, rows: [] };
+
+  const [users, sessions, exceptions, schedules, settings] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
+      select: { id: true, name: true, role: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.attendanceSession.findMany({
+      where: { startedAt: { gte: bounds.start, lt: bounds.end } },
+      orderBy: { startedAt: "asc" },
+    }),
+    exceptionsOverlapping(undefined, fromKey, toKey),
+    prisma.attendanceSchedule.findMany(),
+    getAttendanceSettings(),
+  ]);
+
+  const weekend = parseWeekendDays(settings.weekendDays);
+  const scheduleByUser = new Map(schedules.map((s) => [s.userId, s]));
+  const days = rangeDaysKSA(fromKey, toKey, now);
+
+  const rows = users.map((u) => {
+    const log = buildDaysLog({
+      days,
+      now,
+      schedule: scheduleByUser.get(u.id),
+      exceptions: exceptions.filter((e) => e.userId === u.id),
+      sessions: sessions.filter((s) => s.userId === u.id),
+      weekend,
+    });
+    return {
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      scheduledStartText: formatTime(
+        minutesToDate(fromKey, scheduleByUser.get(u.id)?.startMinutes ?? DEFAULT_START_MINUTES),
+      ),
+      targetMinutes: scheduleByUser.get(u.id)?.shiftMinutes ?? DEFAULT_SHIFT_MINUTES,
+      ...summarizeMonth(log),
+    };
+  });
+
+  return { mode: "range" as const, fromKey, toKey, rows };
+}
+
+export type LiveBoardPayload = Awaited<ReturnType<typeof getLiveBoard>>;
+export type LiveTodayPayload = Extract<LiveBoardPayload, { mode: "today" }>;
+export type LiveBoardRow = LiveTodayPayload["rows"][number];
+export type RangeBoardRow = Extract<LiveBoardPayload, { mode: "range" }>["rows"][number];
 
 /** جلسات مستخدم مجمّعة على مفتاح يوم الرياض لبداية الجلسة. */
 function groupSessionsByDay(sessions: AttendanceSession[]): Map<string, AttendanceSession[]> {
@@ -348,6 +583,16 @@ function groupSessionsByDay(sessions: AttendanceSession[]): Map<string, Attendan
   }
   return map;
 }
+
+/** محطة يوم مُهيّأة للعرض (نصوص جاهزة) — نفس شكل بطاقة الموظف حرفيًا. */
+export type StationView = {
+  kind: Station["kind"];
+  name: string;
+  fromIso: string;
+  fromText: string;
+  toIso: string | null;
+  toText: string | null;
+};
 
 /** سطر يوم واحد في سجل الأيام. */
 export type DayLogEntry = {
@@ -363,14 +608,17 @@ export type DayLogEntry = {
   workedMinutes: number;
   targetMinutes: number;
   exceptionType: AttendanceException["type"] | null;
+  /** محطات اليوم — تُعبّأ في ملف الموظف فقط (سجل التحركات لكل يوم). */
+  stations: StationView[];
 };
 
 /**
- * يبني سجل أيام شهر لمستخدم من بيانات مجلوبة مسبقًا — مشترك بين ملف الموظف
- * (كل التفاصيل) وملخص الفريق (الإجماليات فقط) كي لا تفترق الأرقام بينهما.
+ * يبني سجل أيام مدى معطى لمستخدم من بيانات مجلوبة مسبقًا — مشترك بين ملف
+ * الموظف (كل التفاصيل) وملخص الفريق ولوحة البلاط (شهرًا كان أو فترة مخصصة)
+ * كي لا تفترق الأرقام بين الشاشات.
  */
-function buildMonthLog(args: {
-  month: string;
+function buildDaysLog(args: {
+  days: MonthDay[];
   now: Date;
   schedule: { startMinutes: number; shiftMinutes: number } | null | undefined;
   exceptions: AttendanceException[];
@@ -378,12 +626,13 @@ function buildMonthLog(args: {
   weekend: Set<number>;
   visitsByDay?: Map<string, string[]>;
   checkInLocByDay?: Map<string, string | null>;
+  stationsByDay?: Map<string, StationView[]>;
 }): DayLogEntry[] {
-  const { month, now, schedule, exceptions, sessions, weekend } = args;
+  const { now, schedule, exceptions, sessions, weekend } = args;
   const todayKey = ksaDayKey(now);
   const byDay = groupSessionsByDay(sessions);
 
-  return monthDaysKSA(month, now).map((day) => {
+  return args.days.map((day) => {
     const eff = effectiveDay(schedule, exceptions, day.key, day.dayOfWeek, weekend);
     const daySessions = byDay.get(day.key) ?? [];
     const open = daySessions.find((s) => s.endedAt === null) ?? null;
@@ -430,6 +679,7 @@ function buildMonthLog(args: {
       workedMinutes,
       targetMinutes: eff.targetMinutes,
       exceptionType,
+      stations: args.stationsByDay?.get(day.key) ?? [],
     };
   });
 }
@@ -468,7 +718,7 @@ export async function getEmployeeFile(userId: string, month: string) {
     prisma.attendanceEvent.findMany({
       where: { userId, timestamp: { gte: range.start, lt: range.end } },
       orderBy: { timestamp: "asc" },
-      include: { location: { select: { name: true } } },
+      include: { location: { select: { name: true, type: true } } },
     }),
     exceptionsOverlapping(userId, `${month}-01`, monthLastDayKey(month)),
     prisma.attendanceVerification.findMany({
@@ -477,23 +727,44 @@ export async function getEmployeeFile(userId: string, month: string) {
     }),
   ]);
 
-  // زيارات المشاريع لكل يوم (أسماء بلا تكرار) + موقع بصمة الحضور لكل يوم.
-  const visitsByDay = new Map<string, string[]>();
+  // موقع بصمة الحضور لكل يوم + أحداث كل يوم لاشتقاق محطاته.
   const checkInLocByDay = new Map<string, string | null>();
+  const eventsByDay = new Map<string, typeof events>();
   for (const e of events) {
     const key = ksaDayKey(e.timestamp);
-    if (e.type === AttendanceEventType.PROJECT_IN && e.location?.name) {
-      const list = visitsByDay.get(key) ?? [];
-      if (!list.includes(e.location.name)) list.push(e.location.name);
-      visitsByDay.set(key, list);
-    }
+    const list = eventsByDay.get(key) ?? [];
+    list.push(e);
+    eventsByDay.set(key, list);
     if (e.type === AttendanceEventType.CHECK_IN && !e.outOfZone && !checkInLocByDay.has(key)) {
       checkInLocByDay.set(key, e.location?.name ?? null);
     }
   }
 
-  const days = buildMonthLog({
-    month,
+  /*
+   * المحطات لكل يوم (الدفعة الثانية) — نفس اشتقاق بطاقة الموظف حرفيًا، ومنها
+   * تُشتق الزيارات (محطات PROJECT + زيارات PROJECT_IN التاريخية) فلا مصدران.
+   */
+  const stationsByDay = new Map<string, StationView[]>();
+  const visitsByDay = new Map<string, string[]>();
+  for (const [key, dayEvents] of eventsByDay) {
+    const stations = stationsOfDay(dayEvents);
+    stationsByDay.set(
+      key,
+      stations.map((s) => ({
+        kind: s.kind,
+        name: s.name,
+        fromIso: s.from.toISOString(),
+        fromText: formatTime(s.from),
+        toIso: s.to?.toISOString() ?? null,
+        toText: s.to ? formatTime(s.to) : null,
+      })),
+    );
+    const visits = stations.filter((s) => s.kind === "PROJECT").map((s) => s.name);
+    if (visits.length > 0) visitsByDay.set(key, [...new Set(visits)]);
+  }
+
+  const days = buildDaysLog({
+    days: monthDaysKSA(month, now),
     now,
     schedule,
     exceptions,
@@ -501,6 +772,7 @@ export async function getEmployeeFile(userId: string, month: string) {
     weekend: parseWeekendDays(settings.weekendDays),
     visitsByDay,
     checkInLocByDay,
+    stationsByDay,
   });
 
   const locationNames = new Map(
@@ -566,8 +838,8 @@ export async function getTeamSummary(month: string) {
   const scheduleByUser = new Map(schedules.map((s) => [s.userId, s]));
 
   return users.map((u) => {
-    const days = buildMonthLog({
-      month,
+    const days = buildDaysLog({
+      days: monthDaysKSA(month, now),
       now,
       schedule: scheduleByUser.get(u.id),
       exceptions: exceptions.filter((e) => e.userId === u.id),
