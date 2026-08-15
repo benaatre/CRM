@@ -1,12 +1,14 @@
 import "server-only";
 
-import { FollowUpType, Prisma } from "@prisma/client";
+import { Channel, FollowUpType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { dayStartKSA, weekStartKSA, KSA_OFFSET_MS, DAY_MS, parseRiyadhLocal } from "@/lib/ksa-time";
 import { formatTime, formatDate, lastSeenAgo } from "@/lib/format";
 import { getAuditLog, inferFollowupLeads, resolveAuditNames } from "@/lib/data/audit";
+import { channelLabel } from "@/lib/labels";
+import { ksaDayKey } from "@/lib/ksa-time";
 
 /**
  * طبقة بيانات «لوحة المالك» (المرجع owner-final-structure.html).
@@ -226,6 +228,107 @@ export async function getOwnerFollowups(p: OwnerPeriod, fromKey?: string, toKey?
 
   rows.sort((a, b) => a.atIso.localeCompare(b.atIso));
   return { range, rows };
+}
+
+/* ===================== التحليلات ===================== */
+
+export type OwnerChannelRow = { channel: Channel; label: string; count: number };
+
+/** أداء المنصّات — عملاء الفترة مجمّعين بالقناة (نفس groupBy التحليلات لكن بفترة). */
+export async function getOwnerChannels(p: OwnerPeriod, fromKey?: string, toKey?: string) {
+  const user = await requireUser();
+  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+
+  const range = resolveOwnerRange(p, fromKey, toKey);
+  const grouped = await prisma.lead.groupBy({
+    by: ["channel"],
+    where: { createdAt: { gte: range.gte, lt: range.lt } },
+    _count: { _all: true },
+  });
+  const rows: OwnerChannelRow[] = grouped
+    .map((g) => ({ channel: g.channel, label: channelLabel(g.channel), count: g._count._all }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count);
+  return { range, rows };
+}
+
+export type OwnerTrendPoint = {
+  dayKey: string;
+  /** اسم اليوم بالعربي (أحد/إثنين…). */
+  dayLabel: string;
+  leads: number;
+  bookings: number;
+};
+
+/** اتجاه الأسبوع — سلسلة يومية (٧ أيام رياض تنتهي اليوم): عملاء جدد + حجوزات. */
+export async function getOwnerWeekTrend(): Promise<OwnerTrendPoint[]> {
+  const user = await requireUser();
+  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+
+  const today = dayStartKSA();
+  const start = new Date(today.getTime() - 6 * DAY_MS);
+  // لا date_trunc في Prisma groupBy — نجلب الطوابع فقط (نطاق أسبوع) ونجمّع بمفتاح يوم الرياض.
+  const [leads, bookings] = await Promise.all([
+    prisma.lead.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
+    prisma.booking.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
+  ]);
+
+  const fmt = new Intl.DateTimeFormat("ar-SA", { calendar: "gregory", timeZone: "Asia/Riyadh", weekday: "short" });
+  const points: OwnerTrendPoint[] = [];
+  for (let t = start.getTime(); t <= today.getTime(); t += DAY_MS) {
+    const d = new Date(t);
+    points.push({ dayKey: ksaDayKey(d), dayLabel: fmt.format(d), leads: 0, bookings: 0 });
+  }
+  const byKey = new Map(points.map((pt) => [pt.dayKey, pt]));
+  for (const l of leads) byKey.get(ksaDayKey(l.createdAt)) && byKey.get(ksaDayKey(l.createdAt))!.leads++;
+  for (const b of bookings) byKey.get(ksaDayKey(b.createdAt)) && byKey.get(ksaDayKey(b.createdAt))!.bookings++;
+  return points;
+}
+
+export type OwnerTeamFuRow = { id: string; name: string; total: number; done: number; remaining: number; missed: number };
+
+/**
+ * «متابعات كل موظف» بفترة — نفس دلالات teamFollowupsToday (dashboard.ts) حرفيًا:
+ * الموعد من nextFollowup، «تمّت» = متابعة بعد وقت الموعد، «فائتة» = مضى بلا متابعة.
+ * فرق وحيد معلن: للفترات الماضية تُحتسب متابعة لاحقة (بعد نهاية الفترة) إنجازًا —
+ * وإلا ظهر «أمس» كله فائتًا حتى لو أُنجز صباح اليوم.
+ */
+export async function getOwnerTeamFollowups(p: OwnerPeriod, fromKey?: string, toKey?: string) {
+  const user = await requireUser();
+  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+
+  const range = resolveOwnerRange(p, fromKey, toKey);
+  const { gte, lt } = range;
+  const apptLeads = await prisma.lead.findMany({
+    where: {
+      nextFollowup: { gte, lt },
+      isArchived: false,
+      stage: { notIn: ["CLOSED_WON", "CLOSED_LOST"] },
+      assignedTo: { role: "EMPLOYEE", active: true },
+    },
+    select: { id: true, assignedToId: true, nextFollowup: true, assignedTo: { select: { name: true } } },
+  });
+  const fus = apptLeads.length
+    ? await prisma.followUp.findMany({
+        where: { leadId: { in: apptLeads.map((l) => l.id) }, createdAt: { gte } },
+        select: { leadId: true, createdAt: true },
+      })
+    : [];
+
+  const nowMs = Date.now();
+  const byEmp = new Map<string, OwnerTeamFuRow>();
+  for (const l of apptLeads) {
+    const id = l.assignedToId as string;
+    const row = byEmp.get(id) ?? { id, name: l.assignedTo?.name ?? "—", total: 0, done: 0, remaining: 0, missed: 0 };
+    row.total++;
+    const at = (l.nextFollowup as Date).getTime();
+    const done = fus.some((f) => f.leadId === l.id && f.createdAt.getTime() >= at);
+    if (done) row.done++;
+    else if (at <= nowMs) row.missed++;
+    else row.remaining++;
+    byEmp.set(id, row);
+  }
+  return { range, rows: [...byEmp.values()].sort((a, b) => b.missed - a.missed || b.total - a.total) };
 }
 
 /* ===================== سجل التدقيق الحي ===================== */

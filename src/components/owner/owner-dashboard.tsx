@@ -1,6 +1,10 @@
 import { Role } from "@prisma/client";
 import { Zain } from "next/font/google";
-import { getOwnerKpis, getOwnerFollowups, getOwnerAudit, normalizeOwnerPeriod } from "@/lib/data/owner-dashboard";
+import {
+  getOwnerKpis, getOwnerFollowups, getOwnerAudit, getOwnerChannels, getOwnerWeekTrend,
+  getOwnerTeamFollowups, normalizeOwnerPeriod, ownerPeriodLabels,
+} from "@/lib/data/owner-dashboard";
+import { OwnerAnalytics } from "@/components/owner/owner-analytics";
 import { OwnerDateFilter } from "@/components/owner/owner-date-filter";
 import { KpiCards } from "@/components/owner/kpi-cards";
 import { OwnerFollowups } from "@/components/owner/owner-followups";
@@ -55,15 +59,23 @@ export function SecHeader({ title, count, accent = "var(--gold)", children }: {
 export type OwnerSearchParams = {
   dp?: string; df?: string; dt?: string;
   fp?: string; ff?: string; ft?: string;
+  ep?: string; ef?: string; et?: string;
+  ap?: string; af?: string; at?: string;
 };
 
 export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: OwnerSearchParams }) {
   const period = normalizeOwnerPeriod(sp.dp);
   const fuPeriod = normalizeOwnerPeriod(sp.fp);
-  const [kpis, followups, audit] = await Promise.all([
+  const empPeriod = normalizeOwnerPeriod(sp.ep);
+  // فترة المنصّات الافتراضية «أسبوع» — عنوان المرجع: «مصدر العملاء هذا الأسبوع».
+  const chPeriod = normalizeOwnerPeriod(sp.ap ?? "week");
+  const [kpis, followups, audit, channels, trend, teamFu] = await Promise.all([
     getOwnerKpis(period, sp.df, sp.dt),
     getOwnerFollowups(fuPeriod, sp.ff, sp.ft),
     getOwnerAudit(30),
+    getOwnerChannels(chPeriod, sp.af, sp.at),
+    getOwnerWeekTrend(),
+    getOwnerTeamFollowups(empPeriod, sp.ef, sp.et),
   ]);
 
   return (
@@ -106,6 +118,25 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
         <OwnerFollowups rows={followups.rows} />
         <OwnerAuditFeed rows={audit} />
       </div>
+
+      {/* ٣) التحليلات */}
+      <SecHeader title="التحليلات" />
+      <OwnerAnalytics
+        channels={channels.rows}
+        channelsSub={`مصدر العملاء — ${ownerPeriodLabels[channels.range.period]}`}
+        trend={trend}
+        teamFu={teamFu.rows}
+        teamFuSub={`كم عنده · أنجز · فاته — ${ownerPeriodLabels[teamFu.range.period]}`}
+        teamFuFilter={
+          <OwnerDateFilter
+            period={teamFu.range.period}
+            fromKey={teamFu.range.fromKey}
+            toKey={teamFu.range.toKey}
+            keys={["ep", "ef", "et"]}
+            compact
+          />
+        }
+      />
 
       {/* «مباشر»: تدقيق ومتابعات تتحدث كل ٣٠ث — نفس آلية صفحة /audit. */}
       <AutoRefresh seconds={30} />
