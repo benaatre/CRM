@@ -556,6 +556,8 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
       // أنهى دوامه
       doneMinutes,
       endedAtText: lastClosed?.endedAt ? formatTime(lastClosed.endedAt) : null,
+      // توسعة معلنة (لوحة المالك): الجلسة أقفلها الكرون لا الموظف → وسم «جلسة لم تُغلق».
+      autoClosed: lastClosed?.autoClosed ?? false,
       // مشترك
       monthStats,
       verification,

@@ -3,6 +3,7 @@ import { getLeads, getLeadCounts } from "@/lib/data/leads";
 import { buildAgenda, buildDayAppointments } from "@/lib/mobile-agenda";
 import { MercuryNav } from "@/components/mobile/mercury-nav";
 import { PushRegistrar } from "@/components/mobile/push-registrar";
+import { Heartbeat } from "@/components/layout/heartbeat";
 
 /**
  * قشرة التطبيق المحميّة — كل تبويبات /m عداها شاشة الدخول.
@@ -35,6 +36,9 @@ export default async function MobileShellLayout({ children }: { children: React.
     <>
       {/* تسجيل الجهاز لإشعارات Push — داخل غلاف Capacitor فقط، لا أثر في المتصفح. */}
       <PushRegistrar />
+      {/* نبضة «آخر ظهور» — كانت بقشرة الويب فقط، فموظف التطبيق كان يظهر
+          «غير متصل» بعد ٥ دقائق ويُستبعد من التوزيع التلقائي بعد distPresenceMin. */}
+      <Heartbeat />
       {/*
         المساحة السفلية = ارتفاع الشريط (٤rem) + شريط الإيماءات،
         حتى لا يغطّي الشريط الثابت آخر عنصر في الصفحة.

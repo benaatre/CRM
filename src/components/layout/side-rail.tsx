@@ -9,7 +9,10 @@ import {
 import { toArabicDigits } from "@/lib/format";
 
 /**
- * الشريط الجانبي الزجاجي — ٧٠px مطويًا، يتمدد لـ٢٣٨px **بالمرور** (لا بزر).
+ * الشريط الجانبي — ثلاث طبقات عرض (مرجع لوحة المالك owner-final-structure.html):
+ * - `xl+` (١٢٨٠): **ثابت ٢٤٨px** بعناوين ظاهرة دائمًا — مطابقة المرجع النهائي.
+ * - `lg` (١٠٢٤–١٢٧٩): ٧٠px مطويًا يتمدد لـ٢٣٨px **بالمرور** — يحفظ كثافة الجداول.
+ * - تحت `lg`: الدرج المنزلق (خارج هذا المكوّن) كما هو.
  *
  * الآلية من المرجع حرفيًا: الشريط **عنصر flex عادي** (`flex: none`) يتمدد
  * **عرضه هو**، فيزيح عمود المحتوى (`flex-1 min-w-0`) بسلاسة داخل التخطيط.
@@ -50,8 +53,8 @@ export function SideRail({ items, falLicense, brandName }: {
     <aside
       aria-label="التنقّل الرئيسي"
       // الأصناف حرفية عمدًا — Tailwind يمسح المصدر نصيًا فلا يرى المُركَّب ديناميكيًا.
-      className="group sticky top-0 z-40 hidden h-dvh w-[70px] shrink-0 flex-col overflow-hidden backdrop-blur-2xl motion-safe:transition-[width] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:w-[238px] lg:flex"
-      style={{ background: "var(--glass)" }}
+      className="group sticky top-0 z-40 hidden h-dvh w-[70px] shrink-0 flex-col overflow-hidden border-e border-[var(--hairline)] motion-safe:transition-[width] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:w-[238px] lg:flex xl:w-[248px] xl:motion-safe:hover:w-[248px]"
+      style={{ background: "var(--card)" }}
     >
       <div className="flex h-full flex-col">
         {/* الهوية — الحرف الأول مطويًا، والاسم الكامل عند التمدد */}
@@ -59,7 +62,7 @@ export function SideRail({ items, falLicense, brandName }: {
           <span className="grid size-[26px] flex-none place-items-center rounded-lg bg-gold/15 text-[13px] font-bold text-gold">
             {brandName.trim().charAt(0)}
           </span>
-          <span className="whitespace-nowrap text-[14.5px] font-semibold text-foreground opacity-0 transition-opacity duration-200 motion-safe:group-hover:opacity-100">
+          <span className="whitespace-nowrap text-[14.5px] font-semibold text-foreground opacity-0 transition-opacity duration-200 motion-safe:group-hover:opacity-100 xl:opacity-100">
             {brandName}
           </span>
         </div>
@@ -86,16 +89,16 @@ export function SideRail({ items, falLicense, brandName }: {
                   {it.badge > 0 && (
                     <span
                       aria-hidden
-                      className="absolute -top-0.5 end-[-2px] size-[7px] rounded-full bg-destructive transition-opacity duration-200 motion-safe:group-hover:opacity-0"
+                      className="absolute -top-0.5 end-[-2px] size-[7px] rounded-full bg-destructive transition-opacity duration-200 motion-safe:group-hover:opacity-0 xl:opacity-0"
                     />
                   )}
                 </span>
-                <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13.5px] font-medium opacity-0 transition-opacity duration-200 motion-safe:group-hover:opacity-100">
+                <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13.5px] font-medium opacity-0 transition-opacity duration-200 motion-safe:group-hover:opacity-100 xl:opacity-100">
                   {it.label}
                 </span>
                 {it.badge > 0 && (
                   <span
-                    className="flex-none rounded-md bg-destructive/15 px-2 py-0.5 text-[11.5px] font-semibold text-destructive opacity-0 transition-opacity duration-200 motion-safe:group-hover:opacity-100"
+                    className="flex-none rounded-md bg-destructive/15 px-2 py-0.5 text-[11.5px] font-semibold text-destructive opacity-0 transition-opacity duration-200 motion-safe:group-hover:opacity-100 xl:opacity-100"
                     style={{ fontVariantNumeric: "tabular-nums" }}
                   >
                     {toArabicDigits(it.badge)}
@@ -109,7 +112,7 @@ export function SideRail({ items, falLicense, brandName }: {
         {/* رخصة فال — تبقى ظاهرة: الرقم مطويًا، وبعنوانه عند التمدد */}
         {falLicense && (
           <div className="flex-none px-3 pb-4 pt-2 text-center">
-            <div className="h-0 overflow-hidden text-[11.5px] text-muted-foreground/70 transition-all duration-200 motion-safe:group-hover:h-4">
+            <div className="h-0 overflow-hidden text-[11.5px] text-muted-foreground/70 transition-all duration-200 motion-safe:group-hover:h-4 xl:h-4">
               ترخيص فال (REGA)
             </div>
             <div

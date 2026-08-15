@@ -104,6 +104,8 @@ export type AuditNameMaps = {
   leadNames: Record<string, string>;
   /** معرّف مستخدم → اسمه. */
   userNames: Record<string, string>;
+  /** معرّف عميل → جواله — توسعة معلنة (سجل لوحة المالك): المستهلكون القائمون يتجاهلونها. */
+  leadPhones: Record<string, string>;
 };
 
 /**
@@ -116,15 +118,16 @@ export async function resolveAuditNames(entries: { summary: string }[], extraLea
   for (const e of entries) {
     for (const m of e.summary.matchAll(CUID_RE)) ids.add(m[0]);
   }
-  if (ids.size === 0) return { leadNames: {}, userNames: {} };
+  if (ids.size === 0) return { leadNames: {}, userNames: {}, leadPhones: {} };
   const list = [...ids];
   const [leads, users] = await Promise.all([
-    prisma.lead.findMany({ where: { id: { in: list } }, select: { id: true, name: true } }),
+    prisma.lead.findMany({ where: { id: { in: list } }, select: { id: true, name: true, phone: true } }),
     prisma.user.findMany({ where: { id: { in: list } }, select: { id: true, name: true } }),
   ]);
   return {
     leadNames: Object.fromEntries(leads.map((l) => [l.id, l.name])),
     userNames: Object.fromEntries(users.map((u) => [u.id, u.name])),
+    leadPhones: Object.fromEntries(leads.map((l) => [l.id, l.phone])),
   };
 }
 
