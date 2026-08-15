@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { OwnerPeriod } from "@/lib/data/owner-dashboard";
 
 const PRESETS: { key: OwnerPeriod; label: string }[] = [
@@ -13,34 +13,47 @@ const PRESETS: { key: OwnerPeriod; label: string }[] = [
 ];
 
 /**
- * فلتر فترة الأرقام — حبوب `.tf` من المرجع: خلفية raised مدوّرة والزر الفعّال ذهبي.
+ * فلتر فترة موحّد — حبوب `.tf` من المرجع: خلفية raised مدوّرة والزر الفعّال ذهبي.
  * «من ← إلى» يكشف حقلَي تاريخ؛ التطبيق بزر صريح حتى لا نطلق تنقّلًا ناقص الطرفين.
- * البارامترات على المسار نفسه: `dp` + `df`/`dt` — تُقرأ على الخادم.
+ * كل قسم له ثلاثية مفاتيحه (keys) على مسار /dashboard نفسه، والتحديث يحافظ على
+ * بقية البارامترات فلا يُصفّر فلتر قسم آخر.
  */
-export function OwnerDateFilter({ period, fromKey, toKey }: {
+export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "dt"], compact = false }: {
   period: OwnerPeriod;
   fromKey: string | null;
   toKey: string | null;
+  /** [فترة، من، إلى] — افتراضيًا فلتر الأرقام dp/df/dt. */
+  keys?: [string, string, string];
+  /** نسخة أصغر (رأس متابعات اليوم). */
+  compact?: boolean;
 }) {
   const router = useRouter();
+  const search = useSearchParams();
   const [open, setOpen] = useState(period === "custom");
   const [from, setFrom] = useState(fromKey ?? "");
   const [to, setTo] = useState(toKey ?? "");
+  const [pKey, fKey, tKey] = keys;
+
+  function pushWith(mutate: (q: URLSearchParams) => void) {
+    const q = new URLSearchParams(search.toString());
+    mutate(q);
+    router.push(`/dashboard?${q.toString()}`);
+  }
 
   function go(p: OwnerPeriod) {
     if (p === "custom") { setOpen(true); return; }
     setOpen(false);
-    router.push(`/dashboard?dp=${p}`);
+    pushWith((q) => { q.set(pKey, p); q.delete(fKey); q.delete(tKey); });
   }
 
   function applyCustom() {
     if (!from || !to) return;
-    router.push(`/dashboard?dp=custom&df=${from}&dt=${to}`);
+    pushWith((q) => { q.set(pKey, "custom"); q.set(fKey, from); q.set(tKey, to); });
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2" style={{ marginInlineStart: "auto" }}>
-      <div className="flex gap-1 rounded-[20px] p-[5px]" style={{ background: "var(--od-raised)" }}>
+      <div className={`flex gap-1 rounded-[20px] ${compact ? "p-1" : "p-[5px]"}`} style={{ background: compact ? "var(--od-raised2)" : "var(--od-raised)" }}>
         {PRESETS.map((x) => {
           const on = x.key === period && !(x.key !== "custom" && open);
           return (
@@ -48,7 +61,7 @@ export function OwnerDateFilter({ period, fromKey, toKey }: {
               key={x.key}
               type="button"
               onClick={() => go(x.key)}
-              className="whitespace-nowrap rounded-[18px] px-[18px] py-2.5 text-sm transition-colors"
+              className={`whitespace-nowrap rounded-[18px] transition-colors ${compact ? "px-3.5 py-2 text-[12.5px]" : "px-[18px] py-2.5 text-sm"}`}
               style={on || (x.key === "custom" && open)
                 ? { background: "var(--gold)", color: "#fff", fontWeight: 600 }
                 : { color: "var(--od-t2)" }}

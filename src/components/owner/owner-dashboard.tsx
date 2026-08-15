@@ -1,8 +1,10 @@
 import { Role } from "@prisma/client";
 import { Zain } from "next/font/google";
-import { getOwnerKpis, normalizeOwnerPeriod } from "@/lib/data/owner-dashboard";
+import { getOwnerKpis, getOwnerFollowups, normalizeOwnerPeriod } from "@/lib/data/owner-dashboard";
 import { OwnerDateFilter } from "@/components/owner/owner-date-filter";
 import { KpiCards } from "@/components/owner/kpi-cards";
+import { OwnerFollowups } from "@/components/owner/owner-followups";
+import { toArabicDigits } from "@/lib/format";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 // خط الأرقام (Zain) — نفس عرف صفحتي القمم والعملاء: متغيّر على غلاف الصفحة.
@@ -48,11 +50,18 @@ export function SecHeader({ title, count, accent = "var(--gold)", children }: {
   );
 }
 
-export type OwnerSearchParams = { dp?: string; df?: string; dt?: string };
+export type OwnerSearchParams = {
+  dp?: string; df?: string; dt?: string;
+  fp?: string; ff?: string; ft?: string;
+};
 
 export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: OwnerSearchParams }) {
   const period = normalizeOwnerPeriod(sp.dp);
-  const kpis = await getOwnerKpis(period, sp.df, sp.dt);
+  const fuPeriod = normalizeOwnerPeriod(sp.fp);
+  const [kpis, followups] = await Promise.all([
+    getOwnerKpis(period, sp.df, sp.dt),
+    getOwnerFollowups(fuPeriod, sp.ff, sp.ft),
+  ]);
 
   return (
     <div className={`${zain.variable} mx-auto max-w-[1500px]`} style={OD_TOKENS}>
@@ -76,6 +85,21 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
         <OwnerDateFilter period={kpis.range.period} fromKey={kpis.range.fromKey} toKey={kpis.range.toKey} />
       </SecHeader>
       <KpiCards kpis={kpis} />
+
+      {/* ٢) متابعات اليوم — كل العملاء */}
+      <SecHeader
+        title="متابعات اليوم — كل العملاء"
+        count={`${toArabicDigits(followups.rows.length)} عميل عليهم متابعة بالفترة · مرتّبة بالوقت`}
+      >
+        <OwnerDateFilter
+          period={followups.range.period}
+          fromKey={followups.range.fromKey}
+          toKey={followups.range.toKey}
+          keys={["fp", "ff", "ft"]}
+          compact
+        />
+      </SecHeader>
+      <OwnerFollowups rows={followups.rows} />
     </div>
   );
 }

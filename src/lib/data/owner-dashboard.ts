@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { dayStartKSA, weekStartKSA, KSA_OFFSET_MS, DAY_MS, parseRiyadhLocal } from "@/lib/ksa-time";
+import { formatTime, formatDate } from "@/lib/format";
 
 /**
  * طبقة بيانات «لوحة المالك» (المرجع owner-final-structure.html).
@@ -127,6 +128,103 @@ async function windowCounts(gte: Date, lt: Date, dupIds: Set<string>) {
   ]);
   const conversion = visits > 0 ? Math.round((bookings / visits) * 100) : 0;
   return { total, unassigned, bookings, visits, closedWon, conversion };
+}
+
+/* ===================== متابعات الفترة — القائمة الصفّية للمالك ===================== */
+
+export type OwnerFuStatus = "late" | "soon" | "next" | "done";
+
+export type OwnerFollowupRow = {
+  leadId: string;
+  name: string;
+  phone: string;
+  /** لحظة الموعد (ISO — العميل يعرضها بالرياض عبر النصوص الجاهزة). */
+  atIso: string;
+  timeText: string;
+  /** يظهر تاريخ اليوم فقط حين الفترة أوسع من يوم واحد. */
+  dayText: string | null;
+  kind: "followup" | "visit";
+  note: string | null;
+  employeeName: string | null;
+  status: OwnerFuStatus;
+  /** «تمّت» — وقت المتابعة المنجزة. */
+  doneTimeText: string | null;
+  /** «متأخّر» — الدقائق منذ الموعد. */
+  lateMinutes: number | null;
+};
+
+/**
+ * قائمة مواعيد الفترة للمالك — الحالة محسوبة على الخادم (لا حساب موزّعًا بالعميل):
+ * - تمّت: آخر متابعة على العميل وقعت بعد وقت الموعد (نفس منطق teamFollowupsToday —
+ *   الأحدث كافٍ لأنه الأقصى زمنيًا).
+ * - متأخّر: فات وقته بلا متابعة بعده.
+ * - قرب موعده: خلال ساعة من الآن.
+ * - قادمة: أبعد من ساعة.
+ * الموعد من `Lead.nextFollowup` (المصدر الحي المعتمد) + زيارة مؤكدة من `Lead.visitAt`.
+ */
+export async function getOwnerFollowups(p: OwnerPeriod, fromKey?: string, toKey?: string) {
+  const user = await requireUser();
+  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+
+  const range = resolveOwnerRange(p, fromKey, toKey);
+  const { gte, lt } = range;
+  const now = new Date();
+  const multiDay = lt.getTime() - gte.getTime() > DAY_MS;
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      isArchived: false,
+      stage: { notIn: ["CLOSED_WON", "CLOSED_LOST"] },
+      OR: [{ nextFollowup: { gte, lt } }, { visitAt: { gte, lt } }],
+    },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      nextFollowup: true,
+      visitAt: true,
+      assignedTo: { select: { name: true, role: true } },
+      // الأحدث أولًا: [0] يحسم الإنجاز، وأول ملاحظة غير فارغة تُعرض تحت الاسم.
+      followUps: { orderBy: { createdAt: "desc" }, take: 5, select: { note: true, createdAt: true } },
+    },
+  });
+
+  const rows: OwnerFollowupRow[] = [];
+  for (const l of leads) {
+    const latest = l.followUps[0] ?? null;
+    const note = l.followUps.find((f) => f.note && f.note.trim())?.note?.trim() ?? null;
+    // المالك لا يظهر كموظف مُسند (نفس قاعدة toMini في dashboard.ts).
+    const employeeName = l.assignedTo && l.assignedTo.role !== "OWNER" ? l.assignedTo.name : null;
+
+    const appts: { at: Date; kind: "followup" | "visit" }[] = [];
+    if (l.nextFollowup && l.nextFollowup >= gte && l.nextFollowup < lt) appts.push({ at: l.nextFollowup, kind: "followup" });
+    // زيارة بنفس لحظة المتابعة = موعد واحد لا اثنان.
+    if (l.visitAt && l.visitAt >= gte && l.visitAt < lt && l.visitAt.getTime() !== l.nextFollowup?.getTime())
+      appts.push({ at: l.visitAt, kind: "visit" });
+
+    for (const a of appts) {
+      const done = latest !== null && latest.createdAt >= a.at;
+      const late = !done && a.at <= now;
+      const soon = !done && !late && a.at.getTime() - now.getTime() <= 3_600_000;
+      rows.push({
+        leadId: l.id,
+        name: l.name,
+        phone: l.phone,
+        atIso: a.at.toISOString(),
+        timeText: formatTime(a.at),
+        dayText: multiDay ? formatDate(a.at) : null,
+        kind: a.kind,
+        note,
+        employeeName,
+        status: done ? "done" : late ? "late" : soon ? "soon" : "next",
+        doneTimeText: done && latest ? formatTime(latest.createdAt) : null,
+        lateMinutes: late ? Math.max(1, Math.floor((now.getTime() - a.at.getTime()) / 60_000)) : null,
+      });
+    }
+  }
+
+  rows.sort((a, b) => a.atIso.localeCompare(b.atIso));
+  return { range, rows };
 }
 
 export async function getOwnerKpis(p: OwnerPeriod, fromKey?: string, toKey?: string): Promise<OwnerKpis> {
