@@ -1,9 +1,11 @@
 import { Role } from "@prisma/client";
 import { Zain } from "next/font/google";
-import { getOwnerKpis, getOwnerFollowups, normalizeOwnerPeriod } from "@/lib/data/owner-dashboard";
+import { getOwnerKpis, getOwnerFollowups, getOwnerAudit, normalizeOwnerPeriod } from "@/lib/data/owner-dashboard";
 import { OwnerDateFilter } from "@/components/owner/owner-date-filter";
 import { KpiCards } from "@/components/owner/kpi-cards";
 import { OwnerFollowups } from "@/components/owner/owner-followups";
+import { OwnerAuditFeed } from "@/components/owner/owner-audit-feed";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { toArabicDigits } from "@/lib/format";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
 
@@ -58,9 +60,10 @@ export type OwnerSearchParams = {
 export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: OwnerSearchParams }) {
   const period = normalizeOwnerPeriod(sp.dp);
   const fuPeriod = normalizeOwnerPeriod(sp.fp);
-  const [kpis, followups] = await Promise.all([
+  const [kpis, followups, audit] = await Promise.all([
     getOwnerKpis(period, sp.df, sp.dt),
     getOwnerFollowups(fuPeriod, sp.ff, sp.ft),
+    getOwnerAudit(30),
   ]);
 
   return (
@@ -86,7 +89,7 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
       </SecHeader>
       <KpiCards kpis={kpis} />
 
-      {/* ٢) متابعات اليوم — كل العملاء */}
+      {/* ٢) متابعات اليوم + سجل التدقيق الحي — follow-layout من المرجع (1.5fr/1fr) */}
       <SecHeader
         title="متابعات اليوم — كل العملاء"
         count={`${toArabicDigits(followups.rows.length)} عميل عليهم متابعة بالفترة · مرتّبة بالوقت`}
@@ -99,7 +102,13 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
           compact
         />
       </SecHeader>
-      <OwnerFollowups rows={followups.rows} />
+      <div className="grid items-start gap-4 xl:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
+        <OwnerFollowups rows={followups.rows} />
+        <OwnerAuditFeed rows={audit} />
+      </div>
+
+      {/* «مباشر»: تدقيق ومتابعات تتحدث كل ٣٠ث — نفس آلية صفحة /audit. */}
+      <AutoRefresh seconds={30} />
     </div>
   );
 }

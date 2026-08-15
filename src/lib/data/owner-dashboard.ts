@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { dayStartKSA, weekStartKSA, KSA_OFFSET_MS, DAY_MS, parseRiyadhLocal } from "@/lib/ksa-time";
-import { formatTime, formatDate } from "@/lib/format";
+import { formatTime, formatDate, lastSeenAgo } from "@/lib/format";
+import { getAuditLog, inferFollowupLeads, resolveAuditNames } from "@/lib/data/audit";
 
 /**
  * طبقة بيانات «لوحة المالك» (المرجع owner-final-structure.html).
@@ -225,6 +226,101 @@ export async function getOwnerFollowups(p: OwnerPeriod, fromKey?: string, toKey?
 
   rows.sort((a, b) => a.atIso.localeCompare(b.atIso));
   return { range, rows };
+}
+
+/* ===================== سجل التدقيق الحي ===================== */
+
+export type OwnerAuditKind =
+  | "visit" | "nego" | "call" | "won" | "pull" | "newlead" | "booking" | "interested"
+  | "followup" | "admin" | "crit" | "other";
+
+export type OwnerAuditRow = {
+  id: string;
+  kind: OwnerAuditKind;
+  badge: string;
+  employeeName: string | null;
+  clientName: string | null;
+  clientPhone: string | null;
+  /** معرّف مؤكد فقط (حُلّ لعميل قائم) — يبني سهم فتح الملف. */
+  leadId: string | null;
+  desc: string;
+  whenText: string;
+};
+
+const CUID_ALL = /\bc[a-z0-9]{24}\b/g;
+
+/**
+ * تصنيف الشارة — امتداد قاموس v3 (‎/m owner-home) بأنواع المرجع الثمانية:
+ * اتصال/تفاوض/بيع/مهتم تُستدل من نص summary العربي (AuditLog.action لا يميّزها —
+ * نفس نمط «زيارة» المعتمد على الإنتاج)، والباقي من action مباشرة.
+ */
+function ownerAuditBadge(action: string, summary: string): { badge: string; kind: OwnerAuditKind } {
+  if (action === "followup.added") {
+    if (/زيار/.test(summary)) return { badge: "زيارة", kind: "visit" };
+    if (/تفاوض/.test(summary)) return { badge: "تفاوض", kind: "nego" };
+    if (/اتصل|اتصال|لم يرد|ما رد|واتساب/.test(summary)) return { badge: "اتصال", kind: "call" };
+    return { badge: "متابعة", kind: "followup" };
+  }
+  if (action === "followup.edited") return { badge: "تعديل", kind: "followup" };
+  if (action === "lead.stage" || action === "lead.firstStage") {
+    if (/تفاوض/.test(summary)) return { badge: "تفاوض", kind: "nego" };
+    if (/بيع|مقفول/.test(summary)) return { badge: "بيع", kind: "won" };
+    if (/مهتم/.test(summary)) return { badge: "مهتم", kind: "interested" };
+    if (/زيار/.test(summary)) return { badge: "زيارة", kind: "visit" };
+    return { badge: "مرحلة", kind: "followup" };
+  }
+  if (action.startsWith("booking.")) {
+    if (/دفعة/.test(summary)) return { badge: "دفعة", kind: "booking" };
+    if (/بيع|بيعت|SOLD/.test(summary)) return { badge: "بيع", kind: "won" };
+    return { badge: "حجز", kind: "booking" };
+  }
+  if (/Pull/i.test(action)) return { badge: "سحب", kind: "pull" };
+  if (/warned/i.test(action)) return { badge: "إنذار", kind: "crit" };
+  if (/distributed/i.test(action)) return { badge: "توزيع", kind: "admin" };
+  if (action === "lead.reassigned" || action === "lead.transferred") return { badge: "نقل", kind: "admin" };
+  if (action === "lead.created" || action === "lead.arrivedFromSheet") return { badge: "عميل جديد", kind: "newlead" };
+  if (action === "lead.recovered") return { badge: "استرجاع", kind: "admin" };
+  if (action.includes("archive")) return { badge: "أرشفة", kind: "admin" };
+  if (action.startsWith("REVEAL") || action.startsWith("HIDE") || action.includes("security")) return { badge: "أمان", kind: "crit" };
+  if (action.includes("delete")) return { badge: "حذف", kind: "crit" };
+  return { badge: "إجراء", kind: "other" };
+}
+
+/** آخر عمليات السجل بأسماء وجوالات محلولة — نفس مسار v3 (استدلال + حلّ) + الجوال. */
+export async function getOwnerAudit(limit = 30): Promise<OwnerAuditRow[]> {
+  const user = await requireUser();
+  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+
+  const entries = await getAuditLog({ limit });
+  const inferred = await inferFollowupLeads(entries);
+  const names = await resolveAuditNames(entries, Object.values(inferred));
+
+  return entries.map((e) => {
+    // المعرّف المؤكد فقط (نفس قاعدة v3): معرّف حُلّ فعلًا لعميل قائم — وإلا لا سهم.
+    let leadId: string | null = null;
+    for (const id of e.summary.match(CUID_ALL) ?? []) {
+      if (names.leadNames[id]) { leadId = id; break; }
+    }
+    if (!leadId) {
+      const inf = inferred[e.id];
+      if (inf && names.leadNames[inf]) leadId = inf;
+    }
+    const { badge, kind } = ownerAuditBadge(e.action, e.summary);
+    const desc = e.summary
+      .replace(CUID_ALL, (id) => names.leadNames[id] ?? names.userNames[id] ?? "عنصر محذوف")
+      .replace(/العميل\s*=\s*/g, "");
+    return {
+      id: e.id,
+      kind,
+      badge,
+      employeeName: e.userName ?? (e.userId ? null : "النظام"),
+      clientName: leadId ? names.leadNames[leadId] : null,
+      clientPhone: leadId ? (names.leadPhones[leadId] ?? null) : null,
+      leadId,
+      desc,
+      whenText: lastSeenAgo(e.createdAt),
+    };
+  });
 }
 
 export async function getOwnerKpis(p: OwnerPeriod, fromKey?: string, toKey?: string): Promise<OwnerKpis> {
