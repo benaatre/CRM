@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { Crosshair, LogIn, LogOut, MapPin, ShieldCheck } from "lucide-react";
+import { BellRing, Crosshair, LogIn, LogOut, MapPin, ShieldCheck } from "lucide-react";
 import {
   ATTENDANCE_PALETTE,
+  hmLabel,
   tint,
   toneColor,
   type AttendanceTheme,
   type FeedbackTone,
 } from "@/lib/attendance-ui";
+import { toArabicDigits } from "@/lib/format";
 
 /**
  * بطاقة «تسجيل الدوام» — الواجهة الوحيدة للبصم (الويب والتطبيق).
@@ -29,6 +31,7 @@ type StatusPayload = {
   ok: boolean;
   state: "none" | "in" | "out";
   session: {
+    startedAt: string;
     startedAtText: string;
     endedAtText: string | null;
     workedMinutes: number | null;
@@ -37,6 +40,15 @@ type StatusPayload = {
   } | null;
   projectOpen: boolean;
   projectLocationName: string | null;
+  /** «الـ ٨ ساعات»: هدف اليوم الفعّال + نهاية دوامه (لجلسة مفتوحة). */
+  targetMinutes: number;
+  shiftEndText: string | null;
+};
+
+type PendingVerification = {
+  id: string;
+  deadlineAtIso: string;
+  remainingSeconds: number;
 };
 
 type PunchResult = {
@@ -80,6 +92,15 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
   const [consent, setConsent] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<Intent | null>(null);
   const [feedback, setFeedback] = useState<{ tone: FeedbackTone; text: string } | null>(null);
+  const [pendingVerify, setPendingVerify] = useState<PendingVerification | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  // دقيقة واحدة تكفي لتحريك شريط التقدم — لا ثواني تستهلك البطارية.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   // الموافقة تُقرأ بعد التركيب لا أثناء العرض — قراءة localStorage في العرض تكسر الترطيب.
   useEffect(() => {
@@ -108,6 +129,68 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
   useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
+
+  /*
+   * نداء التحقق: نسأل عند التركيب ثم كل دقيقة — ضغط إشعار الـpush يفتح
+   * التطبيق على الرئيسية حيث هذي البطاقة، فيظهر البانر فورًا مع أول قراءة.
+   */
+  const loadVerification = useCallback(async () => {
+    try {
+      const res = await fetch("/api/attendance/verification/pending", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { ok: boolean; pending: PendingVerification | null };
+      if (data.ok) setPendingVerify(data.pending);
+    } catch {
+      /* الشبكة راحت — المحاولة القادمة بعد دقيقة */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadVerification();
+    const t = setInterval(() => void loadVerification(), 60_000);
+    return () => clearInterval(t);
+  }, [loadVerification]);
+
+  /** ردّ نداء التحقق — قراءة موقع واحدة تُرسل كما هي والخادم يحكم. */
+  const respondVerify = async () => {
+    setVerifyBusy(true);
+    setFeedback({ tone: "info", text: "جاري تحديد موقعك…" });
+    let pos: GeolocationPosition;
+    try {
+      pos = await readPosition();
+    } catch (err) {
+      setFeedback({ tone: "danger", text: geoErrorMessage(err) });
+      setVerifyBusy(false);
+      return;
+    }
+    try {
+      const res = await fetch("/api/attendance/verification/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          isMock: false,
+        }),
+      });
+      const data = (await res.json()) as { ok: boolean; status?: string; message?: string };
+      if (data.ok) {
+        setPendingVerify(null);
+        setFeedback({
+          tone: data.status === "CONFIRMED" ? "success" : "warning",
+          text: data.message ?? "تم إرسال ردك",
+        });
+      } else {
+        // no_pending: انتهت المهلة قبل الرد — نحدّث البانر بدل تركه يكذب.
+        if (data.status === undefined) void loadVerification();
+        setFeedback({ tone: "warning", text: data.message ?? "ما قدرنا نسجّل ردك — حاول مرة ثانية" });
+      }
+    } catch {
+      setFeedback({ tone: "danger", text: "تعذّر الاتصال — تأكد من الإنترنت وحاول مرة ثانية" });
+    }
+    setVerifyBusy(false);
+  };
 
   const acceptConsent = () => {
     try {
@@ -160,6 +243,8 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
       } else {
         setFeedback({ tone: data.isLate ? "warning" : "success", text: successText(data) });
         await loadStatus();
+        // الانصراف يلغي نداءات اليوم المعلّقة — نحدّث البانر معه.
+        void loadVerification();
       }
     } catch {
       setFeedback({ tone: "danger", text: "تعذّر الاتصال — تأكد من الإنترنت وحاول مرة ثانية" });
@@ -173,6 +258,21 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
   const mainIntent: Intent = checkedIn ? "CHECK_OUT" : "CHECK_IN";
   const projectIntent: Intent = projectOpen ? "PROJECT_OUT" : "PROJECT_IN";
   const working = busy !== null;
+
+  // «الـ ٨ ساعات»: المنجز يتحرك كل دقيقة من بداية الجلسة على العميل.
+  const startedMs = status?.session?.startedAt ? new Date(status.session.startedAt).getTime() : null;
+  const targetMinutes = Math.max(1, status?.targetMinutes ?? 480);
+  const elapsedMinutes = checkedIn && startedMs ? Math.max(0, Math.floor((nowTick - startedMs) / 60_000)) : 0;
+  const progress = Math.min(1, elapsedMinutes / targetMinutes);
+  const targetDone = elapsedMinutes >= targetMinutes;
+  const targetLabel =
+    targetMinutes % 60 === 0
+      ? `${toArabicDigits(targetMinutes / 60)} ساعات`
+      : `${hmLabel(targetMinutes, toArabicDigits)} ساعة`;
+
+  const verifyRemainingMinutes = pendingVerify
+    ? Math.max(0, Math.ceil((new Date(pendingVerify.deadlineAtIso).getTime() - nowTick) / 60_000))
+    : 0;
 
   return (
     <section
@@ -218,6 +318,54 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
           </span>
         )}
       </div>
+
+      {/* ===== بانر نداء التحقق — بارز أعلى البطاقة، زر واحد يقرأ ويرسل ===== */}
+      {consent === true && pendingVerify && (
+        <div
+          role="alert"
+          style={{
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            border: `1px solid ${p.warning}`,
+            background: tint(p.warning, 12),
+            borderRadius: 13,
+            padding: "12px 13px",
+          }}
+        >
+          <div style={{ display: "flex", gap: 8 }}>
+            <BellRing aria-hidden size={17} strokeWidth={1.8} style={{ color: p.warning, flex: "none", marginTop: 2 }} />
+            <p style={{ fontSize: 13, fontWeight: 800, color: p.text1, lineHeight: 1.6 }}>
+              نداء تحقق — أكّد موقعك
+              <span style={{ display: "block", marginTop: 3, fontSize: 12, fontWeight: 500, color: p.text2 }}>
+                {verifyRemainingMinutes > 0
+                  ? `باقي ${toArabicDigits(verifyRemainingMinutes)} دقيقة على انتهاء المهلة`
+                  : "المهلة على وشك الانتهاء"}
+              </span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void respondVerify()}
+            disabled={verifyBusy || working}
+            style={{
+              boxSizing: "border-box",
+              minHeight: 44,
+              borderRadius: 11,
+              border: "none",
+              background: p.warning,
+              color: p.card,
+              fontSize: 14,
+              fontWeight: 800,
+              cursor: verifyBusy || working ? "default" : "pointer",
+              opacity: verifyBusy || working ? 0.6 : 1,
+            }}
+          >
+            {verifyBusy ? "جاري تحديد موقعك…" : "أكّد موقعي الآن"}
+          </button>
+        </div>
+      )}
 
       {/* ===== الموافقة الأولى — تسبق أي قراءة موقع ===== */}
       {consent === false ? (
@@ -323,6 +471,38 @@ export function AttendanceCard({ theme = "mobile" }: { theme?: AttendanceTheme }
                   ? `إنهاء زيارة ${status?.projectLocationName ?? "المشروع"}`
                   : "زيارة مشروع"}
             </button>
+
+            {/* ===== شريط «أنجزت ٤:٣٥ من ٨ ساعات» + نهاية دوامك ===== */}
+            {checkedIn && startedMs && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div
+                  style={{
+                    height: 6,
+                    borderRadius: 999,
+                    background: p.sheet,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${Math.round(progress * 100)}%`,
+                      borderRadius: 999,
+                      background: p.success,
+                      transition: "width 0.4s ease",
+                    }}
+                  />
+                </div>
+                <p style={{ fontSize: 12, color: p.text2, lineHeight: 1.6 }}>
+                  أنجزت{" "}
+                  <b style={{ fontWeight: 800, color: targetDone ? p.success : p.text1 }}>
+                    {hmLabel(elapsedMinutes, toArabicDigits)}
+                  </b>{" "}
+                  من {targetLabel}
+                  {status?.shiftEndText && <> · نهاية دوامك {status.shiftEndText}</>}
+                </p>
+              </div>
+            )}
           </>
         )
       )}

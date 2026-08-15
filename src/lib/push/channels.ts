@@ -127,6 +127,14 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "availability.paused": "staff",
   "availability.resumed": "staff",
   "discount.exceeded": "staff",
+  // ===== حوكمة الدوام (المرحلة ٢) — إشعارات المالك على أهدأ فئة =====
+  "attendance.checked_in": "staff",
+  "attendance.completed": "staff",
+  "attendance.no_show": "staff",
+  "attendance.verify_missed": "staff",
+  "attendance.verify_out_of_zone": "staff",
+  // نداء التحقق نفسه للموظف — عاجل بمهلة قصيرة، فيأخذ أقوى قناة (منبثق + صوت).
+  "attendance.verify": "pull_warn",
 };
 
 /**
@@ -161,6 +169,12 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "availability.resumed": "رجوع موظف للاستقبال",
   "booking.cancelled": "إلغاء حجز",
   "discount.exceeded": "تجاوز خصم",
+  "attendance.checked_in": "داوم موظف",
+  "attendance.completed": "موظف أكمل دوامه",
+  "attendance.no_show": "موظف ما داوم",
+  "attendance.verify_missed": "نداء تحقق فائت",
+  "attendance.verify_out_of_zone": "رد تحقق خارج النطاق",
+  "attendance.verify": "نداء تحقق (للموظف)",
 };
 
 /**

@@ -265,6 +265,9 @@ model User {
   receivedMessages ChatMessage[] @relation("ChatRecipient")
   attendanceEvents   AttendanceEvent[]
   attendanceSessions AttendanceSession[]
+  attendanceSchedule      AttendanceSchedule?
+  attendanceExceptions    AttendanceException[]
+  attendanceVerifications AttendanceVerification[]
 
   @@index([role])
 }
@@ -877,6 +880,16 @@ model AttendanceSettings {
   minAccuracyMeters      Int      @default(100)
   /// منع البصم المتكرر بنفس النية خلال هذه المدة
   cooldownSeconds        Int      @default(120)
+  /// أيام الإجازة الأسبوعية — رموز مفصولة بفواصل (SUN..SAT)
+  weekendDays               String  @default("FRI,SAT")
+  /// إشعار «لم يداوم» بعد كم دقيقة من بداية دوام الموظف
+  noShowAfterMinutes        Int     @default(180)
+  /// تفعيل نداءات التحقق العشوائية أثناء الدوام
+  verificationEnabled       Boolean @default(true)
+  /// عدد نداءات التحقق يوميًا لكل مداوم
+  verificationPerDay        Int     @default(2)
+  /// مهلة الرد على النداء بالدقائق قبل اعتباره فائتًا
+  verificationWindowMinutes Int     @default(15)
   updatedAt              DateTime @updatedAt
 }
 
@@ -904,6 +917,78 @@ model AttendanceEvent {
   createdAt      DateTime            @default(now())
 
   @@index([userId, timestamp])
+}
+
+/// نوع استثناء الدوام — يمنحه المالك فقط ويُحتسب في التأخير والغياب والهدف.
+enum AttendanceExceptionType {
+  FULL_DAY_LEAVE // إجازة يوم كامل
+  HOURS_EXCUSE // استئذان ساعات (معذور حتى وقت محدد)
+  MODIFIED_SHIFT // دوام معدّل (ساعات أقل لفترة)
+}
+
+/// دورة حياة نداء التحقق العشوائي.
+enum AttendanceVerificationStatus {
+  PENDING // مجدول لم يُرسل
+  SENT // أُرسل الإشعار وننتظر الرد
+  CONFIRMED // ردّ وداخل النطاق
+  OUT_OF_ZONE // ردّ لكنه خارج النطاق
+  MISSED // ما ردّ خلال المهلة
+}
+
+/// دوام الموظف المحدد — بداية مخصصة + عدد ساعات («الـ ٨ ساعات» هي العمود).
+model AttendanceSchedule {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
+  /// بداية دوامه (دقائق من منتصف الليل بتوقيت الرياض)
+  startMinutes Int      @default(540)
+  /// طول دوامه بالدقائق — الافتراضي ٨ ساعات
+  shiftMinutes Int      @default(480)
+  updatedAt    DateTime @updatedAt
+}
+
+/// استثناء دوام (إجازة/استئذان/دوام معدّل) — يمنحه المالك فقط.
+model AttendanceException {
+  id                   String                  @id @default(cuid())
+  userId               String
+  user                 User                    @relation(fields: [userId], references: [id])
+  type                 AttendanceExceptionType
+  dateFrom             DateTime                @db.Date
+  dateTo               DateTime                @db.Date
+  /// HOURS_EXCUSE: معذور حتى هذه الدقيقة من اليوم
+  excuseUntilMinutes   Int?
+  /// MODIFIED_SHIFT: طول الدوام المعدّل بالدقائق
+  modifiedShiftMinutes Int?
+  reason               String
+  createdById          String
+  createdAt            DateTime                @default(now())
+
+  @@index([userId, dateFrom])
+}
+
+/// نداء تحقق عشوائي أثناء الدوام — الجدولة والرد والحكم كلها بالسيرفر.
+model AttendanceVerification {
+  id             String                       @id @default(cuid())
+  userId         String
+  user           User                         @relation(fields: [userId], references: [id])
+  sessionId      String?
+  /// الوقت العشوائي المجدول
+  scheduledAt    DateTime
+  /// متى أُرسل الإشعار فعليًا
+  sentAt         DateTime?
+  /// sentAt + مهلة الرد
+  deadlineAt     DateTime?
+  respondedAt    DateTime?
+  lat            Float?
+  lng            Float?
+  accuracy       Float?
+  locationId     String?
+  distanceMeters Float?
+  status         AttendanceVerificationStatus @default(PENDING)
+  createdAt      DateTime                     @default(now())
+
+  @@index([userId, scheduledAt])
+  @@index([status, scheduledAt])
 }
 
 /// جلسة دوام = بصمة حضور + بصمة انصرافها (إن وُجدت).

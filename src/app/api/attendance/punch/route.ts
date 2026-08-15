@@ -8,9 +8,17 @@ import {
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { matchLocation, nearestLocation } from "@/lib/geofence";
-import { ksaMinutesOfDay } from "@/lib/ksa-time";
+import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
 import { getAttendanceSettings, getActiveLocations } from "@/lib/data/attendance";
+import {
+  effectiveDay,
+  isLateCheckIn,
+  parseWeekendDays,
+  planVerificationTimes,
+} from "@/lib/attendance-logic";
+import { checkedInText, completedText, lateCheckInText } from "@/lib/attendance-notify";
+import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -182,12 +190,41 @@ export async function POST(req: Request) {
     });
   }
 
-  // ===== ٨) التأخير — للحضور فقط، بوقت السيرفر بتوقيت الرياض =====
+  /*
+   * ===== ٨) التأخير — بالدوام المحدد لا بالإعداد العام (المرحلة ٢) =====
+   * الدوام الفعّال لليوم: `AttendanceSchedule` (أو الافتراضي) + استثناءات اليوم —
+   * HOURS_EXCUSE يؤخّر بداية محاسبة التأخير، وMODIFIED_SHIFT يبدّل الهدف.
+   */
+  const todayKey = ksaDayKey(now);
+  const [schedule, todayExceptions] = await Promise.all([
+    prisma.attendanceSchedule.findUnique({ where: { userId } }),
+    prisma.attendanceException.findMany({
+      where: {
+        userId,
+        dateFrom: { lte: new Date(`${todayKey}T00:00:00Z`) },
+        dateTo: { gte: new Date(`${todayKey}T00:00:00Z`) },
+      },
+    }),
+  ]);
+  const eff = effectiveDay(
+    schedule,
+    todayExceptions,
+    todayKey,
+    ksaDayOfWeek(now),
+    parseWeekendDays(settings.weekendDays),
+  );
+
+  const nowMinutes = ksaMinutesOfDay(now);
   const isLate =
     body.intent === AttendanceEventType.CHECK_IN &&
-    ksaMinutesOfDay(now) > settings.workStartMinutes + settings.lateThresholdMinutes;
+    isLateCheckIn(nowMinutes, eff, settings.lateThresholdMinutes);
 
   const location = candidates.find((l) => l.id === match.id) ?? null;
+
+  // للانصراف: تُحسب قبل المعاملة لتُستعمل في إشعار الاكتمال بعدها.
+  const workedMinutes = openSession
+    ? Math.max(0, Math.round((now.getTime() - openSession.startedAt.getTime()) / 60_000))
+    : 0;
 
   // ===== ٩) التسجيل + الجلسة — معاملة واحدة فلا تبقى بصمة بلا جلستها =====
   const event = await prisma.$transaction(async (tx) => {
@@ -209,26 +246,62 @@ export async function POST(req: Request) {
     });
 
     if (body.intent === AttendanceEventType.CHECK_IN) {
-      await tx.attendanceSession.create({
+      const session = await tx.attendanceSession.create({
         data: { userId, checkInEventId: created.id, startedAt: now, wasLate: isLate },
       });
+
+      /*
+       * جدولة نداءات التحقق: N أوقات عشوائية داخل ما تبقى من دوامه (ليست في
+       * أول ٣٠ دقيقة ولا آخرها). الكرون يلتقط ما حان وقته ويرسل الإشعار.
+       */
+      if (settings.verificationEnabled) {
+        const times = planVerificationTimes(now, eff.targetMinutes, settings.verificationPerDay);
+        if (times.length > 0) {
+          await tx.attendanceVerification.createMany({
+            data: times.map((t) => ({ userId, sessionId: session.id, scheduledAt: t })),
+          });
+        }
+      }
     } else if (body.intent === AttendanceEventType.CHECK_OUT && openSession) {
       await tx.attendanceSession.update({
         where: { id: openSession.id },
-        data: {
-          checkOutEventId: created.id,
-          endedAt: now,
-          workedMinutes: Math.max(
-            0,
-            Math.round((now.getTime() - openSession.startedAt.getTime()) / 60_000),
-          ),
-        },
+        data: { checkOutEventId: created.id, endedAt: now, workedMinutes },
       });
+      // انصرف — نداءات اليوم التي لم تُرسل بعد صارت بلا معنى.
+      await tx.attendanceVerification.deleteMany({ where: { userId, status: "PENDING" } });
     }
     // زيارة المشروع (PROJECT_IN/OUT): حدث فقط بلا جلسة.
 
     return created;
   });
+
+  /*
+   * ===== ١٠) إشعارات المالك — بعد نجاح المعاملة (best-effort لا يفشل البصمة) =====
+   * الحضور والتأخير يُدمجان في إشعار واحد؛ الاكتمال عند انصرافٍ أنجز الهدف.
+   * «حضر بدري» و«مشى متأخر» وسوم عرض فقط — لا إشعار لها.
+   */
+  try {
+    if (body.intent === AttendanceEventType.CHECK_IN) {
+      const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+      const name = me?.name ?? "موظف";
+      const text = isLate
+        ? lateCheckInText(name, Math.max(1, nowMinutes - eff.accountStartMinutes), location?.name ?? null)
+        : checkedInText(name, formatTime(now), location?.name ?? null);
+      await notify(prisma, await ownerIds(prisma), "attendance.checked_in", text, undefined, `/attendance/${userId}`);
+    } else if (body.intent === AttendanceEventType.CHECK_OUT && workedMinutes >= eff.targetMinutes) {
+      const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+      await notify(
+        prisma,
+        await ownerIds(prisma),
+        "attendance.completed",
+        completedText(me?.name ?? "موظف", eff.targetMinutes, location?.name ?? null),
+        undefined,
+        `/attendance/${userId}`,
+      );
+    }
+  } catch (e) {
+    console.error("[attendance] فشل إشعار المالك بعد البصمة", e);
+  }
 
   return NextResponse.json({
     ok: true,

@@ -3,9 +3,11 @@ import { requireRole } from "@/lib/auth-guards";
 import { getSettings } from "@/lib/data/settings";
 import {
   getAllLocations,
-  getAttendanceBoard,
   getAttendanceSettings,
+  getLiveBoard,
+  getTeamSummary,
 } from "@/lib/data/attendance";
+import { currentMonthKSA } from "@/lib/attendance-logic";
 import { AttendanceAdmin } from "@/components/attendance/attendance-admin";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +22,12 @@ export const dynamic = "force-dynamic";
 export default async function AttendancePage() {
   await requireRole(Role.OWNER);
 
-  const [locations, settings, board, appSettings] = await Promise.all([
+  const month = currentMonthKSA();
+  const [locations, settings, liveRows, teamRows, appSettings] = await Promise.all([
     getAllLocations(),
     getAttendanceSettings(),
-    getAttendanceBoard(),
+    getLiveBoard(),
+    getTeamSummary(month),
     getSettings(),
   ]);
 
@@ -32,11 +36,17 @@ export default async function AttendancePage() {
       <header>
         <h1 className="text-2xl font-bold text-foreground">حوكمة الدوام</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          مواقع البصم ونطاقاتها، أوقات الدوام، وحالة الفريق اليوم — كل تحقّق يتم على الخادم بتوقيت الرياض.
+          مداومو الآن بعداداتهم، سجل الفريق الشهري، مواقع البصم، والإعدادات — كل تحقّق يتم على الخادم بتوقيت الرياض.
         </p>
       </header>
 
-      <AttendanceAdmin locations={locations} settings={settings} board={board} />
+      <AttendanceAdmin
+        locations={locations}
+        settings={settings}
+        liveRows={liveRows}
+        teamMonth={month}
+        teamRows={teamRows}
+      />
 
       {appSettings.falLicense && (
         <footer className="pt-2 text-center text-[11.5px] text-muted-foreground/70">

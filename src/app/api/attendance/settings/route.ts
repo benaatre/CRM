@@ -13,7 +13,13 @@ const RANGES: Record<string, [number, number]> = {
   lateThresholdMinutes: [0, 240],
   minAccuracyMeters: [10, 1000],
   cooldownSeconds: [0, 3600],
+  noShowAfterMinutes: [30, 720],
+  verificationPerDay: [0, 10],
+  verificationWindowMinutes: [5, 120],
 };
+
+/** رموز أيام الأسبوع المقبولة في weekendDays. */
+const DAY_CODES = new Set(["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]);
 
 export async function GET() {
   const guard = await requireOwnerApi();
@@ -45,7 +51,22 @@ export async function PATCH(req: Request) {
   if (typeof raw.allowProjectAttendance === "boolean") {
     data.allowProjectAttendance = raw.allowProjectAttendance;
   }
-  if (Object.keys(data).length === 0) {
+  if (typeof raw.verificationEnabled === "boolean") {
+    data.verificationEnabled = raw.verificationEnabled;
+  }
+  // أيام الإجازة الأسبوعية — رموز معروفة فقط، وستة أيام إجازة كحد أقصى.
+  let weekendDays: string | undefined;
+  if (typeof raw.weekendDays === "string") {
+    const codes = raw.weekendDays
+      .split(",")
+      .map((c) => c.trim().toUpperCase())
+      .filter((c) => c.length > 0);
+    if (codes.some((c) => !DAY_CODES.has(c)) || codes.length > 6) {
+      return NextResponse.json({ ok: false, error: "أيام الإجازة غير صحيحة" }, { status: 400 });
+    }
+    weekendDays = [...new Set(codes)].join(",");
+  }
+  if (Object.keys(data).length === 0 && weekendDays === undefined) {
     return NextResponse.json({ ok: false, error: "ما فيه شي للتعديل" }, { status: 400 });
   }
 
@@ -60,6 +81,9 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const settings = await prisma.attendanceSettings.update({ where: { id: "singleton" }, data });
+  const settings = await prisma.attendanceSettings.update({
+    where: { id: "singleton" },
+    data: { ...data, ...(weekendDays !== undefined ? { weekendDays } : {}) },
+  });
   return NextResponse.json({ ok: true, settings });
 }

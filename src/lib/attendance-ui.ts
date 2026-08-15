@@ -68,6 +68,34 @@ export function tint(color: string, percent = 12): string {
 /** نبرة الرسالة المعروضة بعد البصم. */
 export type FeedbackTone = "success" | "danger" | "warning" | "info";
 
+/* ===== دقائق منتصف الليل ⟷ نصوص — مشتركة بين تبويبات المالك وملف الموظف ===== */
+
+/** دقائق من منتصف الليل ⟵ قيمة <input type="time"> والعكس. */
+export function minutesToTime(m: number): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(Math.floor(m / 60))}:${p(m % 60)}`;
+}
+
+export function timeToMinutes(v: string): number | null {
+  const [h, m] = v.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+/** «٥٤٠» ⟵ «٩:٠٠ ص» — عرض دقيقة اليوم بصيغة ١٢ ساعة بأرقام عربية. */
+export function minuteLabel(m: number, toArabic: (s: string | number) => string): string {
+  const h24 = Math.floor(m / 60);
+  const mm = m % 60;
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${toArabic(h12)}:${toArabic(String(mm).padStart(2, "0"))} ${h24 < 12 ? "ص" : "م"}`;
+}
+
+/** «٢٧٥ دقيقة» ⟵ «٤:٣٥» بأرقام عربية — لشريط «أنجز ٤:٣٥ من ٨ ساعات». */
+export function hmLabel(minutes: number, toArabic: (s: string | number) => string): string {
+  const t = Math.max(0, Math.round(minutes));
+  return `${toArabic(Math.floor(t / 60))}:${toArabic(String(t % 60).padStart(2, "0"))}`;
+}
+
 export function toneColor(p: AttendancePalette, tone: FeedbackTone): string {
   return tone === "success" ? p.success : tone === "danger" ? p.danger : tone === "warning" ? p.warning : p.info;
 }

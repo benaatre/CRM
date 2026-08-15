@@ -2,54 +2,63 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Crosshair, MapPin, Power, RotateCw, SlidersHorizontal, Users } from "lucide-react";
+import { Building2, CalendarDays, Crosshair, MapPin, Power, SlidersHorizontal, Users } from "lucide-react";
 import type { AttendanceLocation, AttendanceSettings } from "@prisma/client";
 import { toArabicDigits } from "@/lib/format";
 import { DEFAULT_RADIUS_M, splitCoords } from "@/lib/attendance-location-input";
-import type { AttendanceBoardRow } from "@/lib/data/attendance";
+import { minutesToTime, timeToMinutes } from "@/lib/attendance-ui";
+import { WEEKDAY_CODES } from "@/lib/attendance-logic";
+import { LiveTab, type LiveRow } from "@/components/attendance/attendance-live";
+import { TeamTab } from "@/components/attendance/attendance-team";
+import type { TeamSummaryRow } from "@/lib/data/attendance";
 
 /**
- * لوحة «حوكمة الدوام» للمالك — ثلاثة تبويبات: المواقع · الإعدادات · اللوحة اللحظية.
+ * لوحة «حوكمة الدوام» للمالك — أربعة تبويبات: مداوم الآن (الافتراضي) · الكل ·
+ * المواقع · الإعدادات.
  *
  * كل تعديل يمرّ على مسارات `/api/attendance/*` المحميّة بـOWNER **على الخادم**؛
  * هذي الواجهة لا تملك صلاحية بذاتها، والصفحة نفسها محميّة بـrequireRole.
- * الذهبي هنا على عنصر واحد فقط: زر الفعل الرئيسي للتبويب المعروض.
+ * الذهبي هنا على عنصر واحد فقط: زر الفعل الرئيسي (أو حلقة العداد في «مداوم الآن»).
  */
 
-type Tab = "locations" | "settings" | "board";
+type Tab = "live" | "team" | "locations" | "settings";
 
 const TABS: { key: Tab; label: string; icon: typeof MapPin }[] = [
+  { key: "live", label: "مداوم الآن", icon: Users },
+  { key: "team", label: "الكل", icon: CalendarDays },
   { key: "locations", label: "المواقع", icon: MapPin },
   { key: "settings", label: "الإعدادات", icon: SlidersHorizontal },
-  { key: "board", label: "اللوحة اللحظية", icon: Users },
 ];
 
-/** دقائق من منتصف الليل ⟵ قيمة <input type="time"> والعكس. */
-function minutesToTime(m: number): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(Math.floor(m / 60))}:${p(m % 60)}`;
-}
-function timeToMinutes(v: string): number | null {
-  const [h, m] = v.split(":").map(Number);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h * 60 + m;
-}
+const WEEKDAY_LABELS: Record<string, string> = {
+  SUN: "الأحد",
+  MON: "الاثنين",
+  TUE: "الثلاثاء",
+  WED: "الأربعاء",
+  THU: "الخميس",
+  FRI: "الجمعة",
+  SAT: "السبت",
+};
 
 export function AttendanceAdmin({
   locations,
   settings,
-  board,
+  liveRows,
+  teamMonth,
+  teamRows,
 }: {
   locations: AttendanceLocation[];
   settings: AttendanceSettings;
-  board: AttendanceBoardRow[];
+  liveRows: LiveRow[];
+  teamMonth: string;
+  teamRows: TeamSummaryRow[];
 }) {
-  const [tab, setTab] = useState<Tab>("locations");
+  const [tab, setTab] = useState<Tab>("live");
 
   return (
     <div className="space-y-5">
       {/* ===== التبويبات ===== */}
-      <div role="tablist" aria-label="أقسام حوكمة الدوام" className="flex gap-1 border-b border-border">
+      <div role="tablist" aria-label="أقسام حوكمة الدوام" className="flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map((t) => {
           const Icon = t.icon;
           const active = tab === t.key;
@@ -60,7 +69,7 @@ export function AttendanceAdmin({
               type="button"
               aria-selected={active}
               onClick={() => setTab(t.key)}
-              className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm transition-colors ${
+              className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition-colors ${
                 active
                   ? "border-foreground font-bold text-foreground"
                   : "border-transparent font-medium text-muted-foreground hover:text-foreground"
@@ -73,9 +82,10 @@ export function AttendanceAdmin({
         })}
       </div>
 
+      {tab === "live" && <LiveTab initialRows={liveRows} />}
+      {tab === "team" && <TeamTab initialMonth={teamMonth} initialRows={teamRows} />}
       {tab === "locations" && <LocationsTab locations={locations} />}
       {tab === "settings" && <SettingsTab settings={settings} />}
-      {tab === "board" && <BoardTab rows={board} />}
     </div>
   );
 }
@@ -295,7 +305,23 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
   const [late, setLate] = useState(String(settings.lateThresholdMinutes));
   const [allowProject, setAllowProject] = useState(settings.allowProjectAttendance);
   const [accuracy, setAccuracy] = useState(String(settings.minAccuracyMeters));
+  const [weekend, setWeekend] = useState<Set<string>>(
+    () => new Set(settings.weekendDays.split(",").map((c) => c.trim()).filter(Boolean)),
+  );
+  const [noShow, setNoShow] = useState(String(settings.noShowAfterMinutes));
+  const [verifyOn, setVerifyOn] = useState(settings.verificationEnabled);
+  const [verifyPerDay, setVerifyPerDay] = useState(String(settings.verificationPerDay));
+  const [verifyWindow, setVerifyWindow] = useState(String(settings.verificationWindowMinutes));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const toggleWeekendDay = (code: string) => {
+    setWeekend((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
 
   const save = () => {
     setMsg(null);
@@ -315,6 +341,11 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
           lateThresholdMinutes: Number(late),
           allowProjectAttendance: allowProject,
           minAccuracyMeters: Number(accuracy),
+          weekendDays: [...weekend].join(","),
+          noShowAfterMinutes: Number(noShow),
+          verificationEnabled: verifyOn,
+          verificationPerDay: Number(verifyPerDay),
+          verificationWindowMinutes: Number(verifyWindow),
         }),
       });
       const data = (await res.json()) as { ok: boolean; error?: string };
@@ -386,6 +417,86 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
         </span>
       </label>
 
+      {/* ===== أيام الإجازة الأسبوعية ===== */}
+      <div className="space-y-2">
+        <span className="text-xs text-muted-foreground">أيام الإجازة الأسبوعية — تُستثنى من الغياب والحساب</span>
+        <div className="flex flex-wrap gap-1.5">
+          {WEEKDAY_CODES.map((code) => {
+            const on = weekend.has(code);
+            return (
+              <button
+                key={code}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleWeekendDay(code)}
+                className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
+                  on
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {WEEKDAY_LABELS[code]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ===== «لم يداوم» ونداءات التحقق ===== */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">إشعار «لم يداوم» بعد (دقيقة من بداية دوامه)</span>
+          <input
+            value={noShow}
+            onChange={(e) => setNoShow(e.target.value)}
+            inputMode="numeric"
+            dir="ltr"
+            className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+          />
+        </label>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-border bg-secondary/50 p-3">
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={verifyOn}
+            onChange={(e) => setVerifyOn(e.target.checked)}
+            className="mt-0.5 size-4 accent-[var(--gold)]"
+          />
+          <span>
+            <span className="block text-sm font-medium text-foreground">نداءات التحقق العشوائية</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              إشعارات «أكّد موقعك» أثناء دوام الموظف — الرد قراءة موقع واحدة يتحقق منها الخادم.
+            </span>
+          </span>
+        </label>
+        {verifyOn && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">عدد النداءات باليوم</span>
+              <input
+                value={verifyPerDay}
+                onChange={(e) => setVerifyPerDay(e.target.value)}
+                inputMode="numeric"
+                dir="ltr"
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">مهلة الرد (دقيقة)</span>
+              <input
+                value={verifyWindow}
+                onChange={(e) => setVerifyWindow(e.target.value)}
+                inputMode="numeric"
+                dir="ltr"
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+
       {msg && <p className={`text-xs ${msg.ok ? "text-success" : "text-destructive"}`}>{msg.text}</p>}
 
       {/* العنصر الذهبي الوحيد في هذا التبويب */}
@@ -397,80 +508,6 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
       >
         {pending ? "جاري الحفظ…" : "حفظ الإعدادات"}
       </button>
-    </div>
-  );
-}
-
-/* ═══════════════════ ٣) اللوحة اللحظية ═══════════════════ */
-
-const BOARD_LABEL: Record<AttendanceBoardRow["status"], string> = {
-  late: "حاضر متأخر",
-  present: "حاضر",
-  left: "منصرف",
-  absent: "لم يسجّل",
-};
-
-const BOARD_CLASS: Record<AttendanceBoardRow["status"], string> = {
-  late: "border-warning/40 text-warning",
-  present: "border-success/40 text-success",
-  left: "border-border text-muted-foreground",
-  absent: "border-destructive/30 text-destructive",
-};
-
-function BoardTab({ rows }: { rows: AttendanceBoardRow[] }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">حالة اليوم — بتوقيت الرياض</p>
-        <button
-          type="button"
-          onClick={() => start(() => router.refresh())}
-          disabled={pending}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground disabled:opacity-60"
-        >
-          <RotateCw aria-hidden size={13} strokeWidth={1.8} />
-          {pending ? "جاري التحديث…" : "تحديث"}
-        </button>
-      </div>
-
-      {rows.length === 0 ? (
-        <p className="rounded-2xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
-          ما فيه موظفين نشطين
-        </p>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rows.map((r) => (
-            <div key={r.id} className="rounded-2xl border border-border bg-card p-4">
-              <div className="flex items-start justify-between gap-2">
-                <span className="truncate font-bold text-foreground">{r.name}</span>
-                <span className={`flex-none rounded-lg border px-2 py-1 text-[11px] font-bold ${BOARD_CLASS[r.status]}`}>
-                  {BOARD_LABEL[r.status]}
-                </span>
-              </div>
-
-              <div className="mt-2.5 space-y-1 text-xs text-muted-foreground">
-                {r.startedAtText ? (
-                  <p>
-                    حضر {r.startedAtText}
-                    {r.endedAtText ? ` · انصرف ${r.endedAtText}` : ""}
-                    {r.workedMinutes != null
-                      ? ` · ${toArabicDigits(Math.floor(r.workedMinutes / 60))} س ${toArabicDigits(r.workedMinutes % 60)} د`
-                      : ""}
-                  </p>
-                ) : (
-                  <p>ما سجّل حضور اليوم</p>
-                )}
-                {r.lastLocationName && <p>آخر موقع: {r.lastLocationName}</p>}
-                {r.lastEventAtText && <p>آخر بصمة: {r.lastEventAtText}</p>}
-                {r.outOfZoneToday && <p className="text-destructive">فيه محاولة بصم خارج النطاق اليوم</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
