@@ -66,7 +66,8 @@ export type OwnerSearchParams = {
 };
 
 export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: OwnerSearchParams }) {
-  const period = normalizeOwnerPeriod(sp.dp);
+  // الأرقام افتراضيها «الكل» (الإجماليات الكاملة عند الفتح)؛ بقية الفلاتر «اليوم».
+  const period = normalizeOwnerPeriod(sp.dp, "all");
   const fuPeriod = normalizeOwnerPeriod(sp.fp);
   const empPeriod = normalizeOwnerPeriod(sp.ep);
   // فترة المنصّات الافتراضية «أسبوع» — عنوان المرجع: «مصدر العملاء هذا الأسبوع».
@@ -103,7 +104,7 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
         <div className="min-w-0">
           {/* ١) الأرقام الأساسية */}
           <SecHeader title="الأرقام الأساسية">
-            <OwnerDateFilter period={kpis.range.period} fromKey={kpis.range.fromKey} toKey={kpis.range.toKey} />
+            <OwnerDateFilter period={kpis.range.period} fromKey={kpis.range.fromKey} toKey={kpis.range.toKey} allowAll />
           </SecHeader>
           <KpiCards kpis={kpis} />
 
@@ -124,6 +125,29 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
             <OwnerFollowups rows={followups.rows} />
             <OwnerAuditFeed rows={audit} />
           </div>
+
+          {/*
+            ٣) التحليلات — داخل عمود المحتوى لا تحت الشبكة كلها: كانت تحت الغلاف
+            فتنتظر نهاية العمود الجانبي (الأطول غالبًا) وتترك فجوة ميتة تحت
+            المتابعات. هنا تتصل مباشرة بما فوقها مهما اختلف طول العمودين.
+          */}
+          <SecHeader title="التحليلات" />
+          <OwnerAnalytics
+            channels={channels.rows}
+            channelsSub={`مصدر العملاء — ${ownerPeriodLabels[channels.range.period]}`}
+            trend={trend}
+            teamFu={teamFu.rows}
+            teamFuSub={`كم عنده · أنجز · فاته — ${ownerPeriodLabels[teamFu.range.period]}`}
+            teamFuFilter={
+              <OwnerDateFilter
+                period={teamFu.range.period}
+                fromKey={teamFu.range.fromKey}
+                toKey={teamFu.range.toKey}
+                keys={["ep", "ef", "et"]}
+                compact
+              />
+            }
+          />
         </div>
 
         {/* العمود الجانبي: الدوام (عدّاد حي) + معدّل النشاط — sticky كما بالمرجع */}
@@ -132,25 +156,6 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
           <OwnerActivity rows={activity} />
         </aside>
       </div>
-
-      {/* ٣) التحليلات */}
-      <SecHeader title="التحليلات" />
-      <OwnerAnalytics
-        channels={channels.rows}
-        channelsSub={`مصدر العملاء — ${ownerPeriodLabels[channels.range.period]}`}
-        trend={trend}
-        teamFu={teamFu.rows}
-        teamFuSub={`كم عنده · أنجز · فاته — ${ownerPeriodLabels[teamFu.range.period]}`}
-        teamFuFilter={
-          <OwnerDateFilter
-            period={teamFu.range.period}
-            fromKey={teamFu.range.fromKey}
-            toKey={teamFu.range.toKey}
-            keys={["ep", "ef", "et"]}
-            compact
-          />
-        }
-      />
 
       {/* «مباشر»: تدقيق ومتابعات تتحدث كل ٣٠ث — نفس آلية صفحة /audit. */}
       <AutoRefresh seconds={30} />

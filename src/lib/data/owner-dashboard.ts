@@ -25,9 +25,10 @@ const LIVE_OR_BOOKED: Prisma.LeadWhereInput = {
   OR: [{ isArchived: false }, { stage: { in: ["RESERVED", "CLOSED_WON"] } }],
 };
 
-export type OwnerPeriod = "today" | "yesterday" | "week" | "month" | "custom";
+export type OwnerPeriod = "all" | "today" | "yesterday" | "week" | "month" | "custom";
 
 export const ownerPeriodLabels: Record<OwnerPeriod, string> = {
+  all: "الكل",
   today: "اليوم",
   yesterday: "أمس",
   week: "أسبوع",
@@ -35,8 +36,9 @@ export const ownerPeriodLabels: Record<OwnerPeriod, string> = {
   custom: "من ← إلى",
 };
 
-export function normalizeOwnerPeriod(p: string | undefined): OwnerPeriod {
-  return p && p in ownerPeriodLabels ? (p as OwnerPeriod) : "today";
+/** fallback لكل فلتر افتراضيه: الأرقام «الكل» والبقية «اليوم». */
+export function normalizeOwnerPeriod(p: string | undefined, fallback: OwnerPeriod = "today"): OwnerPeriod {
+  return p && p in ownerPeriodLabels ? (p as OwnerPeriod) : fallback;
 }
 
 /** بداية الشهر (١ الشهر ٠٠:٠٠ بتوقيت الرياض) — على نمط weekStartKSA. */
@@ -70,6 +72,12 @@ const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 export function resolveOwnerRange(p: OwnerPeriod, fromKey?: string, toKey?: string): OwnerRange {
   const now = new Date();
   const today = dayStartKSA(now);
+
+  // «الكل» = بلا حصر فترة (من فجر البيانات) — ولا فترة سابقة تُقارن فالدلتا تُخفى.
+  if (p === "all") {
+    const epoch = new Date(0);
+    return { period: p, gte: epoch, lt: now, prevGte: epoch, prevLt: epoch, fromKey: null, toKey: null };
+  }
 
   if (p === "custom" && fromKey && toKey && DAY_KEY.test(fromKey) && DAY_KEY.test(toKey) && fromKey <= toKey) {
     const gte = parseRiyadhLocal(fromKey);
@@ -472,19 +480,21 @@ export async function getOwnerKpis(p: OwnerPeriod, fromKey?: string, toKey?: str
 
   const range = resolveOwnerRange(p, fromKey, toKey);
   const dupIds = await duplicateLeadIds();
+  const all = range.period === "all";
   const [cur, prev] = await Promise.all([
     windowCounts(range.gte, range.lt, dupIds),
-    windowCounts(range.prevGte, range.prevLt, dupIds),
+    // «الكل» بلا فترة سابقة — لا استعلام ثانيًا ولا دلتا.
+    all ? null : windowCounts(range.prevGte, range.prevLt, dupIds),
   ]);
 
   return {
     range,
     // «غير موزّعين» لحظة انتظار لا اتجاه — المرجع يعرض «ينتظرون» بلا دلتا.
     unassigned: { value: cur.unassigned, delta: null },
-    totalClients: { value: cur.total, delta: cur.total - prev.total },
-    conversion: { value: cur.conversion, delta: cur.conversion - prev.conversion },
-    closedWon: { value: cur.closedWon, delta: cur.closedWon - prev.closedWon },
-    visits: { value: cur.visits, delta: cur.visits - prev.visits },
-    bookings: { value: cur.bookings, delta: cur.bookings - prev.bookings },
+    totalClients: { value: cur.total, delta: prev ? cur.total - prev.total : null },
+    conversion: { value: cur.conversion, delta: prev ? cur.conversion - prev.conversion : null },
+    closedWon: { value: cur.closedWon, delta: prev ? cur.closedWon - prev.closedWon : null },
+    visits: { value: cur.visits, delta: prev ? cur.visits - prev.visits : null },
+    bookings: { value: cur.bookings, delta: prev ? cur.bookings - prev.bookings : null },
   };
 }

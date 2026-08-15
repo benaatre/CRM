@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { OwnerPeriod } from "@/lib/data/owner-dashboard";
 
 const PRESETS: { key: OwnerPeriod; label: string }[] = [
+  { key: "all", label: "الكل" },
   { key: "today", label: "اليوم" },
   { key: "yesterday", label: "أمس" },
   { key: "week", label: "أسبوع" },
@@ -18,7 +19,7 @@ const PRESETS: { key: OwnerPeriod; label: string }[] = [
  * كل قسم له ثلاثية مفاتيحه (keys) على مسار /dashboard نفسه، والتحديث يحافظ على
  * بقية البارامترات فلا يُصفّر فلتر قسم آخر.
  */
-export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "dt"], compact = false }: {
+export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "dt"], compact = false, allowAll = false }: {
   period: OwnerPeriod;
   fromKey: string | null;
   toKey: string | null;
@@ -26,6 +27,8 @@ export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "d
   keys?: [string, string, string];
   /** نسخة أصغر (رأس متابعات اليوم). */
   compact?: boolean;
+  /** «الكل» يظهر فقط بفلتر الأرقام — بقية الأقسام قوائمها اليومية لا تحتمل «كل التاريخ». */
+  allowAll?: boolean;
 }) {
   const router = useRouter();
   const search = useSearchParams();
@@ -54,7 +57,7 @@ export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "d
   return (
     <div className="flex flex-wrap items-center gap-2" style={{ marginInlineStart: "auto" }}>
       <div className={`flex gap-1 rounded-[20px] ${compact ? "p-1" : "p-[5px]"}`} style={{ background: compact ? "var(--od-raised2)" : "var(--od-raised)" }}>
-        {PRESETS.map((x) => {
+        {PRESETS.filter((x) => allowAll || x.key !== "all").map((x) => {
           const on = x.key === period && !(x.key !== "custom" && open);
           return (
             <button

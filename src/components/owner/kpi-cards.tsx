@@ -61,7 +61,9 @@ const ORDER: (keyof Omit<OwnerKpis, "range">)[] = [
 
 function Delta({ card, def }: { card: OwnerKpiCard; def: CardDef }) {
   if (card.delta === null) {
-    return <div className="mt-[7px] text-xs" style={{ color: "var(--od-t3)" }}>{def.flatText ?? "—"}</div>;
+    // بلا دلتا (فترة «الكل» — ما فيه فترة سابقة نقارن بها): يظهر النص البديل إن وُجد فقط.
+    if (!def.flatText) return null;
+    return <div className="mt-[7px] text-xs" style={{ color: "var(--od-t3)" }}>{def.flatText}</div>;
   }
   const up = card.delta > 0;
   const down = card.delta < 0;
