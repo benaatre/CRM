@@ -7,8 +7,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * توثيق موافقة الموظف على إفصاح الخصوصية (الدفعة الرابعة) — تُسجَّل مرة في
- * سجل التدقيق (append-only) فتبقى الموافقة مؤرَّخة بهوية صاحبها وعنوانه.
+ * توثيق موافقة الموظف على إفصاح الخصوصية — تُسجَّل مرة في سجل التدقيق
+ * (append-only) فتبقى الموافقة مؤرَّخة بهوية صاحبها وعنوانه.
+ * v3 (الثقة المتجددة): النص صار يشمل النبض الجغرافي الدوري أثناء الدوام.
  */
 export async function POST(req: Request) {
   const session = await auth();
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
     action: "PRIVACY_CONSENT",
     resourceType: "user",
     resourceId: session.user.id,
-    after: { consent: "attendance_location_disclosure_v2" },
+    after: { consent: "attendance_location_disclosure_v3" },
     ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
   });
   return NextResponse.json({ ok: true });

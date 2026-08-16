@@ -351,6 +351,11 @@ export async function POST(req: Request) {
           distanceMeters: match.distance,
         },
       });
+      // إثباتا الحياة والموقع (الثقة المتجددة v3) — رد مؤكَّد داخل النطاق.
+      await tx.attendanceSession.updateMany({
+        where: { userId, endedAt: null },
+        data: { lastAliveAt: now, lastZoneProofAt: now },
+      });
       // نداء الوصول المؤكد يفتح محطة بالمشروع المطابق — نفس نموذج «تغيير موقعي».
       if (isArrival) {
         await tx.attendanceEvent.create({
@@ -394,6 +399,11 @@ export async function POST(req: Request) {
         locationId: null,
         distanceMeters: nearest?.distance ?? null,
       },
+    });
+    // إثبات حياة فقط (v3) — ردّ خارج النطاق لا يجدد إثبات الموقع.
+    await tx.attendanceSession.updateMany({
+      where: { userId, endedAt: null },
+      data: { lastAliveAt: now },
     });
     // وصول خارج النطاق: محطة «خارج النطاق» — تُسجَّل ولا توقف الدوام.
     if (isArrival) {

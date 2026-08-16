@@ -272,6 +272,10 @@ model User {
   attendanceDays          AttendanceDay[]
   appActivityWindows      AppActivityWindow[]
   attendanceSilentChecks  AttendanceSilentCheck[]
+  attendancePulses        AttendancePulse[]
+  attendanceVisits        AttendanceVisit[]
+  attendanceExcuses       AttendanceExcuse[]
+  attendanceDecisions     AttendanceDecision[]
 
   @@index([role])
 }
@@ -853,6 +857,8 @@ enum AttendanceEventType {
 enum AttendanceSource {
   WEB
   NATIVE
+  /// بصم تلقائي بالنبض الجغرافي (الدوام الواقعي — قرار ٣)
+  AUTO_GEO
 }
 
 /// موقع معتمد للبصم — دائرة (مركز + نصف قطر بالأمتار) يضيفها المالك.
@@ -868,6 +874,8 @@ model AttendanceLocation {
   updatedAt    DateTime               @updatedAt
 
   events AttendanceEvent[]
+  pulses AttendancePulse[]
+  visits AttendanceVisit[]
 }
 
 /// إعدادات الدوام (سجل واحد singleton) — يضبطها المالك.
@@ -916,6 +924,41 @@ model AttendanceSettings {
   remoteWeeklyCap                Int     @default(0)
   /// الإجازة توقف توزيع الليدات تلقائيًا
   leavePausesLeadIntake          Boolean @default(true)
+
+  // ===== الثقة المتجددة v3 — كل العتبات بيد المالك =====
+  /// انقطاع النبض (بالدقائق) قبل النداء المشروط — النبض بالمقدمة فقط فالانقطاع شك لا إدانة
+  heartbeatGapMinutes        Int     @default(45)
+  /// مهلة رد النداء المشروط بالدقائق
+  conditionalWindowMinutes   Int     @default(15)
+  /// لا نداء مشروط ثانٍ لنفس الموظف قبل هذه المدة
+  conditionalCooldownMinutes Int     @default(60)
+  /// سقف النداءات المشروطة يوميًا (منفصل عن العشوائية)
+  maxConditionalPerDay       Int     @default(4)
+  /// سماحية فحص صامت خارج النطاق قبل النداء
+  outZoneGraceMinutes        Int     @default(20)
+  /// محطة «خارج النطاق» القصوى قبل النداء
+  maxOutOfZoneMinutes        Int     @default(30)
+  /// إعادة التحقق الدورية بزيارة المشروع (قرار الدوام الواقعي ١٠: كل ٢٠ دقيقة)
+  visitReverifyMinutes       Int     @default(20)
+  /// الزيارة القصوى قبل نداء إجباري
+  maxVisitMinutes            Int     @default(240)
+  /// نبض حي + صفر نشاط CRM قبل نداء «الجهاز المهجور»
+  idleDeviceMinutes          Int     @default(60)
+  /// سماحية بعد آخر إثبات حياة قبل الإقفال التلقائي
+  autoCloseAliveGraceMinutes Int     @default(30)
+  /// هل نشاط CRM الرقمي يؤجل النداءات (افتراضيًا لا — الرقمي لا يعوّض الجسدي)
+  quietWindowCountsCrm       Boolean @default(false)
+  /// المدة الافتراضية للاستئذان غير محدد المدة
+  excuseDefaultMinutes       Int     @default(60)
+
+  // ===== الدوام الواقعي — البصم التلقائي وشاشة الحسم =====
+  /// تفعيل البصم التلقائي بالنبض الجغرافي داخل نافذة البداية
+  autoPunchEnabled           Boolean @default(true)
+  /// إشعار المالك بأول بصمة تلقائية باليوم (قرار ١٢ — اختياري)
+  notifyAutoPunchOwner       Boolean @default(true)
+  /// هامش السماح فوق مدة «بالطريق» المعلنة قبل عودة شاشة الحسم
+  arrivalMarginMinutes       Int     @default(5)
+
   updatedAt              DateTime @updatedAt
 }
 
@@ -1007,10 +1050,13 @@ model AttendanceSchedule {
   id           String   @id @default(cuid())
   userId       String   @unique
   user         User     @relation(fields: [userId], references: [id])
-  /// بداية دوامه (دقائق من منتصف الليل بتوقيت الرياض)
+  /// بداية دوامه (دقائق من منتصف الليل بتوقيت الرياض) — مع النافذة: أول البداية المرنة
   startMinutes Int      @default(540)
   /// طول دوامه بالدقائق — الافتراضي ٨ ساعات
   shiftMinutes Int      @default(480)
+  /// نهاية نافذة البداية المرنة (الدوام الواقعي — قرار ٢): null = لا نافذة (وقت واحد
+  /// كالسابق حرفيًا). التأخير يُحتسب بعد نهاية النافذة، والانصراف المتوقع من البداية الفعلية.
+  startWindowEndMinutes Int?
   updatedAt    DateTime @updatedAt
 }
 
@@ -1046,10 +1092,12 @@ model AttendanceVerification {
   userId         String
   user           User                         @relation(fields: [userId], references: [id])
   sessionId      String?
-  /// RANDOM (عشوائي مجدول) | MANUAL (من المالك) | ARRIVAL (تأكيد وصول لمشروع)
+  /// RANDOM (عشوائي مجدول) | MANUAL (من المالك) | ARRIVAL (تأكيد وصول لمشروع) | ESCALATED | CONDITIONAL (الثقة المتجددة)
   kind           String                       @default("RANDOM")
   /// نداء الوصول يشير لنداء «ذاهب لمشروع» الذي ولّده
   parentId       String?
+  /// سبب النداء المشروط: HEARTBEAT_GAP | OUT_ZONE | SILENT_OUT | VISIT_STALE | IDLE_DEVICE
+  triggerReason  String?
   /// الوقت العشوائي المجدول
   scheduledAt    DateTime
   /// متى أُرسل الإشعار فعليًا
@@ -1085,6 +1133,16 @@ model AttendanceSession {
   wasLate         Boolean   @default(false)
   /// أُغلقت آليًا (نسي الانصراف)
   autoClosed      Boolean   @default(false)
+
+  // ===== الثقة المتجددة v3 =====
+  /// آخر إثبات حياة (نبضة/حدث/فحص/رد) أثناء الجلسة — مرجع الإقفال الذكي
+  lastAliveAt     DateTime?
+  /// آخر إثبات موقع (داخل النطاق) — ما بعده «غير مؤكَّد» عند الإقفال الآلي
+  lastZoneProofAt DateTime?
+  /// من أغلق الجلسة: USER (انصراف) | AUTO (الكرون) | OWNER (أداة التصحيح)
+  closedBy        String?
+  /// إبطال منطقي من المالك (SESSION_VOID) — الصف يبقى append-only
+  voided          Boolean   @default(false)
 
   pauses AttendancePause[]
 
@@ -1162,6 +1220,85 @@ model AttendanceSilentCheck {
 
 /// سجل تدقيق إجراءات المالك على الدوام — **append-only**: لا update ولا delete
 /// على هذا الجدول في الكود إطلاقًا. منفصل عن AuditLog القديم (ملخصات نصية).
+/// النبض الجغرافي (الثقة المتجددة v3) — نبضة كل دقيقتين والتطبيق بالمقدمة،
+/// تُصنَّف على الخادم. سياسة تنظيف: الكرون يحذف الأقدم من ٦٠ يومًا دفعات.
+model AttendancePulse {
+  id         String              @id @default(cuid())
+  userId     String
+  user       User                @relation(fields: [userId], references: [id])
+  sessionId  String?
+  at         DateTime
+  lat        Float
+  lng        Float
+  accuracy   Float?
+  /// الدائرة المطابقة إن وجدت
+  locationId String?
+  location   AttendanceLocation? @relation(fields: [locationId], references: [id])
+  /// true داخل النطاق · false خارجه · null = دقة غير كافية للحكم (نبضة حياة فقط)
+  inZone     Boolean?
+  /// أعلام مفصولة بفواصل: IMPOSSIBLE_JUMP …
+  flags      String?
+
+  @@index([userId, at])
+  @@index([at])
+}
+
+/// الزيارات التلقائية (م٧) — سجل مستقل، لا يمس محطات البصم (قرار معتمد).
+model AttendanceVisit {
+  id         String             @id @default(cuid())
+  userId     String
+  user       User               @relation(fields: [userId], references: [id])
+  sessionId  String?
+  locationId String
+  location   AttendanceLocation @relation(fields: [locationId], references: [id])
+  startedAt  DateTime
+  endedAt    DateTime?
+  /// AUTO (نبض جغرافي) | PUNCH (بصمة يدوية)
+  source     String             @default("AUTO")
+  minutes    Int?
+
+  @@index([userId, startedAt])
+}
+
+/// الاستئذان الكامل (م٥) — جهة الإذن بنمط AttendancePause: معرّف + نسخة نصية تصمد.
+model AttendanceExcuse {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  sessionId       String
+  startedAt       DateTime
+  endedAt         DateTime?
+  authorizerId    String?
+  authorizerLabel String
+  reason          String?
+  expectedMinutes Int?
+  /// كيف رجع: MANUAL (زر رجعت) | GEO_PULSE (نبضة داخل النطاق) | TIMEOUT (تحوّل لمشكوك)
+  returnedVia     String?
+
+  @@index([userId, startedAt])
+}
+
+/// إجابات شاشة الحسم الإجبارية (الدوام الواقعي — قراران ٤ و٥): التسلسل كله
+/// يُحفظ صفًا صفًا — «بالطريق» المتكرر قصة كاملة لا آخر إجابة فقط.
+model AttendanceDecision {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  /// اليوم المنطقي بتوقيت الرياض
+  date       DateTime  @db.Date
+  /// ON_WAY (بالطريق) | LEAVE (إجازة اليوم) | EXCUSED (مستأذن) | REMOTE (عن بُعد)
+  kind       String
+  /// لـON_WAY: المدة المعلنة بالدقائق (١٠/١٥/٣٠/٦٠)
+  etaMinutes Int?
+  decidedAt  DateTime
+  /// متى انحسمت (وصول/انتهاء مهلة/إعادة سؤال)
+  resolvedAt DateTime?
+  /// ARRIVED_AUTO (نبضة بصمت له) | ARRIVED_MANUAL | RE_PROMPTED (رجعت الشاشة) | EXPIRED
+  outcome    String?
+
+  @@index([userId, date])
+}
+
 model AuditEvent {
   id           String   @id @default(cuid())
   actorId      String

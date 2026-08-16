@@ -82,6 +82,16 @@ export async function POST(req: Request) {
     },
   });
 
+  // الثقة المتجددة v3: الفحص إثبات حياة دائمًا، وإثبات موقع إن كان داخل النطاق.
+  if (openSession) {
+    await prisma.attendanceSession
+      .update({
+        where: { id: openSession.id },
+        data: { lastAliveAt: now, ...(match ? { lastZoneProofAt: now } : {}) },
+      })
+      .catch(() => {});
+  }
+
   // صامت حتى في الرد — العميل لا يعرض شيئًا أيًّا كانت النتيجة.
   return NextResponse.json({ ok: true, due: false });
 }

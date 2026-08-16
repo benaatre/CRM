@@ -145,6 +145,13 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.verify": "pull_warn",
   // تذكير الموقوف «رجعت؟» — للموظف، فعل مطلوب لكنه ليس إنذارًا.
   "attendance.pause_reminder": "appointments",
+  // ===== الدوام الواقعي =====
+  // «بصمنا لك ✓» للموظف — بشرى هادئة لا إنذار.
+  "attendance.auto_punch": "appointments",
+  // إجابات شاشة الحسم — للمالك.
+  "attendance.decision": "staff",
+  // الإقفال الآلي القانوني — للمالك.
+  "attendance.auto_closed": "staff",
 };
 
 /**
