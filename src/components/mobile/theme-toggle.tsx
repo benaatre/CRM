@@ -11,7 +11,14 @@ import { MOBILE_COLORS, MOBILE_THEME_COOKIE, type MobileTheme } from "@/lib/mobi
  * على غلاف (mobile) مباشرة، فالتبديل فوري بلا إعادة تحميل. التخطيط يقرأ نفس
  * الكوكي في العرض الخادمي، فلا وميض عند فتح الصفحة ولا اختلاف ترطيب.
  */
-export function MobileThemeToggle({ initial }: { initial: MobileTheme }) {
+export function MobileThemeToggle({
+  initial,
+  compact = false,
+}: {
+  initial: MobileTheme;
+  /** توسعة معلنة (توب بار الديوان): مقاس ٣٦×٣٦ بنصف قطر ١٢ — الافتراضي الشكل القائم حرفيًا. */
+  compact?: boolean;
+}) {
   const [theme, setTheme] = useState<MobileTheme>(initial);
 
   const toggle = () => {
@@ -31,12 +38,16 @@ export function MobileThemeToggle({ initial }: { initial: MobileTheme }) {
       aria-label={theme === "dark" ? "التبديل للوضع النهاري" : "التبديل للوضع الليلي"}
       className="m-iconbtn flex items-center justify-center"
       style={{
-        boxSizing: "border-box", width: 42, height: 42, borderRadius: 14,
-        background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
+        boxSizing: "border-box",
+        width: compact ? 36 : 42,
+        height: compact ? 36 : 42,
+        borderRadius: compact ? 12 : 14,
+        background: MOBILE_COLORS.card,
+        border: `1px solid ${compact ? MOBILE_COLORS.hair : MOBILE_COLORS.border}`,
         cursor: "pointer",
       }}
     >
-      <Icon size={19} strokeWidth={1.8} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
+      <Icon size={compact ? 16 : 19} strokeWidth={1.8} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
     </button>
   );
 }

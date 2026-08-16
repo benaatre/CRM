@@ -21,6 +21,9 @@ import { toArabicDigits } from "@/lib/format";
 import { DayLine, StationsLog, type StationDto, type VerificationDto } from "@/components/attendance/attendance-stations";
 import { LocationSheet, type NearbyLocation } from "@/components/attendance/location-sheet";
 import { VerifyModal, type PendingCall } from "@/components/attendance/attendance-verify-modal";
+import { AttendancePanel } from "@/components/attendance/attendance-panel";
+import { useAttendanceShell, type ShellAttendance } from "@/components/mobile/attendance-shell";
+import { MobilePortal } from "@/components/mobile/portal";
 import "./attendance.css";
 
 const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], display: "swap" });
@@ -136,9 +139,13 @@ function geoErrorMessage(err: unknown): string {
   return "ما قدرنا نحدد موقعك — تأكد أن خدمة الموقع مشغّلة وحاول مرة ثانية";
 }
 
-// prop الثيم بقيت للتوافق مع مواضع التركيب — الألوان من متغيرات CSS حصرًا.
-export function AttendanceCard(props: { theme?: AttendanceTheme }) {
-  void props.theme;
+/*
+ * prop الثيم أُحييت (إلباس «الديوان» — عزل الديسكتوب): تفريع **بصري بحت** —
+ * "mobile" داخل مزوّد القشرة = البطاقة تنطوي أثناء الدوام واللوحة المنبثقة
+ * تحمل عناصرها؛ "web" (لوحات الديسكتوب) = السلوك القائم حرفيًا بلا مساس.
+ * الألوان تبقى من متغيرات CSS حصرًا.
+ */
+export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [statusFailed, setStatusFailed] = useState(false);
   const [consent, setConsent] = useState<boolean | null>(null);
@@ -148,6 +155,8 @@ export function AttendanceCard(props: { theme?: AttendanceTheme }) {
   const [resumeBusy, setResumeBusy] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [movesSeen, setMovesSeen] = useState(false);
+  // «تفاصيل اليوم» باللوحة المنبثقة — عناصر v2 المرحّلة خلف زر توسيع (المطابقة).
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [sheet, setSheet] = useState<{ open: boolean; locations: NearbyLocation[] }>({ open: false, locations: [] });
   const lastPosRef = useRef<{ pos: GeolocationPosition; at: number } | null>(null);
   // الدفعة الرابعة: تدفق أوضاع البداية + تأكيد الانصراف + نافذة التراجع.
@@ -159,6 +168,8 @@ export function AttendanceCard(props: { theme?: AttendanceTheme }) {
   // دقيقة للتقدم والسجل؛ وثانية للعداد الكبير أثناء الدوام فقط.
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [secTick, setSecTick] = useState(() => Date.now());
+  // مزوّد قشرة الجوال (زر الكبسولة + الشارة) — null على الويب فالسلوك القائم.
+  const shell = useAttendanceShell();
 
   const checkedIn = status?.state === "in";
 
@@ -455,7 +466,313 @@ export function AttendanceCard(props: { theme?: AttendanceTheme }) {
     if (undoUntil !== null && undoLeft <= 0) setUndoUntil(null);
   }, [undoLeft, undoUntil]);
 
+  /*
+   * ===== إلباس «الديوان» (بصري بحت) =====
+   * mobileShell: بطاقة الجوال داخل مزوّد القشرة الفعّال. collapsed: أثناء
+   * الدوام تنطوي البطاقة الكبيرة — يبقى زر الكبسولة وشارة «مداوم»، وعناصر
+   * v2 (الخط/المحطات/الإحصاءات/الانصراف) تعيش داخل اللوحة المنبثقة.
+   * «دوامك متوقف» (عدم الرد) حرجة فتبقى بطاقة ظاهرة — لا تنطوي.
+   */
+  const mobileShell = theme === "mobile" && shell !== null && shell.active;
+  const collapsed = mobileShell && consent === true && checkedIn && !noResponsePause;
+  const panelOpen = collapsed && (shell?.panelOpen ?? false);
+
+  // نشر الحالة للمزوّد فور كل قراءة — زر الكبسولة يتزامن لحظيًا بلا نداء ثانٍ.
+  const publish = shell?.publish;
+  useEffect(() => {
+    if (!publish || theme !== "mobile") return;
+    if (!status) {
+      publish(null);
+      return;
+    }
+    const mini: ShellAttendance = {
+      state: status.state,
+      targetMinutes: Math.max(1, status.targetMinutes),
+      dayBaseMinutes: status.dayBaseMinutes ?? 0,
+      startedAtIso: status.session?.startedAt ?? null,
+      pausedMsBase: status.pausedMsBase ?? 0,
+      activePauseStartedIso: status.activePause?.startedIso ?? null,
+      noResponse: status.activePause?.kind === "NO_RESPONSE",
+      remote: status.day?.mode === "REMOTE",
+      onLeave: status.day?.mode === "LEAVE" || status.onLeaveToday,
+    };
+    publish(mini);
+  }, [publish, status, theme]);
+
+  // انتهى الدوام (انصراف من اللوحة مثلًا) أو توقف عدم رد؟ اللوحة تُغلق.
+  const setPanelOpen = shell?.setPanelOpen;
+  useEffect(() => {
+    if (!setPanelOpen) return;
+    if (status !== null && (status.state !== "in" || noResponsePause)) setPanelOpen(false);
+  }, [setPanelOpen, status, noResponsePause]);
+
   return (
+    <>
+      {/* ===== بطاقة الجوال `.att` — بنية المرجع حرفيًا (تنطوي أثناء الدوام) ===== */}
+      {!collapsed && mobileShell && (
+        <div
+          dir="rtl"
+          aria-label="تسجيل الدوام"
+          className="att-scope relative overflow-hidden"
+          style={{
+            boxSizing: "border-box",
+            background: "radial-gradient(130% 90% at 50% 0%, var(--m-sheet), var(--m-card))",
+            border: "1px solid var(--m-hair)",
+            borderRadius: 22,
+            padding: "20px 18px",
+          }}
+        >
+          {/* الخط العلوي المتدرّج `::before` */}
+          <span
+            aria-hidden
+            style={{
+              position: "absolute", insetInline: 0, top: 0, height: 1,
+              background: "linear-gradient(90deg, transparent, var(--m-acc-a32), transparent)",
+            }}
+          />
+
+          {/* ===== `.atop`: شارة الحالة + «دوامك» ===== */}
+          <div className="relative flex items-center justify-between" style={{ marginBottom: 4 }}>
+            {(() => {
+              const tag =
+                statusFailed && !status ? { color: "var(--att-miss)", label: "ما قدرنا نقرأ حالتك" }
+                : !status ? { color: "var(--m-text3)", label: "جاري قراءة حالتك…" }
+                : remoteDay ? { color: "var(--att-remote)", label: "عن بُعد" }
+                : onLeave ? { color: "var(--att-leave)", label: "إجازة اليوم" }
+                : noResponsePause ? { color: "var(--att-miss)", label: "متوقف — بلا رد" }
+                : status.state === "out" ? { color: "var(--att-done)", label: "منصرف" }
+                : { color: "var(--m-dw-amber)", label: "لم تسجّل الحضور" };
+              return (
+                <span
+                  className="inline-flex items-center"
+                  style={{
+                    gap: 7, fontSize: 12, fontWeight: 600, color: tag.color,
+                    background: `color-mix(in srgb, ${tag.color} 14%, transparent)`,
+                    borderRadius: 9, padding: "6px 11px",
+                  }}
+                >
+                  <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+                  {tag.label}
+                </span>
+              );
+            })()}
+            <div className="text-left" style={{ fontSize: 11, color: "var(--m-text3)" }}>
+              دوامك
+              <b className={zain.className} style={{ display: "block", marginTop: 2, fontSize: 13, fontWeight: 700, color: "var(--m-text2)", fontVariantNumeric: "tabular-nums" }}>
+                {targetLabel(targetMinutes)}
+              </b>
+            </div>
+          </div>
+
+          {/* ===== شاشة الإفصاح v2 — كما هي ===== */}
+          {consent === false && (
+            <div className="relative mt-2 flex flex-col gap-2.5 rounded-xl border p-3" style={{ borderColor: "var(--m-hair)", background: "var(--m-sheet)" }}>
+              <div className="flex gap-2">
+                <ShieldCheck aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--m-text2)", flex: "none", marginTop: 2 }} />
+                <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--m-text2)" }}>
+                  نظام الدوام يقرأ موقعك <b className="font-bold" style={{ color: "var(--m-text1)" }}>فقط</b> عند تسجيل حضورك أو
+                  انصرافك، وعند تغيير موقعك، وعند فتحك التطبيق أثناء دوامك — للتأكد أنك في موقع العمل.{" "}
+                  <b className="font-bold" style={{ color: "var(--m-text1)" }}>
+                    لا نتتبع موقعك في الخلفية، ولا خارج أوقات دوامك، ولا والتطبيق مغلق.
+                  </b>{" "}
+                  تُستخدم البيانات حصريًا لإثبات الحضور، ولك حق الاطلاع عليها وطلب تصحيحها.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void acceptConsent()}
+                className="min-h-10 cursor-pointer rounded-xl border-0 text-sm font-bold"
+                style={{ background: "var(--m-gold)", color: "var(--m-gold-bg)" }}
+              >
+                فهمت وموافق
+              </button>
+            </div>
+          )}
+
+          {consent === true && (
+            <>
+              {/* ===== يوم «عن بُعد» / «إجازة» — سطرا v2 ===== */}
+              {remoteDay ? (
+                <div className="relative mt-2 flex items-center gap-2.5 rounded-xl border px-3 py-3" style={{ borderColor: soft("var(--att-remote)", 40), background: soft("var(--att-remote)", 10) }}>
+                  <Laptop aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-remote)", flex: "none" }} />
+                  <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--m-text1)" }}>
+                    تشتغل عن بُعد اليوم
+                    {status?.day?.remoteAuthorizerLabel ? ` · بإذن ${status.day.remoteAuthorizerLabel}` : ""}
+                    {status?.day?.startedText ? ` · سُجّل ${status.day.startedText}` : ""}
+                  </p>
+                </div>
+              ) : onLeave ? (
+                <div className="relative mt-2 flex items-center gap-2.5 rounded-xl border px-3 py-3" style={{ borderColor: soft("var(--att-leave)", 40), background: soft("var(--att-leave)", 10) }}>
+                  <CalendarDays aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-leave)", flex: "none" }} />
+                  <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--m-text1)" }}>
+                    أنت بإجازة اليوم — لا بصم ولا نداءات، وما تُحتسب غيابًا
+                  </p>
+                </div>
+              ) : noResponsePause ? (
+                /* ===== «دوامك متوقف» — حرجة فتبقى ظاهرة (قرار معتمد) ===== */
+                <div className="relative mt-2 flex flex-col gap-2.5 rounded-xl border p-3" style={{ borderColor: soft("var(--att-miss)", 45), background: soft("var(--att-miss)", 10) }}>
+                  <p className="text-[13.5px] font-extrabold" style={{ color: "var(--m-text1)" }}>دوامك متوقف</p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "var(--m-text2)" }}>
+                    ما وصلنا ردك على نداءي التحقق، فتوقف عدّادك الساعة {activePause?.startedText ?? "—"}. إذا كنت لا
+                    تزال بموقع العمل، سجّل حضورك ليكمل الوقت من الآن.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void resumeShift()}
+                    disabled={resumeBusy}
+                    className="min-h-11 rounded-xl border-0 text-sm font-extrabold"
+                    style={{ background: "var(--m-gold)", color: "var(--m-gold-bg)", opacity: resumeBusy ? 0.6 : 1 }}
+                  >
+                    {resumeBusy ? "لحظة…" : "سجّل حضوري"}
+                  </button>
+                </div>
+              ) : (
+                status && (
+                  <>
+                    {/* ===== `.ringbox` ١٨٤px — حلقة r=77 stroke=8 بتدرّج ذهبي ===== */}
+                    <div className="relative" style={{ width: 184, height: 184, margin: "10px auto 6px" }}>
+                      <svg width={184} height={184} style={{ transform: "rotate(-90deg)" }} aria-hidden>
+                        <defs>
+                          <linearGradient id="att-card-grad" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" style={{ stopColor: "var(--m-grad-a)" }} />
+                            <stop offset="1" style={{ stopColor: "var(--m-grad-c)" }} />
+                          </linearGradient>
+                        </defs>
+                        <circle cx={92} cy={92} r={77} fill="none" strokeWidth={8} style={{ stroke: "var(--m-border)" }} />
+                        <circle
+                          cx={92} cy={92} r={77} fill="none" strokeWidth={8} strokeLinecap="round"
+                          stroke="url(#att-card-grad)"
+                          strokeDasharray={483}
+                          strokeDashoffset={483 * (1 - Math.min(1, dayBase / targetMinutes))}
+                          style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(0.23, 1, 0.32, 1)" }}
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <div style={{ fontSize: 10, color: "var(--m-text3)", marginBottom: 5 }}>دوامك اليوم</div>
+                        <div
+                          dir="ltr"
+                          className={zain.className}
+                          style={{ fontSize: 29, fontWeight: 800, color: "var(--m-text2)", fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {toArabicDigits(
+                            `${Math.floor(Math.max(0, targetMinutes - dayBase) / 60)}:${String(Math.max(0, targetMinutes - dayBase) % 60).padStart(2, "0")}:00`,
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--m-text2)", marginTop: 5 }}>
+                          {status.state === "out" && dayBase > 0 ? (
+                            <>
+                              أنجزت{" "}
+                              <b className={zain.className} style={{ color: "var(--m-dw-green)", fontWeight: 700 }}>
+                                {toArabicDigits(Math.min(100, Math.round((dayBase / targetMinutes) * 100)))}٪
+                              </b>
+                            </>
+                          ) : (
+                            "جاهز للبدء"
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ===== `.arail` — بعد انصراف جزئي فقط (بيانات حقيقية) ===== */}
+                    {status.state === "out" && dayBase > 0 && (
+                      <div className="flex justify-around" style={{ margin: "8px 0 14px" }}>
+                        <div className="text-center">
+                          <div className={zain.className} style={{ fontSize: 14, fontWeight: 700, color: "var(--m-text1)", fontVariantNumeric: "tabular-nums" }}>
+                            {status.day?.firstCheckInText ?? "—"}
+                          </div>
+                          <div style={{ fontSize: 9, color: "var(--m-text3)", marginTop: 2 }}>الحضور</div>
+                        </div>
+                        <div className="text-center">
+                          <div className={zain.className} style={{ fontSize: 14, fontWeight: 700, color: "var(--m-text1)", fontVariantNumeric: "tabular-nums" }}>
+                            {hmLabel(dayBase, toArabicDigits)}
+                          </div>
+                          <div style={{ fontSize: 9, color: "var(--m-text3)", marginTop: 2 }}>أنجزت</div>
+                        </div>
+                        <div className="text-center">
+                          <div className={zain.className} style={{ fontSize: 14, fontWeight: 700, color: "var(--m-text1)", fontVariantNumeric: "tabular-nums" }}>
+                            {toArabicDigits(Math.min(100, Math.round((dayBase / targetMinutes) * 100)))}٪
+                          </div>
+                          <div style={{ fontSize: 9, color: "var(--m-text3)", marginTop: 2 }}>النسبة</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ===== `.aloc` — آخر موقع مسجّل (يظهر فقط إن وُجد فعلًا) ===== */}
+                    {status.session?.locationName && (
+                      <div className="flex items-center" style={{ gap: 9, background: "var(--m-bg)", border: "1px solid var(--m-hair)", borderRadius: 12, padding: "10px 12px", marginBottom: 14 }}>
+                        <span className="flex flex-none items-center justify-center" style={{ width: 30, height: 30, borderRadius: 9, background: "var(--m-dw-sky-dim)", color: "var(--m-dw-sky)" }}>
+                          <MapPin aria-hidden size={15} strokeWidth={1.7} />
+                        </span>
+                        <div className="flex-1">
+                          <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--m-text1)" }}>{status.session.locationName}</div>
+                          <div style={{ fontSize: 10, color: "var(--m-text3)", marginTop: 1 }}>آخر موقع مسجّل</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ===== شرائح الأوضاع الثلاثة (v2) — الدمج المعتمد داخل `.att` ===== */}
+                    {status.state === "none" && status.sessionsToday === 0 && (
+                      <div style={{ marginBottom: 14 }}>
+                        <ModeChips
+                          diwan
+                          flow={modeFlow}
+                          setFlow={(f) => {
+                            setModeFlow(f);
+                            if (f) void loadAuthorizers();
+                          }}
+                          authorizers={authorizers}
+                          onDone={(msg, tone) => {
+                            setModeFlow(null);
+                            setFeedback({ tone, text: msg });
+                            void loadStatus();
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* ===== `.aacts` — الزر الذهبي الكبير ===== */}
+                    <div className="flex" style={{ gap: 9 }}>
+                      <button
+                        type="button"
+                        onClick={() => void punch("CHECK_IN")}
+                        disabled={working}
+                        className="m-press flex flex-1 items-center justify-center"
+                        style={{
+                          boxSizing: "border-box", gap: 7, background: "var(--m-gold)", color: "var(--m-gold-bg)",
+                          borderRadius: 13, padding: "13px 0", fontSize: 13, fontWeight: 700, border: "none",
+                          boxShadow: "inset 0 1px 0 rgba(255,255,255,.22)",
+                          opacity: working ? 0.6 : 1,
+                        }}
+                      >
+                        <LogIn aria-hidden size={15} strokeWidth={1.8} />
+                        {busy === "CHECK_IN"
+                          ? "جاري تحديد موقعك…"
+                          : status.state === "out"
+                            ? "إكمال الدوام"
+                            : "تسجيل الحضور"}
+                      </button>
+                    </div>
+                  </>
+                )
+              )}
+            </>
+          )}
+
+          {/* ===== نتيجة آخر محاولة ===== */}
+          {feedback && (
+            <p
+              role="status"
+              className="relative mt-3 rounded-xl px-3 py-2.5 text-[12.5px] leading-relaxed"
+              style={{ color: TONE_VAR[feedback.tone], background: soft(TONE_VAR[feedback.tone], 12) }}
+            >
+              {feedback.text}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ===== بطاقة الويب (الإسبريسو) — الديسكتوب كما هو حرفيًا ===== */}
+      {!collapsed && !mobileShell && (
     <section
       dir="rtl"
       aria-label="تسجيل الدوام"
@@ -720,8 +1037,8 @@ export function AttendanceCard(props: { theme?: AttendanceTheme }) {
                   </div>
                 )}
 
-                {/* ===== نافذة التراجع ٩٠ ثانية ===== */}
-                {undoUntil !== null && undoLeft > 0 && (
+                {/* ===== نافذة التراجع ٩٠ ثانية — سطرية على الويب؛ الجوال له توست عائم ===== */}
+                {!mobileShell && undoUntil !== null && undoLeft > 0 && (
                   <button
                     type="button"
                     onClick={() => void undoCheckout()}
@@ -814,8 +1131,333 @@ export function AttendanceCard(props: { theme?: AttendanceTheme }) {
           {feedback.text}
         </p>
       )}
+    </section>
+      )}
 
-      {/* شيت «وين أنت الآن؟» — القراءة داخله والقائمة بعد الإحداثيات فقط */}
+      {/* ===== لوحة الدوام المنبثقة (الديوان §٣) — عناصر v2 مرحّلة بلا منطق جديد ===== */}
+      {collapsed && status && startedMs && shiftEndIso && (
+        <AttendancePanel
+          open={panelOpen}
+          onClose={() => shell?.setPanelOpen(false)}
+          chip={{
+            label: headTagLabel(status, paused, activePause, remoteDay, onLeave),
+            color: headTagColor(status, paused, noResponsePause, remoteDay, onLeave),
+          }}
+        >
+          {/* الحلقة الراديّة — العدّاد اليومي التراكمي (v2) داخلها */}
+          <div className="relative mx-auto" style={{ width: 168, height: 168 }}>
+            <svg width={168} height={168} style={{ transform: "rotate(-90deg)" }} aria-hidden>
+              <defs>
+                <linearGradient id="att-panel-grad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" style={{ stopColor: "var(--m-grad-a, var(--att-gold))" }} />
+                  <stop offset="1" style={{ stopColor: "var(--m-grad-c, var(--att-gold))" }} />
+                </linearGradient>
+              </defs>
+              <circle cx={84} cy={84} r={70} fill="none" strokeWidth={8} style={{ stroke: "var(--att-rail)" }} />
+              <circle
+                cx={84} cy={84} r={70} fill="none" strokeWidth={8} strokeLinecap="round"
+                stroke="url(#att-panel-grad)"
+                strokeDasharray={439.8}
+                strokeDashoffset={439.8 * (1 - Math.min(1, progressPct / 100))}
+                style={{ transition: "stroke-dashoffset 1s cubic-bezier(0.23, 1, 0.32, 1)" }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <BigCountdown
+                remainingSeconds={Math.max(
+                  0,
+                  targetMinutes * 60 -
+                    (dayBase * 60 +
+                      Math.max(
+                        0,
+                        Math.floor(
+                          (Math.max(secTick, nowTick) -
+                            startedMs -
+                            ((status.pausedMsBase ?? 0) +
+                              (activePause
+                                ? Math.max(0, Math.max(secTick, nowTick) - new Date(activePause.startedIso).getTime())
+                                : 0))) /
+                            1000,
+                        ),
+                      )),
+                )}
+                zainClass={zain.className}
+                done={targetDone}
+                paused={paused}
+                size={25}
+              />
+              <p className="mt-1 text-[10px]" style={{ color: "var(--m-text2)" }}>
+                أنجزت{" "}
+                <b className={zain.className} style={{ color: "var(--m-dw-green)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                  {toArabicDigits(progressPct)}٪
+                </b>
+              </p>
+            </div>
+          </div>
+
+          {/* ===== `.srail` — ثلاث خلايا فقط: الحضور / النهاية / أنجزت ===== */}
+          <div className="flex justify-around gap-2 rounded-[14px] border" style={{ borderColor: "var(--m-hair)", background: "var(--m-bg)", padding: "12px 18px" }}>
+            <StatCell label="الحضور" value={status.day?.firstCheckInText ?? status.session!.startedAtText} zainClass={zain.className} />
+            <StatCell label="النهاية" value={status.shiftEndText ?? "—"} zainClass={zain.className} />
+            <StatCell label="أنجزت" value={hmLabel(elapsedMinutes, toArabicDigits)} zainClass={zain.className} />
+          </div>
+
+          {/* ===== `.sloc` — الموقع الحالي + «منذ» ===== */}
+          {(() => {
+            const cur = status.stations.find((s) => s.toIso === null);
+            const name = cur?.name ?? status.session?.locationName;
+            if (!name) return null;
+            const sinceMin = cur ? Math.max(0, Math.floor((nowTick - new Date(cur.fromIso).getTime()) / 60_000)) : null;
+            return (
+              <div className="flex items-center" style={{ gap: 9, background: "var(--m-bg)", border: "1px solid var(--m-hair)", borderRadius: 12, padding: "10px 12px" }}>
+                <span className="flex flex-none items-center justify-center" style={{ width: 30, height: 30, borderRadius: 9, background: "var(--m-dw-sky-dim)", color: "var(--m-dw-sky)" }}>
+                  <MapPin aria-hidden size={15} strokeWidth={1.7} />
+                </span>
+                <div className="flex-1">
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--m-text1)" }}>{name}</div>
+                  <div style={{ fontSize: 10, color: "var(--m-text3)", marginTop: 1 }}>موقعك الحالي</div>
+                </div>
+                {sinceMin !== null && (
+                  <span className={zain.className} style={{ fontSize: 10, color: "var(--m-text2)", fontVariantNumeric: "tabular-nums" }}>
+                    منذ {hmLabel(sinceMin, toArabicDigits)}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* شريط التوقف الجاري (v2) */}
+          {paused && activePause && (
+            <div className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5" style={{ borderColor: soft("var(--att-pause)", 40), background: soft("var(--att-pause)", 10) }}>
+              <PauseCircle aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-pause)", flex: "none" }} />
+              <p className="min-w-0 flex-1 text-[12px] leading-relaxed" style={{ color: "var(--att-esp-text)" }}>
+                العدّاد موقوف من {activePause.startedText}
+                <span className="block text-[11px]" style={{ color: "var(--att-esp-muted)" }}>
+                  مدة التوقف حتى الآن {hmLabel(pauseMinutes, toArabicDigits)}
+                </span>
+              </p>
+            </div>
+          )}
+
+          {/* ===== «تفاصيل اليوم» — عناصر v2 المرحّلة خلف زر توسيع بلغة `.big-act` ===== */}
+          <button
+            type="button"
+            onClick={() => {
+              setDetailsOpen((v) => !v);
+              setMovesSeen(true);
+            }}
+            className="m-press flex w-full items-center text-right"
+            style={{
+              boxSizing: "border-box", gap: 12, padding: 13, borderRadius: 14,
+              background: "var(--m-sheet)", border: "1px solid var(--m-hair)",
+            }}
+          >
+            <span className="flex flex-none items-center justify-center" style={{ width: 38, height: 38, borderRadius: 11, background: "var(--m-acc-dim)", color: "var(--m-gold)" }}>
+              <Route aria-hidden size={18} strokeWidth={1.8} />
+            </span>
+            <span className="flex-1">
+              <span className="block" style={{ fontSize: 13, fontWeight: 600, color: "var(--m-text1)" }}>تفاصيل اليوم</span>
+              <span className="block" style={{ fontSize: 10, color: "var(--m-text3)", marginTop: 2 }}>
+                خط اليوم والمحطات والإحصاءات
+              </span>
+            </span>
+            <span className="relative flex-none" style={{ color: "var(--m-text3)" }}>
+              <ChevronDown
+                aria-hidden
+                size={16}
+                strokeWidth={1.8}
+                style={{
+                  transform: detailsOpen ? "rotate(180deg)" : "none",
+                  transition: "transform 0.35s cubic-bezier(0.23,1,0.32,1)",
+                }}
+              />
+              {hasMoves && !movesSeen && !detailsOpen && (
+                <span aria-hidden className="att-pulse absolute -left-1 -top-1 size-2 rounded-full" style={{ background: "var(--att-teal)" }} />
+              )}
+            </span>
+          </button>
+
+          {detailsOpen && (
+            <>
+              <DayLine
+                stations={status.stations}
+                startIso={status.session!.startedAt}
+                shiftEndIso={shiftEndIso}
+                now={nowTick}
+                startLabel={`حضرت ${status.day?.firstCheckInText ?? status.session!.startedAtText}`}
+                endLabel={`نهاية دوامك ${status.shiftEndText ?? "—"}`}
+              />
+
+              <div className="flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-right" style={{ borderColor: "var(--m-hair)", background: "var(--m-sheet)" }}>
+                <StatCell label="أنجزت اليوم" value={hmLabel(elapsedMinutes, toArabicDigits)} zainClass={zain.className} />
+                <StatCell label="زيارات مشاريع" value={toArabicDigits(status.visitsCount)} zainClass={zain.className} />
+                <StatCell label="خارج المقر" value={hmLabel(status.awayMinutes, toArabicDigits)} zainClass={zain.className} />
+              </div>
+
+              <StationsLog stations={status.stations} verifications={status.verifications} now={nowTick} />
+            </>
+          )}
+
+          {/* تأكيد الانصراف الناقص (v2) */}
+          {confirmOut && (
+            <div className="flex flex-col gap-2.5 rounded-xl border p-3" style={{ borderColor: soft("var(--att-late)", 45), background: soft("var(--att-late)", 10) }}>
+              <p className="text-[12.5px] leading-relaxed text-[var(--att-esp-text)]">
+                متأكد تبي تنهي دوامك؟ باقي لك{" "}
+                <b className="font-bold">{hmLabel(Math.max(0, targetMinutes - elapsedMinutes), toArabicDigits)}</b> من دوامك
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void punch("CHECK_OUT")}
+                  disabled={working}
+                  className="min-h-10 flex-1 rounded-xl border-0 text-[13px] font-extrabold"
+                  style={{ background: "var(--att-late)", color: "var(--att-esp-bg)", opacity: working ? 0.6 : 1 }}
+                >
+                  نعم — إنهاء الدوام
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmOut(false)}
+                  className="min-h-10 flex-1 rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)] text-[13px] font-bold text-[var(--att-esp-text)]"
+                >
+                  أكمل دوامي
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ===== الأفعال `.big-act`: انصراف + تغيير موقعي فقط (قرار معتمد — لا استئذان ذاتيًا) ===== */}
+          <div className="flex flex-col" style={{ gap: 9 }}>
+            {paused && !noResponsePause && (
+              <button
+                type="button"
+                onClick={() => void resumeShift()}
+                disabled={working || resumeBusy}
+                className="m-press flex w-full items-center text-right"
+                style={{
+                  boxSizing: "border-box", gap: 12, padding: 13, borderRadius: 14,
+                  background: "var(--m-sheet)", border: "1px solid var(--m-hair)",
+                  opacity: working || resumeBusy ? 0.6 : 1,
+                }}
+              >
+                <span className="flex flex-none items-center justify-center" style={{ width: 38, height: 38, borderRadius: 11, background: "var(--m-dw-green-dim)", color: "var(--m-dw-green)" }}>
+                  <PlayCircle aria-hidden size={18} strokeWidth={1.8} />
+                </span>
+                <span className="flex-1">
+                  <span className="block" style={{ fontSize: 13, fontWeight: 600, color: "var(--m-text1)" }}>
+                    {resumeBusy ? "لحظة…" : "رجعت — كمّل دوامي"}
+                  </span>
+                  <span className="block" style={{ fontSize: 10, color: "var(--m-text3)", marginTop: 2 }}>يستأنف العدّاد من الآن</span>
+                </span>
+                <span className="flex-none" style={{ color: "var(--m-text3)" }}>
+                  <ChevronDown aria-hidden size={16} strokeWidth={1.7} style={{ transform: "rotate(90deg)" }} />
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => (elapsedMinutes < targetMinutes ? setConfirmOut(true) : void punch("CHECK_OUT"))}
+              disabled={working || resumeBusy}
+              className="m-press flex w-full items-center text-right"
+              style={{
+                boxSizing: "border-box", gap: 12, padding: 13, borderRadius: 14,
+                background: "var(--m-sheet)", border: "1px solid var(--m-hair)",
+                opacity: working || resumeBusy ? 0.6 : 1,
+              }}
+            >
+              <span className="flex flex-none items-center justify-center" style={{ width: 38, height: 38, borderRadius: 11, background: "var(--m-acc-dim)", color: "var(--m-gold)" }}>
+                <LogOut aria-hidden size={18} strokeWidth={1.8} />
+              </span>
+              <span className="flex-1">
+                <span className="block" style={{ fontSize: 13, fontWeight: 600, color: "var(--m-text1)" }}>
+                  {busy === "CHECK_OUT" ? "جاري تحديد موقعك…" : "تسجيل انصراف"}
+                </span>
+                <span className="block" style={{ fontSize: 10, color: "var(--m-text3)", marginTop: 2 }}>إنهاء دوام اليوم</span>
+              </span>
+              <span className="flex-none" style={{ color: "var(--m-text3)" }}>
+                <ChevronDown aria-hidden size={16} strokeWidth={1.7} style={{ transform: "rotate(90deg)" }} />
+              </span>
+            </button>
+
+            {!paused && (
+              <button
+                type="button"
+                onClick={() => {
+                  // الشيت (z-50) تحت اللوحة (z-65) — نغلق اللوحة أولًا ليظهر.
+                  shell?.setPanelOpen(false);
+                  openLocationSheet();
+                }}
+                disabled={working}
+                className="m-press flex w-full items-center text-right"
+                style={{
+                  boxSizing: "border-box", gap: 12, padding: 13, borderRadius: 14,
+                  background: "var(--m-sheet)", border: "1px solid var(--m-hair)",
+                  opacity: working ? 0.6 : 1,
+                }}
+              >
+                <span className="flex flex-none items-center justify-center" style={{ width: 38, height: 38, borderRadius: 11, background: "var(--m-dw-sky-dim)", color: "var(--m-dw-sky)" }}>
+                  <MapPin aria-hidden size={18} strokeWidth={1.8} />
+                </span>
+                <span className="flex-1">
+                  <span className="block" style={{ fontSize: 13, fontWeight: 600, color: "var(--m-text1)" }}>
+                    {busy === "LOCATION_CHANGE" ? "جاري التسجيل…" : "تغيير موقعي"}
+                  </span>
+                  <span className="block" style={{ fontSize: 10, color: "var(--m-text3)", marginTop: 2 }}>
+                    {status.stations.find((s) => s.toIso === null)?.name ?? status.session?.locationName ?? "تحديث موقعك الحالي"}
+                  </span>
+                </span>
+                <span className="flex-none" style={{ color: "var(--m-text3)" }}>
+                  <ChevronDown aria-hidden size={16} strokeWidth={1.7} style={{ transform: "rotate(90deg)" }} />
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* نتيجة آخر محاولة — داخل اللوحة وهي مفتوحة */}
+          {feedback && (
+            <p
+              role="status"
+              className="rounded-xl px-3 py-2.5 text-[12.5px] leading-relaxed"
+              style={{ color: TONE_VAR[feedback.tone], background: soft(TONE_VAR[feedback.tone], 12) }}
+            >
+              {feedback.text}
+            </p>
+          )}
+        </AttendancePanel>
+      )}
+
+      {/* ===== توست التراجع العائم (جوال) — ستايل `.toast` من المرجع حرفيًا.
+           عبر MobilePortal: transform باقٍ على .m-screen بعد حركتها فيكسر fixed تحتها. ===== */}
+      {mobileShell && undoUntil !== null && undoLeft > 0 && (
+        <MobilePortal>
+        <div
+          dir="rtl"
+          className="att-scope m-toastin fixed z-[95]"
+          style={{ bottom: "calc(100px + env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)" }}
+        >
+          <button
+            type="button"
+            onClick={() => void undoCheckout()}
+            className="flex items-center whitespace-nowrap"
+            style={{
+              boxSizing: "border-box", gap: 8, borderRadius: 13, padding: "12px 18px",
+              fontSize: 12.5, fontWeight: 600,
+              border: "1px solid var(--m-dw-sky-dim)",
+              background: "var(--m-sheet)",
+              color: "var(--m-dw-sky)",
+            }}
+          >
+            <Undo2 aria-hidden size={15} strokeWidth={1.8} />
+            تراجع عن الانصراف ({toArabicDigits(undoLeft)} ث)
+          </button>
+        </div>
+        </MobilePortal>
+      )}
+
+      {/* شيت «وين أنت الآن؟» — القراءة داخله والقائمة بعد الإحداثيات فقط.
+          عبر البوابة لنفس علة الكتلة الحاوية (transform على .m-screen). */}
+      <MobilePortal>
       <LocationSheet
         open={sheet.open}
         read={readForSheet}
@@ -856,7 +1498,8 @@ export function AttendanceCard(props: { theme?: AttendanceTheme }) {
           }}
         />
       ) : null}
-    </section>
+      </MobilePortal>
+    </>
   );
 }
 
@@ -867,11 +1510,14 @@ function ModeChips({
   setFlow,
   authorizers,
   onDone,
+  diwan = false,
 }: {
   flow: null | "remote" | "leave";
   setFlow: (f: null | "remote" | "leave") => void;
   authorizers: Authorizer[] | null;
   onDone: (message: string, tone: FeedbackTone) => void;
+  /** كسوة الديوان (بطاقة الجوال): شرائح بمواصفات المرجع — المنطق نفسه حرفيًا. */
+  diwan?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -929,13 +1575,13 @@ function ModeChips({
     <div className="relative flex flex-col gap-2.5">
       {/* الشرائح الثلاث — «في الموقع» الافتراضي */}
       <div className="flex gap-1.5">
-        <Chip active={flow === null} onClick={() => setFlow(null)} icon={<MapPin aria-hidden size={14} strokeWidth={1.5} />}>
+        <Chip diwan={diwan} active={flow === null} onClick={() => setFlow(null)} icon={<MapPin aria-hidden size={14} strokeWidth={1.5} />}>
           في الموقع
         </Chip>
-        <Chip active={flow === "remote"} onClick={() => setFlow("remote")} icon={<Laptop aria-hidden size={14} strokeWidth={1.5} />}>
+        <Chip diwan={diwan} active={flow === "remote"} onClick={() => setFlow("remote")} icon={<Laptop aria-hidden size={14} strokeWidth={1.5} />}>
           عن بُعد
         </Chip>
-        <Chip active={flow === "leave"} onClick={() => setFlow("leave")} icon={<CalendarDays aria-hidden size={14} strokeWidth={1.5} />}>
+        <Chip diwan={diwan} active={flow === "leave"} onClick={() => setFlow("leave")} icon={<CalendarDays aria-hidden size={14} strokeWidth={1.5} />}>
           إجازة
         </Chip>
       </div>
@@ -946,16 +1592,16 @@ function ModeChips({
             <>
               <div className="flex gap-1.5">
                 {LEAVE_TYPES.map((t) => (
-                  <Chip key={t.key} active={leaveType === t.key} onClick={() => setLeaveType(t.key)}>
+                  <Chip key={t.key} diwan={diwan} active={leaveType === t.key} onClick={() => setLeaveType(t.key)}>
                     {t.label}
                   </Chip>
                 ))}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <Chip active={duration === "1"} onClick={() => setDuration("1")}>اليوم فقط</Chip>
-                <Chip active={duration === "2"} onClick={() => setDuration("2")}>يومان</Chip>
-                <Chip active={duration === "3"} onClick={() => setDuration("3")}>٣ أيام</Chip>
-                <Chip active={duration === "custom"} onClick={() => setDuration("custom")}>تحديد تاريخ</Chip>
+                <Chip diwan={diwan} active={duration === "1"} onClick={() => setDuration("1")}>اليوم فقط</Chip>
+                <Chip diwan={diwan} active={duration === "2"} onClick={() => setDuration("2")}>يومان</Chip>
+                <Chip diwan={diwan} active={duration === "3"} onClick={() => setDuration("3")}>٣ أيام</Chip>
+                <Chip diwan={diwan} active={duration === "custom"} onClick={() => setDuration("custom")}>تحديد تاريخ</Chip>
               </div>
               {duration === "custom" && (
                 <div className="flex gap-2">
@@ -982,7 +1628,7 @@ function ModeChips({
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {authorizers.map((a) => (
-                  <Chip key={a.id} active={authorizerId === a.id} onClick={() => setAuthorizerId(a.id)}>
+                  <Chip key={a.id} diwan={diwan} active={authorizerId === a.id} onClick={() => setAuthorizerId(a.id)}>
                     {a.label}
                   </Chip>
                 ))}
@@ -1014,17 +1660,28 @@ function ModeChips({
   );
 }
 
-function Chip({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode }) {
+function Chip({ active, onClick, icon, children, diwan = false }: { active: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode; diwan?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-bold"
-      style={{
-        borderColor: active ? "var(--att-gold)" : "var(--att-esp-line)",
-        background: active ? "color-mix(in srgb, var(--att-gold) 12%, transparent)" : "transparent",
-        color: active ? "var(--att-gold)" : "var(--att-esp-muted)",
-      }}
+      className="flex items-center gap-1 border px-2.5 py-1.5 text-[11.5px] font-bold"
+      style={
+        diwan
+          ? {
+              /* مواصفات الدمج المعتمد: خلفية s2 وحد hair وقطر 11 — النشطة accA32/accDim */
+              borderRadius: 11,
+              borderColor: active ? "var(--m-acc-a32)" : "var(--m-hair)",
+              background: active ? "var(--m-acc-dim)" : "var(--m-sheet)",
+              color: active ? "var(--m-gold)" : "var(--m-text2)",
+            }
+          : {
+              borderRadius: 8,
+              borderColor: active ? "var(--att-gold)" : "var(--att-esp-line)",
+              background: active ? "color-mix(in srgb, var(--att-gold) 12%, transparent)" : "transparent",
+              color: active ? "var(--att-gold)" : "var(--att-esp-muted)",
+            }
+      }
     >
       {icon}
       {children}
@@ -1112,11 +1769,14 @@ function BigCountdown({
   zainClass,
   done,
   paused,
+  size = 38,
 }: {
   remainingSeconds: number;
   zainClass: string;
   done: boolean;
   paused: boolean;
+  /** حجم الأرقام — 38 القائم (البطاقة)، وأصغر داخل حلقة اللوحة المنبثقة. */
+  size?: number;
 }) {
   const h = Math.floor(remainingSeconds / 3600);
   const m = Math.floor((remainingSeconds % 3600) / 60);
@@ -1133,8 +1793,9 @@ function BigCountdown({
         {chars.map((c, i) => (
           <span
             key={`${i}-${c}`}
-            className={`${zainClass} att-tick inline-block text-[38px] font-extrabold leading-none`}
+            className={`${zainClass} att-tick inline-block font-extrabold leading-none`}
             style={{
+              fontSize: size,
               color: paused ? "var(--att-pause)" : done ? "var(--att-on)" : "var(--att-esp-text)",
               fontVariantNumeric: "tabular-nums",
               minWidth: c === ":" ? undefined : "0.62em",

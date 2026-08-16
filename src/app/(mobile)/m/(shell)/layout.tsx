@@ -2,6 +2,8 @@ import { requireMobileUser, isManager } from "@/lib/auth-guards";
 import { getLeads, getLeadCounts } from "@/lib/data/leads";
 import { buildAgenda, buildDayAppointments } from "@/lib/mobile-agenda";
 import { MercuryNav } from "@/components/mobile/mercury-nav";
+import { DiwanNav } from "@/components/mobile/diwan-nav";
+import { AttendanceShellProvider } from "@/components/mobile/attendance-shell";
 import { PushRegistrar } from "@/components/mobile/push-registrar";
 import { Heartbeat } from "@/components/layout/heartbeat";
 
@@ -33,7 +35,7 @@ export default async function MobileShellLayout({ children }: { children: React.
   }
 
   return (
-    <>
+    <AttendanceShellProvider enabled={!manager}>
       {/* تسجيل الجهاز لإشعارات Push — داخل غلاف Capacitor فقط، لا أثر في المتصفح. */}
       <PushRegistrar />
       {/* نبضة «آخر ظهور» — كانت بقشرة الويب فقط، فموظف التطبيق كان يظهر
@@ -57,7 +59,8 @@ export default async function MobileShellLayout({ children }: { children: React.
       >
         {children}
       </div>
-      <MercuryNav manager={manager} badgeCount={badgeCount} />
-    </>
+      {/* الإدارة على شريط الزئبق القائم بلا مساس؛ الموظف على كبسولة «الديوان» بزر الدوام. */}
+      {manager ? <MercuryNav manager badgeCount={badgeCount} /> : <DiwanNav badgeCount={badgeCount} />}
+    </AttendanceShellProvider>
   );
 }

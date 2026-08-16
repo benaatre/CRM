@@ -1,26 +1,32 @@
 import Link from "next/link";
 import type { LeadStage, FollowUpResult, Channel } from "@prisma/client";
+import { ChevronLeft, Phone } from "lucide-react";
 import { stageLabels, channelLabel, followUpResultLabels } from "@/lib/labels";
 import { STAGE_HEX } from "@/lib/stage-colors";
 import { MOBILE_COLORS } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
 import { avatarInitials } from "@/lib/mobile-avatar";
-import { waPhone } from "@/lib/value-normalize";
 import type { DayAppointment } from "@/lib/mobile-agenda";
 import type { MyRecentFollowUp } from "@/lib/data/my-log";
-import { MobileHeaderActions } from "@/components/mobile/header-actions";
-import { NextAppointmentBanner } from "@/components/mobile/next-appointment-banner";
-import { AppointmentsWheel } from "@/components/mobile/appointments-wheel";
-import { EmployeeKpis } from "@/components/mobile/employee-kpis";
+import { DiwanTopbar } from "@/components/mobile/diwan-topbar";
+import { DiwanDial } from "@/components/mobile/diwan-dial";
+import { DiwanInvite } from "@/components/mobile/diwan-invite";
+import { DiwanCaroz } from "@/components/mobile/diwan-caroz";
+import { AttendanceBadge } from "@/components/mobile/attendance-badge";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 /**
- * رئيسية الموظف v2 (التصميم المعتمد) — server component يجمّع الأقسام:
- * ترويسة ← بانر «موعدك القادم» (client) ← مربعات ٢×٢ (client) ← ترس المواعيد (client)
- * ← ينتظرون تواصلك ← سجل متابعاتي ← قمع عملائي. عرض خالص: كل البيانات props.
+ * رئيسية الموظف «الديوان» — مطابقة حرفية للمرجع (بنيةً وقيمًا وترتيبًا):
+ * توب بار ← ترويسة (تحية + شارة مداوم + تاريخ + ملخص + دائرة ١٢٨) ← بطاقة
+ * الدوام ← موعدك القادم ← كاروسيل متابعات اليوم ← المتراكمة ← ينتظرون أول
+ * تواصل ← سجل متابعاتي ← قمع عملائي ← خط + سطر فال.
+ *
+ * server component عرض خالص: كل البيانات props من مصادر v2 القائمة.
+ * المحذوف عن النسخة السابقة (غير موجود بالمرجع): مربعات KPI، بانر الموعد
+ * المثبّت (حلّت محله بطاقة .invite)، ترس المواعيد (حل محله الكاروسيل).
  */
 
-const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)" };
+const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
 
 export type WaitingLead = {
   id: string;
@@ -31,253 +37,270 @@ export type WaitingLead = {
   daysWaiting: number;
 };
 
-/** لون نقطة نتيجة المتابعة — لوحة v2: نجاح أخضر · لم يرد أزرق · تفاوض كهرماني · غير مهتم أحمر. */
+/** لون نقطة السجل — لوحة الديوان: نجاح أخضر · لم يرد أزرق · تفاوض كهرماني · غير مهتم أحمر. */
 function logTone(result: FollowUpResult): string {
-  if (result.startsWith("NOT_INTERESTED")) return MOBILE_COLORS.rose;
-  if (result.startsWith("NOT_ANSWERED") || result === "NO_ANSWER_INTERESTED" || result === "CALL_LATER") return MOBILE_COLORS.sky;
-  if (result === "NEGOTIATING" || result === "BANK_CHECK" || result === "ON_HOLD") return MOBILE_COLORS.amber;
-  return MOBILE_COLORS.mint;
+  if (result.startsWith("NOT_INTERESTED")) return MOBILE_COLORS.dwRed;
+  if (result.startsWith("NOT_ANSWERED") || result === "NO_ANSWER_INTERESTED" || result === "CALL_LATER") return MOBILE_COLORS.dwBlue;
+  if (result === "NEGOTIATING" || result === "BANK_CHECK" || result === "ON_HOLD") return MOBILE_COLORS.dwAmber;
+  return MOBILE_COLORS.dwGreen;
 }
 
-/** رأس قسم: شريط جانبي ٤px متوهّج + عنوان ١٨px + عدّاد يسارًا. */
-function SectionHead({ title, bar, counter }: { title: string; bar: string; counter?: string }) {
+/** «الخميس ١٣ أغسطس ٢٠٢٦» — gregory صريح بتوقيت الرياض (قاعدة ثابتة). */
+function dateLabel(d: Date): string {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
+    calendar: "gregory", timeZone: "Asia/Riyadh",
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  }).format(d);
+}
+
+/** «صباح الخير / مساء الخير» بساعة الرياض. */
+function greeting(d: Date): string {
+  const h = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Riyadh", hour: "numeric", hour12: false }).format(d));
+  return h < 12 ? "صباح الخير" : "مساء الخير";
+}
+
+/** رأس قسم `.sec-h` من المرجع: عنوان ١٢.٥ خفيف متباعد + «الكل» يسارًا. */
+function SecH({ title, all, href }: { title: string; all: string; href: string }) {
   return (
-    <div className="flex items-center justify-between" style={{ padding: "0 2px" }}>
-      <div className="flex items-center" style={{ gap: 9 }}>
-        <span aria-hidden style={{ width: 4, height: 18, borderRadius: 2, background: bar, boxShadow: `0 0 10px ${bar}` }} />
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>{title}</h2>
-      </div>
-      {counter && <span style={{ fontSize: 11.5, color: MOBILE_COLORS.textMuted }}>{counter}</span>}
+    <div className="flex items-baseline justify-between" style={{ margin: "26px 2px 11px" }}>
+      <h2 style={{ fontSize: 12.5, fontWeight: 500, letterSpacing: "0.06em", color: MOBILE_COLORS.textSecondary }}>{title}</h2>
+      <Link href={href} className="flex items-center" style={{ gap: 4, fontSize: 11.5, fontWeight: 500, color: MOBILE_COLORS.textMuted }}>
+        {all}
+        <ChevronLeft size={12} strokeWidth={1.8} aria-hidden />
+      </Link>
     </div>
   );
 }
 
 export function EmployeeHome({
-  firstName, unread, appointments, kpis, waiting, recent, funnel,
+  firstName, companyName, unread, appointments, notes, doneCount, lateCount, doneLeadIds,
+  backlogCount, waiting, recent, funnel, totalClients, falLicense,
 }: {
   firstName: string;
+  companyName: string;
   unread: number;
   appointments: DayAppointment[];
-  kpis: { total: number; visits: number; bookings: number; closed: number };
+  /** leadId ← نص آخر متابعة (LeadRow.lastNote) — للدعوة والكاروسيل. */
+  notes: Record<string, string | null>;
+  /** مواعيد اليوم التي سُجّلت لعميلها متابعة اليوم — الدائرة والملخص. */
+  doneCount: number;
+  /** «المتعثر»: فات وقته بلا إنجاز. */
+  lateCount: number;
+  doneLeadIds: string[];
+  /** المتابعات القديمة المتراكمة (فائتة ما قبل اليوم). */
+  backlogCount: number;
   waiting: WaitingLead[];
   recent: MyRecentFollowUp[];
   funnel: { stage: LeadStage; count: number }[];
+  totalClients: number;
+  falLicense: string | null;
 }) {
   const now = new Date();
   const shown = funnel.filter((f) => f.count > 0);
   const maxCount = Math.max(...shown.map((f) => f.count), 1);
-  const waitingShown = waiting.slice(0, 2);
+  const waitingShown = waiting.slice(0, 3);
+  // «التالي بعد Z د» — أول موعد قادم لعميل لم تُنجز متابعته.
+  const doneSet = new Set(doneLeadIds);
+  const next = appointments.find((a) => a.at.getTime() > now.getTime() && !doneSet.has(a.leadId));
+  const nextMin = next ? Math.max(1, Math.round((next.at.getTime() - now.getTime()) / 60_000)) : null;
+  // «X باليوم» لتصفية المتراكمة خلال ١٤ يومًا.
+  const perDay = backlogCount > 0 ? Math.max(1, Math.ceil(backlogCount / 14)) : 0;
 
   return (
-    <div className="m-screen flex flex-col" style={{ gap: 18 }}>
-      {/* ===== ١) الترويسة ===== */}
-      <header className="m-rise flex items-start justify-between" style={{ padding: "0 2px" }}>
-        <div className="min-w-0">
-          <div className="truncate" style={{ fontSize: 24, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>
-            مرحبًا {firstName}
+    <div className="m-screen flex flex-col">
+      {/* ===== التوب بار اللاصق ===== */}
+      <DiwanTopbar companyName={companyName} unread={unread} />
+
+      {/* ===== الترويسة المدمجة `.head` ===== */}
+      <header className="m-rise flex items-center" style={{ padding: "20px 2px 0", gap: 16 }}>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center" style={{ gap: 9 }}>
+            <h1 className="truncate" style={{ fontSize: 19, fontWeight: 500, letterSpacing: "-0.01em", color: MOBILE_COLORS.textPrimary }}>
+              {greeting(now)}، {firstName}
+            </h1>
+            <AttendanceBadge />
           </div>
-          <div style={{ fontSize: 13, color: MOBILE_COLORS.textSecondary, marginTop: 5 }}>
-            عندك{" "}
-            <span style={{ fontWeight: 800, color: MOBILE_COLORS.gold }}>
-              {toArabicDigits(appointments.length)} {appointments.length === 1 ? "موعد" : appointments.length === 2 ? "موعدين" : "مواعيد"}
-            </span>{" "}
-            اليوم
+          <div style={{ fontSize: 11.5, color: MOBILE_COLORS.textSecondary, marginTop: 6 }}>{dateLabel(now)}</div>
+          <div style={{ fontSize: 11.5, color: MOBILE_COLORS.textSecondary, marginTop: 3 }}>
+            أنجزت <b style={{ ...ZAIN, fontWeight: 600, color: MOBILE_COLORS.gold }}>{toArabicDigits(doneCount)}</b>
+            {lateCount > 0 && (
+              <>
+                {" "}· متعثر <span style={{ ...ZAIN, fontWeight: 600, color: MOBILE_COLORS.dwAmber }}>{toArabicDigits(lateCount)}</span>
+              </>
+            )}
+            {nextMin !== null && (
+              <>
+                {" "}· التالي بعد <b style={{ ...ZAIN, fontWeight: 600, color: MOBILE_COLORS.gold }}>{toArabicDigits(nextMin)}</b> د
+              </>
+            )}
           </div>
         </div>
-        {/* ثيم · بحث · جرس بشارة العدد — المكوّن القائم (قرار ٥: تبقى الثلاثة) */}
-        <MobileHeaderActions unread={unread} />
+        <div className="m-rise">
+          <DiwanDial done={doneCount} total={appointments.length} />
+        </div>
       </header>
 
-      {/* ===== ٢) البانر المثبّت «موعدك القادم» — يظهر فقط داخل نافذته الزمنية ===== */}
-      <NextAppointmentBanner appointments={appointments} />
+      {/* ===== بطاقة الدوام `.attWrap` — margin-top 18 (المرساة لزر الكبسولة) ===== */}
+      <div id="att-card" className="m-rise" style={{ marginTop: 18, animationDelay: "60ms" }}>
+        <AttendanceCard theme="mobile" />
+      </div>
 
-      {/* ===== ٢.١) تسجيل الدوام — بصمة جغرافية بقراءة لحظة الضغط ===== */}
-      <AttendanceCard theme="mobile" />
+      {/* ===== الموعد القادم `.invite` ===== */}
+      <DiwanInvite appointments={appointments} notes={notes} />
 
-      {/* ===== ٣) المربعات الأربعة ===== */}
-      <EmployeeKpis total={kpis.total} visits={kpis.visits} bookings={kpis.bookings} closed={kpis.closed} />
+      {/* ===== متابعات اليوم `.caroz` ===== */}
+      <SecH title="متابعات اليوم" all="القائمة الكاملة" href="/m/today" />
+      <DiwanCaroz appointments={appointments} notes={notes} doneLeadIds={doneLeadIds} />
 
-      {/* ===== ٤) ترس «مواعيد اليوم» ===== */}
-      <section className="m-rise flex flex-col" style={{ gap: 11, animationDelay: "180ms" }}>
-        <SectionHead title="مواعيد اليوم" bar={MOBILE_COLORS.gold} />
-        {appointments.length === 0 ? (
-          <div
-            className="flex flex-col items-center"
+      {/* ===== المتراكمة `.backlog` ===== */}
+      {backlogCount > 0 && (
+        <div
+          className="m-rise flex items-center"
+          style={{
+            boxSizing: "border-box", gap: 13, padding: "14px 15px", marginTop: 12,
+            background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.hair}`, borderRadius: 20,
+          }}
+        >
+          <div className="flex-none" style={{ ...ZAIN, fontSize: 25, fontWeight: 800, lineHeight: 1, color: MOBILE_COLORS.dwAmber }}>
+            {toArabicDigits(backlogCount)}
+          </div>
+          <div className="flex-1">
+            <h4 style={{ fontSize: 12.5, fontWeight: 600, color: MOBILE_COLORS.textPrimary }}>متابعات قديمة تنتظر التصفية</h4>
+            <p style={{ fontSize: 11, color: MOBILE_COLORS.textSecondary, marginTop: 3, lineHeight: 1.6 }}>
+              <span style={ZAIN}>{toArabicDigits(perDay)}</span> باليوم — تتخلص منها خلال <span style={ZAIN}>{toArabicDigits(14)}</span> يوم
+            </p>
+          </div>
+          <Link
+            href="/m/today"
+            className="m-press flex-none"
             style={{
-              boxSizing: "border-box", gap: 6, borderRadius: 16, padding: "26px 14px",
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
+              boxSizing: "border-box", color: MOBILE_COLORS.dwAmber, borderRadius: 10, padding: "9px 12px",
+              fontSize: 11, fontWeight: 600, background: MOBILE_COLORS.sheet,
             }}
           >
-            <span style={{ fontSize: 22 }} aria-hidden>🎉</span>
-            <span style={{ fontSize: 13.5, color: MOBILE_COLORS.textSecondary }}>ما عندك مواعيد اليوم</span>
-          </div>
-        ) : (
-          <AppointmentsWheel appointments={appointments} />
-        )}
-      </section>
-
-      {/* ===== ٥) عملاء ينتظرون تواصلك ===== */}
-      {waiting.length > 0 && (
-        <section className="m-rise flex flex-col" style={{ gap: 10, animationDelay: "250ms" }}>
-          <SectionHead
-            title="عملاء ينتظرون تواصلك"
-            bar={MOBILE_COLORS.sky}
-            counter={`${toArabicDigits(waiting.length)} ${waiting.length === 1 ? "عميل" : "عملاء"}`}
-          />
-          {waitingShown.map((l) => (
-            <div
-              key={l.id}
-              className="relative overflow-hidden"
-              style={{
-                boxSizing: "border-box",
-                background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-                borderRadius: 16, padding: "12px 14px",
-              }}
-            >
-              <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 10, bottom: 10, width: 4, borderRadius: 3, background: MOBILE_COLORS.sky, boxShadow: `0 0 12px ${MOBILE_COLORS.sky}` }} />
-              <div className="flex items-center" style={{ gap: 10 }}>
-                <span
-                  className="flex flex-none items-center justify-center"
-                  style={{ width: 46, height: 46, borderRadius: 23, fontSize: 15, fontWeight: 700, background: MOBILE_COLORS.skyBg, color: MOBILE_COLORS.sky }}
-                >
-                  {avatarInitials(l.name)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate" style={{ fontSize: 16, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>{l.name}</div>
-                  <div className="truncate" style={{ fontSize: 12, color: MOBILE_COLORS.textSecondary, marginTop: 3 }}>
-                    ✨ جديد من {channelLabel(l.channel)}
-                  </div>
-                </div>
-                <span
-                  className="flex-none"
-                  style={{
-                    boxSizing: "border-box", borderRadius: 8, padding: "4px 9px",
-                    fontSize: 10.5, fontWeight: 700, background: MOBILE_COLORS.skyBg, color: MOBILE_COLORS.sky,
-                  }}
-                >
-                  قبل {l.assignedAt ? elapsedLabel(l.assignedAt, now) : `${toArabicDigits(l.daysWaiting)} يوم`}
-                </span>
-              </div>
-              <div className="flex" style={{ gap: 8, marginTop: 11 }}>
-                <a
-                  href={`tel:${l.phone}`}
-                  className="m-press flex flex-1 items-center justify-center"
-                  style={{ boxSizing: "border-box", height: 40, borderRadius: 11, border: "none", background: MOBILE_COLORS.sky, color: MOBILE_COLORS.bg, fontSize: 13, fontWeight: 700, gap: 5 }}
-                >
-                  📞 اتصال
-                </a>
-                <a
-                  href={`https://wa.me/${waPhone(l.phone)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="m-press flex flex-1 items-center justify-center"
-                  style={{ boxSizing: "border-box", height: 40, borderRadius: 11, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textPrimary, fontSize: 13, fontWeight: 600, gap: 5 }}
-                >
-                  💬 واتساب
-                </a>
-                <Link
-                  href={`/m/leads/${l.id}`}
-                  aria-label={`ملف العميل ${l.name}`}
-                  className="m-press flex flex-none items-center justify-center"
-                  style={{ boxSizing: "border-box", width: 44, height: 40, borderRadius: 11, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 15 }}
-                >
-                  ←
-                </Link>
-              </div>
-            </div>
-          ))}
-          {waiting.length > waitingShown.length && (
-            <Link
-              href="/m/leads?stages=NEW"
-              className="m-press flex items-center justify-center"
-              style={{
-                boxSizing: "border-box", minHeight: 44, borderRadius: 13,
-                border: `1px dashed ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary,
-                fontSize: 13, fontWeight: 600,
-              }}
-            >
-              عرض الكل ({toArabicDigits(waiting.length)}) ←
-            </Link>
-          )}
-        </section>
+            ابدأ التصفية
+          </Link>
+        </div>
       )}
 
-      {/* ===== ٦) سجل متابعاتي ===== */}
+      {/* ===== ينتظرون أول تواصل `.wrow` ===== */}
+      {waiting.length > 0 && (
+        <>
+          <SecH title="ينتظرون أول تواصل" all={`${toArabicDigits(waiting.length)} ${waiting.length === 1 ? "عميل" : "عملاء"}`} href="/m/leads?stages=NEW" />
+          <div className="m-rise overflow-hidden" style={{ background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.hair}`, borderRadius: 20 }}>
+            {waitingShown.map((l, i) => {
+              const hot = l.assignedAt !== null && now.getTime() - l.assignedAt.getTime() < 60 * 60_000;
+              return (
+                <div
+                  key={l.id}
+                  className="flex items-center"
+                  style={{
+                    boxSizing: "border-box", gap: 11, padding: "11px 13px",
+                    borderTop: i === 0 ? "none" : `1px solid ${MOBILE_COLORS.hair}`,
+                  }}
+                >
+                  <span
+                    className="flex flex-none items-center justify-center"
+                    style={{
+                      ...ZAIN, width: 36, height: 36, borderRadius: 12, fontSize: 13, fontWeight: 700,
+                      background: MOBILE_COLORS.sheet, color: MOBILE_COLORS.textSecondary,
+                    }}
+                  >
+                    {avatarInitials(l.name)}
+                  </span>
+                  <Link href={`/m/leads/${l.id}`} className="min-w-0 flex-1" style={{ fontSize: 12.5, fontWeight: 600, color: MOBILE_COLORS.textPrimary }}>
+                    <span className="block truncate">{l.name}</span>
+                    <small className="block truncate" style={{ fontSize: 10.5, fontWeight: 400, color: MOBILE_COLORS.textMuted, marginTop: 2 }}>
+                      {channelLabel(l.channel)}
+                    </small>
+                  </Link>
+                  <span className="flex-none" style={{ fontSize: 10, fontWeight: 600, color: hot ? MOBILE_COLORS.dwAmber : MOBILE_COLORS.textMuted }}>
+                    قبل {l.assignedAt ? elapsedLabel(l.assignedAt, now) : `${toArabicDigits(l.daysWaiting)} يوم`}
+                  </span>
+                  <a
+                    href={`tel:${l.phone}`}
+                    aria-label={`اتصال بـ${l.name}`}
+                    className="m-press flex flex-none items-center justify-center"
+                    style={{
+                      boxSizing: "border-box", width: 33, height: 33, borderRadius: 10,
+                      background: MOBILE_COLORS.sheet, color: MOBILE_COLORS.dwBlue,
+                    }}
+                  >
+                    <Phone size={14} strokeWidth={1.7} aria-hidden />
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* ===== سجل متابعاتي `.log` ===== */}
       {recent.length > 0 && (
-        <section className="m-rise flex flex-col" style={{ gap: 10, animationDelay: "320ms" }}>
-          <SectionHead title="سجل متابعاتي" bar={MOBILE_COLORS.mint} counter={`آخر ${toArabicDigits(recent.length)}`} />
-          <div
-            style={{
-              boxSizing: "border-box",
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-              borderRadius: 16, padding: "4px 14px",
-            }}
-          >
+        <>
+          <SecH title="سجل متابعاتي" all="الكل" href="/m/today" />
+          <div className="m-rise" style={{ background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.hair}`, borderRadius: 20, padding: "2px 14px" }}>
             {recent.map((r, i) => (
               <Link
                 key={r.id}
                 href={`/m/leads/${r.leadId}`}
                 className="flex items-center"
                 style={{
-                  boxSizing: "border-box", gap: 9, minHeight: 46,
-                  borderBottom: i === recent.length - 1 ? "none" : `1px solid ${MOBILE_COLORS.line3}`,
+                  boxSizing: "border-box", gap: 10, padding: "10px 0", fontSize: 11.5,
+                  borderTop: i === 0 ? "none" : `1px solid ${MOBILE_COLORS.hair}`,
                 }}
               >
-                <span
-                  className="flex-none"
-                  style={{ width: 8, height: 8, borderRadius: 5, background: logTone(r.result), boxShadow: `0 0 9px ${logTone(r.result)}` }}
-                />
-                <span className="min-w-0 flex-1 truncate" style={{ fontSize: 13.5, color: MOBILE_COLORS.textSecondary }}>
-                  <span style={{ fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>{r.leadName}</span>
+                <span className="flex-none" style={{ width: 6, height: 6, borderRadius: "50%", opacity: 0.8, background: logTone(r.result) }} />
+                <span className="min-w-0 flex-1 truncate" style={{ color: MOBILE_COLORS.textSecondary }}>
+                  <b style={{ fontWeight: 600, color: MOBILE_COLORS.textPrimary }}>{r.leadName}</b>
                   {" — "}
                   {followUpResultLabels[r.result]}
                 </span>
-                <span className="flex-none whitespace-nowrap" style={{ fontSize: 10.5, color: MOBILE_COLORS.textMuted }}>
+                <span className="flex-none" style={{ fontSize: 9.5, color: MOBILE_COLORS.textMuted }}>
                   قبل {elapsedLabel(r.createdAt, now)}
                 </span>
               </Link>
             ))}
           </div>
-        </section>
+        </>
       )}
 
-      {/* ===== ٧) قمع عملائي ===== */}
+      {/* ===== قمع عملائي `.fun` ===== */}
       {shown.length > 0 && (
-        <section className="m-rise flex flex-col" style={{ gap: 11, animationDelay: "390ms" }}>
-          <SectionHead title="قمع عملائي" bar={MOBILE_COLORS.gold} />
-          <div
-            className="flex flex-col"
-            style={{
-              boxSizing: "border-box", gap: 9,
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-              borderRadius: 16, padding: "13px 14px",
-            }}
-          >
-            {shown.map((f, i) => (
-              <div key={f.stage} className="flex items-center" style={{ gap: 9 }}>
-                <span className="flex-none truncate text-right" style={{ width: 74, fontSize: 12, fontWeight: 600, color: STAGE_HEX[f.stage] }}>
+        <>
+          <SecH title="قمع عملائي" all={`${toArabicDigits(totalClients)} عميل`} href="/m/leads" />
+          <div className="m-rise" style={{ background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.hair}`, borderRadius: 20, padding: "14px 15px" }}>
+            {shown.map((f) => (
+              <div key={f.stage} className="flex items-center" style={{ gap: 10, padding: "4.5px 0" }}>
+                <span className="flex-none truncate" style={{ width: 80, fontSize: 11, color: MOBILE_COLORS.textSecondary }}>
                   {stageLabels[f.stage]}
                 </span>
-                <div className="flex-1 overflow-hidden" style={{ height: 28, borderRadius: 9, background: MOBILE_COLORS.line2 }}>
+                <div className="flex-1 overflow-hidden" style={{ height: 5, borderRadius: 4, background: MOBILE_COLORS.sheet }}>
                   <div
-                    className="m-fillx flex items-center justify-end"
                     style={{
-                      boxSizing: "border-box",
-                      height: "100%", borderRadius: 9, paddingInline: 8,
-                      width: `${Math.max((f.count / maxCount) * 100, 12)}%`,
+                      height: "100%", borderRadius: 4, opacity: 0.75,
+                      width: `${Math.max((f.count / maxCount) * 100, 3)}%`,
+                      /* ألوان المراحل: STAGE_HEX المصدر الوحيد (قاعدة المشروع — تتقدم على لوحة المرجع) */
                       background: STAGE_HEX[f.stage],
-                      animationDelay: `${i * 70}ms`, animationDuration: "1s",
+                      transition: "width .7s cubic-bezier(.23,1,.32,1)",
                     }}
-                  >
-                    <span style={{ ...ZAIN, fontSize: 13.5, fontWeight: 800, color: MOBILE_COLORS.bg }}>
-                      {toArabicDigits(f.count)}
-                    </span>
-                  </div>
+                  />
                 </div>
+                <span className="flex-none" style={{ ...ZAIN, width: 32, fontSize: 12, fontWeight: 700, color: MOBILE_COLORS.textSecondary }}>
+                  {toArabicDigits(f.count)}
+                </span>
               </div>
             ))}
           </div>
-        </section>
+        </>
+      )}
+
+      {/* ===== الخط الخاتم + سطر فال ===== */}
+      <div aria-hidden style={{ height: 1, margin: "24px 0 0", background: `linear-gradient(90deg, transparent, ${MOBILE_COLORS.hair}, transparent)` }} />
+      {falLicense && (
+        <div className="text-center" style={{ margin: "26px 0 0", fontSize: 10, color: MOBILE_COLORS.textMuted }}>
+          ترخيص فال (REGA) <span style={ZAIN}>{toArabicDigits(falLicense)}</span>
+        </div>
       )}
     </div>
   );

@@ -68,6 +68,34 @@
   --m-sky-bg: #12253f;
   --m-amber: #e8a54d; /* كهرماني */
   --m-amber-bg: #2f2410;
+
+  /* ===== توكنز «الديوان» (رئيسية الموظف) — مشتقة من ذهبي التطبيق #cba45e لا من ذهبي المرجع ===== */
+  --m-hair: rgba(237, 237, 239, 0.06); /* حد شعري — العمق بلا drop-shadow */
+  --m-acc-dim: rgba(203, 164, 94, 0.1);
+  --m-acc-a20: rgba(203, 164, 94, 0.2);
+  --m-acc-a32: rgba(203, 164, 94, 0.32);
+  --m-acc-glow: rgba(203, 164, 94, 0.12);
+  --m-grad-a: #f0dfb6; /* التدرّج الذهبي الثلاثي — رقم الدائرة */
+  --m-grad-b: #cba45e;
+  --m-grad-c: #8a6b30;
+  --m-nav-bg: rgba(14, 14, 16, 0.85); /* زجاج التوب بار المموّه */
+  /* واتساب: الأخضر الرسمي — قرار هوية معتمد، ثابت في الثيمين */
+  --m-wa: #25d366;
+
+  /* ===== لوحة الديوان غير الذهبية — حرفية من المرجع (قرار المطابقة: الذهبي وحده من توكنز التطبيق) ===== */
+  --m-dw-green: #7bc8a4;
+  --m-dw-green-d: #5fa383; /* طرف تدرّج الزر الأخضر */
+  --m-dw-green-dim: rgba(123, 200, 164, 0.14);
+  --m-dw-green-a32: rgba(123, 200, 164, 0.42);
+  --m-dw-amber: #e0a95e;
+  --m-dw-amber-dim: rgba(224, 169, 94, 0.14);
+  --m-dw-sky: #7fc4d0; /* سماوي المرجع (cyan/sky موحّدان فيه) */
+  --m-dw-sky-dim: rgba(127, 196, 208, 0.14);
+  --m-dw-blue: #8aacf6;
+  --m-dw-purple: #b3a4e6;
+  --m-dw-purple-dim: rgba(179, 164, 230, 0.14);
+  --m-dw-red: #e88f9b;
+  --m-dw-red-dim: rgba(232, 143, 155, 0.14);
 }
 
 /*
@@ -126,6 +154,33 @@
   --m-sky-bg: #e8f0fb;
   --m-amber: #a06c1c;
   --m-amber-bg: #f7ecd9;
+
+  /* ===== توكنز «الديوان» النهارية — مشتقة من الذهبي النهاري #8f6b1f ===== */
+  --m-hair: rgba(23, 23, 26, 0.08);
+  --m-acc-dim: rgba(143, 107, 31, 0.08);
+  --m-acc-a20: rgba(143, 107, 31, 0.22);
+  --m-acc-a32: rgba(143, 107, 31, 0.34);
+  --m-acc-glow: rgba(143, 107, 31, 0.1);
+  --m-grad-a: #b28e42;
+  --m-grad-b: #8f6b1f;
+  --m-grad-c: #6a4e15;
+  --m-nav-bg: rgba(255, 255, 255, 0.88);
+  --m-wa: #25d366;
+
+  /* ===== لوحة الديوان غير الذهبية — النهارية حرفيًا من body.lt بالمرجع ===== */
+  --m-dw-green: #35876a;
+  --m-dw-green-d: #2e7358;
+  --m-dw-green-dim: rgba(53, 135, 106, 0.12);
+  --m-dw-green-a32: rgba(53, 135, 106, 0.4);
+  --m-dw-amber: #a87728;
+  --m-dw-amber-dim: rgba(168, 119, 40, 0.12);
+  --m-dw-sky: #3d808c;
+  --m-dw-sky-dim: rgba(61, 128, 140, 0.12);
+  --m-dw-blue: #4a6fb5;
+  --m-dw-purple: #7566a8;
+  --m-dw-purple-dim: rgba(117, 102, 168, 0.12);
+  --m-dw-red: #b25b68;
+  --m-dw-red-dim: rgba(178, 91, 104, 0.12);
 }
 
 /* ===== keyframes النموذج (نصًّا كما هي) ===== */
@@ -171,6 +226,20 @@
   0% { transform: translateY(14px) scale(1.12, 0.78); }
   55% { transform: translateY(-4px) scale(0.94, 1.08); }
   100% { transform: translateY(0) scale(1, 1); }
+}
+/* ===== keyframes الديوان (دائرة التقدّم) ===== */
+/* الترس المنقّط الدوّار حول الدائرة */
+@keyframes m-gearspin {
+  to { transform: rotate(360deg); }
+}
+/* «تنفّس» توهج الدائرة */
+@keyframes m-dialbreathe {
+  0%, 100% { box-shadow: 0 0 34px var(--m-acc-glow); }
+  50% { box-shadow: 0 0 52px var(--m-acc-glow); }
+}
+/* امتلاء الحلقة — from فقط، والقيمة النهائية من style السطري (نمط m-fillX نفسه) */
+@keyframes m-ringfill {
+  from { stroke-dashoffset: 307.9; }
 }
 
 /* ===== أصناف التطبيق ===== */
@@ -284,6 +353,47 @@
   animation: m-breathe 2.6s ease-in-out infinite;
 }
 
+/* ===== أصناف الديوان ===== */
+.m-gearspin { animation: m-gearspin 26s linear infinite; }
+.m-dialbreathe { animation: m-dialbreathe 5.5s ease-in-out infinite; }
+.m-ringfill {
+  animation: m-ringfill 1.5s cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation-delay: 0.4s;
+}
+
+/* نبضة زر الدوام الحي — حلقة خضراء تتمدد وتتلاشى */
+@keyframes m-fabring {
+  0% { transform: scale(0.9); opacity: 0; }
+  25% { opacity: 0.5; }
+  70%, 100% { transform: scale(1.16); opacity: 0; }
+}
+.m-fab-live::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--m-dw-green-a32);
+  opacity: 0;
+  animation: m-fabring 3s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  pointer-events: none;
+}
+
+/* لوحة الدوام المنبثقة — خلفية تتلاشى ولوحة تتوسّع من المنتصف */
+@keyframes m-panelback { from { opacity: 0; } }
+@keyframes m-panelin {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.m-panelback { animation: m-panelback 0.32s ease both; }
+.m-panelin { animation: m-panelin 0.4s cubic-bezier(0.23, 1, 0.32, 1) both; }
+
+/* توست التراجع العائم — يصعد من تحت */
+@keyframes m-toastin {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.m-toastin { animation: m-toastin 0.35s cubic-bezier(0.23, 1, 0.32, 1) both; }
+
 /* ===== شريط الزئبق 💧 ===== */
 /* القطرة والهالة — انزلاق أفقي مرن بين الخلايا */
 .m-goo-drop {
@@ -317,7 +427,7 @@
 
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
-  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx, .m-breathe, .m-goo-squish { animation: none; }
+  .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx, .m-breathe, .m-goo-squish, .m-gearspin, .m-dialbreathe, .m-ringfill, .m-fab-live::after, .m-panelback, .m-panelin, .m-toastin { animation: none; }
   .m-iconbtn, .m-urgency, .m-leadcard, .m-press, .m-goo-drop, .m-goo-icon { transition: none; }
   .m-press:active { transform: none; }
 }
