@@ -121,6 +121,7 @@ export function AttendanceEmployeeFile({ file }: { file: EmployeeFile }) {
       <ExceptionsSection userId={file.user.id} exceptions={file.exceptions} />
       <VerificationsSection verifications={file.verifications} />
       <RestoreSection userId={file.user.id} />
+      <SessionRepairSection sessions={file.repairSessions} />
       <SilentChecksSection checks={file.silentChecks} />
       <AuditsSection audits={file.audits} />
     </div>
@@ -149,6 +150,9 @@ function ScheduleCard({ userId, schedule }: { userId: string; schedule: Employee
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [startTime, setStartTime] = useState(minutesToTime(schedule.startMinutes));
+  const [windowEnd, setWindowEnd] = useState(
+    schedule.startWindowEndMinutes !== null ? minutesToTime(schedule.startWindowEndMinutes) : "",
+  );
   const [hours, setHours] = useState(String(Math.round(schedule.shiftMinutes / 60)));
   const [error, setError] = useState<string | null>(null);
 
@@ -160,11 +164,17 @@ function ScheduleCard({ userId, schedule }: { userId: string; schedule: Employee
       setError("تأكد من وقت البداية وعدد الساعات (من ١ إلى ١٦)");
       return;
     }
+    // النافذة المرنة اختيارية — فارغة = وقت واحد (سلوك قديم).
+    const w = windowEnd ? timeToMinutes(windowEnd) : null;
+    if (windowEnd && (w === null || w <= s)) {
+      setError("نهاية نافذة البداية لازم تكون بعد بدايتها");
+      return;
+    }
     start(async () => {
       const res = await fetch(`/api/attendance/schedule/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startMinutes: s, shiftMinutes: Math.round(h * 60) }),
+        body: JSON.stringify({ startMinutes: s, shiftMinutes: Math.round(h * 60), startWindowEndMinutes: w }),
       });
       const data = (await res.json()) as { ok: boolean; error?: string };
       if (!data.ok) {
@@ -196,19 +206,41 @@ function ScheduleCard({ userId, schedule }: { userId: string; schedule: Employee
 
       {!editing ? (
         <p className="mt-2.5 text-sm text-muted-foreground">
-          يبدأ <b className="font-bold text-foreground">{minuteLabel(schedule.startMinutes, toArabicDigits)}</b> —{" "}
-          <b className="font-bold text-foreground">{toArabicDigits(Math.round(schedule.shiftMinutes / 60))} ساعات</b>
+          {schedule.startWindowEndMinutes !== null ? (
+            <>
+              يبدأ بحرية بين <b className="font-bold text-foreground">{minuteLabel(schedule.startMinutes, toArabicDigits)}</b> و
+              <b className="font-bold text-foreground">{minuteLabel(schedule.startWindowEndMinutes, toArabicDigits)}</b>
+            </>
+          ) : (
+            <>
+              يبدأ <b className="font-bold text-foreground">{minuteLabel(schedule.startMinutes, toArabicDigits)}</b>
+            </>
+          )}{" "}
+          — <b className="font-bold text-foreground">{toArabicDigits(Math.round(schedule.shiftMinutes / 60))} ساعات</b>
+          {schedule.startWindowEndMinutes !== null && (
+            <span className="mr-2 text-xs">(التأخير بعد نهاية النافذة، والانصراف من بدايته الفعلية)</span>
+          )}
           {schedule.isDefault && <span className="mr-2 text-xs">(الافتراضي — ما انضبط له دوام بعد)</span>}
         </p>
       ) : (
         <div className="mt-3 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <label className="flex flex-col gap-1.5">
               <span className="text-xs text-muted-foreground">بداية دوامه</span>
               <input
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
+                dir="ltr"
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">نهاية نافذة البداية — اختياري</span>
+              <input
+                type="time"
+                value={windowEnd}
+                onChange={(e) => setWindowEnd(e.target.value)}
                 dir="ltr"
                 className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
               />
@@ -696,6 +728,197 @@ function RestoreSection({ userId }: { userId: string }) {
           >
             {busy ? "جاري الاستعادة…" : "استعادة الوقت"}
           </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * أداة تصحيح الجلسات (م٢ الثقة المتجددة) — قفل العالقة / تعديل اللحظات /
+ * الإبطال المنطقي. كلها بسبب إلزامي وتُدوَّن في سجل التغييرات تلقائيًا.
+ */
+function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSessions"] }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"CLOSE" | "EDIT" | "VOID">("CLOSE");
+  const [atLocal, setAtLocal] = useState("");
+  const [startLocal, setStartLocal] = useState("");
+  const [endLocal, setEndLocal] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  if (sessions.length === 0) return null;
+  const stuck = sessions.filter((s) => s.open && !s.voided);
+
+  const begin = (s: EmployeeFile["repairSessions"][number], m: "CLOSE" | "EDIT" | "VOID") => {
+    setActiveId(s.id);
+    setMode(m);
+    setMsg(null);
+    setReason("");
+    setAtLocal(s.lastAliveLocal ?? "");
+    setStartLocal(s.startedLocal);
+    setEndLocal(s.endedLocal ?? "");
+  };
+
+  const submit = async (s: EmployeeFile["repairSessions"][number]) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const body: Record<string, unknown> = { op: mode, sessionId: s.id, reason };
+      if (mode === "CLOSE" && atLocal) body.atIso = atLocal;
+      if (mode === "EDIT") {
+        body.startIso = startLocal;
+        if (endLocal) body.endIso = endLocal;
+      }
+      const res = await fetch("/api/attendance/session-repair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string; workedMinutes?: number };
+      if (data.ok) {
+        setMsg({
+          ok: true,
+          text:
+            mode === "VOID"
+              ? "أُبطلت الجلسة — ما عادت تُحسب بالتقارير"
+              : `تم — الدقائق المعاد حسابها: ${hmLabel(data.workedMinutes ?? 0, toArabicDigits)}`,
+        });
+        setActiveId(null);
+        router.refresh();
+      } else {
+        setMsg({ ok: false, text: data.error ?? "ما نفذت العملية" });
+      }
+    } catch {
+      setMsg({ ok: false, text: "تعذّر الاتصال — حاول مرة ثانية" });
+    }
+    setBusy(false);
+  };
+
+  const inputCls =
+    "h-9 rounded-xl border border-input bg-background px-2.5 text-xs text-foreground outline-none focus:border-ring";
+
+  return (
+    <section className="rounded-2xl border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-3 text-right"
+      >
+        <h2 className="text-sm font-bold text-foreground">
+          تصحيح الجلسات
+          {stuck.length > 0 && (
+            <span className="mr-2 rounded-lg border border-warning/40 px-2 py-0.5 text-[11px] font-bold text-warning">
+              {toArabicDigits(stuck.length)} عالقة
+            </span>
+          )}
+        </h2>
+        <ChevronDown
+          aria-hidden
+          size={15}
+          strokeWidth={1.8}
+          className="text-muted-foreground"
+          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s" }}
+        />
+      </button>
+      {open && (
+        <div className="border-t border-border">
+          <p className="px-4 pt-3 text-xs text-muted-foreground">
+            قفل العالقة يقترح <b className="font-bold text-foreground">آخر إثبات حياة</b> (وللقديمة: آخر بصمة فعلية على
+            الخادم)، والتعديل يعيد حساب الدقائق آليًا دائمًا، والإبطال منطقي لا يحذف الصف — وكل عملية بسبب إلزامي في سجل
+            التغييرات.
+          </p>
+          <ul>
+            {sessions.map((s) => (
+              <li key={s.id} className="border-b border-border/60 px-4 py-3 last:border-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-foreground">
+                    <span className="font-bold">{s.startedText}</span>
+                    <span className="text-muted-foreground"> ← {s.endedText ?? "مفتوحة"}</span>
+                    {s.workedMinutes !== null && !s.open && (
+                      <span className="text-muted-foreground"> · {hmLabel(s.workedMinutes, toArabicDigits)}</span>
+                    )}
+                    {s.voided ? (
+                      <span className="mr-2 rounded-md border border-destructive/40 px-1.5 py-0.5 text-[10px] font-bold text-destructive">مُبطلة</span>
+                    ) : s.open ? (
+                      <span className="mr-2 rounded-md border border-warning/40 px-1.5 py-0.5 text-[10px] font-bold text-warning">عالقة الآن</span>
+                    ) : s.closedBy === "OWNER" ? (
+                      <span className="mr-2 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">قفلها المالك</span>
+                    ) : s.autoClosed ? (
+                      <span className="mr-2 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">أُقفلت آليًا</span>
+                    ) : null}
+                  </div>
+                  {!s.voided && (
+                    <div className="flex gap-1.5">
+                      {s.open && (
+                        <button type="button" onClick={() => begin(s, "CLOSE")} className="h-8 rounded-lg border border-warning/40 px-2.5 text-[11px] font-bold text-warning">
+                          قفل
+                        </button>
+                      )}
+                      <button type="button" onClick={() => begin(s, "EDIT")} className="h-8 rounded-lg border border-border px-2.5 text-[11px] font-bold text-foreground">
+                        تعديل
+                      </button>
+                      <button type="button" onClick={() => begin(s, "VOID")} className="h-8 rounded-lg border border-destructive/40 px-2.5 text-[11px] font-bold text-destructive">
+                        إبطال
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {activeId === s.id && (
+                  <div className="mt-3 space-y-3 rounded-xl border border-border bg-background/40 p-3">
+                    {mode === "CLOSE" && (
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          لحظة الإقفال {s.lastAliveText ? `— آخر إثبات حياة: ${s.lastAliveText}` : "— بلا إثباتات: الخادم يقترح آخر بصمة فعلية"}
+                        </span>
+                        <input type="datetime-local" value={atLocal} onChange={(e) => setAtLocal(e.target.value)} dir="ltr" className={inputCls} />
+                      </label>
+                    )}
+                    {mode === "EDIT" && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs text-muted-foreground">البداية</span>
+                          <input type="datetime-local" value={startLocal} onChange={(e) => setStartLocal(e.target.value)} dir="ltr" className={inputCls} />
+                        </label>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs text-muted-foreground">النهاية {s.open ? "— اتركها فارغة لتبقى مفتوحة" : ""}</span>
+                          <input type="datetime-local" value={endLocal} onChange={(e) => setEndLocal(e.target.value)} dir="ltr" className={inputCls} />
+                        </label>
+                      </div>
+                    )}
+                    {mode === "VOID" && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        الإبطال يخرج الجلسة من كل التقارير والإجماليات ويبقي صفّها موسومًا — للجلسات الخاطئة (بصمة
+                        اختبار/بالغلط). ما له تراجع من الواجهة.
+                      </p>
+                    )}
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-xs text-muted-foreground">السبب — إلزامي</span>
+                      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="جلسة عالقة بلا انصراف / بصمة خاطئة…" className={inputCls} />
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void submit(s)}
+                        disabled={busy || !reason.trim() || (mode === "EDIT" && !startLocal)}
+                        className="h-9 rounded-xl border border-border px-4 text-xs font-bold text-foreground disabled:opacity-50"
+                      >
+                        {busy ? "جاري التنفيذ…" : mode === "CLOSE" ? "قفل الجلسة" : mode === "EDIT" ? "حفظ التعديل" : "تأكيد الإبطال"}
+                      </button>
+                      <button type="button" onClick={() => setActiveId(null)} className="h-9 px-3 text-xs text-muted-foreground">
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          {msg && <p className={`px-4 pb-3 text-xs ${msg.ok ? "text-success" : "text-destructive"}`}>{msg.text}</p>}
         </div>
       )}
     </section>

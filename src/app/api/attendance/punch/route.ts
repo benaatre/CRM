@@ -231,6 +231,10 @@ export async function POST(req: Request) {
      * محطة «خارج النطاق» حمراء + إشعار للمالك. بقية الأنواع تُرفض كما كانت.
      */
     if (isLocationChange) {
+      // إثبات حياة فقط (v3) — بصمة خارج النطاق لا تجدد إثبات الموقع.
+      await prisma.attendanceSession
+        .updateMany({ where: { userId, endedAt: null }, data: { lastAliveAt: now } })
+        .catch(() => {});
       try {
         const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
         const targetName = chosenTarget?.name ?? candidates.find((l) => l.id === nearest?.id)?.name ?? null;
@@ -365,7 +369,11 @@ export async function POST(req: Request) {
 
     if (body.intent === AttendanceEventType.CHECK_IN) {
       const session = await tx.attendanceSession.create({
-        data: { userId, dayId: day!.id, checkInEventId: created.id, startedAt: now, wasLate: isLate },
+        // البصمة داخل النطاق بحكم الوصول هنا — إثباتا الحياة والموقع (v3) يبدآن معها.
+        data: {
+          userId, dayId: day!.id, checkInEventId: created.id, startedAt: now, wasLate: isLate,
+          lastAliveAt: now, lastZoneProofAt: now,
+        },
       });
 
       // أول حضور فقط يثبّت بداية اليوم وتأخيره — الاستئناف لا يمسّهما.
@@ -417,13 +425,23 @@ export async function POST(req: Request) {
       });
       await tx.attendanceSession.update({
         where: { id: openSession.id },
-        data: { checkOutEventId: created.id, endedAt: now, workedMinutes },
+        // الانصراف داخل النطاق — يختم الإثباتين ويوسم المُغلِق (v3).
+        data: {
+          checkOutEventId: created.id, endedAt: now, workedMinutes,
+          lastAliveAt: now, lastZoneProofAt: now, closedBy: "USER",
+        },
       });
       // انصرف — نداءات اليوم التي لم تُرسل بعد صارت بلا معنى.
       await tx.attendanceVerification.deleteMany({ where: { userId, status: "PENDING" } });
+    } else if (body.intent === AttendanceEventType.LOCATION_CHANGE && openSession) {
+      // تغيير موقع داخل النطاق = إثبات حياة وموقع (v3) — الجلسة نفسها لا تُمس عداهما.
+      await tx.attendanceSession.update({
+        where: { id: openSession.id },
+        data: { lastAliveAt: now, lastZoneProofAt: now },
+      });
     }
-    // تغيير الموقع (LOCATION_CHANGE) وزيارة المشروع التاريخية (PROJECT_IN/OUT):
-    // حدث فقط بلا لمس للجلسة — المحطات تُشتق من تسلسل الأحداث.
+    // زيارة المشروع التاريخية (PROJECT_IN/OUT): حدث فقط بلا لمس للجلسة —
+    // المحطات تُشتق من تسلسل الأحداث.
 
     return created;
   });

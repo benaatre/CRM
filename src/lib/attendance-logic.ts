@@ -29,7 +29,10 @@ export function parseWeekendDays(raw: string): Set<number> {
 }
 
 /** الشكل الأدنى لدوام الموظف المحدد — null يعني الافتراضي (٩:٠٠/٨ ساعات). */
-export type ScheduleLike = { startMinutes: number; shiftMinutes: number } | null | undefined;
+export type ScheduleLike =
+  | { startMinutes: number; shiftMinutes: number; startWindowEndMinutes?: number | null }
+  | null
+  | undefined;
 
 /** الشكل الأدنى للاستثناء كما تحتاجه الحسبة — نفس أسماء أعمدة Prisma. */
 export type ExceptionLike = {
@@ -52,8 +55,10 @@ export function exceptionCoversDay(ex: ExceptionLike, dayKey: string): boolean {
 
 /** دوام الموظف الفعّال ليوم معيّن بعد تطبيق استثناءات ذلك اليوم. */
 export type EffectiveDay = {
-  /** بداية دوامه المعلنة (دقائق من منتصف ليل الرياض) */
+  /** بداية دوامه المعلنة (دقائق من منتصف ليل الرياض) — مع النافذة: أولها */
   startMinutes: number;
+  /** نهاية نافذة البداية المرنة (الدوام الواقعي) — بلا نافذة تساوي startMinutes */
+  windowEndMinutes: number;
   /** هدف اليوم بالدقائق (MODIFIED_SHIFT يبدّله) */
   targetMinutes: number;
   /** بداية محاسبة التأخير — HOURS_EXCUSE يؤخّرها إلى excuseUntilMinutes */
@@ -79,7 +84,12 @@ export function effectiveDay(
 ): EffectiveDay {
   const startMinutes = schedule?.startMinutes ?? DEFAULT_START_MINUTES;
   let targetMinutes = schedule?.shiftMinutes ?? DEFAULT_SHIFT_MINUTES;
-  let accountStartMinutes = startMinutes;
+  /*
+   * النافذة المرنة (الدوام الواقعي — قرار ٢): التأخير لا يُحتسب إلا بعد نهاية
+   * نافذة البداية — البدء بأي لحظة داخلها حق مكفول بلا وسم. null = لا نافذة.
+   */
+  const windowEndMinutes = Math.max(startMinutes, schedule?.startWindowEndMinutes ?? startMinutes);
+  let accountStartMinutes = windowEndMinutes;
   let onLeave = false;
   let hasExcuse = false;
   let modifiedShift = false;
@@ -98,6 +108,7 @@ export function effectiveDay(
 
   return {
     startMinutes,
+    windowEndMinutes,
     targetMinutes,
     accountStartMinutes,
     isWeekend: weekend.has(dayOfWeek),

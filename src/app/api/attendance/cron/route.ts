@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isCronAuthorized } from "@/lib/cron-auth";
-import { dayStartKSA, ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
+import { DAY_MS, dayStartKSA, ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
 import { getAttendanceSettings } from "@/lib/data/attendance";
 import { activeWorkedMinutes, effectiveDay, minutesToDate, parseWeekendDays } from "@/lib/attendance-logic";
@@ -300,7 +300,8 @@ async function checkNoShows(now: Date, settings: Settings): Promise<number> {
       },
     }),
     prisma.attendanceSession.findMany({
-      where: { OR: [{ startedAt: { gte: dayStart } }, { endedAt: null }] },
+      // جلسة مُبطلة (SESSION_VOID) لا تعدّ حضورًا — «لم يداوم» يجب أن ينذر عنها.
+      where: { voided: false, OR: [{ startedAt: { gte: dayStart } }, { endedAt: null }] },
       select: { userId: true },
     }),
   ]);
@@ -465,6 +466,16 @@ async function remindPaused(now: Date): Promise<number> {
   return reminded;
 }
 
+/**
+ * ٦) تنظيف النبض الجغرافي (الثقة المتجددة): حذف الأقدم من ٦٠ يومًا — سياسة
+ * الاحتفاظ المعلنة في تعليق AttendancePulse. رخيصة عند عدم وجود شيء.
+ */
+async function cleanOldPulses(now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - 60 * DAY_MS);
+  const res = await prisma.attendancePulse.deleteMany({ where: { at: { lt: cutoff } } });
+  return res.count;
+}
+
 export async function POST(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ ok: false, error: "غير مصرّح" }, { status: 401 });
@@ -480,9 +491,10 @@ export async function POST(req: Request) {
     checkNoShows(now, settings),
     autoCloseForgotten(now, settings),
     remindPaused(now),
+    cleanOldPulses(now),
   ]);
-  const names = ["verifySent", "verifyMissed", "noShow", "autoClosed", "pauseReminders"] as const;
-  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, autoClosed: 0, pauseReminders: 0 };
+  const names = ["verifySent", "verifyMissed", "noShow", "autoClosed", "pauseReminders", "pulsesCleaned"] as const;
+  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, autoClosed: 0, pauseReminders: 0, pulsesCleaned: 0 };
   const failed: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") counts[names[i]] = r.value;

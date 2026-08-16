@@ -8,6 +8,7 @@ import { getMyAvailability } from "@/lib/actions/availability";
 import { Topbar } from "@/components/layout/topbar";
 import { SideRail, type RailItem } from "@/components/layout/side-rail";
 import { Heartbeat } from "@/components/layout/heartbeat";
+import { DecisionGate } from "@/components/attendance/decision-gate";
 import { FloatingAssistant } from "@/components/layout/floating-assistant";
 import { NotificationCenter } from "@/components/layout/notification-center";
 
@@ -51,6 +52,8 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-dvh">
       <Heartbeat />
+      {/* شاشة الحسم الإجبارية (الدوام الواقعي) — OWNER مستثنى خادميًا وfail-open. */}
+      <DecisionGate />
       <NotificationCenter />
       {/*
         الشريط الجانبي الزجاجي (RTL — يمين الشاشة) من ١٠٢٤ بكسل فقط؛ تحتها الدرج المنزلق.

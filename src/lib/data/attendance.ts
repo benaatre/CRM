@@ -76,7 +76,7 @@ export async function getMyAttendanceStatus(userId: string) {
 
   const [openSession, daySessions, todayEvents, eff, todayVerifs, day] = await Promise.all([
     prisma.attendanceSession.findFirst({
-      where: { userId, endedAt: null },
+      where: { userId, endedAt: null, voided: false },
       orderBy: { startedAt: "desc" },
     }),
     daySessionsOf(userId, todayKey),
@@ -267,7 +267,7 @@ export async function getAttendanceBoard() {
       orderBy: { name: "asc" },
     }),
     prisma.attendanceSession.findMany({
-      where: { OR: [{ startedAt: { gte: dayStart } }, { endedAt: null }] },
+      where: { voided: false, OR: [{ startedAt: { gte: dayStart } }, { endedAt: null }] },
       orderBy: { startedAt: "desc" },
     }),
     prisma.attendanceEvent.findMany({
@@ -320,6 +320,8 @@ export async function getScheduleFor(userId: string) {
   return {
     startMinutes: s?.startMinutes ?? DEFAULT_START_MINUTES,
     shiftMinutes: s?.shiftMinutes ?? DEFAULT_SHIFT_MINUTES,
+    // النافذة المرنة (الدوام الواقعي) — null = وقت واحد كالسابق.
+    startWindowEndMinutes: s?.startWindowEndMinutes ?? null,
     isDefault: !s,
   };
 }
@@ -380,7 +382,7 @@ export async function daySessionsOf(userId: string, dayKey: string) {
   const start = new Date(dayDateOf(dayKey).getTime() - 3 * 3_600_000);
   const end = new Date(start.getTime() + DAY_MS);
   return prisma.attendanceSession.findMany({
-    where: { userId, startedAt: { gte: start, lt: end } },
+    where: { userId, startedAt: { gte: start, lt: end }, voided: false },
     orderBy: { startedAt: "asc" },
   });
 }
@@ -485,7 +487,7 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
     }),
     // جلسات النافذة التاريخية كلها + أي جلسة مفتوحة (ولو بدأت قبلها)
     prisma.attendanceSession.findMany({
-      where: { OR: [{ startedAt: { gte: histStart } }, { endedAt: null }] },
+      where: { voided: false, OR: [{ startedAt: { gte: histStart } }, { endedAt: null }] },
       orderBy: { startedAt: "asc" },
     }),
     prisma.attendanceEvent.findMany({
@@ -836,7 +838,7 @@ async function getRangeBoard(fromKey: string, toKey: string) {
       orderBy: { name: "asc" },
     }),
     prisma.attendanceSession.findMany({
-      where: { startedAt: { gte: bounds.start, lt: bounds.end } },
+      where: { startedAt: { gte: bounds.start, lt: bounds.end }, voided: false },
       orderBy: { startedAt: "asc" },
     }),
     exceptionsOverlapping(undefined, fromKey, toKey),
@@ -1036,7 +1038,7 @@ export async function getEmployeeFile(userId: string, month: string) {
 
   const [sessions, events, exceptions, verifications, monthModes, monthDayRows, silentChecks, audits] = await Promise.all([
     prisma.attendanceSession.findMany({
-      where: { userId, startedAt: { gte: range.start, lt: range.end } },
+      where: { userId, startedAt: { gte: range.start, lt: range.end }, voided: false },
       orderBy: { startedAt: "asc" },
     }),
     prisma.attendanceEvent.findMany({
@@ -1137,12 +1139,43 @@ export async function getEmployeeFile(userId: string, month: string) {
     (await getAllLocations()).map((l) => [l.id, l.name] as const),
   );
 
+  /*
+   * جلسات الشهر لأداة التصحيح (م٢ الثقة المتجددة) — تشمل المُبطلة عمدًا
+   * (بخلاف استعلام الأيام أعلاه): المالك يحتاج يراها موسومة لا مخفية.
+   * datetime-local يحتاج «رياض محلي» — نزيح ٣ ساعات ونقصّ (قاعدة gregory الصريح).
+   */
+  const KSA_MS = 3 * 60 * 60_000;
+  const riyadhLocal = (d: Date) => new Date(d.getTime() + KSA_MS).toISOString().slice(0, 16);
+  const repairSessions = (
+    await prisma.attendanceSession.findMany({
+      where: { userId, startedAt: { gte: range.start, lt: range.end } },
+      orderBy: { startedAt: "desc" },
+      take: 80,
+    })
+  ).map((s) => ({
+    id: s.id,
+    dayKey: ksaDayKey(s.startedAt),
+    startedText: formatDateTime(s.startedAt),
+    startedLocal: riyadhLocal(s.startedAt),
+    endedText: s.endedAt ? formatTime(s.endedAt) : null,
+    endedLocal: s.endedAt ? riyadhLocal(s.endedAt) : null,
+    workedMinutes: s.workedMinutes,
+    open: s.endedAt === null,
+    autoClosed: s.autoClosed,
+    closedBy: s.closedBy,
+    voided: s.voided,
+    // الافتراض المعروض للقفل: آخر إثبات حياة — وللقديمة null تُحسم على الخادم بآخر حدث بصم.
+    lastAliveLocal: s.lastAliveAt ? riyadhLocal(s.lastAliveAt) : null,
+    lastAliveText: s.lastAliveAt ? formatDateTime(s.lastAliveAt) : null,
+  }));
+
   return {
     user: { id: user.id, name: user.name, role: user.role, active: user.active },
     month,
     schedule: {
       startMinutes: schedule?.startMinutes ?? DEFAULT_START_MINUTES,
       shiftMinutes: schedule?.shiftMinutes ?? DEFAULT_SHIFT_MINUTES,
+      startWindowEndMinutes: schedule?.startWindowEndMinutes ?? null,
       isDefault: !schedule,
     },
     stats: {
@@ -1155,6 +1188,8 @@ export async function getEmployeeFile(userId: string, month: string) {
       .filter((d) => d.status !== "WEEKEND")
       .map((d) => ({ ...d, ...(dayMetaByKey.get(d.key) ?? { unconfirmedMinutes: 0, autoEnded: false, mode: null, remoteAuthorizerLabel: null }) }))
       .reverse(),
+    // جلسات الشهر لأداة التصحيح — تشمل المُبطلة موسومة (للمالك فقط).
+    repairSessions,
     // الفحوص الصامتة — للمالك فقط (الصفحة خلف requireRole(OWNER)).
     silentChecks: silentChecks.map((c) => ({
       id: c.id,
@@ -1216,7 +1251,7 @@ export async function getTeamSummary(month: string) {
         orderBy: { name: "asc" },
       }),
       prisma.attendanceSession.findMany({
-        where: { startedAt: { gte: range.start, lt: range.end } },
+        where: { startedAt: { gte: range.start, lt: range.end }, voided: false },
         orderBy: { startedAt: "asc" },
       }),
       exceptionsOverlapping(undefined, `${month}-01`, monthLastDayKey(month)),

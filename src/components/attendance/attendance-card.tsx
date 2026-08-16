@@ -37,8 +37,8 @@ const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], display: "swap"
  * القراءة تحدث لحظة الحاجة فقط — لا تتبّع بالخلفية، والخادم يقرر كل شيء.
  */
 
-/** مفتاح إفصاح v2 — النص الجديد يشمل الفحص الصامت فيجب أن يراه الجميع مجددًا. */
-const CONSENT_KEY = "attendance-geo-consent-v2";
+/** مفتاح إفصاح v3 — النص الجديد يشمل النبض الجغرافي الدوري فيجب أن يراه الجميع مجددًا. */
+const CONSENT_KEY = "attendance-geo-consent-v3";
 
 type Intent = "CHECK_IN" | "CHECK_OUT" | "LOCATION_CHANGE";
 
@@ -570,10 +570,12 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
               <div className="flex gap-2">
                 <ShieldCheck aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--m-text2)", flex: "none", marginTop: 2 }} />
                 <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--m-text2)" }}>
-                  نظام الدوام يقرأ موقعك <b className="font-bold" style={{ color: "var(--m-text1)" }}>فقط</b> عند تسجيل حضورك أو
-                  انصرافك، وعند تغيير موقعك، وعند فتحك التطبيق أثناء دوامك — للتأكد أنك في موقع العمل.{" "}
+                  نظام الدوام يقرأ موقعك في حالات محددة: عند تسجيل حضورك وانصرافك، وعند تغيير موقعك،
+                  وعند فتحك التطبيق أثناء دوامك، وقراءة دورية أثناء دوامك{" "}
+                  <b className="font-bold" style={{ color: "var(--m-text1)" }}>ما دام التطبيق مفتوحًا</b> — للتأكد أنك في
+                  موقع العمل.{" "}
                   <b className="font-bold" style={{ color: "var(--m-text1)" }}>
-                    لا نتتبع موقعك في الخلفية، ولا خارج أوقات دوامك، ولا والتطبيق مغلق.
+                    القراءة الدورية تتوقف لحظة إغلاق التطبيق، ولا تعمل خارج أوقات دوامك، ولا نتتبع موقعك في الخلفية أبدًا.
                   </b>{" "}
                   تُستخدم البيانات حصريًا لإثبات الحضور، ولك حق الاطلاع عليها وطلب تصحيحها.
                 </p>
@@ -831,16 +833,17 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
         )}
       </div>
 
-      {/* ===== الموافقة الأولى — شاشة الإفصاح الكاملة (v2) ===== */}
+      {/* ===== الموافقة الأولى — شاشة الإفصاح الكاملة (v3) ===== */}
       {consent === false ? (
         <div className="relative flex flex-col gap-2.5 rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)] p-3">
           <div className="flex gap-2">
             <ShieldCheck aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-esp-muted)", flex: "none", marginTop: 2 }} />
             <p className="text-[12.5px] leading-relaxed text-[var(--att-esp-muted)]">
-              نظام الدوام يقرأ موقعك <b className="font-bold text-[var(--att-esp-text)]">فقط</b> عند تسجيل حضورك أو
-              انصرافك، وعند تغيير موقعك، وعند فتحك التطبيق أثناء دوامك — للتأكد أنك في موقع العمل.{" "}
+              نظام الدوام يقرأ موقعك في حالات محددة: عند تسجيل حضورك وانصرافك، وعند تغيير موقعك،
+              وعند فتحك التطبيق أثناء دوامك، وقراءة دورية أثناء دوامك{" "}
+              <b className="font-bold text-[var(--att-esp-text)]">ما دام التطبيق مفتوحًا</b> — للتأكد أنك في موقع العمل.{" "}
               <b className="font-bold text-[var(--att-esp-text)]">
-                لا نتتبع موقعك في الخلفية، ولا خارج أوقات دوامك، ولا والتطبيق مغلق.
+                القراءة الدورية تتوقف لحظة إغلاق التطبيق، ولا تعمل خارج أوقات دوامك، ولا نتتبع موقعك في الخلفية أبدًا.
               </b>{" "}
               تُستخدم البيانات حصريًا لإثبات الحضور، ولك حق الاطلاع عليها وطلب تصحيحها.
             </p>
