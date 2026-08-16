@@ -269,6 +269,9 @@ model User {
   attendanceExceptions    AttendanceException[]
   attendanceVerifications AttendanceVerification[]
   attendancePauses        AttendancePause[]
+  attendanceDays          AttendanceDay[]
+  appActivityWindows      AppActivityWindow[]
+  attendanceSilentChecks  AttendanceSilentCheck[]
 
   @@index([role])
 }
@@ -894,8 +897,25 @@ model AttendanceSettings {
   verificationWindowMinutes Int     @default(15)
   /// مهلة تأكيد الوصول للمشروع بعد ردّ «ذاهب لمشروع»
   arrivalConfirmMinutes     Int     @default(30)
-  /// إظهار خيار «غادرت موقع العمل» في النداء الإجباري
+  /// إظهار خيار «غادرت موقع العمل» في النداء الإجباري (لم يعد مستخدمًا)
   allowLeftOption           Boolean @default(true)
+  // ===== الدفعة الرابعة: التحقق الذكي والأوضاع =====
+  /// نافذة الهدوء: نشاط خلالها يلغي النداء العشوائي
+  verificationQuietWindowMinutes Int     @default(90)
+  /// لا نداء في أول كذا دقيقة من دوامه
+  verificationStartGuardMinutes  Int     @default(60)
+  /// ولا في آخر كذا دقيقة
+  verificationEndGuardMinutes    Int     @default(45)
+  /// النداء الإجباري الثاني بعد كم دقيقة من فوات الأول
+  escalationDelayMinutes         Int     @default(20)
+  /// أدنى فاصل بين فحصين صامتين
+  silentCheckIntervalMinutes     Int     @default(20)
+  /// الإجازة الذاتية تحتاج موافقة قبل السريان (افتراضيًا تسري فورًا)
+  leaveNeedsApproval             Boolean @default(false)
+  /// سقف أيام «عن بُعد» أسبوعيًا — 0 = بلا حد
+  remoteWeeklyCap                Int     @default(0)
+  /// الإجازة توقف توزيع الليدات تلقائيًا
+  leavePausesLeadIntake          Boolean @default(true)
   updatedAt              DateTime @updatedAt
 }
 
@@ -943,10 +963,11 @@ enum AttendanceVerificationStatus {
   EN_ROUTE // ردّ بـ«ذاهب لمشروع» — جُدول له نداء وصول
 }
 
-/// نوع توقف العدّاد — استئذان أو مغادرة، وكلاهما بإذن جهة.
+/// نوع توقف العدّاد — استئذان أو مغادرة بإذن جهة، أو إيقاف آلي لعدم الرد.
 enum AttendancePauseKind {
   EXCUSED // استأذن للخروج
   LEFT // غادر موقع العمل
+  NO_RESPONSE // إيقاف آلي — ما استجاب لنداءي التحقق (سلّم التصعيد)
 }
 
 /// فترة توقف داخل جلسة دوام — تُخصم من الساعات النشطة.
@@ -1007,6 +1028,13 @@ model AttendanceException {
   modifiedShiftMinutes Int?
   reason               String
   createdById          String
+  /// إجازة الدفعة الرابعة: SICK مرضية | OFFICIAL رسمية | PERSONAL ظرف خاص
+  leaveType            String?
+  authorizerId         String?
+  /// نسخة نصية محفوظة — تبقى لو حُذفت الجهة
+  authorizerLabel      String?
+  /// سجّلها الموظف بنفسه من بطاقة بداية اليوم (تسري فورًا)
+  selfDeclared         Boolean                 @default(false)
   createdAt            DateTime                @default(now())
 
   @@index([userId, dateFrom])
@@ -1046,6 +1074,9 @@ model AttendanceSession {
   id              String    @id @default(cuid())
   userId          String
   user            User      @relation(fields: [userId], references: [id])
+  /// يوم الدوام المنطقي (الدفعة الرابعة) — اختياري للتوافق مع الجلسات القديمة
+  dayId           String?
+  day             AttendanceDay? @relation(fields: [dayId], references: [id])
   checkInEventId  String    @unique
   checkOutEventId String?   @unique
   startedAt       DateTime
@@ -1058,4 +1089,93 @@ model AttendanceSession {
   pauses AttendancePause[]
 
   @@index([userId, startedAt])
+}
+
+/// وضع يوم الدوام — في الموقع / عن بُعد / إجازة.
+enum AttendanceDayMode {
+  ONSITE
+  REMOTE
+  LEAVE
+}
+
+/// اليوم المنطقي (الدفعة الرابعة) — الحساب صار يوميًا لا جلسيًا:
+/// دقائق اليوم = مجموع جلساته، والتأخير من أول حضور فقط، والانصراف بالغلط
+/// يُستأنف بلا صفر جديد.
+model AttendanceDay {
+  id                 String            @id @default(cuid())
+  userId             String
+  user               User              @relation(fields: [userId], references: [id])
+  /// اليوم المنطقي بتوقيت الرياض
+  date               DateTime          @db.Date
+  mode               AttendanceDayMode @default(ONSITE)
+  firstCheckInAt     DateTime?
+  lastActivityAt     DateTime?
+  /// من أول حضور فقط — الاستئناف لا يعيد حسابه
+  wasLate            Boolean           @default(false)
+  /// دقائق ضمن الدوام لم تؤكَّد (سلّم التصعيد) — لا تُخصم
+  unconfirmedMinutes Int               @default(0)
+  /// انتهى بلا انصراف (توقف NO_RESPONSE حتى نهاية اليوم)
+  autoEnded          Boolean           @default(false)
+  // وضع «عن بُعد»
+  remoteAuthorizerId    String?
+  remoteAuthorizerLabel String?
+  createdAt          DateTime          @default(now())
+
+  sessions AttendanceSession[]
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+/// فترة فتح التطبيق (وضع «عن بُعد») — heartbeat مصدر الحقيقة: النبضة تمدّد
+/// closedAt (متدحرج)، وانقطاع أطول من ٥ دقائق يعني فترة جديدة عند العودة.
+/// appStateChange تحسين للدقة (إقفال لحظي عند الخروج) لا أساس.
+model AppActivityWindow {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  date      DateTime  @db.Date
+  openedAt  DateTime
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, date])
+}
+
+/// فحص موقع صامت عند فتح التطبيق (وضع «في الموقع») — يُعرض للمالك فقط،
+/// لا إشعارات ولا أي أثر مرئي للموظف، ومذكور صراحة في شاشة الإفصاح.
+model AttendanceSilentCheck {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  at             DateTime
+  lat            Float
+  lng            Float
+  accuracy       Float?
+  locationId     String?
+  distanceMeters Float?
+  outOfZone      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([userId, at])
+}
+
+/// سجل تدقيق إجراءات المالك على الدوام — **append-only**: لا update ولا delete
+/// على هذا الجدول في الكود إطلاقًا. منفصل عن AuditLog القديم (ملخصات نصية).
+model AuditEvent {
+  id           String   @id @default(cuid())
+  actorId      String
+  actorRole    String
+  /// SCHEDULE_UPDATE | EXCEPTION_GRANT | TIME_RESTORE | LEAVE_CANCEL | INTAKE_TOGGLE | PRIVACY_CONSENT …
+  action       String
+  resourceType String
+  resourceId   String
+  before       Json?
+  after        Json?
+  reason       String?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
 }

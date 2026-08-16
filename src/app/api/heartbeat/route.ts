@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { recordSessionBeat } from "@/lib/session-devices";
+import { trackActivityWindow } from "@/lib/activity-window";
 
 export const runtime = "nodejs";
 
@@ -12,5 +13,10 @@ export async function POST(req: Request) {
   await prisma.user.update({ where: { id: session.user.id }, data: { lastSeenAt: new Date() } });
   // سجل الجهاز (جوال/كمبيوتر + المتصفح) — فشله لا يُفشِل النبضة.
   await recordSessionBeat(session.user.id, req.headers.get("user-agent")).catch(() => {});
+  /*
+   * قياس نشاط «عن بُعد» (الدفعة الرابعة): النبضة هي **مصدر الحقيقة** — تمدّد
+   * فترة الفتح الجارية أو تفتح جديدة بعد انقطاع. فشلها لا يُفشِل النبضة.
+   */
+  await trackActivityWindow(session.user.id, new Date()).catch(() => {});
   return NextResponse.json({ ok: true });
 }

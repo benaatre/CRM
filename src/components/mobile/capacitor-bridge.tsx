@@ -20,6 +20,16 @@ export function CapacitorBridge() {
     if (!Capacitor.isNativePlatform()) return;
 
     const sub = App.addListener("appStateChange", ({ isActive }) => {
+      /*
+       * قياس «عن بُعد» (الدفعة الرابعة): إشارة دقة لا أساس — الخادم يتجاهلها
+       * لغير يوم REMOTE، وheartbeat يبقى مصدر الحقيقة لو ضاعت.
+       */
+      fetch("/api/attendance/app-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: isActive }),
+      }).catch(() => {});
+
       if (!isActive) return;
       const recent = takeRecentCall();
       if (recent) router.push(`/m/leads/${recent.leadId}?log=call`);

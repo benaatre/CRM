@@ -39,6 +39,7 @@ const STATE_LABEL: Record<TileState, string> = {
   on: "مداوم",
   late: "متأخر",
   paused: "موقوف",
+  remote: "عن بُعد",
   miss: "لم يسجّل",
   exc: "مستثنى",
   done: "أنهى دوامه",
@@ -56,6 +57,7 @@ const STATE_VAR: Record<TileState, string> = {
   on: "var(--att-on)",
   late: "var(--att-late)",
   paused: "var(--att-pause)",
+  remote: "var(--att-remote)",
   miss: "var(--att-miss)",
   exc: "var(--att-exc)",
   done: "var(--att-done)",
@@ -368,6 +370,7 @@ function TodayTile({ row, now, onOpen }: { row: LiveBoardRow; now: number; onOpe
       <div className="relative mt-3.5">
         {active && <OnBody row={row} now={now} />}
         {row.state === "paused" && <PausedBody row={row} now={now} />}
+        {row.state === "remote" && <RemoteBody row={row} now={now} />}
         {row.state === "miss" && <MissBody row={row} now={now} />}
         {row.state === "exc" && <ExcBody row={row} />}
         {row.state === "done" && <DoneBody row={row} />}
@@ -427,6 +430,92 @@ function TriggerCallButton({ userId }: { userId: string }) {
   );
 }
 
+/**
+ * عن بُعد (الدفعة الرابعة): أربعة أرقام — وقت النشاط · الإجراءات · فترات
+ * الفتح · أطول انقطاع — وشريط يوم (أخضر مفتوح / كهرماني متقطع مقفول) بمؤشر
+ * «الآن»، وسجل الفترات والجارية عليها شارة تنبض.
+ */
+function RemoteBody({ row, now }: { row: LiveBoardRow; now: number }) {
+  const r = row.remote;
+  if (!r) return null;
+  const wins = r.windows;
+  const spanStart = wins.length ? new Date(wins[0].openedIso).getTime() : now - 60_000;
+  const spanEnd = Math.max(now, ...wins.map((w) => new Date(w.closedIso ?? w.openedIso).getTime()));
+  const span = Math.max(1, spanEnd - spanStart);
+  const pos = (t: number) => Math.min(100, Math.max(0, ((t - spanStart) / span) * 100));
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-4 gap-2">
+        <Cell label="وقت النشاط" value={hmLabel(r.activeMinutes, toArabicDigits)} valueColor="var(--att-remote)" />
+        <Cell label="الإجراءات" value={toArabicDigits(r.actionsCount)} />
+        <Cell label="فترات الفتح" value={toArabicDigits(r.windowsCount)} />
+        <Cell
+          label="أطول انقطاع"
+          value={r.longestGapMinutes > 0 ? hmLabel(r.longestGapMinutes, toArabicDigits) : "—"}
+          valueColor={r.longestGapMinutes >= 60 ? "var(--att-miss)" : undefined}
+        />
+      </div>
+
+      {/* شريط اليوم: مقاطع خضراء للفترات المفتوحة فوق سكة كهرمانية متقطعة */}
+      {wins.length > 0 && (
+        <div className="relative h-2">
+          <span
+            aria-hidden
+            className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(90deg, var(--att-late) 0 6px, transparent 6px 12px)",
+              opacity: 0.55,
+            }}
+          />
+          {wins.map((w, i) => {
+            const f = new Date(w.openedIso).getTime();
+            const t = new Date(w.closedIso ?? w.openedIso).getTime();
+            return (
+              <span
+                key={`${w.openedIso}-${i}`}
+                aria-hidden
+                className="absolute top-1/2 h-[4px] -translate-y-1/2 rounded-full"
+                style={{ right: `${pos(f)}%`, width: `${Math.max(1, pos(t) - pos(f))}%`, background: "var(--att-on)" }}
+              />
+            );
+          })}
+          <span aria-hidden className="absolute top-1/2 -translate-y-1/2 translate-x-1/2" style={{ right: `${pos(now)}%` }}>
+            <span className="att-pulse block size-[8px] rounded-full bg-[var(--att-text)]" />
+          </span>
+        </div>
+      )}
+
+      {/* سجل الفترات */}
+      <ul className="space-y-1">
+        {wins.slice(-4).map((w, i) => (
+          <li key={`${w.openedIso}-log-${i}`} className="flex items-center justify-between text-[10.5px] text-[var(--att-muted)]">
+            <span className="flex items-center gap-1.5">
+              فتحت {w.openedText} ← {w.current ? "الآن" : (w.closedText ?? "—")}
+              {w.current && (
+                <span className="flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-bold" style={{ borderColor: "color-mix(in srgb, var(--att-on) 40%, transparent)", color: "var(--att-on)" }}>
+                  <span aria-hidden className="att-pulse size-1.5 rounded-full bg-[var(--att-on)]" />
+                  الآن
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+        {r.longestGapMinutes >= 60 && (
+          <li className="text-[10.5px] font-bold" style={{ color: "var(--att-miss)" }}>
+            أطول انقطاع {hmLabel(r.longestGapMinutes, toArabicDigits)}
+          </li>
+        )}
+      </ul>
+
+      <p className="text-[11px] text-[var(--att-muted)]">
+        بإذن <span className="font-bold" style={{ color: "var(--att-remote)" }}>{r.authorizerLabel ?? "—"}</span> · سُجّل {r.startedText}
+      </p>
+    </div>
+  );
+}
+
 /** موقوف: الرقم المجمّد بنفسجيًا + مدة التوقف الحية + الجهة ووقت البداية. */
 function PausedBody({ row, now }: { row: LiveBoardRow; now: number }) {
   const elapsed = netElapsedMinutes(row, now);
@@ -440,10 +529,14 @@ function PausedBody({ row, now }: { row: LiveBoardRow; now: number }) {
         <Cell label="من الساعة" value={row.activePause?.startedText ?? "—"} />
       </div>
       <p className="text-[11px] text-[var(--att-muted)]">
-        <span className="font-bold" style={{ color: "var(--att-pause)" }}>
-          {row.activePause?.kind === "LEFT" ? "غادر موقع العمل" : "مستأذن"}
-        </span>{" "}
-        — بإذن {row.activePause?.authorizerLabel ?? "—"}
+        <span className="font-bold" style={{ color: row.activePause?.kind === "NO_RESPONSE" ? "var(--att-miss)" : "var(--att-pause)" }}>
+          {row.activePause?.kind === "NO_RESPONSE"
+            ? "إيقاف آلي — ما استجاب لنداءي التحقق"
+            : row.activePause?.kind === "LEFT"
+              ? "غادر موقع العمل"
+              : "مستأذن"}
+        </span>
+        {row.activePause?.kind !== "NO_RESPONSE" && <> — بإذن {row.activePause?.authorizerLabel ?? "—"}</>}
       </p>
     </div>
   );
@@ -455,13 +548,16 @@ function targetLabel(minutes: number): string {
 }
 
 /**
- * المنجز الحي صافيًا من التوقف — نفس معادلة الدالة المشتركة على الخادم:
- * now − البداية − المخصوم المغلق − (توقف نشط؟ now − بدايته).
+ * منجز **اليوم** الحي (الدفعة الرابعة): أساس الجلسات المغلقة + الجلسة الحية
+ * صافية من التوقف — نفس معادلة الدالة المشتركة على الخادم.
  */
 function netElapsedMinutes(row: LiveBoardRow, now: number): number {
-  if (!row.startedAtIso) return 0;
+  if (!row.startedAtIso) return row.dayBaseMinutes;
   const activeDelta = row.activePause ? Math.max(0, now - new Date(row.activePause.startedIso).getTime()) : 0;
-  return Math.max(0, Math.floor((now - new Date(row.startedAtIso).getTime() - row.pausedMsBase - activeDelta) / 60_000));
+  return (
+    row.dayBaseMinutes +
+    Math.max(0, Math.floor((now - new Date(row.startedAtIso).getTime() - row.pausedMsBase - activeDelta) / 60_000))
+  );
 }
 
 /** مداوم/متأخر: الحلقة + شبكة 2×2 + شريط التقدم + سطر الموقع. */
@@ -571,7 +667,7 @@ function MissBody({ row, now }: { row: LiveBoardRow; now: number }) {
   );
 }
 
-/** مستثنى: نوع الاستثناء + أرقام الشهر + «ما تُحتسب غيابًا». */
+/** مستثنى/إجازة: نوعها ومدتها المتبقية + أرقام الشهر + «ما تُحتسب غيابًا». */
 function ExcBody({ row }: { row: LiveBoardRow }) {
   return (
     <div className="space-y-2.5">
@@ -581,17 +677,20 @@ function ExcBody({ row }: { row: LiveBoardRow }) {
       </div>
       <p className="text-[11px] text-[var(--att-muted)]">
         <span className="font-bold" style={{ color: "var(--att-exc)" }}>
-          {EXC_LABEL[row.exceptionType ?? ""] ?? "استثناء"}
-        </span>{" "}
-        — ما تُحتسب غيابًا
+          {row.leave
+            ? `إجازة ${row.leave.typeLabel}${row.leave.selfDeclared ? " (ذاتية)" : ""}`
+            : (EXC_LABEL[row.exceptionType ?? ""] ?? "استثناء")}
+        </span>
+        {row.leave && <> — حتى {row.leave.toText}</>} — ما تُحتسب غيابًا
       </p>
     </div>
   );
 }
 
-/** أنهى دوامه: حضر/انصرف/ساعات اليوم + النسبة + الزيارات. */
+/** أنهى دوامه: حضر/انصرف/ساعات اليوم + مؤكَّد/غير مؤكَّد + وسم «انتهى بلا انصراف». */
 function DoneBody({ row }: { row: LiveBoardRow }) {
   const pct = Math.min(100, Math.round((row.doneMinutes / Math.max(1, row.targetMinutes)) * 100));
+  const confirmed = Math.max(0, row.doneMinutes - row.unconfirmedMinutes);
   return (
     <div className="space-y-2.5">
       <div className="grid grid-cols-3 gap-2">
@@ -599,12 +698,23 @@ function DoneBody({ row }: { row: LiveBoardRow }) {
         <Cell label="انصرف" value={row.endedAtText ?? "—"} />
         <Cell label="ساعات اليوم" value={hmLabel(row.doneMinutes, toArabicDigits)} />
       </div>
-      <p className="flex items-center justify-between text-[11px] text-[var(--att-muted)]">
+      <p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-[var(--att-muted)]">
         <span>
           أنجز <b className="font-bold text-[var(--att-text)]">{toArabicDigits(pct)}٪</b> من هدفه
         </span>
+        {row.unconfirmedMinutes > 0 && (
+          <span>
+            مؤكَّد <b className="font-bold text-[var(--att-text)]">{hmLabel(confirmed, toArabicDigits)}</b> · غير مؤكَّد{" "}
+            <b className="font-bold" style={{ color: "var(--att-late)" }}>{hmLabel(row.unconfirmedMinutes, toArabicDigits)}</b>
+          </span>
+        )}
         {row.visitsCount > 0 && <span>{toArabicDigits(row.visitsCount)} زيارات مشاريع</span>}
       </p>
+      {row.autoEnded && (
+        <p className="text-[10.5px] font-bold" style={{ color: "var(--att-miss)" }}>
+          انتهى بلا انصراف — توقف تلقائي بلا رد
+        </p>
+      )}
     </div>
   );
 }

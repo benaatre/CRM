@@ -47,6 +47,7 @@ const STATE_META: Record<TileState, { label: string; color: string }> = {
   on: { label: "مداوم", color: "var(--od-won)" },
   late: { label: "مداوم", color: "var(--od-won)" },
   paused: { label: "متوقّف", color: "var(--od-try)" },
+  remote: { label: "عن بُعد", color: "var(--od-info, var(--od-t3))" },
   miss: { label: "لم يسجّل", color: "var(--od-red)" },
   exc: { label: "مستثنى", color: "var(--od-later)" },
   done: { label: "أنهى دوامه", color: "var(--od-t3)" },

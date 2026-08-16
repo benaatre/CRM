@@ -23,7 +23,9 @@ import {
   completedText,
   lateCheckInText,
   locationChangeOutOfZoneText,
+  resumedCheckInText,
 } from "@/lib/attendance-notify";
+import { daySessionsOf, ensureAttendanceDay } from "@/lib/data/attendance";
 import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -282,12 +284,47 @@ export async function POST(req: Request) {
     parseWeekendDays(settings.weekendDays),
   );
 
+  /*
+   * ===== اليوم المنطقي (الدفعة الرابعة) — الحساب يومي لا جلسي =====
+   * حضور ثانٍ فما فوق بنفس اليوم = **استئناف**: لا يعاد حساب التأخير (يُحسب
+   * مرة واحدة من أول حضور)، والإشعار «كمّل دوامه». ويوم REMOTE/LEAVE لا بصم فيه.
+   */
+  const day =
+    body.intent === AttendanceEventType.CHECK_IN
+      ? await ensureAttendanceDay(prisma, userId, todayKey)
+      : null;
+  if (body.intent === AttendanceEventType.CHECK_IN) {
+    if (day!.mode === "REMOTE") {
+      return refuse("remote_day", "يومك مسجّل «عن بُعد» — ما فيه بصم موقع اليوم");
+    }
+    if (day!.mode === "LEAVE" || eff.onLeave) {
+      return refuse("on_leave", "أنت بإجازة اليوم — ما تحتاج تبصم");
+    }
+  }
+  const isResume = body.intent === AttendanceEventType.CHECK_IN && day!.firstCheckInAt !== null;
+
+  // أساس اليوم المغلق قبل هذي البصمة — لجدولة النداءات داخل المتبقي من الهدف.
+  const dayBaseMinutes =
+    body.intent === AttendanceEventType.CHECK_IN
+      ? (await daySessionsOf(userId, todayKey)).reduce((s, x) => s + (x.workedMinutes ?? 0), 0)
+      : 0;
+
   const nowMinutes = ksaMinutesOfDay(now);
   const isLate =
     body.intent === AttendanceEventType.CHECK_IN &&
+    !isResume &&
     isLateCheckIn(nowMinutes, eff, settings.lateThresholdMinutes);
 
   const location = candidates.find((l) => l.id === match.id) ?? null;
+
+  // ===== تهدئة الانصراف: لا انصراف خلال ٦٠ ثانية من الحضور (ضغطة عرضية) =====
+  if (
+    body.intent === AttendanceEventType.CHECK_OUT &&
+    openSession &&
+    now.getTime() - openSession.startedAt.getTime() < 60_000
+  ) {
+    return refuse("too_soon", "سجّلت حضورك قبل لحظات — استنى دقيقة وحاول");
+  }
 
   /*
    * للانصراف: الدقائق **صافية من التوقف** عبر الدالة المشتركة (الدفعة الثالثة).
@@ -328,15 +365,44 @@ export async function POST(req: Request) {
 
     if (body.intent === AttendanceEventType.CHECK_IN) {
       const session = await tx.attendanceSession.create({
-        data: { userId, checkInEventId: created.id, startedAt: now, wasLate: isLate },
+        data: { userId, dayId: day!.id, checkInEventId: created.id, startedAt: now, wasLate: isLate },
       });
 
+      // أول حضور فقط يثبّت بداية اليوم وتأخيره — الاستئناف لا يمسّهما.
+      if (!isResume) {
+        await tx.attendanceDay.update({
+          where: { id: day!.id },
+          data: { firstCheckInAt: now, wasLate: isLate, lastActivityAt: now },
+        });
+      } else {
+        await tx.attendanceDay.update({ where: { id: day!.id }, data: { lastActivityAt: now } });
+      }
+
       /*
-       * جدولة نداءات التحقق: N أوقات عشوائية داخل ما تبقى من دوامه (ليست في
-       * أول ٣٠ دقيقة ولا آخرها). الكرون يلتقط ما حان وقته ويرسل الإشعار.
+       * جدولة نداءات التحقق (التحقق الذكي — الدفعة الرابعة): حد أقصى نداءان
+       * يوميًا مهما كان الإعداد، بحرسي بداية/نهاية من الإعدادات، ولا جدولة في
+       * يوم إجازة أسبوعية. عند الاستئناف تُجدول داخل **المتبقي من هدف اليوم**
+       * وبما لا يتجاوز السقف اليومي مع نداءات اليوم السابقة.
        */
-      if (settings.verificationEnabled) {
-        const times = planVerificationTimes(now, eff.targetMinutes, settings.verificationPerDay);
+      if (settings.verificationEnabled && !eff.isWeekend) {
+        const dailyCap = Math.min(settings.verificationPerDay, 2);
+        const alreadyToday = await tx.attendanceVerification.count({
+          where: {
+            userId,
+            kind: "RANDOM",
+            scheduledAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) },
+          },
+        });
+        const remainingTarget = Math.max(0, eff.targetMinutes - dayBaseMinutes);
+        const quota = Math.max(0, dailyCap - alreadyToday);
+        const times = planVerificationTimes(
+          now,
+          remainingTarget,
+          quota,
+          Math.random,
+          settings.verificationStartGuardMinutes,
+          settings.verificationEndGuardMinutes,
+        );
         if (times.length > 0) {
           await tx.attendanceVerification.createMany({
             data: times.map((t) => ({ userId, sessionId: session.id, scheduledAt: t })),
@@ -367,15 +433,31 @@ export async function POST(req: Request) {
    * الحضور والتأخير يُدمجان في إشعار واحد؛ الاكتمال عند انصرافٍ أنجز الهدف.
    * «حضر بدري» و«مشى متأخر» وسوم عرض فقط — لا إشعار لها.
    */
+  /*
+   * مجموع اليوم بعد البصمة (الدفعة الرابعة) — للإشعارات وللواجهة معًا:
+   * «أكمل دوامه» يقارن **مجموع اليوم** بالهدف لا الجلسة الأخيرة، ويُرسل عند
+   * عبور الهدف فقط (لا يتكرر مع كل انصراف لاحق).
+   */
+  const dayTotalMinutes = (await daySessionsOf(userId, todayKey)).reduce(
+    (sum, s) => sum + (s.workedMinutes ?? 0),
+    0,
+  );
+
   try {
     if (body.intent === AttendanceEventType.CHECK_IN) {
       const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
       const name = me?.name ?? "موظف";
-      const text = isLate
-        ? lateCheckInText(name, Math.max(1, nowMinutes - eff.accountStartMinutes), location?.name ?? null)
-        : checkedInText(name, formatTime(now), location?.name ?? null);
+      const text = isResume
+        ? resumedCheckInText(name, formatTime(now), location?.name ?? null)
+        : isLate
+          ? lateCheckInText(name, Math.max(1, nowMinutes - eff.accountStartMinutes), location?.name ?? null)
+          : checkedInText(name, formatTime(now), location?.name ?? null);
       await notify(prisma, await ownerIds(prisma), "attendance.checked_in", text, undefined, `/attendance/${userId}`);
-    } else if (body.intent === AttendanceEventType.CHECK_OUT && workedMinutes >= eff.targetMinutes) {
+    } else if (
+      body.intent === AttendanceEventType.CHECK_OUT &&
+      dayTotalMinutes >= eff.targetMinutes &&
+      dayTotalMinutes - workedMinutes < eff.targetMinutes
+    ) {
       const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
       await notify(
         prisma,
@@ -397,5 +479,10 @@ export async function POST(req: Request) {
     timeKSA: formatTime(now),
     isLate,
     outOfZone: false,
+    resumed: isResume,
+    dayWorkedMinutes: dayTotalMinutes,
+    // نافذة التراجع عن الانصراف — ٩٠ ثانية.
+    undoUntilIso:
+      body.intent === AttendanceEventType.CHECK_OUT ? new Date(now.getTime() + 90_000).toISOString() : null,
   });
 }

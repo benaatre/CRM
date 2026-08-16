@@ -313,6 +313,14 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
   const [verifyPerDay, setVerifyPerDay] = useState(String(settings.verificationPerDay));
   const [verifyWindow, setVerifyWindow] = useState(String(settings.verificationWindowMinutes));
   const [arrivalMinutes, setArrivalMinutes] = useState(String(settings.arrivalConfirmMinutes));
+  // الدفعة الرابعة — التحقق الذكي والأوضاع.
+  const [quietWindow, setQuietWindow] = useState(String(settings.verificationQuietWindowMinutes));
+  const [startGuard, setStartGuard] = useState(String(settings.verificationStartGuardMinutes));
+  const [endGuard, setEndGuard] = useState(String(settings.verificationEndGuardMinutes));
+  const [escalationDelay, setEscalationDelay] = useState(String(settings.escalationDelayMinutes));
+  const [silentInterval, setSilentInterval] = useState(String(settings.silentCheckIntervalMinutes));
+  const [remoteCap, setRemoteCap] = useState(String(settings.remoteWeeklyCap));
+  const [leaveIntake, setLeaveIntake] = useState(settings.leavePausesLeadIntake);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const toggleWeekendDay = (code: string) => {
@@ -348,6 +356,13 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
           verificationPerDay: Number(verifyPerDay),
           verificationWindowMinutes: Number(verifyWindow),
           arrivalConfirmMinutes: Number(arrivalMinutes),
+          verificationQuietWindowMinutes: Number(quietWindow),
+          verificationStartGuardMinutes: Number(startGuard),
+          verificationEndGuardMinutes: Number(endGuard),
+          escalationDelayMinutes: Number(escalationDelay),
+          silentCheckIntervalMinutes: Number(silentInterval),
+          remoteWeeklyCap: Number(remoteCap),
+          leavePausesLeadIntake: leaveIntake,
         }),
       });
       const data = (await res.json()) as { ok: boolean; error?: string };
@@ -509,6 +524,26 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
         )}
       </div>
 
+      {/* ===== التحقق الذكي والأوضاع (الدفعة الرابعة) ===== */}
+      <div className="space-y-3 rounded-xl border border-border bg-secondary/50 p-3">
+        <span className="block text-sm font-medium text-foreground">التحقق الذكي وأوضاع اليوم</span>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <NumField label="نافذة الهدوء (دقيقة) — نشاط خلالها يلغي النداء" value={quietWindow} onChange={setQuietWindow} />
+          <NumField label="لا نداء بأول (دقيقة) من الدوام" value={startGuard} onChange={setStartGuard} />
+          <NumField label="ولا بآخر (دقيقة)" value={endGuard} onChange={setEndGuard} />
+          <NumField label="النداء الثاني بعد فوات الأول بـ(دقيقة)" value={escalationDelay} onChange={setEscalationDelay} />
+          <NumField label="فاصل الفحص الصامت (دقيقة)" value={silentInterval} onChange={setSilentInterval} />
+          <NumField label="سقف «عن بُعد» أسبوعيًا (٠ = بلا حد)" value={remoteCap} onChange={setRemoteCap} />
+        </div>
+        <label className="flex items-start gap-3">
+          <input type="checkbox" checked={leaveIntake} onChange={(e) => setLeaveIntake(e.target.checked)} className="mt-0.5 size-4 accent-[var(--gold)]" />
+          <span>
+            <span className="block text-sm font-medium text-foreground">الإجازة توقف استقبال العملاء تلقائيًا</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">يرجع الاستقبال صباح يوم الرجوع بلا تدخل.</span>
+          </span>
+        </label>
+      </div>
+
       {msg && <p className={`text-xs ${msg.ok ? "text-success" : "text-destructive"}`}>{msg.text}</p>}
 
       {/* العنصر الذهبي الوحيد في هذا التبويب */}
@@ -524,6 +559,22 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
       {/* ===== جهات الإذن بالخروج (الدفعة الثالثة) ===== */}
       <AuthorizersSection />
     </div>
+  );
+}
+
+/** حقل رقمي مضغوط لإعدادات الدفعة الرابعة. */
+function NumField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        inputMode="numeric"
+        dir="ltr"
+        className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+      />
+    </label>
   );
 }
 

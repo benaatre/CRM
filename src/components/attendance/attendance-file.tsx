@@ -25,6 +25,7 @@ const STATUS_META: Record<DayLogEntry["status"], { label: string; cls: string }>
   OPEN: { label: "مداوم الآن", cls: "border-success/40 text-success" },
   ABSENT: { label: "غياب", cls: "border-destructive/30 text-destructive" },
   LEAVE: { label: "إجازة", cls: "border-info/40 text-info" },
+  REMOTE: { label: "عن بُعد", cls: "border-info/40 text-info" },
   PENDING: { label: "لسة ما داوم", cls: "border-border text-muted-foreground" },
   WEEKEND: { label: "إجازة أسبوعية", cls: "border-border text-muted-foreground" },
 };
@@ -91,10 +92,18 @@ export function AttendanceEmployeeFile({ file }: { file: EmployeeFile }) {
         </div>
       </header>
 
-      {/* ===== إحصاءات الشهر ===== */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* ===== إحصاءات الشهر — رقمان: مؤكَّد وغير مؤكَّد (الدفعة الرابعة) ===== */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatCell label="أيام دوام" value={toArabicDigits(file.stats.workDays)} />
-        <StatCell label="الساعات" value={hmLabel(file.stats.totalMinutes, toArabicDigits)} />
+        <StatCell
+          label="ساعات مؤكَّدة"
+          value={hmLabel(Math.max(0, file.stats.totalMinutes - file.stats.unconfirmedMinutes), toArabicDigits)}
+        />
+        <StatCell
+          label="غير مؤكَّد"
+          value={file.stats.unconfirmedMinutes > 0 ? hmLabel(file.stats.unconfirmedMinutes, toArabicDigits) : "—"}
+          tone={file.stats.unconfirmedMinutes > 0 ? "warning" : undefined}
+        />
         <StatCell
           label="أيام تأخير"
           value={toArabicDigits(file.stats.lateDays)}
@@ -111,6 +120,9 @@ export function AttendanceEmployeeFile({ file }: { file: EmployeeFile }) {
       <DayLog days={file.days} />
       <ExceptionsSection userId={file.user.id} exceptions={file.exceptions} />
       <VerificationsSection verifications={file.verifications} />
+      <RestoreSection userId={file.user.id} />
+      <SilentChecksSection checks={file.silentChecks} />
+      <AuditsSection audits={file.audits} />
     </div>
   );
 }
@@ -592,6 +604,145 @@ function ExceptionsSection({ userId, exceptions }: { userId: string; exceptions:
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/* ═══════════════ استعادة الوقت المفقود (الدفعة الرابعة) ═══════════════ */
+
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  SCHEDULE_UPDATE: "تعديل الدوام المحدد",
+  EXCEPTION_GRANT: "منح استثناء/إجازة",
+  LEAVE_CANCEL: "إلغاء إجازة",
+  TIME_RESTORE: "استعادة وقت",
+  INTAKE_TOGGLE: "تبديل استقبال العملاء",
+  PRIVACY_CONSENT: "موافقة الخصوصية",
+};
+
+/** استعادة وقت من «غير المؤكَّد» — سبب إلزامي وكلها في سجل التدقيق. */
+function RestoreSection({ userId }: { userId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [dayKey, setDayKey] = useState("");
+  const [minutes, setMinutes] = useState("30");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/attendance/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "UNCONFIRMED", userId, dayKey, minutes: Number(minutes), reason }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string; restoredMinutes?: number };
+      if (data.ok) {
+        setMsg({ ok: true, text: `استعدنا ${toArabicDigits(data.restoredMinutes ?? 0)} دقيقة — صارت مؤكَّدة يدويًا` });
+        setReason("");
+        router.refresh();
+      } else {
+        setMsg({ ok: false, text: data.error ?? "ما نفذت العملية" });
+      }
+    } catch {
+      setMsg({ ok: false, text: "تعذّر الاتصال — حاول مرة ثانية" });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-3 text-right"
+      >
+        <h2 className="text-sm font-bold text-foreground">استعادة الوقت المفقود</h2>
+        <ChevronDown
+          aria-hidden
+          size={15}
+          strokeWidth={1.8}
+          className="text-muted-foreground"
+          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s" }}
+        />
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-border px-4 py-3.5">
+          <p className="text-xs text-muted-foreground">
+            تُخصم الدقائق من «غير المؤكَّد» لليوم المحدد وتتحول مؤكَّدة يدويًا — والسبب إلزامي ويُسجَّل في سجل التغييرات.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">اليوم</span>
+              <input type="date" value={dayKey} onChange={(e) => setDayKey(e.target.value)} dir="ltr" className="h-9 rounded-xl border border-input bg-background px-2.5 text-xs text-foreground outline-none focus:border-ring" />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">الدقائق</span>
+              <input value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" dir="ltr" className="h-9 rounded-xl border border-input bg-background px-2.5 text-xs text-foreground outline-none focus:border-ring" />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">السبب — إلزامي</span>
+              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="تحقق هاتفي / كان بموقع العميل…" className="h-9 rounded-xl border border-input bg-background px-2.5 text-xs text-foreground outline-none focus:border-ring" />
+            </label>
+          </div>
+          {msg && <p className={`text-xs ${msg.ok ? "text-success" : "text-destructive"}`}>{msg.text}</p>}
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={busy || !dayKey || !reason.trim()}
+            className="h-10 rounded-xl border border-border px-5 text-xs font-bold text-foreground disabled:opacity-50"
+          >
+            {busy ? "جاري الاستعادة…" : "استعادة الوقت"}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** الفحوص الصامتة — للمالك فقط، لا يراها الموظف إطلاقًا. */
+function SilentChecksSection({ checks }: { checks: EmployeeFile["silentChecks"] }) {
+  if (checks.length === 0) return null;
+  return (
+    <section className="rounded-2xl border border-border bg-card">
+      <h2 className="border-b border-border px-4 py-3 text-sm font-bold text-foreground">
+        الفحوص الصامتة <span className="text-xs font-medium text-muted-foreground">— تظهر لك فقط</span>
+      </h2>
+      <ul className="max-h-72 overflow-y-auto">
+        {checks.map((c) => (
+          <li key={c.id} className="flex items-center justify-between border-b border-border/60 px-4 py-2.5 text-xs last:border-0">
+            <span className="text-muted-foreground">
+              {c.dayKey.slice(8, 10)}/{c.dayKey.slice(5, 7)} · {c.atText}
+            </span>
+            <span className={c.outOfZone ? "font-bold text-destructive" : "text-success"}>
+              {c.outOfZone ? "خارج النطاق" : "داخل النطاق"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** سجل التغييرات — قراءات من AuditEvent (append-only). */
+function AuditsSection({ audits }: { audits: EmployeeFile["audits"] }) {
+  if (audits.length === 0) return null;
+  return (
+    <section className="rounded-2xl border border-border bg-card">
+      <h2 className="border-b border-border px-4 py-3 text-sm font-bold text-foreground">سجل التغييرات</h2>
+      <ul className="max-h-72 overflow-y-auto">
+        {audits.map((a) => (
+          <li key={a.id} className="border-b border-border/60 px-4 py-2.5 text-xs last:border-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-bold text-foreground">{AUDIT_ACTION_LABEL[a.action] ?? a.action}</span>
+              <span className="flex-none text-muted-foreground">{a.atText}</span>
+            </div>
+            {a.reason && <p className="mt-0.5 text-muted-foreground">{a.reason}</p>}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

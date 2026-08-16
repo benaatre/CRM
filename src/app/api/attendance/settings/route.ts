@@ -17,6 +17,12 @@ const RANGES: Record<string, [number, number]> = {
   verificationPerDay: [0, 10],
   verificationWindowMinutes: [5, 120],
   arrivalConfirmMinutes: [5, 180],
+  verificationQuietWindowMinutes: [15, 360],
+  verificationStartGuardMinutes: [0, 240],
+  verificationEndGuardMinutes: [0, 240],
+  escalationDelayMinutes: [5, 120],
+  silentCheckIntervalMinutes: [5, 240],
+  remoteWeeklyCap: [0, 7],
 };
 
 /** رموز أيام الأسبوع المقبولة في weekendDays. */
@@ -54,6 +60,9 @@ export async function PATCH(req: Request) {
   }
   if (typeof raw.verificationEnabled === "boolean") {
     data.verificationEnabled = raw.verificationEnabled;
+  }
+  if (typeof raw.leavePausesLeadIntake === "boolean") {
+    data.leavePausesLeadIntake = raw.leavePausesLeadIntake;
   }
   // أيام الإجازة الأسبوعية — رموز معروفة فقط، وستة أيام إجازة كحد أقصى.
   let weekendDays: string | undefined;

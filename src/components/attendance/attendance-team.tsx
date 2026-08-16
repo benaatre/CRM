@@ -75,12 +75,13 @@ export function TeamTab({ initialMonth, initialRows }: { initialMonth: string; i
               <th className="px-4 py-3 font-medium">الساعات</th>
               <th className="px-4 py-3 font-medium">أيام تأخير</th>
               <th className="px-4 py-3 font-medium">أيام غياب</th>
+              <th className="px-4 py-3 font-medium">نسبة التأكيد</th>
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   {rows.length === 0 ? "ما فيه موظفين نشطين" : "ما فيه نتائج بهذا الاسم"}
                 </td>
               </tr>
@@ -102,6 +103,13 @@ export function TeamTab({ initialMonth, initialRows }: { initialMonth: string; i
                 </td>
                 <td className={`px-4 py-3 ${r.absentDays > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                   {toArabicDigits(r.absentDays)}
+                </td>
+                {/* نسبة التأكيد (الدفعة الرابعة): المؤكَّد ÷ مجموع الشهر */}
+                <td className={`px-4 py-3 tabular-nums ${r.confirmationPct < 90 ? "text-warning" : "text-muted-foreground"}`}>
+                  {r.totalMinutes > 0 ? `${toArabicDigits(r.confirmationPct)}٪` : "—"}
+                  {r.remoteDays > 0 && (
+                    <span className="ms-2 text-[10.5px] text-info">{toArabicDigits(r.remoteDays)} عن بُعد</span>
+                  )}
                 </td>
               </tr>
             ))}

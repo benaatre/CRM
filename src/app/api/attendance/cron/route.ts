@@ -11,9 +11,11 @@ import {
   PAUSE_REMINDER_TEXT,
   arrivalMissedText,
   durationArabic,
+  noResponseStopText,
   noShowText,
   verifyMissedText,
 } from "@/lib/attendance-notify";
+import { dayDateOf, ensureAttendanceDay } from "@/lib/data/attendance";
 import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -70,6 +72,21 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
   const onDuty = new Set(openSessions.map((s) => s.userId));
   const paused = new Set(activePauses.map((p) => p.userId));
 
+  // تقدير نهاية النافذة الصالحة للنداء العشوائي — بداية الجلسة + الهدف − حرس النهاية.
+  const schedules = await prisma.attendanceSchedule.findMany({
+    where: { userId: { in: userIds } },
+    select: { userId: true, shiftMinutes: true },
+  });
+  const shiftByUser = new Map(schedules.map((s) => [s.userId, s.shiftMinutes]));
+  const sessionsById = new Map(
+    (
+      await prisma.attendanceSession.findMany({
+        where: { id: { in: due.map((v) => v.sessionId).filter((x): x is string => !!x) } },
+        select: { id: true, startedAt: true },
+      })
+    ).map((s) => [s.id, s]),
+  );
+
   let sent = 0;
   for (const v of due) {
     // انصرف أو أُقفلت جلسته قبل إرسال النداء — النداء صار بلا معنى.
@@ -80,6 +97,34 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
     // موقوف — يبقى PENDING ويُرسل بعد رجوعه في نداء الكرون التالي.
     if (paused.has(v.userId)) continue;
 
+    /*
+     * ===== التحقق الذكي (الدفعة الرابعة) — للنداء العشوائي فقط =====
+     * نشاط خلال نافذة الهدوء (بصمة/تغيير موقع/فحص صامت داخل النطاق/إجراء CRM/
+     * رد سابق) يقوم مقام التحقق: يؤجَّل النداء بدل إرساله. وما تجاوز نهاية
+     * النافذة الصالحة (بداية الجلسة + الدوام − حرس النهاية) يُحذف.
+     */
+    if (v.kind === "RANDOM") {
+      const session = v.sessionId ? sessionsById.get(v.sessionId) : undefined;
+      const shift = shiftByUser.get(v.userId) ?? 480;
+      const windowEnd = session
+        ? session.startedAt.getTime() + (shift - settings.verificationEndGuardMinutes) * 60_000
+        : null;
+      if (windowEnd !== null && now.getTime() > windowEnd) {
+        await prisma.attendanceVerification.delete({ where: { id: v.id } });
+        continue;
+      }
+      const since = new Date(now.getTime() - settings.verificationQuietWindowMinutes * 60_000);
+      if (await hasRecentActivity(v.userId, since)) {
+        const nextAt = new Date(now.getTime() + Math.round(settings.verificationQuietWindowMinutes / 2) * 60_000);
+        if (windowEnd !== null && nextAt.getTime() > windowEnd) {
+          await prisma.attendanceVerification.delete({ where: { id: v.id } });
+        } else {
+          await prisma.attendanceVerification.update({ where: { id: v.id }, data: { scheduledAt: nextAt } });
+        }
+        continue;
+      }
+    }
+
     const deadlineAt = new Date(now.getTime() + settings.verificationWindowMinutes * 60_000);
     await prisma.attendanceVerification.update({
       where: { id: v.id },
@@ -89,13 +134,37 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
       prisma,
       [v.userId],
       "attendance.verify",
-      v.kind === "ARRIVAL" ? "وصلت المشروع؟ — أكّد موقعك" : "نداء تحقق — أكّد موقعك الآن",
+      v.kind === "ARRIVAL"
+        ? "وصلت المشروع؟ — أكّد موقعك"
+        : v.kind === "ESCALATED"
+          ? "نداء تحقق ثانٍ — أكّد موقعك الآن وإلا يتوقف عدّادك"
+          : "نداء تحقق — اضغط «أنا بالموقع» وكمّل شغلك",
       `افتح التطبيق وأكّد موقعك خلال ${durationArabic(settings.verificationWindowMinutes)}`,
       "/m",
     );
     sent++;
   }
   return sent;
+}
+
+/**
+ * نشاط حديث يقوم مقام التحقق — بصمة/تغيير موقع، فحص صامت **داخل النطاق**،
+ * إجراء CRM (بلا ASSIGNMENT — توزيع آلي)، أو رد على نداء سابق.
+ */
+async function hasRecentActivity(userId: string, since: Date): Promise<boolean> {
+  const [ev, silent, act, resp] = await Promise.all([
+    prisma.attendanceEvent.findFirst({ where: { userId, timestamp: { gte: since } }, select: { id: true } }),
+    prisma.attendanceSilentCheck.findFirst({
+      where: { userId, at: { gte: since }, outOfZone: false },
+      select: { id: true },
+    }),
+    prisma.activity.findFirst({
+      where: { userId, createdAt: { gte: since }, type: { not: "ASSIGNMENT" } },
+      select: { id: true },
+    }),
+    prisma.attendanceVerification.findFirst({ where: { userId, respondedAt: { gte: since } }, select: { id: true } }),
+  ]);
+  return Boolean(ev || silent || act || resp);
 }
 
 /** ٢) النداءات التي فاتت مهلتها → MISSED + إشعار المالك بآخر موقع معروف. */
@@ -107,12 +176,90 @@ async function expireMissedVerifications(now: Date): Promise<number> {
 
   for (const v of expired) {
     await prisma.attendanceVerification.update({ where: { id: v.id }, data: { status: "MISSED" } });
+
+    /*
+     * ===== سلّم التصعيد (الدفعة الرابعة) =====
+     * RANDOM فائت → لا إشعار مالك بعد: يُجدول النداء الإجباري الثاني
+     * (ESCALATED) بعد escalationDelayMinutes — إن كان ما زال مداومًا.
+     */
+    if (v.kind === "RANDOM") {
+      const stillOn = await prisma.attendanceSession.findFirst({
+        where: { userId: v.userId, endedAt: null },
+        select: { id: true },
+      });
+      if (stillOn) {
+        const settings = await getAttendanceSettings();
+        await prisma.attendanceVerification.create({
+          data: {
+            userId: v.userId,
+            sessionId: v.sessionId,
+            kind: "ESCALATED",
+            parentId: v.id,
+            scheduledAt: new Date(now.getTime() + settings.escalationDelayMinutes * 60_000),
+          },
+        });
+      }
+      continue;
+    }
+
+    /*
+     * ESCALATED فائت → **إيقاف العدّاد آليًا** (NO_RESPONSE): الفترة من فوات
+     * النداء الأول حتى الآن تبقى ضمن دوامه لكنها تُضاف لغير المؤكَّد، وإشعار
+     * المالك بالنص الحرفي.
+     */
+    if (v.kind === "ESCALATED") {
+      const openSession = await prisma.attendanceSession.findFirst({
+        where: { userId: v.userId, endedAt: null },
+      });
+      if (openSession) {
+        const alreadyPaused = await prisma.attendancePause.findFirst({
+          where: { sessionId: openSession.id, endedAt: null },
+          select: { id: true },
+        });
+        if (!alreadyPaused) {
+          const root = v.parentId
+            ? await prisma.attendanceVerification.findUnique({ where: { id: v.parentId } })
+            : null;
+          const unconfirmedFrom = root?.deadlineAt ?? v.sentAt ?? now;
+          const unconfirmedMinutes = Math.max(0, Math.round((now.getTime() - unconfirmedFrom.getTime()) / 60_000));
+
+          await prisma.$transaction(async (tx) => {
+            await tx.attendancePause.create({
+              data: {
+                sessionId: openSession.id,
+                userId: v.userId,
+                kind: "NO_RESPONSE",
+                authorizerLabel: "النظام — نداءان بلا رد",
+                startedAt: now,
+              },
+            });
+            const day = await ensureAttendanceDay(tx, v.userId, ksaDayKey(now));
+            await tx.attendanceDay.update({
+              where: { id: day.id },
+              data: { unconfirmedMinutes: day.unconfirmedMinutes + unconfirmedMinutes },
+            });
+            // الجدول ما عاد يعني — الموقوف لا تصله نداءات.
+            await tx.attendanceVerification.deleteMany({ where: { userId: v.userId, status: "PENDING" } });
+          });
+          await notify(
+            prisma,
+            await ownerIds(prisma),
+            "attendance.verify_missed",
+            noResponseStopText(v.user.name, formatTime(now)),
+            undefined,
+            `/attendance/${v.userId}`,
+          );
+        }
+      }
+      continue;
+    }
+
+    // ARRIVAL/MANUAL — إشعار المالك كما كان.
     const lastEvent = await prisma.attendanceEvent.findFirst({
       where: { userId: v.userId },
       orderBy: { timestamp: "desc" },
       include: { location: { select: { name: true } } },
     });
-    // نداء الوصول الفائت له نصّه الخاص — «ما أكّد وصوله للمشروع».
     await notify(
       prisma,
       await ownerIds(prisma),
@@ -162,9 +309,17 @@ async function checkNoShows(now: Date, settings: Settings): Promise<number> {
   const attended = new Set(sessions.map((s) => s.userId));
   const owners = await ownerIds(prisma);
 
+  // أوضاع اليوم (الدفعة الرابعة): «عن بُعد» و«إجازة» لا يُنذَر عنهما «لم يداوم».
+  const dayRows = await prisma.attendanceDay.findMany({
+    where: { date: dayDateOf(todayKey), mode: { not: "ONSITE" } },
+    select: { userId: true },
+  });
+  const offSite = new Set(dayRows.map((d) => d.userId));
+
   let alerted = 0;
   for (const u of users) {
     if (attended.has(u.id)) continue;
+    if (offSite.has(u.id)) continue;
     const eff = effectiveDay(
       scheduleByUser.get(u.id),
       exceptions.filter((e) => e.userId === u.id),
@@ -268,6 +423,14 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
           autoClosed: true,
         },
       });
+      /*
+       * توقف NO_RESPONSE لم يُفك حتى نهاية اليوم (الدفعة الرابعة): اليوم يُقفل
+       * عند لحظة الإيقاف بوسم «انتهى بلا انصراف» في اللوحة والملف.
+       */
+      if (openPause?.kind === "NO_RESPONSE") {
+        const day = await ensureAttendanceDay(tx, s.userId, dayKey);
+        await tx.attendanceDay.update({ where: { id: day.id }, data: { autoEnded: true } });
+      }
       await tx.attendanceVerification.deleteMany({ where: { userId: s.userId, status: "PENDING" } });
     });
     closed++;
@@ -283,7 +446,8 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
  */
 async function remindPaused(now: Date): Promise<number> {
   const open = await prisma.attendancePause.findMany({
-    where: { endedAt: null, remindersSent: { lt: 2 }, session: { endedAt: null } },
+    // NO_RESPONSE خارج التذكير — له شاشته الخاصة «دوامك متوقف» عند فتح التطبيق.
+    where: { endedAt: null, remindersSent: { lt: 2 }, kind: { not: "NO_RESPONSE" }, session: { endedAt: null } },
   });
 
   let reminded = 0;

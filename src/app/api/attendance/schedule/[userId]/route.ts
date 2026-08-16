@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireOwnerApi } from "@/lib/attendance-guard";
 import { getScheduleFor } from "@/lib/data/attendance";
+import { recordAuditEvent } from "@/lib/audit-event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,10 +45,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
     return NextResponse.json({ ok: false, error: "المالك خارج نظام البصم" }, { status: 400 });
   }
 
+  const before = await prisma.attendanceSchedule.findUnique({ where: { userId } });
   const schedule = await prisma.attendanceSchedule.upsert({
     where: { userId },
     update: { startMinutes, shiftMinutes },
     create: { userId, startMinutes, shiftMinutes },
+  });
+  // سجل التدقيق (الدفعة الرابعة) — تعديل الدوام إجراء مالك حسّاس.
+  await recordAuditEvent(prisma, {
+    actorId: guard.userId,
+    actorRole: "OWNER",
+    action: "SCHEDULE_UPDATE",
+    resourceType: "attendance_schedule",
+    resourceId: userId,
+    before: before ? { startMinutes: before.startMinutes, shiftMinutes: before.shiftMinutes } : null,
+    after: { startMinutes, shiftMinutes },
+    ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
   });
   return NextResponse.json({ ok: true, schedule });
 }

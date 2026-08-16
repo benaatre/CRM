@@ -1,13 +1,12 @@
 import "server-only";
 import { AttendanceEventType, Role } from "@prisma/client";
-import type { AttendanceException, AttendanceSession } from "@prisma/client";
+import type { AttendanceException, AttendanceSession, Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dayStartKSA, ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
-import { formatDate, formatTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatTime } from "@/lib/format";
 import {
   DEFAULT_SHIFT_MINUTES,
   DEFAULT_START_MINUTES,
-  activeWorkedMinutes,
   buildStations,
   countProjectVisits,
   currentMonthKSA,
@@ -22,6 +21,7 @@ import {
   parseWeekendDays,
   rangeBoundsKSA,
   rangeDaysKSA,
+  sumSessionsMinutes,
   type DayStatus,
   type EffectiveDay,
   type MonthDay,
@@ -72,16 +72,14 @@ export async function getAllLocations() {
 export async function getMyAttendanceStatus(userId: string) {
   const dayStart = dayStartKSA();
   const now = new Date();
+  const todayKey = ksaDayKey(now);
 
-  const [openSession, todaySession, todayEvents, eff, todayVerifs] = await Promise.all([
+  const [openSession, daySessions, todayEvents, eff, todayVerifs, day] = await Promise.all([
     prisma.attendanceSession.findFirst({
       where: { userId, endedAt: null },
       orderBy: { startedAt: "desc" },
     }),
-    prisma.attendanceSession.findFirst({
-      where: { userId, startedAt: { gte: dayStart } },
-      orderBy: { startedAt: "desc" },
-    }),
+    daySessionsOf(userId, todayKey),
     prisma.attendanceEvent.findMany({
       where: { userId, timestamp: { gte: dayStart } },
       orderBy: { timestamp: "desc" },
@@ -92,10 +90,20 @@ export async function getMyAttendanceStatus(userId: string) {
       where: { userId, scheduledAt: { gte: dayStart }, status: { not: "PENDING" } },
       orderBy: { scheduledAt: "asc" },
     }),
+    getAttendanceDay(userId, todayKey),
   ]);
 
+  const todaySession = daySessions[daySessions.length - 1] ?? null;
+  const closedToday = daySessions.filter((s) => s.endedAt !== null);
   const session = openSession ?? todaySession;
   const state: AttendanceState = openSession ? "in" : todaySession ? "out" : "none";
+
+  /*
+   * الحساب اليومي (الدفعة الرابعة): «الأساس» = مجموع الجلسات المغلقة اليوم
+   * صافيةً — العميل يضيف عليه المنجز الحي للجلسة المفتوحة، فالعدّاد يعرض
+   * **مجموع اليوم** والانصراف بالغلط ما يصفّر شيئًا.
+   */
+  const dayBaseMinutes = sumSessionsMinutes(closedToday, undefined, now);
 
   /*
    * اسم موقع الجلسة يأتي من بصمة الحضور نفسها (locationId وقتها) لا من آخر بصمة —
@@ -160,17 +168,37 @@ export async function getMyAttendanceStatus(userId: string) {
      * الهدف). العميل يحسب المنجز/الباقي من startedAt — لا عدّاد سيرفر.
      */
     targetMinutes: eff.targetMinutes,
-    // نهاية دوامه تتأخر بمقدار التوقف — البداية + الهدف + المخصوم حتى الآن.
+    /*
+     * نهاية الدوام = لحظة بلوغ **مجموع اليوم** هدفه: البداية + (الهدف − أساس
+     * اليوم المغلق) + المخصوم بالتوقف — فالاستئناف يقرّبها لا يصفّرها.
+     */
     shiftEndText: openSession
       ? formatTime(
           new Date(
             openSession.startedAt.getTime() +
-              eff.targetMinutes * 60_000 +
+              Math.max(0, eff.targetMinutes - dayBaseMinutes) * 60_000 +
               pausedMsBase +
               (activePause ? now.getTime() - activePause.startedAt.getTime() : 0),
           ),
         )
       : null,
+    /*
+     * اليوم المنطقي (الدفعة الرابعة): الأساس المغلق + الوضع + الاستئناف.
+     */
+    dayBaseMinutes,
+    sessionsToday: daySessions.length,
+    day: day
+      ? {
+          mode: day.mode,
+          wasLate: day.wasLate,
+          unconfirmedMinutes: day.unconfirmedMinutes,
+          autoEnded: day.autoEnded,
+          remoteAuthorizerLabel: day.remoteAuthorizerLabel,
+          startedText: formatTime(day.createdAt),
+          firstCheckInText: day.firstCheckInAt ? formatTime(day.firstCheckInAt) : null,
+        }
+      : null,
+    onLeaveToday: eff.onLeave,
     /*
      * حالة التوقف (الدفعة الثالثة) — الأساس المخصوم + التوقف النشط إن وجد.
      */
@@ -322,8 +350,88 @@ export async function getEffectiveDayFor(userId: string, ref: Date = new Date())
   return effectiveDay(schedule, exceptions, dayKey, ksaDayOfWeek(ref), parseWeekendDays(settings.weekendDays));
 }
 
-/** حالة بلاطة «البلاط الموحّد» — ست حالات بألوان هالتها (paused من الدفعة الثالثة). */
-export type TileState = "on" | "late" | "paused" | "miss" | "exc" | "done";
+/* ═══════════ اليوم المنطقي (الدفعة الرابعة) ═══════════ */
+
+type Db = PrismaClient | Prisma.TransactionClient;
+
+/** لحظة عمود @db.Date ليوم رياضي — منتصف ليل UTC بمفتاح اليوم. */
+export function dayDateOf(dayKey: string): Date {
+  return new Date(`${dayKey}T00:00:00Z`);
+}
+
+/** يوم المستخدم المنطقي لتاريخ معيّن — null إن لم يُنشأ بعد. */
+export async function getAttendanceDay(userId: string, dayKey: string) {
+  return prisma.attendanceDay.findUnique({
+    where: { userId_date: { userId, date: dayDateOf(dayKey) } },
+  });
+}
+
+/** يضمن وجود اليوم المنطقي (ONSITE افتراضيًا) — upsert آمن ضد السباق. */
+export async function ensureAttendanceDay(db: Db, userId: string, dayKey: string) {
+  return db.attendanceDay.upsert({
+    where: { userId_date: { userId, date: dayDateOf(dayKey) } },
+    update: {},
+    create: { userId, date: dayDateOf(dayKey) },
+  });
+}
+
+/** جلسات يوم رياضي لمستخدم — بمفتاح اليوم (يشمل القديمة بلا dayId). */
+export async function daySessionsOf(userId: string, dayKey: string) {
+  const start = new Date(dayDateOf(dayKey).getTime() - 3 * 3_600_000);
+  const end = new Date(start.getTime() + DAY_MS);
+  return prisma.attendanceSession.findMany({
+    where: { userId, startedAt: { gte: start, lt: end } },
+    orderBy: { startedAt: "asc" },
+  });
+}
+
+/**
+ * **دقائق اليوم** — واجهة الطبقة فوق الدالة المشتركة `sumSessionsMinutes`:
+ * جلسات اليوم + توقفات المفتوح منها. كل شاشة تحتاج مجموع يوم تمرّ من هنا.
+ */
+export async function dayWorkedMinutes(userId: string, dayKey: string, now: Date = new Date()): Promise<number> {
+  const sessions = await daySessionsOf(userId, dayKey);
+  const open = sessions.filter((s) => s.endedAt === null);
+  const pausesBySession = new Map<string, PauseLike[]>();
+  if (open.length > 0) {
+    const pauses = await prisma.attendancePause.findMany({
+      where: { sessionId: { in: open.map((s) => s.id) } },
+      select: { sessionId: true, startedAt: true, endedAt: true },
+    });
+    for (const p of pauses) {
+      const list = pausesBySession.get(p.sessionId) ?? [];
+      list.push({ startedAt: p.startedAt, endedAt: p.endedAt });
+      pausesBySession.set(p.sessionId, list);
+    }
+  }
+  return sumSessionsMinutes(sessions, pausesBySession, now);
+}
+
+/** حالة بلاطة «البلاط الموحّد» — سبع حالات بألوان هالتها (remote من الدفعة الرابعة). */
+export type TileState = "on" | "late" | "paused" | "remote" | "miss" | "exc" | "done";
+
+/** أوضاع الأيام غير الموقعية لكل مستخدم ضمن مدى — لسجلات لا تحسب REMOTE غيابًا. */
+async function dayModesByUserMap(
+  fromKey: string,
+  toKey: string,
+  userId?: string,
+): Promise<Map<string, Map<string, "ONSITE" | "REMOTE" | "LEAVE">>> {
+  const rows = await prisma.attendanceDay.findMany({
+    where: {
+      ...(userId ? { userId } : {}),
+      date: { gte: dayDateOf(fromKey), lte: dayDateOf(toKey) },
+      mode: { not: "ONSITE" },
+    },
+    select: { userId: true, date: true, mode: true },
+  });
+  const out = new Map<string, Map<string, "ONSITE" | "REMOTE" | "LEAVE">>();
+  for (const r of rows) {
+    const inner = out.get(r.userId) ?? new Map();
+    inner.set(r.date.toISOString().slice(0, 10), r.mode);
+    out.set(r.userId, inner);
+  }
+  return out;
+}
 
 /** حدث Prisma بحقول الموقع ⟵ شكل اشتقاق المحطات النقي. */
 function toStationEvent(e: {
@@ -369,7 +477,7 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
   const histStart = new Date(Math.min(monthRange.start.getTime(), dayStart.getTime() - 30 * DAY_MS));
   const histFromKey = ksaDayKey(histStart);
 
-  const [users, sessions, events, schedules, settings, exceptions, verifications, pauses] = await Promise.all([
+  const [users, sessions, events, schedules, settings, exceptions, verifications, pauses, dayRows] = await Promise.all([
     prisma.user.findMany({
       where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
       select: { id: true, name: true, role: true },
@@ -396,6 +504,7 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
       where: { session: { endedAt: null } },
       orderBy: { startedAt: "asc" },
     }),
+    prisma.attendanceDay.findMany({ where: { date: dayDateOf(todayKey) } }),
   ]);
 
   const weekend = parseWeekendDays(settings.weekendDays);
@@ -408,6 +517,29 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
     list.push({ startedAt: p.startedAt, endedAt: p.endedAt });
     pausesBySession.set(p.sessionId, list);
   }
+  const dayRowByUser = new Map(dayRows.map((d) => [d.userId, d]));
+  const monthModes = await dayModesByUserMap(histFromKey, todayKey);
+
+  /*
+   * قياس «عن بُعد» (الدفعة الرابعة) — فترات الفتح وعدد الإجراءات لبلاطة المالك:
+   * تُجلب لمن يومهم REMOTE فقط. عدد الإجراءات من جدول Activity القائم بلا
+   * ASSIGNMENT (توزيع آلي لا فعل موظف — قرار المالك).
+   */
+  const remoteIds = dayRows.filter((d) => d.mode === "REMOTE").map((d) => d.userId);
+  const [remoteWindows, remoteActions] = remoteIds.length
+    ? await Promise.all([
+        prisma.appActivityWindow.findMany({
+          where: { date: dayDateOf(todayKey), userId: { in: remoteIds } },
+          orderBy: { openedAt: "asc" },
+        }),
+        prisma.activity.groupBy({
+          by: ["userId"],
+          where: { userId: { in: remoteIds }, createdAt: { gte: dayStart }, type: { not: "ASSIGNMENT" } },
+          _count: { _all: true },
+        }),
+      ])
+    : [[], []];
+  const actionsByUser = new Map(remoteActions.map((a) => [a.userId, a._count._all]));
 
   const rows = users.map((u) => {
     const myExceptions = exceptions.filter((e) => e.userId === u.id);
@@ -445,6 +577,7 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
       sessions: mine.filter((s) => s.startedAt >= monthRange.start),
       weekend,
       pausesBySession,
+      dayModesByKey: monthModes.get(u.id),
     });
     const monthStats = summarizeMonth(monthLog);
 
@@ -458,6 +591,7 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
         sessions: mine,
         weekend,
         pausesBySession,
+        dayModesByKey: monthModes.get(u.id),
       }).map((d) => [d.key, d] as const),
     );
     let absenceStreak = 0;
@@ -481,23 +615,67 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
       outOfZone: myVerifs.filter((v) => v.status === "OUT_OF_ZONE").length,
     };
 
-    // ===== حالة البلاطة — التوقف يتقدم على المداومة =====
+    /*
+     * ===== حالة البلاطة (الدفعة الرابعة) =====
+     * التوقف يتقدم على المداومة، ووضع اليوم (عن بُعد/إجازة) يتقدم على «لم
+     * يسجّل» و«الغياب» — الموظف عن بُعد لا يظهر متغيبًا أبدًا.
+     */
+    const dayRow = dayRowByUser.get(u.id) ?? null;
     const state: TileState = open
       ? activePause
         ? "paused"
-        : open.wasLate
+        : open.wasLate || dayRow?.wasLate
           ? "late"
           : "on"
-      : closedToday.length > 0
-        ? "done"
-        : eff.onLeave || eff.isWeekend || eff.hasExcuse || eff.modifiedShift
-          ? "exc"
-          : "miss";
+      : dayRow?.mode === "REMOTE"
+        ? "remote"
+        : closedToday.length > 0
+          ? "done"
+          : dayRow?.mode === "LEAVE" || eff.onLeave || eff.isWeekend || eff.hasExcuse || eff.modifiedShift
+            ? "exc"
+            : "miss";
 
-    const doneMinutes = closedToday.reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
+    // «الأساس» اليومي: مجموع الجلسات المغلقة اليوم — العداد الحي يضيف عليه.
+    const doneMinutes = sumSessionsMinutes(closedToday, undefined, now);
     const lastClosed = closedToday[closedToday.length - 1] ?? null;
-    const checkInMin = open ? ksaMinutesOfDay(open.startedAt) : null;
+    const firstToday = todaySessions[0] ?? null;
+    const checkInMin = firstToday ? ksaMinutesOfDay(firstToday.startedAt) : null;
     const todayException = myExceptions.find((e) => exceptionCoversToday(e, todayKey)) ?? null;
+    const leaveException =
+      todayException?.type === "FULL_DAY_LEAVE" ? todayException : null;
+
+    // ===== قياس «عن بُعد» — فترات الفتح والإجراءات (للمالك فقط) =====
+    const myWindows = dayRow?.mode === "REMOTE" ? remoteWindows.filter((w) => w.userId === u.id) : [];
+    const OPEN_GAP_MS = 5 * 60_000;
+    let longestGapMs = 0;
+    for (let i = 1; i < myWindows.length; i++) {
+      const gap = myWindows[i].openedAt.getTime() - (myWindows[i - 1].closedAt?.getTime() ?? myWindows[i].openedAt.getTime());
+      if (gap > longestGapMs) longestGapMs = gap;
+    }
+    const lastWindow = myWindows[myWindows.length - 1] ?? null;
+    const trailingGap = lastWindow?.closedAt ? now.getTime() - lastWindow.closedAt.getTime() : 0;
+    if (trailingGap > OPEN_GAP_MS && trailingGap > longestGapMs) longestGapMs = trailingGap;
+    const remote =
+      dayRow?.mode === "REMOTE"
+        ? {
+            authorizerLabel: dayRow.remoteAuthorizerLabel,
+            startedText: formatTime(dayRow.createdAt),
+            activeMinutes: Math.round(
+              myWindows.reduce((s, w) => s + Math.max(0, (w.closedAt?.getTime() ?? w.openedAt.getTime()) - w.openedAt.getTime()), 0) /
+                60_000,
+            ),
+            windowsCount: myWindows.length,
+            actionsCount: actionsByUser.get(u.id) ?? 0,
+            longestGapMinutes: Math.round(longestGapMs / 60_000),
+            windows: myWindows.map((w) => ({
+              openedIso: w.openedAt.toISOString(),
+              openedText: formatTime(w.openedAt),
+              closedIso: w.closedAt?.toISOString() ?? null,
+              closedText: w.closedAt ? formatTime(w.closedAt) : null,
+              current: w.closedAt !== null && now.getTime() - w.closedAt.getTime() <= OPEN_GAP_MS,
+            })),
+          }
+        : null;
 
     return {
       id: u.id,
@@ -512,14 +690,15 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
         : todaySessions[0]
           ? formatTime(todaySessions[0].startedAt)
           : null,
-      // مداوم/متأخر/موقوف
+      // مداوم/متأخر/موقوف — الحساب يومي: الأساس المغلق + الجلسة الحية.
       startedAtIso: open ? open.startedAt.toISOString() : null,
-      // نهاية دوامه تتأخر بمقدار التوقف المخصوم حتى الآن.
+      dayBaseMinutes: doneMinutes,
+      // نهاية الدوام = بلوغ **مجموع اليوم** هدفه، وتتأخر بمقدار التوقف.
       endsAtText: open
         ? formatTime(
             new Date(
               open.startedAt.getTime() +
-                eff.targetMinutes * 60_000 +
+                Math.max(0, eff.targetMinutes - doneMinutes) * 60_000 +
                 pausedMsBase +
                 (activePause ? now.getTime() - activePause.startedAt.getTime() : 0),
             ),
@@ -534,9 +713,12 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
             startedText: formatTime(activePause.startedAt),
           }
         : null,
+      // التأخير من **أول حضور** فقط (الدفعة الرابعة) — الاستئناف لا يولّده.
       lateMinutes:
-        open && open.wasLate && checkInMin != null ? Math.max(0, checkInMin - eff.accountStartMinutes) : null,
-      earlyIn: open ? (checkInMin ?? 0) < eff.startMinutes : false,
+        (dayRow?.wasLate || firstToday?.wasLate) && checkInMin != null
+          ? Math.max(0, checkInMin - eff.accountStartMinutes)
+          : null,
+      earlyIn: firstToday ? (checkInMin ?? 0) < eff.startMinutes : false,
       station: current
         ? { kind: current.kind, name: current.name, sinceIso: current.from.toISOString() }
         : null,
@@ -558,6 +740,25 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
       endedAtText: lastClosed?.endedAt ? formatTime(lastClosed.endedAt) : null,
       // توسعة معلنة (لوحة المالك): الجلسة أقفلها الكرون لا الموظف → وسم «جلسة لم تُغلق».
       autoClosed: lastClosed?.autoClosed ?? false,
+      // ===== الدفعة الرابعة =====
+      unconfirmedMinutes: dayRow?.unconfirmedMinutes ?? 0,
+      autoEnded: dayRow?.autoEnded ?? false,
+      remote,
+      leave: leaveException
+        ? {
+            typeLabel:
+              leaveException.leaveType === "SICK"
+                ? "مرضية"
+                : leaveException.leaveType === "OFFICIAL"
+                  ? "رسمية"
+                  : leaveException.leaveType === "PERSONAL"
+                    ? "ظرف خاص"
+                    : "إجازة",
+            toKey: leaveException.dateTo.toISOString().slice(0, 10),
+            toText: formatDate(leaveException.dateTo),
+            selfDeclared: leaveException.selfDeclared,
+          }
+        : null,
       // مشترك
       monthStats,
       verification,
@@ -565,8 +766,8 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
     };
   });
 
-  // الترتيب المعتمد: متأخر → مداوم → موقوف → لم يسجّل (الأكثر تأخيرًا أولًا) → مستثنى → أنهى.
-  const order: Record<TileState, number> = { late: 0, on: 1, paused: 2, miss: 3, exc: 4, done: 5 };
+  // الترتيب المعتمد: متأخر → مداوم → موقوف → عن بُعد → لم يسجّل (الأكثر تأخيرًا أولًا) → مستثنى → أنهى.
+  const order: Record<TileState, number> = { late: 0, on: 1, paused: 2, remote: 3, miss: 4, exc: 5, done: 6 };
   rows.sort((a, b) =>
     order[a.state] !== order[b.state]
       ? order[a.state] - order[b.state]
@@ -753,6 +954,8 @@ function buildDaysLog(args: {
   stationsByDay?: Map<string, StationView[]>;
   /** توقفات الجلسات المفتوحة — لحساب المنجز الحي صافيًا (الدالة المشتركة). */
   pausesBySession?: Map<string, PauseLike[]>;
+  /** وضع اليوم المنطقي لكل مفتاح يوم (الدفعة الرابعة) — REMOTE لا يُحتسب غيابًا. */
+  dayModesByKey?: Map<string, "ONSITE" | "REMOTE" | "LEAVE">;
 }): DayLogEntry[] {
   const { now, schedule, exceptions, sessions, weekend } = args;
   const todayKey = ksaDayKey(now);
@@ -765,16 +968,8 @@ function buildDaysLog(args: {
     const first = daySessions[0] ?? null;
     const lastClosed = [...daySessions].reverse().find((s) => s.endedAt !== null) ?? null;
 
-    // جلسة مفتوحة: المنجز حتى الآن صافيًا من التوقف — عبر الدالة المشتركة وحدها.
-    const workedMinutes = daySessions.reduce(
-      (sum, s) =>
-        sum +
-        (s.workedMinutes ??
-          (s.endedAt === null
-            ? activeWorkedMinutes(s.startedAt, null, args.pausesBySession?.get(s.id) ?? [], now)
-            : 0)),
-      0,
-    );
+    // دقائق اليوم = مجموع جلساته صافيةً — عبر دالة اليوم المشتركة وحدها.
+    const workedMinutes = sumSessionsMinutes(daySessions, args.pausesBySession, now);
 
     const status = dayStatus({
       eff,
@@ -783,6 +978,7 @@ function buildDaysLog(args: {
       hasOpenSession: open !== null,
       isToday: day.key === todayKey,
       isPast: day.key < todayKey,
+      dayMode: args.dayModesByKey?.get(day.key) ?? null,
     });
 
     const shiftEndMs = first ? first.startedAt.getTime() + eff.targetMinutes * 60_000 : null;
@@ -838,7 +1034,7 @@ export async function getEmployeeFile(userId: string, month: string) {
   ]);
   if (!user || user.role === Role.OWNER) return null;
 
-  const [sessions, events, exceptions, verifications] = await Promise.all([
+  const [sessions, events, exceptions, verifications, monthModes, monthDayRows, silentChecks, audits] = await Promise.all([
     prisma.attendanceSession.findMany({
       where: { userId, startedAt: { gte: range.start, lt: range.end } },
       orderBy: { startedAt: "asc" },
@@ -852,6 +1048,29 @@ export async function getEmployeeFile(userId: string, month: string) {
     prisma.attendanceVerification.findMany({
       where: { userId, scheduledAt: { gte: range.start, lt: range.end } },
       orderBy: { scheduledAt: "desc" },
+    }),
+    dayModesByUserMap(`${month}-01`, monthLastDayKey(month), userId),
+    prisma.attendanceDay.findMany({
+      where: { userId, date: { gte: dayDateOf(`${month}-01`), lte: dayDateOf(monthLastDayKey(month)) } },
+    }),
+    // الفحوص الصامتة — للمالك فقط (هذي الدالة خلف requireRole(OWNER) أصلًا).
+    prisma.attendanceSilentCheck.findMany({
+      where: { userId, at: { gte: range.start, lt: range.end } },
+      orderBy: { at: "desc" },
+      take: 200,
+    }),
+    // سجل التغييرات — أحدث ٥٠ حدث تدقيق يخص هذا الموظف أو استثناءاته.
+    prisma.auditEvent.findMany({
+      where: {
+        OR: [
+          { resourceType: "user", resourceId: userId },
+          { resourceType: "attendance_schedule", resourceId: userId },
+          { resourceType: "attendance_day", resourceId: userId },
+          { resourceType: "attendance_exception" },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 80,
     }),
   ]);
 
@@ -902,7 +1121,17 @@ export async function getEmployeeFile(userId: string, month: string) {
     checkInLocByDay,
     stationsByDay,
     pausesBySession: await openSessionPausesMap(),
+    dayModesByKey: monthModes.get(userId),
   });
+
+  // أيام الدفعة الرابعة: غير المؤكَّد والانتهاء بلا انصراف لكل يوم.
+  const dayMetaByKey = new Map(
+    monthDayRows.map((d) => [
+      d.date.toISOString().slice(0, 10),
+      { unconfirmedMinutes: d.unconfirmedMinutes, autoEnded: d.autoEnded, mode: d.mode, remoteAuthorizerLabel: d.remoteAuthorizerLabel },
+    ]),
+  );
+  const monthUnconfirmed = monthDayRows.reduce((s, d) => s + d.unconfirmedMinutes, 0);
 
   const locationNames = new Map(
     (await getAllLocations()).map((l) => [l.id, l.name] as const),
@@ -916,9 +1145,40 @@ export async function getEmployeeFile(userId: string, month: string) {
       shiftMinutes: schedule?.shiftMinutes ?? DEFAULT_SHIFT_MINUTES,
       isDefault: !schedule,
     },
-    stats: summarizeMonth(days),
+    stats: {
+      ...summarizeMonth(days),
+      // الوقت غير المؤكَّد (الدفعة الرابعة) — يظهر رقمان: مؤكَّد وغير مؤكَّد.
+      unconfirmedMinutes: monthUnconfirmed,
+    },
     // السجل يُعرض من الأحدث للأقدم، والعطل الأسبوعية تُستثنى من العرض والحساب.
-    days: days.filter((d) => d.status !== "WEEKEND").reverse(),
+    days: days
+      .filter((d) => d.status !== "WEEKEND")
+      .map((d) => ({ ...d, ...(dayMetaByKey.get(d.key) ?? { unconfirmedMinutes: 0, autoEnded: false, mode: null, remoteAuthorizerLabel: null }) }))
+      .reverse(),
+    // الفحوص الصامتة — للمالك فقط (الصفحة خلف requireRole(OWNER)).
+    silentChecks: silentChecks.map((c) => ({
+      id: c.id,
+      dayKey: ksaDayKey(c.at),
+      atText: formatTime(c.at),
+      outOfZone: c.outOfZone,
+      distanceMeters: c.distanceMeters,
+    })),
+    // سجل التغييرات (append-only) — أحداث هذا الموظف؛ أحداث الاستثناءات تُرشَّح بهويته من الحمولة.
+    audits: audits
+      .filter((a) => {
+        if (a.resourceType !== "attendance_exception") return true;
+        const b = a.before as { userId?: string } | null;
+        const f = a.after as { userId?: string } | null;
+        return b?.userId === userId || f?.userId === userId;
+      })
+      .slice(0, 50)
+      .map((a) => ({
+        id: a.id,
+        action: a.action,
+        reason: a.reason,
+        atText: formatDateTime(a.createdAt),
+        actorRole: a.actorRole,
+      })),
     exceptions: exceptions.map((e) => ({
       id: e.id,
       type: e.type,
@@ -948,24 +1208,32 @@ export async function getTeamSummary(month: string) {
   if (!range) return [];
   const now = new Date();
 
-  const [users, sessions, exceptions, schedules, settings, pausesBySession] = await Promise.all([
-    prisma.user.findMany({
-      where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
-      select: { id: true, name: true, role: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.attendanceSession.findMany({
-      where: { startedAt: { gte: range.start, lt: range.end } },
-      orderBy: { startedAt: "asc" },
-    }),
-    exceptionsOverlapping(undefined, `${month}-01`, monthLastDayKey(month)),
-    prisma.attendanceSchedule.findMany(),
-    getAttendanceSettings(),
-    openSessionPausesMap(),
-  ]);
+  const [users, sessions, exceptions, schedules, settings, pausesBySession, monthModes, unconfirmedAgg] =
+    await Promise.all([
+      prisma.user.findMany({
+        where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
+        select: { id: true, name: true, role: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.attendanceSession.findMany({
+        where: { startedAt: { gte: range.start, lt: range.end } },
+        orderBy: { startedAt: "asc" },
+      }),
+      exceptionsOverlapping(undefined, `${month}-01`, monthLastDayKey(month)),
+      prisma.attendanceSchedule.findMany(),
+      getAttendanceSettings(),
+      openSessionPausesMap(),
+      dayModesByUserMap(`${month}-01`, monthLastDayKey(month)),
+      prisma.attendanceDay.groupBy({
+        by: ["userId"],
+        where: { date: { gte: dayDateOf(`${month}-01`), lte: dayDateOf(monthLastDayKey(month)) } },
+        _sum: { unconfirmedMinutes: true },
+      }),
+    ]);
 
   const weekend = parseWeekendDays(settings.weekendDays);
   const scheduleByUser = new Map(schedules.map((s) => [s.userId, s]));
+  const unconfirmedByUser = new Map(unconfirmedAgg.map((a) => [a.userId, a._sum.unconfirmedMinutes ?? 0]));
 
   return users.map((u) => {
     const days = buildDaysLog({
@@ -976,15 +1244,23 @@ export async function getTeamSummary(month: string) {
       sessions: sessions.filter((s) => s.userId === u.id),
       weekend,
       pausesBySession,
+      dayModesByKey: monthModes.get(u.id),
     });
     const monthKey = `${month}-01`;
+    const totals = summarizeMonth(days);
+    const unconfirmed = Math.min(unconfirmedByUser.get(u.id) ?? 0, totals.totalMinutes);
     return {
       id: u.id,
       name: u.name,
       role: u.role,
       startMinutes: scheduleByUser.get(u.id)?.startMinutes ?? DEFAULT_START_MINUTES,
       startText: formatTime(minutesToDate(monthKey, scheduleByUser.get(u.id)?.startMinutes ?? DEFAULT_START_MINUTES)),
-      ...summarizeMonth(days),
+      ...totals,
+      // نسبة التأكيد الشهرية (الدفعة الرابعة): المؤكَّد ÷ الكل.
+      unconfirmedMinutes: unconfirmed,
+      confirmationPct:
+        totals.totalMinutes > 0 ? Math.round(((totals.totalMinutes - unconfirmed) / totals.totalMinutes) * 100) : 100,
+      remoteDays: days.filter((d) => d.status === "REMOTE").length,
     };
   });
 }

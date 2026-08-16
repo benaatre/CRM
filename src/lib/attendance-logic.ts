@@ -126,6 +126,7 @@ export type DayStatus =
   | "OPEN" // جلسة مفتوحة الآن (اليوم فقط)
   | "ABSENT" // يوم عمل ماضٍ بلا جلسة وبلا إجازة
   | "LEAVE" // إجازة معتمدة
+  | "REMOTE" // يوم «عن بُعد» — قياس نشاط لا ساعات، ولا يُحتسب غيابًا
   | "PENDING" // اليوم الجاري ولم يداوم بعد — ليست غيابًا بعد
   | "WEEKEND"; // إجازة أسبوعية
 
@@ -136,10 +137,13 @@ export function dayStatus(args: {
   hasOpenSession: boolean;
   isToday: boolean;
   isPast: boolean;
+  /** وضع اليوم المنطقي (الدفعة الرابعة) — REMOTE يطغى على الغياب. */
+  dayMode?: "ONSITE" | "REMOTE" | "LEAVE" | null;
 }): DayStatus {
   const { eff, workedMinutes, hasSession, hasOpenSession, isToday, isPast } = args;
   if (eff.isWeekend) return "WEEKEND";
-  if (eff.onLeave) return "LEAVE";
+  if (eff.onLeave || args.dayMode === "LEAVE") return "LEAVE";
+  if (args.dayMode === "REMOTE") return "REMOTE";
   if (hasOpenSession) return "OPEN";
   if (hasSession) return workedMinutes >= eff.targetMinutes ? "COMPLETED" : "PARTIAL";
   if (isToday) return "PENDING";
@@ -235,19 +239,21 @@ export function currentMonthKSA(ref: Date = new Date()): string {
 }
 
 /**
- * أوقات نداءات التحقق العشوائية داخل ما تبقّى من الدوام: لا في أول ٣٠ دقيقة
- * ولا آخر ٣٠ دقيقة. النافذة تُقسَّم شرائح متساوية ونداء عشوائي داخل كل شريحة —
- * فتتباعد النداءات بدل أن تتكدس. نافذة أضيق من العدد المطلوب ترجع أقل (أو صفرًا).
+ * أوقات نداءات التحقق العشوائية داخل ما تبقّى من الدوام: لا في حرس البداية
+ * ولا حرس النهاية (الدفعة الرابعة: ٦٠/٤٥ دقيقة من الإعدادات). النافذة تُقسَّم
+ * شرائح متساوية ونداء عشوائي داخل كل شريحة — فتتباعد النداءات بدل أن تتكدس.
+ * نافذة أضيق من العدد المطلوب ترجع أقل (أو صفرًا).
  */
 export function planVerificationTimes(
   checkInAt: Date,
   targetMinutes: number,
   perDay: number,
   random: () => number = Math.random,
+  startGuardMinutes = 30,
+  endGuardMinutes = 30,
 ): Date[] {
-  const GUARD_MS = 30 * 60_000;
-  const windowStart = checkInAt.getTime() + GUARD_MS;
-  const windowEnd = checkInAt.getTime() + targetMinutes * 60_000 - GUARD_MS;
+  const windowStart = checkInAt.getTime() + startGuardMinutes * 60_000;
+  const windowEnd = checkInAt.getTime() + targetMinutes * 60_000 - endGuardMinutes * 60_000;
   const span = windowEnd - windowStart;
   if (perDay <= 0 || span <= 0) return [];
   // كل نداء يحتاج ٥ دقائق مساحة على الأقل حتى لا تتلاصق النداءات في نافذة قصيرة.
@@ -283,6 +289,26 @@ export function activeWorkedMinutes(
   const end = (endedAt ?? now).getTime();
   if (end <= start) return 0;
   return Math.max(0, Math.round((end - start - pausedMsWithin(pauses, start, end, now)) / 60_000));
+}
+
+/**
+ * **دقائق اليوم** (الدفعة الرابعة) — الحساب صار يوميًا لا جلسيًا: مجموع دقائق
+ * كل جلسات اليوم، كل جلسة صافية من توقفاتها عبر `activeWorkedMinutes`.
+ * الجلسة المغلقة يكفيها `workedMinutes` المحفوظ (صافٍ منذ الدفعة الثالثة).
+ * هذي هي الدالة الوحيدة لجمع يوم — البطاقة واللوحة والملف والإجماليات كلها منها.
+ */
+export function sumSessionsMinutes(
+  sessions: { id: string; startedAt: Date; endedAt: Date | null; workedMinutes: number | null }[],
+  pausesBySession: Map<string, PauseLike[]> | undefined,
+  now: Date,
+): number {
+  return sessions.reduce(
+    (sum, s) =>
+      sum +
+      (s.workedMinutes ??
+        (s.endedAt === null ? activeWorkedMinutes(s.startedAt, null, pausesBySession?.get(s.id) ?? [], now) : 0)),
+    0,
+  );
 }
 
 /** مجموع ميلي ثواني التوقف المتقاطعة مع [start, end] — للعدادات الحية. */

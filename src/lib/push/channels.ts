@@ -137,6 +137,10 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.out_of_zone": "staff",
   "attendance.paused": "staff",
   "attendance.resumed": "staff",
+  // الدفعة الرابعة — أوضاع اليوم.
+  "attendance.remote_day": "staff",
+  "attendance.leave_declared": "staff",
+  "attendance.leave_cancelled": "staff",
   // نداء التحقق نفسه للموظف — عاجل بمهلة قصيرة، فيأخذ أقوى قناة (منبثق + صوت).
   "attendance.verify": "pull_warn",
   // تذكير الموقوف «رجعت؟» — للموظف، فعل مطلوب لكنه ليس إنذارًا.
@@ -183,6 +187,9 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "attendance.out_of_zone": "تغيير موقع خارج النطاق",
   "attendance.paused": "استئذان/مغادرة موظف",
   "attendance.resumed": "رجوع موظف لدوامه",
+  "attendance.remote_day": "يوم عن بُعد",
+  "attendance.leave_declared": "إجازة ذاتية",
+  "attendance.leave_cancelled": "إلغاء إجازة (للموظف)",
   "attendance.verify": "نداء تحقق (للموظف)",
   "attendance.pause_reminder": "تذكير الموقوف (للموظف)",
 };

@@ -31,6 +31,11 @@ export function distanceArabic(meters: number): string {
   return `${toArabicDigits(km.endsWith(".0") ? km.slice(0, -2) : km)} كم`;
 }
 
+/** «كمّل سعود دوامه الساعة ١:٣٠ م — المقر الرئيسي» (استئناف بعد انصراف — الدفعة الرابعة) */
+export function resumedCheckInText(name: string, timeText: string, locationName: string | null): string {
+  return `كمّل ${name} دوامه الساعة ${timeText}${locationName ? ` — ${locationName}` : ""}`;
+}
+
 /** «داوم سعود اليوم الساعة ١٠:٠٠ ص — المقر الرئيسي» */
 export function checkedInText(name: string, timeText: string, locationName: string | null): string {
   return `داوم ${name} اليوم الساعة ${timeText}${locationName ? ` — ${locationName}` : ""}`;
@@ -84,6 +89,11 @@ export function pauseResumeText(name: string, pausedMinutes: number): string {
 /** «سعود ما أكّد وصوله للمشروع» */
 export function arrivalMissedText(name: string): string {
   return `${name} ما أكّد وصوله للمشروع`;
+}
+
+/** «توقف دوام سعود ١:٣٠ م — ما استجاب لنداءي التحقق» (سلّم التصعيد — الدفعة الرابعة) */
+export function noResponseStopText(name: string, timeText: string): string {
+  return `توقف دوام ${name} ${timeText} — ما استجاب لنداءي التحقق`;
 }
 
 /** «انصرف سعود الساعة ٣:٣٠ م من المقر الرئيسي — قبل إكمال دوامه» (انصراف من النداء) */

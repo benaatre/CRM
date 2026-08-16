@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AttendanceExceptionType, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireOwnerApi } from "@/lib/attendance-guard";
+import { recordAuditEvent } from "@/lib/audit-event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,6 +98,17 @@ export async function POST(req: Request) {
       reason,
       createdById: guard.userId,
     },
+  });
+  // سجل التدقيق (الدفعة الرابعة) — منح استثناء إجراء مالك حسّاس.
+  await recordAuditEvent(prisma, {
+    actorId: guard.userId,
+    actorRole: "OWNER",
+    action: "EXCEPTION_GRANT",
+    resourceType: "attendance_exception",
+    resourceId: exception.id,
+    after: { userId, type, fromKey: dateFrom, toKey: dateTo, excuseUntilMinutes, modifiedShiftMinutes },
+    reason,
+    ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
   });
   return NextResponse.json({ ok: true, exception });
 }
