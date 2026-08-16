@@ -6,16 +6,24 @@ import { isCronAuthorized } from "@/lib/cron-auth";
 import { DAY_MS, dayStartKSA, ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
 import { getAttendanceSettings } from "@/lib/data/attendance";
-import { activeWorkedMinutes, effectiveDay, minutesToDate, parseWeekendDays } from "@/lib/attendance-logic";
+import {
+  activeWorkedMinutes,
+  effectiveDay,
+  minutesToDate,
+  momentOfActiveTarget,
+  parseWeekendDays,
+} from "@/lib/attendance-logic";
 import {
   PAUSE_REMINDER_TEXT,
   arrivalMissedText,
+  completedText,
   durationArabic,
   noResponseStopText,
   noShowText,
   verifyMissedText,
 } from "@/lib/attendance-notify";
 import { dayDateOf, ensureAttendanceDay } from "@/lib/data/attendance";
+import { createConditionalCall } from "@/lib/attendance-conditional";
 import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -203,6 +211,52 @@ async function expireMissedVerifications(now: Date): Promise<number> {
     }
 
     /*
+     * CONDITIONAL فائت (قانون ٩): لا تصعيد ثانٍ — «لم يرد خلال المهلة = يتوقف
+     * عدّاده» فورًا، بوقت غير مؤكَّد **من آخر إثبات موقع** لا من فوات النداء.
+     */
+    if (v.kind === "CONDITIONAL") {
+      const openSession = await prisma.attendanceSession.findFirst({
+        where: { userId: v.userId, endedAt: null },
+      });
+      if (openSession) {
+        const alreadyPaused = await prisma.attendancePause.findFirst({
+          where: { sessionId: openSession.id, endedAt: null },
+          select: { id: true },
+        });
+        if (!alreadyPaused) {
+          const unconfirmedFrom = openSession.lastZoneProofAt ?? v.sentAt ?? now;
+          const unconfirmedMinutes = Math.max(0, Math.round((now.getTime() - unconfirmedFrom.getTime()) / 60_000));
+          await prisma.$transaction(async (tx) => {
+            await tx.attendancePause.create({
+              data: {
+                sessionId: openSession.id,
+                userId: v.userId,
+                kind: "NO_RESPONSE",
+                authorizerLabel: "النظام — نداء مشروط بلا رد",
+                startedAt: now,
+              },
+            });
+            const day = await ensureAttendanceDay(tx, v.userId, ksaDayKey(now));
+            await tx.attendanceDay.update({
+              where: { id: day.id },
+              data: { unconfirmedMinutes: day.unconfirmedMinutes + unconfirmedMinutes },
+            });
+            await tx.attendanceVerification.deleteMany({ where: { userId: v.userId, status: "PENDING" } });
+          });
+          await notify(
+            prisma,
+            await ownerIds(prisma),
+            "attendance.verify_missed",
+            noResponseStopText(v.user.name, formatTime(now)),
+            undefined,
+            `/attendance/${v.userId}`,
+          );
+        }
+      }
+      continue;
+    }
+
+    /*
      * ESCALATED فائت → **إيقاف العدّاد آليًا** (NO_RESPONSE): الفترة من فوات
      * النداء الأول حتى الآن تبقى ضمن دوامه لكنها تُضاف لغير المؤكَّد، وإشعار
      * المالك بالنص الحرفي.
@@ -353,23 +407,31 @@ async function checkNoShows(now: Date, settings: Settings): Promise<number> {
 }
 
 /**
- * ٤) إقفال الجلسات المنسية: بعد مضيّ ساعة سماح على أبعد الحدّين (نهاية نافذة
- * الشركة / نهاية دوامه المحدد) تُقفل الجلسة عند ذلك الحد لا عند «الآن» — فلا
- * تتضخم الساعات بنسيان الانصراف. ساعة السماح تحفظ «مشى متأخر» لمن انصرف فعلًا.
+ * ٧) توقف العدّاد عند اكتمال الهدف (الدوام الواقعي — قرار ٧): مجموع اليوم بلغ
+ * الهدف → تُقفل الجلسة **بأثر رجعي عند لحظة البلوغ الرياضية** (البداية +
+ * المتبقي، مزاحةً بالتوقفات) بـ`closedBy: TARGET` — فتأخر الكرون ≤٥ دقائق لا
+ * يسرّب دقيقة، وحالة «مداوم ٨:٠٣/٨» تستحيل. الموقوف مستثنى (عدّاده واقف).
  */
-async function autoCloseForgotten(now: Date, settings: Settings): Promise<number> {
-  const GRACE_MS = 60 * 60_000;
-  const open = await prisma.attendanceSession.findMany({ where: { endedAt: null } });
+async function closeCompletedTargets(now: Date, settings: Settings): Promise<number> {
+  const open = await prisma.attendanceSession.findMany({
+    where: { endedAt: null, voided: false },
+    include: { pauses: true },
+  });
   if (open.length === 0) return 0;
 
   const weekend = parseWeekendDays(settings.weekendDays);
-  const schedules = await prisma.attendanceSchedule.findMany({
-    where: { userId: { in: [...new Set(open.map((s) => s.userId))] } },
-  });
-  const scheduleByUser = new Map(schedules.map((s) => [s.userId, s]));
+  const scheduleByUser = new Map(
+    (
+      await prisma.attendanceSchedule.findMany({
+        where: { userId: { in: [...new Set(open.map((s) => s.userId))] } },
+      })
+    ).map((s) => [s.userId, s]),
+  );
 
   let closed = 0;
   for (const s of open) {
+    if (s.pauses.some((p) => p.endedAt === null)) continue; // موقوف — الهدف لا يتقدم
+
     const dayKey = ksaDayKey(s.startedAt);
     const exceptions = await prisma.attendanceException.findMany({
       where: {
@@ -378,17 +440,91 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
         dateTo: { gte: new Date(`${dayKey}T00:00:00Z`) },
       },
     });
-    const eff = effectiveDay(
-      scheduleByUser.get(s.userId),
-      exceptions,
-      dayKey,
-      ksaDayOfWeek(s.startedAt),
-      weekend,
+    const eff = effectiveDay(scheduleByUser.get(s.userId), exceptions, dayKey, ksaDayOfWeek(s.startedAt), weekend);
+
+    // أساس اليوم من الجلسات المغلقة السابقة — نفس تعريف الحساب اليومي.
+    const dayStart = new Date(`${dayKey}T00:00:00+03:00`);
+    const earlier = await prisma.attendanceSession.findMany({
+      where: { userId: s.userId, voided: false, startedAt: { gte: dayStart, lt: s.startedAt }, endedAt: { not: null } },
+      select: { workedMinutes: true },
+    });
+    const dayBase = earlier.reduce((sum, x) => sum + (x.workedMinutes ?? 0), 0);
+    const remaining = eff.targetMinutes - dayBase;
+    if (remaining <= 0) {
+      // الهدف مكتمل قبل هذي الجلسة أصلًا — بصمة زائدة، تُقفل عند بدايتها بصفر دقائق.
+      await prisma.attendanceSession.update({
+        where: { id: s.id },
+        data: { endedAt: s.startedAt, workedMinutes: 0, closedBy: "TARGET" },
+      });
+      closed++;
+      continue;
+    }
+
+    const live = activeWorkedMinutes(
+      s.startedAt,
+      now,
+      s.pauses.map((p) => ({ startedAt: p.startedAt, endedAt: p.endedAt })),
+      now,
     );
-    const personalEnd = s.startedAt.getTime() + eff.targetMinutes * 60_000;
+    if (live < remaining) continue;
+
+    const targetMoment = momentOfActiveTarget(
+      s.startedAt,
+      s.pauses.map((p) => ({ startedAt: p.startedAt, endedAt: p.endedAt })),
+      remaining,
+    );
+    await prisma.$transaction(async (tx) => {
+      await tx.attendanceSession.update({
+        where: { id: s.id },
+        data: { endedAt: targetMoment, workedMinutes: remaining, closedBy: "TARGET" },
+      });
+      await tx.attendanceVerification.deleteMany({ where: { userId: s.userId, status: "PENDING" } });
+    });
+    const me = await prisma.user.findUnique({ where: { id: s.userId }, select: { name: true } });
+    await notify(
+      prisma,
+      await ownerIds(prisma),
+      "attendance.completed",
+      completedText(me?.name ?? "موظف", eff.targetMinutes, null),
+      undefined,
+      `/attendance/${s.userId}`,
+    ).catch(() => {});
+    closed++;
+  }
+  return closed;
+}
+
+/**
+ * ٤) الإغلاق القانوني (الدوام الواقعي — قراران ١ و٨): بعد نهاية نافذة الشركة
+ * **كل** جلسة مفتوحة تُقفل قسرًا — لحظة الإقفال «آخر إثبات حياة + سماحية»
+ * بسقف نهاية النافذة (وللجلسات القديمة بلا إثباتات: آخر حدث بصم فعلي). الفرق
+ * بعد آخر إثبات موقع يُضاف لغير المؤكَّد، وإشعار المالك بالتفصيل.
+ */
+async function autoCloseForgotten(now: Date, settings: Settings): Promise<number> {
+  const open = await prisma.attendanceSession.findMany({ where: { endedAt: null } });
+  if (open.length === 0) return 0;
+
+  const graceMs = settings.autoCloseAliveGraceMinutes * 60_000;
+
+  let closed = 0;
+  for (const s of open) {
+    const dayKey = ksaDayKey(s.startedAt);
     const companyEnd = minutesToDate(dayKey, settings.workEndMinutes).getTime();
-    const closeAt = Math.max(personalEnd, companyEnd);
-    if (now.getTime() < closeAt + GRACE_MS) continue;
+    // السياج (قرار ١): الإقفال القسري يبدأ من نهاية النافذة الكلية — قبلها
+    // اليوم الجاري تحكمه ر٥ (الانقطاع) وإقفال الهدف، لا هذا.
+    if (now.getTime() < companyEnd) continue;
+
+    // آخر إثبات حياة — وللقديمة (null): آخر حدث بصم فعلي ضمن الجلسة، وإلا بدايتها.
+    let lastProof = s.lastAliveAt;
+    if (!lastProof) {
+      const lastEvent = await prisma.attendanceEvent.findFirst({
+        where: { userId: s.userId, timestamp: { gte: s.startedAt } },
+        orderBy: { timestamp: "desc" },
+        select: { timestamp: true },
+      });
+      lastProof = lastEvent?.timestamp ?? s.startedAt;
+    }
+    const closeAt = Math.min(companyEnd, Math.max(s.startedAt.getTime(), lastProof.getTime() + graceMs));
 
     /*
      * توقف جارٍ عند الإقفال (الدفعة الثالثة): يُقفل عند **لحظة بدئه** ولا
@@ -422,6 +558,7 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
             endDate,
           ),
           autoClosed: true,
+          closedBy: "AUTO",
         },
       });
       /*
@@ -432,8 +569,33 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
         const day = await ensureAttendanceDay(tx, s.userId, dayKey);
         await tx.attendanceDay.update({ where: { id: day.id }, data: { autoEnded: true } });
       }
+      /*
+       * القانون ٨: ما بعد آخر إثبات موقع «غير مؤكَّد» — الفرق بين لحظة الإقفال
+       * وآخر إثبات موقع يُضاف لغير مؤكَّد اليوم (إن كان موجبًا).
+       */
+      const zoneProof = s.lastZoneProofAt?.getTime() ?? null;
+      const unconfirmed =
+        zoneProof !== null ? Math.max(0, Math.round((closeMoment - zoneProof) / 60_000)) : 0;
+      if (unconfirmed > 0) {
+        const day = await ensureAttendanceDay(tx, s.userId, dayKey);
+        await tx.attendanceDay.update({
+          where: { id: day.id },
+          data: { unconfirmedMinutes: day.unconfirmedMinutes + unconfirmed },
+        });
+      }
       await tx.attendanceVerification.deleteMany({ where: { userId: s.userId, status: "PENDING" } });
     });
+
+    // إشعار المالك بالتفصيل (قرار ١٢) — best-effort.
+    const me = await prisma.user.findUnique({ where: { id: s.userId }, select: { name: true } });
+    await notify(
+      prisma,
+      await ownerIds(prisma),
+      "attendance.auto_closed",
+      `${me?.name ?? "موظف"} نسي الانصراف — أُقفلت جلسته آليًا عند ${formatTime(endDate)} (آخر إثبات + السماحية)`,
+      undefined,
+      `/attendance/${s.userId}`,
+    ).catch(() => {});
     closed++;
   }
   return closed;
@@ -467,6 +629,140 @@ async function remindPaused(now: Date): Promise<number> {
 }
 
 /**
+ * ٨) قانون الانقطاع (الدوام الواقعي — قانون ٩): جلسة مفتوحة (غير موقوفة) بيوم
+ * «في الموقع» انقطع إثباتها heartbeatGapMinutes → نداء CONDITIONAL فوري
+ * (HEARTBEAT_GAP). التجاهل خلال conditionalWindowMinutes → توقف بوقت غير
+ * مؤكَّد من آخر إثبات موقع (فرع CONDITIONAL أعلاه). داخل نافذة الشركة فقط —
+ * بعدها الإغلاق القانوني هو الحاكم.
+ */
+async function checkHeartbeatGaps(now: Date, settings: Settings): Promise<number> {
+  const open = await prisma.attendanceSession.findMany({
+    where: { endedAt: null, voided: false },
+    include: { pauses: { where: { endedAt: null }, select: { id: true } } },
+  });
+  if (open.length === 0) return 0;
+
+  const todayKey = ksaDayKey(now);
+  const offSite = new Set(
+    (
+      await prisma.attendanceDay.findMany({
+        where: { date: dayDateOf(todayKey), mode: { not: "ONSITE" } },
+        select: { userId: true },
+      })
+    ).map((d) => d.userId),
+  );
+
+  let called = 0;
+  for (const s of open) {
+    if (s.pauses.length > 0) continue; // موقوف/مستأذن — عدّاده واقف أصلًا
+    if (offSite.has(s.userId)) continue;
+    const companyEnd = minutesToDate(ksaDayKey(s.startedAt), settings.workEndMinutes).getTime();
+    if (now.getTime() >= companyEnd) continue;
+
+    const lastProof = s.lastAliveAt ?? s.startedAt;
+    if (now.getTime() - lastProof.getTime() < settings.heartbeatGapMinutes * 60_000) continue;
+
+    const sent = await createConditionalCall({
+      userId: s.userId,
+      sessionId: s.id,
+      reason: "HEARTBEAT_GAP",
+      now,
+      windowMinutes: settings.conditionalWindowMinutes,
+      cooldownMinutes: settings.conditionalCooldownMinutes,
+      maxPerDay: settings.maxConditionalPerDay,
+      title: "انقطع إثبات وجودك — أكّد موقعك الآن",
+      body: `ما وصلنا منك أي إشارة من ${durationArabic(settings.heartbeatGapMinutes)} — رد خلال ${durationArabic(settings.conditionalWindowMinutes)} وإلا يتوقف عدّادك`,
+    });
+    if (sent) called++;
+  }
+  return called;
+}
+
+/**
+ * ٩) مراقبة الزيارة (قرار ١٠): محطة مشروع جارية —
+ *   أ) انقطع النبض ≥ ٥ دقائق → push فوري «افتح التطبيق وأكّد موقعك» (تذكير لا
+ *      نداء — بلا انتظار الـ٤٥؛ مرة كل ربع ساعة كحد أقصى).
+ *   ب) لا إثبات موقع من visitReverifyMinutes → نداء تحقق CONDITIONAL
+ *      (VISIT_STALE) بإيقاعه الخاص — خارج سقف/تهدئة GAP عمدًا.
+ */
+async function watchVisits(now: Date, settings: Settings): Promise<number> {
+  const open = await prisma.attendanceSession.findMany({
+    where: { endedAt: null, voided: false },
+    include: { pauses: { where: { endedAt: null }, select: { id: true } } },
+  });
+  if (open.length === 0) return 0;
+
+  let acted = 0;
+  for (const s of open) {
+    if (s.pauses.length > 0) continue;
+
+    // محطة المشروع الجارية = آخر حدث موقعي للجلسة على دائرة PROJECT داخل النطاق.
+    const lastLocEvent = await prisma.attendanceEvent.findFirst({
+      where: { userId: s.userId, timestamp: { gte: s.startedAt }, type: { in: ["CHECK_IN", "LOCATION_CHANGE"] } },
+      orderBy: { timestamp: "desc" },
+      include: { location: { select: { name: true, type: true } } },
+    });
+    if (!lastLocEvent || lastLocEvent.outOfZone || lastLocEvent.location?.type !== "PROJECT") continue;
+    const projectName = lastLocEvent.location.name;
+
+    // (أ) انقطاع النبض أثناء الزيارة — تذكير push فوري بعد ٥ دقائق (بلا انتظار الـ٤٥).
+    const aliveGapMs = now.getTime() - (s.lastAliveAt ?? s.startedAt).getTime();
+    if (aliveGapMs >= 5 * 60_000) {
+      const recentReminder = await prisma.notification.findFirst({
+        where: {
+          userId: s.userId,
+          type: "attendance.confirm_location",
+          createdAt: { gte: new Date(now.getTime() - 15 * 60_000) },
+        },
+        select: { id: true },
+      });
+      if (!recentReminder) {
+        await notify(
+          prisma,
+          [s.userId],
+          "attendance.confirm_location",
+          `انقطع اتصالك وأنت بزيارة ${projectName} — افتح التطبيق وأكّد موقعك`,
+          undefined,
+          "/m",
+        ).catch(() => {});
+        acted++;
+      }
+    }
+
+    // (ب) التحقق الدوري كل visitReverifyMinutes — بلا إثبات موقع حديث.
+    const proofRef = Math.max(
+      s.lastZoneProofAt?.getTime() ?? 0,
+      lastLocEvent.timestamp.getTime(),
+    );
+    if (now.getTime() - proofRef < settings.visitReverifyMinutes * 60_000) continue;
+    const recentStale = await prisma.attendanceVerification.findFirst({
+      where: {
+        userId: s.userId,
+        kind: "CONDITIONAL",
+        triggerReason: "VISIT_STALE",
+        createdAt: { gte: new Date(now.getTime() - settings.visitReverifyMinutes * 60_000) },
+      },
+      select: { id: true },
+    });
+    if (recentStale) continue;
+
+    const sent = await createConditionalCall({
+      userId: s.userId,
+      sessionId: s.id,
+      reason: "VISIT_STALE",
+      now,
+      windowMinutes: settings.conditionalWindowMinutes,
+      cooldownMinutes: settings.conditionalCooldownMinutes,
+      maxPerDay: settings.maxConditionalPerDay,
+      title: `لسه بمشروع ${projectName}؟ — أكّد موقعك`,
+      body: `التحقق الدوري للزيارات كل ${durationArabic(settings.visitReverifyMinutes)} — رد خلال ${durationArabic(settings.conditionalWindowMinutes)}`,
+    });
+    if (sent) acted++;
+  }
+  return acted;
+}
+
+/**
  * ٦) تنظيف النبض الجغرافي (الثقة المتجددة): حذف الأقدم من ٦٠ يومًا — سياسة
  * الاحتفاظ المعلنة في تعليق AttendancePulse. رخيصة عند عدم وجود شيء.
  */
@@ -489,12 +785,15 @@ export async function POST(req: Request) {
     sendDueVerifications(now, settings),
     expireMissedVerifications(now),
     checkNoShows(now, settings),
+    closeCompletedTargets(now, settings),
     autoCloseForgotten(now, settings),
+    checkHeartbeatGaps(now, settings),
+    watchVisits(now, settings),
     remindPaused(now),
     cleanOldPulses(now),
   ]);
-  const names = ["verifySent", "verifyMissed", "noShow", "autoClosed", "pauseReminders", "pulsesCleaned"] as const;
-  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, autoClosed: 0, pauseReminders: 0, pulsesCleaned: 0 };
+  const names = ["verifySent", "verifyMissed", "noShow", "targetClosed", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
+  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, targetClosed: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
   const failed: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") counts[names[i]] = r.value;

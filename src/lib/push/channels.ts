@@ -148,6 +148,8 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   // ===== الدوام الواقعي =====
   // «بصمنا لك ✓» للموظف — بشرى هادئة لا إنذار.
   "attendance.auto_punch": "appointments",
+  // «افتح التطبيق وأكّد موقعك» أثناء الزيارة — عاجل للموظف.
+  "attendance.confirm_location": "pull_warn",
   // إجابات شاشة الحسم — للمالك.
   "attendance.decision": "staff",
   // الإقفال الآلي القانوني — للمالك.

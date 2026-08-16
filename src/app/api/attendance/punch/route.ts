@@ -15,6 +15,7 @@ import {
   activeWorkedMinutes,
   effectiveDay,
   isLateCheckIn,
+  minutesToHM,
   parseWeekendDays,
   planVerificationTimes,
 } from "@/lib/attendance-logic";
@@ -314,6 +315,20 @@ export async function POST(req: Request) {
       : 0;
 
   const nowMinutes = ksaMinutesOfDay(now);
+
+  if (body.intent === AttendanceEventType.CHECK_IN) {
+    // السياج الكلي (الدوام الواقعي — قرار ١): لا حضور خارج نافذة الشركة.
+    if (nowMinutes < settings.workStartMinutes || nowMinutes >= settings.workEndMinutes) {
+      return refuse(
+        "company_closed",
+        `الشركة مقفلة الحين — الدوام من ${minutesToHM(settings.workStartMinutes)} إلى ${minutesToHM(settings.workEndMinutes)}`,
+      );
+    }
+    // الهدف مكتمل (قرار ٧): لا وقت إضافي يُحسب — «أكمل دوامه ✓».
+    if (dayBaseMinutes >= eff.targetMinutes) {
+      return refuse("target_done", "أكملت دوامك اليوم ✓ — ما فيه وقت إضافي يُحسب بعد الهدف");
+    }
+  }
   const isLate =
     body.intent === AttendanceEventType.CHECK_IN &&
     !isResume &&

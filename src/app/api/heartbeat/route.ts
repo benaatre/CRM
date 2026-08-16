@@ -8,6 +8,7 @@ import { matchLocation, nearestLocation } from "@/lib/geofence";
 import { getActiveLocations, getAttendanceSettings, getAttendanceDay } from "@/lib/data/attendance";
 import { ksaDayKey, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { activeOnWayDecision, effectiveDayOf, tryAutoPunch } from "@/lib/attendance-auto-punch";
+import { createConditionalCall } from "@/lib/attendance-conditional";
 
 export const runtime = "nodejs";
 
@@ -124,6 +125,36 @@ export async function POST(req: Request) {
     await prisma.attendanceSession
       .update({ where: { id: openSession.id }, data: { lastZoneProofAt: now } })
       .catch(() => {});
+  }
+
+  /*
+   * ===== خروج النطاق يُكتشف بالدقيقة (الدوام الواقعي — قرار ١٠) =====
+   * نبضة خارج النطاق والنبضة السابقة داخله = خرج توًّا → نداء «طلعت من
+   * {الموقع} — وين رايح؟» فورًا. رد النداء القائم يغطي الخيارات: بالموقع
+   * (راجع) / ذاهب لمشروع / استئذان / انصراف («خلصت زيارتي»).
+   */
+  if (inZone === false && openSession) {
+    // النبضة الحالية سُجّلت بـat=now فيستثنيها lt — هذي أحدث نبضة قبلها بحكم.
+    const prev = await prisma.attendancePulse
+      .findFirst({
+        where: { userId, at: { lt: now, gte: new Date(now.getTime() - 5 * 60_000) }, inZone: { not: null } },
+        orderBy: { at: "desc" },
+        include: { location: { select: { name: true } } },
+      })
+      .catch(() => null);
+    if (prev?.inZone === true) {
+      await createConditionalCall({
+        userId,
+        sessionId: openSession.id,
+        reason: "OUT_ZONE",
+        now,
+        windowMinutes: settings.conditionalWindowMinutes,
+        cooldownMinutes: settings.conditionalCooldownMinutes,
+        maxPerDay: settings.maxConditionalPerDay,
+        title: `طلعت من ${prev.location?.name ?? "موقع العمل"} — وين رايح؟`,
+        body: "أكّد وضعك: بالموقع / ذاهب لمشروع / استئذان — أو سجّل انصرافك",
+      }).catch(() => {});
+    }
   }
 
   // ===== البصم التلقائي — بلا جلسة ونبضة داخل النطاق =====

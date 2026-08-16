@@ -322,6 +322,23 @@ export function sumSessionsMinutes(
   );
 }
 
+/**
+ * لحظة بلوغ العدّاد النشط `minutes` دقيقة (الدوام الواقعي — قرار ٧): البداية +
+ * الهدف، مزاحةً بمدد التوقفات المغلقة التي تسبقها — تمشي على التوقفات مرتّبةً
+ * فتدفع اللحظة يمينًا بكامل مدة كل توقف بدأ قبلها. توقف مفتوح = الهدف لا
+ * يُبلغ أثناءه (المستدعي يستثني الموقوفين أصلًا).
+ */
+export function momentOfActiveTarget(startedAt: Date, closedPauses: PauseLike[], minutes: number): Date {
+  let t = startedAt.getTime() + minutes * 60_000;
+  const sorted = [...closedPauses]
+    .filter((p) => p.endedAt !== null)
+    .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
+  for (const p of sorted) {
+    if (p.startedAt.getTime() < t) t += p.endedAt!.getTime() - p.startedAt.getTime();
+  }
+  return new Date(t);
+}
+
 /** مجموع ميلي ثواني التوقف المتقاطعة مع [start, end] — للعدادات الحية. */
 export function pausedMsWithin(pauses: PauseLike[], start: number, end: number, now: Date): number {
   let paused = 0;

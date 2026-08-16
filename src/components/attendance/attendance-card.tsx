@@ -540,6 +540,8 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                 : remoteDay ? { color: "var(--att-remote)", label: "عن بُعد" }
                 : onLeave ? { color: "var(--att-leave)", label: "إجازة اليوم" }
                 : noResponsePause ? { color: "var(--att-miss)", label: "متوقف — بلا رد" }
+                : status.state === "out" && dayBase >= targetMinutes
+                  ? { color: "var(--att-on)", label: "أكمل دوامه ✓" }
                 : status.state === "out" ? { color: "var(--att-done)", label: "منصرف" }
                 : { color: "var(--m-dw-amber)", label: "لم تسجّل الحضور" };
               return (
@@ -732,28 +734,37 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                       </div>
                     )}
 
-                    {/* ===== `.aacts` — الزر الذهبي الكبير ===== */}
-                    <div className="flex" style={{ gap: 9 }}>
-                      <button
-                        type="button"
-                        onClick={() => void punch("CHECK_IN")}
-                        disabled={working}
-                        className="m-press flex flex-1 items-center justify-center"
-                        style={{
-                          boxSizing: "border-box", gap: 7, background: "var(--m-gold)", color: "var(--m-gold-bg)",
-                          borderRadius: 13, padding: "13px 0", fontSize: 13, fontWeight: 700, border: "none",
-                          boxShadow: "inset 0 1px 0 rgba(255,255,255,.22)",
-                          opacity: working ? 0.6 : 1,
-                        }}
+                    {/* ===== `.aacts` — الزر الذهبي الكبير (يختفي بعد اكتمال الهدف — قرار ٧) ===== */}
+                    {status.state === "out" && dayBase >= targetMinutes ? (
+                      <p
+                        className="flex items-center justify-center"
+                        style={{ gap: 7, borderRadius: 13, padding: "13px 0", fontSize: 13, fontWeight: 700, background: soft("var(--att-on)", 12), color: "var(--att-on)" }}
                       >
-                        <LogIn aria-hidden size={15} strokeWidth={1.8} />
-                        {busy === "CHECK_IN"
-                          ? "جاري تحديد موقعك…"
-                          : status.state === "out"
-                            ? "إكمال الدوام"
-                            : "تسجيل الحضور"}
-                      </button>
-                    </div>
+                        أكملت دوامك اليوم ✓ — يعطيك العافية
+                      </p>
+                    ) : (
+                      <div className="flex" style={{ gap: 9 }}>
+                        <button
+                          type="button"
+                          onClick={() => void punch("CHECK_IN")}
+                          disabled={working}
+                          className="m-press flex flex-1 items-center justify-center"
+                          style={{
+                            boxSizing: "border-box", gap: 7, background: "var(--m-gold)", color: "var(--m-gold-bg)",
+                            borderRadius: 13, padding: "13px 0", fontSize: 13, fontWeight: 700, border: "none",
+                            boxShadow: "inset 0 1px 0 rgba(255,255,255,.22)",
+                            opacity: working ? 0.6 : 1,
+                          }}
+                        >
+                          <LogIn aria-hidden size={15} strokeWidth={1.8} />
+                          {busy === "CHECK_IN"
+                            ? "جاري تحديد موقعك…"
+                            : status.state === "out"
+                              ? "إكمال الدوام"
+                              : "تسجيل الحضور"}
+                        </button>
+                      </div>
+                    )}
                   </>
                 )
               )}
