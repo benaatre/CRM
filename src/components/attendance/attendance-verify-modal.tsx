@@ -157,7 +157,7 @@ export function VerifyModal({
 
   return (
     <div
-      className="att-scope fixed inset-0 z-[70] flex items-center justify-center p-4"
+      className="att-scope fixed inset-0 z-[92] flex items-center justify-center p-4"
       dir="rtl"
       role="alertdialog"
       aria-modal="true"

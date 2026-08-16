@@ -47,6 +47,32 @@ export const MOBILE_COLORS = {
   skyBg: "var(--m-sky-bg)",
   amber: "var(--m-amber)",
   amberBg: "var(--m-amber-bg)",
+  // ===== توكنز «الديوان» (رئيسية الموظف): حد شعري + شفافيات الذهبي + التدرّج + زجاج التوب بار =====
+  hair: "var(--m-hair)",
+  accDim: "var(--m-acc-dim)",
+  accA20: "var(--m-acc-a20)",
+  accA32: "var(--m-acc-a32)",
+  accGlow: "var(--m-acc-glow)",
+  gradA: "var(--m-grad-a)",
+  gradB: "var(--m-grad-b)",
+  gradC: "var(--m-grad-c)",
+  navBg: "var(--m-nav-bg)",
+  /** واتساب الرسمي — قرار هوية معتمد، ثابت في الثيمين. */
+  wa: "var(--m-wa)",
+  // ===== لوحة الديوان غير الذهبية (المطابقة الحرفية): حرفية من المرجع بثيميه =====
+  dwGreen: "var(--m-dw-green)",
+  dwGreenD: "var(--m-dw-green-d)",
+  dwGreenDim: "var(--m-dw-green-dim)",
+  dwGreenA32: "var(--m-dw-green-a32)",
+  dwAmber: "var(--m-dw-amber)",
+  dwAmberDim: "var(--m-dw-amber-dim)",
+  dwSky: "var(--m-dw-sky)",
+  dwSkyDim: "var(--m-dw-sky-dim)",
+  dwBlue: "var(--m-dw-blue)",
+  dwPurple: "var(--m-dw-purple)",
+  dwPurpleDim: "var(--m-dw-purple-dim)",
+  dwRed: "var(--m-dw-red)",
+  dwRedDim: "var(--m-dw-red-dim)",
 } as const;
 
 /** رباعية كل حالة: لون أساسي + خلفية غامقة + نص فاتح + حد. */
