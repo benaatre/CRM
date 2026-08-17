@@ -5,6 +5,7 @@ import {
   getAllLocations,
   getAttendanceSettings,
   getLiveBoard,
+  getLocationRadar,
   getTeamSummary,
 } from "@/lib/data/attendance";
 import { currentMonthKSA } from "@/lib/attendance-logic";
@@ -36,12 +37,13 @@ export default async function AttendancePage({
       : null;
 
   const month = currentMonthKSA();
-  const [locations, settings, live, teamRows, appSettings] = await Promise.all([
+  const [locations, settings, live, teamRows, appSettings, radar] = await Promise.all([
     getAllLocations(),
     getAttendanceSettings(),
     getLiveBoard(range),
     getTeamSummary(month),
     getSettings(),
+    getLocationRadar(),
   ]);
 
   return (
@@ -57,6 +59,7 @@ export default async function AttendancePage({
         locations={locations}
         settings={settings}
         live={live}
+        radar={radar}
         teamMonth={month}
         teamRows={teamRows}
       />

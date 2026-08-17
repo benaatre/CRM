@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { queryGeoPermission, readPositionOnce } from "@/lib/geolocation-permission";
+import { queryGeoPermission, readBestPosition } from "@/lib/geolocation-permission";
 
 /**
  * النبضة — «آخر ظهور» + (الثقة المتجددة v3) النبض الجغرافي:
@@ -25,7 +25,9 @@ export function Heartbeat() {
       try {
         // لا نقرأ إلا بإذن قائم — لا prompt من النبض (الطبقة الموحّدة).
         if ((await queryGeoPermission()) !== "granted") return;
-        const pos = await readPositionOnce({ enableHighAccuracy: false, maximumAge: 90_000, timeout: 10_000 });
+        // watchPosition مؤقت (ر٢): يحسّن الدقة تدريجيًا ثم يُوقَف — لا watch دائم
+        // يستنزف البطارية. يحسم عند ≤٦٠م أو أفضل تثبيت خلال ٨ث.
+        const pos = await readBestPosition({ targetAccuracy: 60, timeoutMs: 8_000 });
         await fetch("/api/heartbeat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

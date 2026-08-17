@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Building2, CalendarRange, MapPin } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
 import { hmLabel } from "@/lib/attendance-ui";
-import type { LiveBoardPayload, LiveBoardRow, RangeBoardRow, TileState } from "@/lib/data/attendance";
+import type { LiveBoardPayload, LiveBoardRow, LocationRadar as LocationRadarData, RangeBoardRow, TileState } from "@/lib/data/attendance";
+import { LocationRadar } from "@/components/attendance/location-radar";
 import "./attendance.css";
 
 /**
@@ -63,7 +64,7 @@ const STATE_VAR: Record<TileState, string> = {
   done: "var(--att-done)",
 };
 
-export function LiveTab({ initial }: { initial: LiveBoardPayload }) {
+export function LiveTab({ initial, radar }: { initial: LiveBoardPayload; radar: LocationRadarData }) {
   const router = useRouter();
   const [payload, setPayload] = useState<LiveBoardPayload>(initial);
   const [chip, setChip] = useState<Chip>(() => inferChip(initial));
@@ -71,6 +72,9 @@ export function LiveTab({ initial }: { initial: LiveBoardPayload }) {
   const [customTo, setCustomTo] = useState(initial.mode === "range" ? initial.toKey : "");
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  // الحاضرون بالرادار (userIds) — من ترفعه لوحة المواقع الحية، لوسم البلاطات.
+  const [radarPresent, setRadarPresent] = useState<Set<string>>(() => new Set(radar.presentUserIds));
+  const onPresent = useCallback((ids: string[]) => setRadarPresent(new Set(ids)), []);
   const chipRef = useRef(chip);
   chipRef.current = chip;
 
@@ -136,9 +140,10 @@ export function LiveTab({ initial }: { initial: LiveBoardPayload }) {
       {payload.mode === "today" ? (
         <>
           <LiveStrip payload={payload} now={now} />
+          <LocationRadar initial={radar} onPresent={onPresent} />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {payload.rows.map((r) => (
-              <TodayTile key={r.id} row={r} now={now} onOpen={() => router.push(`/attendance/${r.id}`)} />
+              <TodayTile key={r.id} row={r} now={now} radarPresent={radarPresent.has(r.id)} onOpen={() => router.push(`/attendance/${r.id}`)} />
             ))}
           </div>
         </>
@@ -329,7 +334,7 @@ function Indicator({ label, value, sub, color }: { label: string; value: string;
 
 /* ═══════════════════ البلاطة الموحّدة — وضع اليوم ═══════════════════ */
 
-function TodayTile({ row, now, onOpen }: { row: LiveBoardRow; now: number; onOpen: () => void }) {
+function TodayTile({ row, now, radarPresent, onOpen }: { row: LiveBoardRow; now: number; radarPresent: boolean; onOpen: () => void }) {
   const color = STATE_VAR[row.state];
   const active = row.state === "on" || row.state === "late";
   const onShift = active || row.state === "paused";
@@ -351,7 +356,16 @@ function TodayTile({ row, now, onOpen }: { row: LiveBoardRow; now: number; onOpe
           {row.name.trim().charAt(0)}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold text-[var(--att-text)]">{row.name}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-bold text-[var(--att-text)]">{row.name}</span>
+            {/* موقعه مؤكّد الآن بالرادار — نبضة inZone حديثة (بند ٤). */}
+            {onShift && radarPresent && (
+              <span className="flex flex-none items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold" style={{ background: "color-mix(in srgb, var(--att-on) 15%, transparent)", color: "var(--att-on)" }}>
+                <span aria-hidden className="att-pulse size-1.5 rounded-full" style={{ background: "var(--att-on)" }} />
+                بالموقع الآن
+              </span>
+            )}
+          </span>
           <span className="mt-0.5 block text-[11px] text-[var(--att-muted)]">
             {onShift && row.startedAtText
               ? `حضر ${row.startedAtText}`

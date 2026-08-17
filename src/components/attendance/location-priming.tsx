@@ -88,25 +88,26 @@ export function LocationPriming() {
           style={{ bottom: "calc(100px + env(safe-area-inset-bottom))", insetInline: 14 }}
         >
           <div
-            className="flex items-center gap-2.5"
+            className="flex flex-col gap-2"
             style={{
-              boxSizing: "border-box", borderRadius: 14, padding: "12px 14px",
+              boxSizing: "border-box", borderRadius: 16, padding: "13px 14px",
               background: "var(--m-sheet)", border: "1px solid var(--m-hair)",
               boxShadow: "0 12px 32px rgba(0,0,0,.4)",
             }}
           >
-            <Settings2 aria-hidden size={18} strokeWidth={1.7} style={{ color: "var(--att-late)", flex: "none" }} />
-            <p className="min-w-0 flex-1 text-[11.5px] leading-relaxed" style={{ color: "var(--m-text1)" }}>
-              فعّل الموقع من إعدادات جهازك عشان نبصم لك تلقائيًا
+            <div className="flex items-start gap-2.5">
+              <Settings2 aria-hidden size={18} strokeWidth={1.7} style={{ color: "var(--att-late)", flex: "none", marginTop: 1 }} />
+              <p className="min-w-0 flex-1 text-[12px] font-bold" style={{ color: "var(--m-text1)" }}>
+                الموقع مقفول — فعّله عشان نبصم لك تلقائيًا
+              </p>
+              <button type="button" onClick={snooze} className="flex-none text-[11px] font-bold" style={{ color: "var(--m-text3)" }}>
+                تمام
+              </button>
+            </div>
+            {/* إرشاد يدوي يعمل من الويب فورًا — زر الفتح التلقائي (app-launcher) مؤجّل لرفعة iOS. */}
+            <p className="text-[11px] leading-relaxed" style={{ color: "var(--m-text2)", paddingInlineStart: 28 }}>
+              افتح إعدادات جهازك ← الخصوصية ← خدمات الموقع ← مشاريع السلطان ← اختر «أثناء الاستخدام»
             </p>
-            <button
-              type="button"
-              onClick={snooze}
-              className="flex-none text-[11px] font-bold"
-              style={{ color: "var(--m-text3)" }}
-            >
-              تمام
-            </button>
           </div>
         </div>
       </MobilePortal>

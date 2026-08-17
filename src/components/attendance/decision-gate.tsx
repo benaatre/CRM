@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, Clock3, DoorOpen, Laptop, Route } from "lucide-react";
+import { CalendarDays, Clock3, DoorOpen, Laptop, MapPin, Route } from "lucide-react";
 import { MobilePortal } from "@/components/mobile/portal";
 import { toArabicDigits } from "@/lib/format";
+import { readBestPosition } from "@/lib/geolocation-permission";
 import "./attendance.css";
 
 /**
@@ -26,7 +27,9 @@ const ETAS = [10, 15, 30, 60] as const;
 
 export function DecisionGate() {
   const [state, setState] = useState<GateState>({ due: false });
-  const [screen, setScreen] = useState<"main" | "eta" | "remote">("main");
+  const [screen, setScreen] = useState<"main" | "eta" | "authorizer">("main");
+  // جهة الإذن مشتركة لمستأذن/عن بُعد — النوع المعلّق يحدّد المسار عند التأكيد.
+  const [authKind, setAuthKind] = useState<"EXCUSED" | "REMOTE">("EXCUSED");
   const [authorizers, setAuthorizers] = useState<Authorizer[] | null>(null);
   const [authorizerId, setAuthorizerId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,14 +69,14 @@ export function DecisionGate() {
   }, [state.due]);
 
   const answer = useCallback(
-    async (kind: "ON_WAY" | "LEAVE" | "EXCUSED", etaMinutes?: number) => {
+    async (kind: "ON_WAY" | "LEAVE" | "EXCUSED", opts?: { etaMinutes?: number; authorizerId?: string }) => {
       setBusy(true);
       setError(null);
       try {
         const res = await fetch("/api/attendance/decision", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind, etaMinutes }),
+          body: JSON.stringify({ kind, etaMinutes: opts?.etaMinutes, authorizerId: opts?.authorizerId }),
         });
         const data = (await res.json()) as { ok: boolean; error?: string };
         if (data.ok) {
@@ -89,6 +92,50 @@ export function DecisionGate() {
     },
     [],
   );
+
+  /**
+   * «أنا موجود بالموقع» — للحاضر فعلًا الذي لم يرصده النبض (موقع ضعيف / إذن للتو
+   * فُعّل): قراءة موقع قوية فورية ثم بصم عبر punch القائم — داخل الدائرة يبصم،
+   * خارجها يرفض «ما أنت داخل النطاق» (لا بصم بلا تأكيد موقع — يمنع الكذب).
+   */
+  const answerHere = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    let pos: GeolocationPosition;
+    try {
+      pos = await readBestPosition({ targetAccuracy: 50, timeoutMs: 12_000 });
+    } catch {
+      setError("ما قدرنا نقرأ موقعك — جرّب بمكان مكشوف");
+      setBusy(false);
+      return;
+    }
+    try {
+      const res = await fetch("/api/attendance/punch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "CHECK_IN",
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          source: "WEB",
+          isMock: false,
+        }),
+      });
+      const data = (await res.json()) as { ok: boolean; reason?: string; message?: string; outOfZone?: boolean };
+      if (data.ok && !data.outOfZone) {
+        setState({ due: false });
+        setScreen("main");
+      } else if (data.reason === "out_of_zone" || data.outOfZone) {
+        setError("ما أنت داخل النطاق — تأكد إنك بموقع العمل");
+      } else {
+        setError(data.message ?? "ما نفذت — حاول مرة ثانية");
+      }
+    } catch {
+      setError("تعذّر الاتصال — تأكد من الإنترنت");
+    }
+    setBusy(false);
+  }, []);
 
   const answerRemote = useCallback(async () => {
     if (!authorizerId) {
@@ -110,10 +157,11 @@ export function DecisionGate() {
         setBusy(false);
         return;
       }
+      // ثم صف القرار الموحّد بالجهة نفسها (للسجل وإشعار المالك).
       await fetch("/api/attendance/decision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "REMOTE" }),
+        body: JSON.stringify({ kind: "REMOTE", authorizerId }),
       }).catch(() => {});
       setState({ due: false });
       setScreen("main");
@@ -123,8 +171,11 @@ export function DecisionGate() {
     setBusy(false);
   }, [authorizerId]);
 
-  const openRemote = useCallback(async () => {
-    setScreen("remote");
+  /** يفتح شاشة جهة الإذن لمستأذن/عن بُعد — يجلب الجهات مرة واحدة. */
+  const openAuthorizer = useCallback(async (kind: "EXCUSED" | "REMOTE") => {
+    setAuthKind(kind);
+    setAuthorizerId("");
+    setScreen("authorizer");
     setError(null);
     if (authorizers !== null) return;
     try {
@@ -180,6 +231,24 @@ export function DecisionGate() {
 
           {screen === "main" && (
             <div className="mt-4 space-y-2">
+              {/* «موجود بالموقع» أعلى القائمة — للحاضر فعلًا الذي لم يرصده النبض. */}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void answerHere()}
+                className="att-scope flex w-full items-center gap-3 rounded-[14px] border p-3.5 text-right"
+                style={{ borderColor: "var(--att-on)", background: "color-mix(in srgb, var(--att-on) 8%, transparent)" }}
+              >
+                <span className="flex size-9 flex-none items-center justify-center rounded-xl" style={{ background: "color-mix(in srgb, var(--att-on) 16%, transparent)", color: "var(--att-on)" }}>
+                  <MapPin aria-hidden size={17} strokeWidth={1.8} />
+                </span>
+                <span className="flex-1">
+                  <span className="block text-[13.5px] font-extrabold" style={{ color: "var(--att-esp-text)" }}>
+                    {busy ? "نتأكد من موقعك…" : "أنا موجود بالموقع"}
+                  </span>
+                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>نتأكد من موقعك ونبصم لك فورًا</span>
+                </span>
+              </button>
               <button type="button" disabled={busy} onClick={() => setScreen("eta")} className={rowCls} style={rowStyle}>
                 <span className="flex size-9 flex-none items-center justify-center rounded-xl" style={{ background: "color-mix(in srgb, var(--att-teal) 14%, transparent)", color: "var(--att-teal)" }}>
                   <Route aria-hidden size={17} strokeWidth={1.8} />
@@ -198,16 +267,16 @@ export function DecisionGate() {
                   <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>يومك إجازة — والنظام مفتوح لك</span>
                 </span>
               </button>
-              <button type="button" disabled={busy} onClick={() => void answer("EXCUSED")} className={rowCls} style={rowStyle}>
+              <button type="button" disabled={busy} onClick={() => void openAuthorizer("EXCUSED")} className={rowCls} style={rowStyle}>
                 <span className="flex size-9 flex-none items-center justify-center rounded-xl" style={{ background: "color-mix(in srgb, var(--att-pause) 14%, transparent)", color: "var(--att-pause)" }}>
                   <DoorOpen aria-hidden size={17} strokeWidth={1.8} />
                 </span>
                 <span className="flex-1">
                   <span className="block text-[13.5px] font-bold" style={{ color: "var(--att-esp-text)" }}>مستأذن — ما أداوم اليوم</span>
-                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>نبلّغ الإدارة — والنظام مفتوح لك</span>
+                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>بجهة إذن — والنظام مفتوح لك</span>
                 </span>
               </button>
-              <button type="button" disabled={busy} onClick={() => void openRemote()} className={rowCls} style={rowStyle}>
+              <button type="button" disabled={busy} onClick={() => void openAuthorizer("REMOTE")} className={rowCls} style={rowStyle}>
                 <span className="flex size-9 flex-none items-center justify-center rounded-xl" style={{ background: "color-mix(in srgb, var(--att-remote) 14%, transparent)", color: "var(--att-remote)" }}>
                   <Laptop aria-hidden size={17} strokeWidth={1.8} />
                 </span>
@@ -231,7 +300,7 @@ export function DecisionGate() {
                     key={m}
                     type="button"
                     disabled={busy}
-                    onClick={() => void answer("ON_WAY", m)}
+                    onClick={() => void answer("ON_WAY", { etaMinutes: m })}
                     className="min-h-11 rounded-xl border text-[13px] font-bold"
                     style={{ borderColor: "var(--att-esp-line)", background: "var(--att-esp-card)", color: "var(--att-esp-text)" }}
                   >
@@ -245,9 +314,11 @@ export function DecisionGate() {
             </div>
           )}
 
-          {screen === "remote" && (
+          {screen === "authorizer" && (
             <div className="mt-4 space-y-3">
-              <h3 className="text-[14.5px] font-extrabold" style={{ color: "var(--att-esp-text)" }}>مين أذن لك بالعمل عن بُعد؟</h3>
+              <h3 className="text-[14.5px] font-extrabold" style={{ color: "var(--att-esp-text)" }}>
+                {authKind === "REMOTE" ? "مين أذن لك بالعمل عن بُعد؟" : "مين أذن لك بالاستئذان؟"}
+              </h3>
               {authorizers === null ? (
                 <p className="py-2 text-[12px]" style={{ color: "var(--att-esp-muted)" }}>جاري تحميل الجهات…</p>
               ) : authorizers.length === 0 ? (
@@ -275,11 +346,11 @@ export function DecisionGate() {
               <button
                 type="button"
                 disabled={busy || !authorizerId}
-                onClick={() => void answerRemote()}
+                onClick={() => (authKind === "REMOTE" ? void answerRemote() : void answer("EXCUSED", { authorizerId }))}
                 className="min-h-11 w-full rounded-xl border-0 text-[13.5px] font-extrabold disabled:opacity-50"
                 style={{ background: "var(--att-gold)", color: "var(--att-on-gold)" }}
               >
-                {busy ? "لحظة…" : "تأكيد — أداوم عن بُعد"}
+                {busy ? "لحظة…" : authKind === "REMOTE" ? "تأكيد — أداوم عن بُعد" : "تأكيد الاستئذان"}
               </button>
               <button type="button" disabled={busy} onClick={() => setScreen("main")} className="w-full py-1 text-center text-[12px] font-medium" style={{ color: "var(--att-esp-muted)" }}>
                 رجوع للخيارات

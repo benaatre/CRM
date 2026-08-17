@@ -1100,6 +1100,30 @@ export async function getEmployeeFile(userId: string, month: string) {
     }),
   ]);
 
+  // سجل النبض الجغرافي — انتقالات اليوم (تغيّر الحكم أو الموقع) لا كل نبضة،
+  // فلا ٤٠٠ سطر متكرّر. للمالك فقط، وضمن الشهر المعروض.
+  const rawPulses = await prisma.attendancePulse.findMany({
+    where: { userId, at: { gte: range.start, lt: range.end } },
+    orderBy: { at: "asc" },
+    select: { at: true, inZone: true, accuracy: true, location: { select: { name: true } } },
+  });
+  const pulseLog: { atText: string; dayKey: string; state: "in" | "out" | "unknown"; name: string | null; accuracy: number | null }[] = [];
+  let lastKey = "";
+  for (const pl of rawPulses) {
+    const state = pl.inZone === true ? "in" : pl.inZone === false ? "out" : "unknown";
+    const key = `${state}|${pl.location?.name ?? ""}`;
+    if (key === lastKey) continue; // نفس الحالة — انتقال واحد يكفي
+    lastKey = key;
+    pulseLog.push({
+      atText: formatTime(pl.at),
+      dayKey: ksaDayKey(pl.at),
+      state,
+      name: pl.location?.name ?? null,
+      accuracy: pl.accuracy,
+    });
+  }
+  pulseLog.reverse(); // الأحدث أولًا
+
   // موقع بصمة الحضور لكل يوم + أحداث كل يوم لاشتقاق محطاته.
   const checkInLocByDay = new Map<string, string | null>();
   const eventsByDay = new Map<string, typeof events>();
@@ -1214,6 +1238,8 @@ export async function getEmployeeFile(userId: string, month: string) {
       .reverse(),
     // جلسات الشهر لأداة التصحيح — تشمل المُبطلة موسومة (للمالك فقط).
     repairSessions,
+    // سجل النبض الجغرافي — انتقالات النطاق (للمالك فقط).
+    pulseLog: pulseLog.slice(0, 120),
     // الفحوص الصامتة — للمالك فقط (الصفحة خلف requireRole(OWNER)).
     silentChecks: silentChecks.map((c) => ({
       id: c.id,
@@ -1260,6 +1286,67 @@ export async function getEmployeeFile(userId: string, month: string) {
 }
 
 export type EmployeeFile = NonNullable<Awaited<ReturnType<typeof getEmployeeFile>>>;
+
+/**
+ * رادار المواقع الحية (الحضور بالرادار — ر٣) — الاستعلام المعكوس:
+ * لكل موقع معتمد، من **آخر نبضته الجغرافية** كانت `inZone=true` لهذا الموقع
+ * وحديثة (ضمن `radarFreshMinutes`) وله جلسة دوام مفتوحة = «حاضر بالرادار».
+ *
+ * يقلب المعادلة: بدل «أين الموظفون؟» → «كل موقع: من داخله الآن؟». من خرج من
+ * الدائرة (آخر نبضته inZone=false) أو انقطع نبضه (أقدم من العتبة) يسقط فورًا —
+ * فلا «مداوم» وهمي بنبضة قديمة. الحجم تافه (نبض الدقيقة × نافذة قصيرة).
+ */
+export async function getLocationRadar() {
+  const settings = await getAttendanceSettings();
+  const now = new Date();
+  const fresh = new Date(now.getTime() - settings.radarFreshMinutes * 60_000);
+
+  const [locations, pulses, openSessions] = await Promise.all([
+    prisma.attendanceLocation.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, type: true },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
+    }),
+    // نبضات النافذة كلها — مرتّبة تنازليًا فأول ظهور لكل مستخدم = أحدث نبضاته.
+    prisma.attendancePulse.findMany({
+      where: { at: { gte: fresh } },
+      orderBy: { at: "desc" },
+      select: { userId: true, at: true, inZone: true, locationId: true, user: { select: { name: true } } },
+    }),
+    prisma.attendanceSession.findMany({ where: { endedAt: null, voided: false }, select: { userId: true } }),
+  ]);
+
+  const onDuty = new Set(openSessions.map((s) => s.userId));
+  const latestByUser = new Map<string, (typeof pulses)[number]>();
+  for (const pl of pulses) if (!latestByUser.has(pl.userId)) latestByUser.set(pl.userId, pl);
+
+  const byLocation = new Map<string, { userId: string; name: string; atText: string }[]>();
+  for (const [userId, pl] of latestByUser) {
+    // حاضر بالرادار: آخر نبضة داخل النطاق + جلسة مفتوحة.
+    if (pl.inZone !== true || !pl.locationId || !onDuty.has(userId)) continue;
+    const arr = byLocation.get(pl.locationId) ?? [];
+    arr.push({ userId, name: pl.user.name ?? "—", atText: formatTime(pl.at) });
+    byLocation.set(pl.locationId, arr);
+  }
+
+  const presentUserIds: string[] = [];
+  for (const arr of byLocation.values()) for (const x of arr) presentUserIds.push(x.userId);
+
+  return {
+    generatedAtIso: now.toISOString(),
+    radarFreshMinutes: settings.radarFreshMinutes,
+    /** من يراهم النبض داخل موقع الآن — لربط «حاضر» بالبلاطة (بند ٤). */
+    presentUserIds,
+    locations: locations.map((l) => ({
+      id: l.id,
+      name: l.name,
+      type: l.type,
+      present: byLocation.get(l.id) ?? [],
+    })),
+  };
+}
+
+export type LocationRadar = Awaited<ReturnType<typeof getLocationRadar>>;
 
 /** ملخص الفريق لشهر: أيام/ساعات/تأخير/غياب لكل موظف + بداية دوامه. */
 export async function getTeamSummary(month: string) {

@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { recordSessionBeat } from "@/lib/session-devices";
 import { trackActivityWindow } from "@/lib/activity-window";
-import { matchLocation, nearestLocation } from "@/lib/geofence";
+import { classifyZone, nearestLocation } from "@/lib/geofence";
 import { dayDateOf, getActiveLocations, getAttendanceSettings, getAttendanceDay } from "@/lib/data/attendance";
 import { ksaDayKey, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { effectiveDayOf, tryAutoPunch } from "@/lib/attendance-auto-punch";
@@ -115,12 +115,14 @@ export async function POST(req: Request) {
 
   const locations = await getActiveLocations();
   /*
-   * الحكم الخادمي: دقة أسوأ من الحد = لا حكم (inZone=null) — أفضل من حكم
-   * «خارج النطاق» خاطئ يفتح نداءً ظالمًا. الدقة الجيدة تُطابَق كالبصمة.
+   * الحكم الخادمي المُدرك للدقة (ر٢): دقة أسوأ من الحد = لا حكم (inZone=null).
+   * الدقة الجيدة → classifyZone: داخل/خارج بثقة، أو «غير معروف» على الحدود
+   * (يُبقى الحكم السابق — لا نخرجه بقراءة حدّية). أفضل من حكم خاطئ يفتح نداءً.
    */
   const judgeable = acc !== null && acc <= settings.minAccuracyMeters;
-  const match = judgeable ? matchLocation(lat, lng, acc, locations) : null;
-  const inZone = judgeable ? match !== null : null;
+  const zone = judgeable ? classifyZone(lat, lng, acc!, locations) : { state: "unknown" as const, id: null, distance: null };
+  const match = zone.state === "in" && zone.id ? { id: zone.id, distance: zone.distance ?? 0 } : null;
+  const inZone = zone.state === "in" ? true : zone.state === "out" ? false : null;
 
   await prisma.attendancePulse.create({
     data: {

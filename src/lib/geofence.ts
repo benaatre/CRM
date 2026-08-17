@@ -63,6 +63,39 @@ export function matchLocation(
 }
 
 /**
+ * تصنيف مُدرك للدقة (الحضور بالرادار — ر٢) — للنبض الجغرافي لا للبصم اليدوي:
+ *   d + accuracy ≤ R  → داخل بثقة (كل دائرة عدم اليقين ضمن النطاق)
+ *   d − accuracy > R   → خارج بثقة (كل الدائرة خارجه)
+ *   غير ذلك            → «غير معروف»: لا نخرجه بقراءة حدّية، يُبقى الحكم السابق
+ *
+ * أكثر تحفّظًا من matchLocation المتساهل (الذي يوسّع الدائرة بالدقة) — يمنع
+ * حكمًا خاطئًا على الحدود. البصم التلقائي يتطلب نبضتين «in» أصلًا (هامش الرمش).
+ */
+export function classifyZone(
+  lat: number,
+  lng: number,
+  accuracy: number,
+  locations: GeoZone[],
+): { state: "in" | "out" | "unknown"; id: string | null; distance: number | null } {
+  let inBest: { id: string; distance: number } | null = null;
+  let allOutConfident = locations.length > 0;
+  let nearest: { id: string; distance: number } | null = null;
+
+  for (const loc of locations) {
+    const d = distanceMeters(lat, lng, loc.lat, loc.lng);
+    if (!nearest || d < nearest.distance) nearest = { id: loc.id, distance: d };
+    if (d + accuracy <= loc.radiusMeters) {
+      if (!inBest || d < inBest.distance) inBest = { id: loc.id, distance: d };
+    }
+    if (d - accuracy <= loc.radiusMeters) allOutConfident = false; // ليس خارجًا بثقة عن هذا
+  }
+
+  if (inBest) return { state: "in", id: inBest.id, distance: inBest.distance };
+  if (allOutConfident) return { state: "out", id: null, distance: nearest?.distance ?? null };
+  return { state: "unknown", id: null, distance: nearest?.distance ?? null };
+}
+
+/**
  * أقرب موقع مطلقًا (ولو كان خارج دائرته) + مسافته — لرسالة «أنت خارج الموقع»
  * ولتسجيل `distanceMeters` في البصمة الخارجة عن النطاق بدل صفر بلا معنى.
  */

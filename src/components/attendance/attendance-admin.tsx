@@ -9,6 +9,7 @@ import { DEFAULT_RADIUS_M, splitCoords } from "@/lib/attendance-location-input";
 import { minutesToTime, timeToMinutes } from "@/lib/attendance-ui";
 import { WEEKDAY_CODES } from "@/lib/attendance-logic";
 import { LiveTab } from "@/components/attendance/attendance-live";
+import type { LocationRadar } from "@/lib/data/attendance";
 import { TeamTab } from "@/components/attendance/attendance-team";
 import type { LiveBoardPayload, TeamSummaryRow } from "@/lib/data/attendance";
 
@@ -44,12 +45,14 @@ export function AttendanceAdmin({
   locations,
   settings,
   live,
+  radar,
   teamMonth,
   teamRows,
 }: {
   locations: AttendanceLocation[];
   settings: AttendanceSettings;
   live: LiveBoardPayload;
+  radar: LocationRadar;
   teamMonth: string;
   teamRows: TeamSummaryRow[];
 }) {
@@ -82,7 +85,7 @@ export function AttendanceAdmin({
         })}
       </div>
 
-      {tab === "live" && <LiveTab initial={live} />}
+      {tab === "live" && <LiveTab initial={live} radar={radar} />}
       {tab === "team" && <TeamTab initialMonth={teamMonth} initialRows={teamRows} />}
       {tab === "locations" && <LocationsTab locations={locations} />}
       {tab === "settings" && <SettingsTab settings={settings} />}

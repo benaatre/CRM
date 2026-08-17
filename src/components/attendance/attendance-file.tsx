@@ -122,6 +122,7 @@ export function AttendanceEmployeeFile({ file }: { file: EmployeeFile }) {
       <VerificationsSection verifications={file.verifications} />
       <RestoreSection userId={file.user.id} />
       <SessionRepairSection sessions={file.repairSessions} />
+      <PulseLogSection pulses={file.pulseLog} />
       <SilentChecksSection checks={file.silentChecks} />
       <AuditsSection audits={file.audits} />
     </div>
@@ -925,7 +926,47 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
   );
 }
 
-/** الفحوص الصامتة — للمالك فقط، لا يراها الموظف إطلاقًا. */
+/** سجل النبض الجغرافي — انتقالات النطاق (سهم منسدل، للمالك فقط). */
+function PulseLogSection({ pulses }: { pulses: EmployeeFile["pulseLog"] }) {
+  const [open, setOpen] = useState(false);
+  if (pulses.length === 0) return null;
+  const META: Record<"in" | "out" | "unknown", { label: string; cls: string }> = {
+    in: { label: "داخل", cls: "text-success" },
+    out: { label: "خارج", cls: "text-destructive" },
+    unknown: { label: "غير محسوم", cls: "text-muted-foreground" },
+  };
+  return (
+    <section className="rounded-2xl border border-border bg-card">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-right">
+        <h2 className="text-sm font-bold text-foreground">
+          سجل النبض <span className="text-xs font-medium text-muted-foreground">— انتقالات النطاق ({toArabicDigits(pulses.length)})</span>
+        </h2>
+        <ChevronDown aria-hidden size={15} strokeWidth={1.8} className="text-muted-foreground" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s" }} />
+      </button>
+      {open && (
+        <ul className="max-h-80 overflow-y-auto border-t border-border">
+          {pulses.map((p, i) => {
+            const m = META[p.state];
+            return (
+              <li key={i} className="flex items-center justify-between border-b border-border/60 px-4 py-2.5 text-xs last:border-0">
+                <span className="text-muted-foreground">
+                  {p.dayKey.slice(8, 10)}/{p.dayKey.slice(5, 7)} · {p.atText}
+                </span>
+                <span className="flex items-center gap-2">
+                  {p.name && <span className="text-muted-foreground">{p.name}</span>}
+                  <span className={`font-bold ${m.cls}`}>{m.label}</span>
+                  {p.accuracy != null && <span className="text-[10.5px] text-muted-foreground">{toArabicDigits(Math.round(p.accuracy))}م</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** الفحوص الصامتة — للمالك فقط, لا يراها الموظف إطلاقًا. */
 function SilentChecksSection({ checks }: { checks: EmployeeFile["silentChecks"] }) {
   if (checks.length === 0) return null;
   return (
