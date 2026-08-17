@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { EmployeeDayTimeline } from "@/lib/data/attendance";
 
@@ -44,6 +44,21 @@ function TimelineIcon({ name }: { name: string }) {
   }
 }
 
+/** أيقونة الجهاز — SVG بارز يميّز التطبيق عن متصفح الجوال عن الكمبيوتر. */
+function DeviceIcon({ kind }: { kind: string }) {
+  const c = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  switch (kind) {
+    // تطبيق أصلي: جوال ممتلئ بنقطة زر.
+    case "app": return <svg {...c}><rect x="6" y="2" width="12" height="20" rx="2.5" /><path d="M12 18h.01" /></svg>;
+    // متصفح جوال: جوال بكرة متصفح.
+    case "mobile-browser": return <svg {...c}><rect x="6" y="2" width="12" height="20" rx="2.5" /><circle cx="12" cy="11" r="3.2" /><path d="M8.8 11h6.4M12 7.8a6 6 0 0 1 0 6.4 6 6 0 0 1 0-6.4" /></svg>;
+    // كمبيوتر: شاشة مكتبية.
+    case "computer": return <svg {...c}><rect x="2" y="3.5" width="20" height="13" rx="2" /><path d="M8 20.5h8M12 16.5v4" /></svg>;
+    // لا جهاز.
+    default: return <svg {...c}><path d="M5 12h14" /></svg>;
+  }
+}
+
 export function DayTimeline({ userId, t }: { userId: string; t: TimelineTokens }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<EmployeeDayTimeline | null>(null);
@@ -51,27 +66,38 @@ export function DayTimeline({ userId, t }: { userId: string; t: TimelineTokens }
 
   const toneVar: Record<string, string> = { gold: t.gold, green: t.green, red: t.red, amber: t.amber, muted: t.muted };
 
-  const toggle = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const next = !open;
-    setOpen(next);
-    if (next && data === null && !loading) {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/attendance/timeline/${userId}`, { cache: "no-store" });
-        const d = (await res.json()) as { ok: boolean } & EmployeeDayTimeline;
-        if (d.ok) setData(d);
-      } catch {
-        /* يبقى null — إعادة الفتح تعيد المحاولة */
-      }
-      setLoading(false);
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/attendance/timeline/${userId}`, { cache: "no-store" });
+      const d = (await res.json()) as { ok: boolean } & EmployeeDayTimeline;
+      if (d.ok) setData(d);
+    } catch {
+      /* يبقى آخر بيانات معروضة — التحديث الدوري يعيد المحاولة */
     }
+  }, [userId]);
+
+  // مصدر واحد حي = الرادار: طالما الكرت مفتوح نعيد الجلب كل ٣٠ث (نفس إيقاع الرادار
+  // العلوي) فلا تبقى «حالة الموقع» السفلية بائتة تناقض «بالموقع الآن». يتوقف عند الإغلاق.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    if (data === null) setLoading(true);
+    void load().finally(() => { if (alive) setLoading(false); });
+    const id = setInterval(() => { void load(); }, 30_000);
+    return () => { alive = false; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, load]);
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen((v) => !v);
   };
 
   const radarMeta =
     data?.radar.state === "present" ? { label: `بالموقع${data.radar.locationName ? ` · ${data.radar.locationName}` : ""}`, tone: t.green }
     : data?.radar.state === "out" ? { label: "خارج النطاق", tone: t.red }
-    : data?.radar.state === "gap" ? { label: "انقطع إثباته", tone: t.amber }
+    : data?.radar.state === "weak" ? { label: "موقع غير دقيق", tone: t.amber }
+    : data?.radar.state === "gap" ? { label: "انقطع إثباته", tone: t.muted }
     : { label: "مو مداوم", tone: t.muted };
 
   return (
@@ -101,9 +127,14 @@ export function DayTimeline({ userId, t }: { userId: string; t: TimelineTokens }
                 </div>
                 <div className="rounded-xl border p-2.5" style={{ borderColor: t.line, background: t.card2 }}>
                   <span className="block text-[9px]" style={{ color: t.muted }}>الجهاز</span>
-                  <span className="mt-1 block truncate text-[11.5px] font-bold" style={{ color: t.text }}>
-                    {data.devices.map((d) => d.detail).join(" · ")}
-                  </span>
+                  <div className="mt-1 space-y-1">
+                    {data.devices.map((d, i) => (
+                      <span key={i} className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: d.kind === "none" ? t.muted : t.text }}>
+                        <span className="flex-none" style={{ color: d.kind === "none" ? t.muted : t.gold }}><DeviceIcon kind={d.kind} /></span>
+                        <span className="truncate">{d.detail}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
 

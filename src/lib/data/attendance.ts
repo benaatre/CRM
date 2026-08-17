@@ -1371,7 +1371,7 @@ export async function getEmployeeDayTimeline(userId: string, now: Date = new Dat
     prisma.attendancePulse.findMany({
       where: { userId, at: { gte: dayStart } },
       orderBy: { at: "asc" },
-      select: { at: true, inZone: true, location: { select: { name: true } } },
+      select: { at: true, inZone: true, locationId: true, location: { select: { name: true } } },
     }),
     prisma.attendanceVerification.findMany({
       where: { userId, scheduledAt: { gte: dayStart } },
@@ -1403,11 +1403,15 @@ export async function getEmployeeDayTimeline(userId: string, now: Date = new Dat
   // ===== حالة الموقع الحية (الرادار) =====
   const openSession = await prisma.attendanceSession.findFirst({ where: { userId, endedAt: null, voided: false }, select: { id: true } });
   const lastPulse = pulses[pulses.length - 1] ?? null;
-  const radarState: "present" | "out" | "gap" | "off" =
+  // مصدر واحد = الرادار: «بالموقع» نفس شرط getLocationRadar تمامًا (inZone=true + locationId +
+  // جلسة مفتوحة + نبضة حديثة) فلا تناقض العلوية «بالموقع الآن». تمييز الضعف عن الانقطاع:
+  // نبضة حديثة بحكم null (دقة غير كافية) = «غير دقيق»، أما غياب نبضة حديثة = «انقطع».
+  const radarState: "present" | "out" | "weak" | "gap" | "off" =
     !openSession ? "off"
-    : lastPulse && lastPulse.at >= radarFresh && lastPulse.inZone === true ? "present"
-    : lastPulse && lastPulse.at >= radarFresh && lastPulse.inZone === false ? "out"
-    : "gap"; // جلسة مفتوحة لكن لا نبضة حديثة = انقطع
+    : !lastPulse || lastPulse.at < radarFresh ? "gap" // جلسة مفتوحة لكن لا نبضة حديثة = انقطاع فعلي
+    : lastPulse.inZone === true && lastPulse.locationId ? "present"
+    : lastPulse.inZone === false ? "out"
+    : "weak"; // نبضة حديثة لكن inZone=null (دقة ضعيفة/موقع IP) = موقع غير دقيق لا انقطاع
   const radarLocationName = radarState === "present" ? (lastPulse?.location?.name ?? null) : null;
 
   // ===== الأجهزة النشطة =====
@@ -1415,8 +1419,10 @@ export async function getEmployeeDayTimeline(userId: string, now: Date = new Dat
   const appPlatforms = new Set(deviceTokens.map((d) => d.platform));
   if (appPlatforms.has("ios")) devices.push({ kind: "app", detail: "تطبيق آيفون" });
   if (appPlatforms.has("android")) devices.push({ kind: "app", detail: "تطبيق أندرويد" });
-  // متصفح: من session.device (نتخطى المكرّر لو التطبيق مسجّل أصلًا لنفس النوع).
-  for (const sd of sessionDevices.slice(0, 2)) devices.push({ kind: "browser", detail: sd.summary });
+  // متصفح: نميّز «متصفح جوال» عن «كمبيوتر» من وصف deviceLabelFromUA (يبدأ بـ«جوال»/«كمبيوتر»).
+  for (const sd of sessionDevices.slice(0, 2)) {
+    devices.push({ kind: sd.summary.startsWith("جوال") ? "mobile-browser" : "computer", detail: sd.summary });
+  }
   if (devices.length === 0) devices.push({ kind: "none", detail: "ما فيه جهاز نشط الآن" });
 
   // ===== الخط الزمني المدموج =====
