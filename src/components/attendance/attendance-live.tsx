@@ -7,6 +7,7 @@ import { toArabicDigits } from "@/lib/format";
 import { hmLabel } from "@/lib/attendance-ui";
 import type { LiveBoardPayload, LiveBoardRow, LocationRadar as LocationRadarData, RangeBoardRow, TileState } from "@/lib/data/attendance";
 import { LocationRadar } from "@/components/attendance/location-radar";
+import { DayTimeline, type TimelineTokens } from "@/components/attendance/day-timeline";
 import "./attendance.css";
 
 /**
@@ -396,9 +397,19 @@ function TodayTile({ row, now, radarPresent, onOpen }: { row: LiveBoardRow; now:
 
       {/* نداء تحقق يدوي — لمن على رأس دوامه (السيرفر يشترط جلسة مفتوحة) */}
       {onShift && <TriggerCallButton userId={row.id} />}
+
+      {/* سجل اليوم المنسدل — جلب كسول عند الفتح فقط (توكنز att-scope) */}
+      <DayTimeline userId={row.id} t={ATT_TIMELINE_TOKENS} />
     </div>
   );
 }
+
+/** توكنز السجل بثيم لوحة «مداوم الآن» (att-scope). */
+const ATT_TIMELINE_TOKENS: TimelineTokens = {
+  line: "var(--att-line)", card: "var(--att-card)", card2: "var(--att-card2)",
+  muted: "var(--att-muted)", text: "var(--att-text)", gold: "var(--att-gold)",
+  green: "var(--att-on)", red: "var(--att-miss)", amber: "var(--att-late)",
+};
 
 /** «أرسل نداء تحقق الآن» — نداء يدوي فوري من المالك، بلا تكرار على نداء نشط. */
 function TriggerCallButton({ userId }: { userId: string }) {

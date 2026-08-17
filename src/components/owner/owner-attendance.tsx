@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toArabicDigits } from "@/lib/format";
 import { hmLabel } from "@/lib/attendance-ui";
 import type { LiveBoardRow, LiveTodayPayload, RangeBoardRow, TileState } from "@/lib/data/attendance";
+import { DayTimeline, type TimelineTokens } from "@/components/attendance/day-timeline";
 
 /**
  * «الدوام» — العمود الجانبي (dawam2 من المرجع): بطاقة لكل موظف بعدّاد تنازلي حي.
@@ -193,10 +194,20 @@ function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpe
             {EXCEPTION_LABEL[r.exceptionType ?? ""] ?? "استثناء معتمد"}
           </div>
         )}
+
+        {/* سجل اليوم المنسدل — نفس مكوّن لوحة الحوكمة بتوكنز الدشبورد */}
+        <DayTimeline userId={r.id} t={OD_TIMELINE_TOKENS} />
       </div>
     </div>
   );
 }
+
+/** توكنز السجل بثيم عمود الدوام في لوحة المالك (od). */
+const OD_TIMELINE_TOKENS: TimelineTokens = {
+  line: "var(--od-hair)", card: "var(--od-raised2)", card2: "var(--od-raised)",
+  muted: "var(--od-t2)", text: "var(--foreground)", gold: "var(--gold)",
+  green: "var(--od-won)", red: "var(--od-red)", amber: "var(--od-try)",
+};
 
 function RangeRow({ r }: { r: RangeBoardRow }) {
   return (
