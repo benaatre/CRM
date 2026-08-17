@@ -1348,6 +1348,133 @@ export async function getLocationRadar() {
 
 export type LocationRadar = Awaited<ReturnType<typeof getLocationRadar>>;
 
+/**
+ * سجل اليوم للموظف (الكرت المنسدل — التصميم الزجاجي) — جلب كسول للمالك:
+ * حالة الموقع الحية + أجهزته النشطة + خط زمني مدموج للأحداث المهمة اليوم.
+ *
+ * النبضات المتتالية بنفس الحكم تُجمّع في مدخل واحد («داخل النطاق ٤٥د») لا
+ * تُعرض كلها — الانتقالات فقط. المصادر: أحداث البصم + انتقالات النبض +
+ * النداءات وردودها + القرارات + التوقفات، مرتّبة زمنيًا.
+ */
+export async function getEmployeeDayTimeline(userId: string, now: Date = new Date()) {
+  const todayKey = ksaDayKey(now);
+  const dayStart = new Date(`${todayKey}T00:00:00+03:00`);
+  const settings = await getAttendanceSettings();
+  const radarFresh = new Date(now.getTime() - settings.radarFreshMinutes * 60_000);
+
+  const [events, pulses, verifs, decisions, pauses, deviceTokens, sessionDevices, locations] = await Promise.all([
+    prisma.attendanceEvent.findMany({
+      where: { userId, timestamp: { gte: dayStart } },
+      orderBy: { timestamp: "asc" },
+      include: { location: { select: { name: true, type: true } } },
+    }),
+    prisma.attendancePulse.findMany({
+      where: { userId, at: { gte: dayStart } },
+      orderBy: { at: "asc" },
+      select: { at: true, inZone: true, location: { select: { name: true } } },
+    }),
+    prisma.attendanceVerification.findMany({
+      where: { userId, scheduledAt: { gte: dayStart } },
+      orderBy: { scheduledAt: "asc" },
+      select: { kind: true, status: true, triggerReason: true, sentAt: true, respondedAt: true, scheduledAt: true },
+    }),
+    prisma.attendanceDecision.findMany({
+      where: { userId, date: dayDateOf(todayKey) },
+      orderBy: { decidedAt: "asc" },
+    }),
+    prisma.attendancePause.findMany({
+      where: { userId, startedAt: { gte: dayStart } },
+      orderBy: { startedAt: "asc" },
+    }),
+    // الأجهزة: توكنات FCM النشطة (تطبيق) — نبضة خلال ٣٠ دقيقة.
+    prisma.deviceToken.findMany({
+      where: { userId, lastSeenAt: { gte: new Date(now.getTime() - 30 * 60_000) } },
+      select: { platform: true, lastSeenAt: true },
+    }),
+    // وصف المتصفح من session.device (AuditLog) النشط.
+    prisma.auditLog.findMany({
+      where: { action: "session.device", entityId: userId, createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } },
+      orderBy: { createdAt: "desc" },
+      select: { summary: true, createdAt: true },
+    }),
+    getActiveLocations(),
+  ]);
+
+  // ===== حالة الموقع الحية (الرادار) =====
+  const openSession = await prisma.attendanceSession.findFirst({ where: { userId, endedAt: null, voided: false }, select: { id: true } });
+  const lastPulse = pulses[pulses.length - 1] ?? null;
+  const radarState: "present" | "out" | "gap" | "off" =
+    !openSession ? "off"
+    : lastPulse && lastPulse.at >= radarFresh && lastPulse.inZone === true ? "present"
+    : lastPulse && lastPulse.at >= radarFresh && lastPulse.inZone === false ? "out"
+    : "gap"; // جلسة مفتوحة لكن لا نبضة حديثة = انقطع
+  const radarLocationName = radarState === "present" ? (lastPulse?.location?.name ?? null) : null;
+
+  // ===== الأجهزة النشطة =====
+  const devices: { kind: string; detail: string }[] = [];
+  const appPlatforms = new Set(deviceTokens.map((d) => d.platform));
+  if (appPlatforms.has("ios")) devices.push({ kind: "app", detail: "تطبيق آيفون" });
+  if (appPlatforms.has("android")) devices.push({ kind: "app", detail: "تطبيق أندرويد" });
+  // متصفح: من session.device (نتخطى المكرّر لو التطبيق مسجّل أصلًا لنفس النوع).
+  for (const sd of sessionDevices.slice(0, 2)) devices.push({ kind: "browser", detail: sd.summary });
+  if (devices.length === 0) devices.push({ kind: "none", detail: "ما فيه جهاز نشط الآن" });
+
+  // ===== الخط الزمني المدموج =====
+  type Entry = { at: Date; icon: string; text: string; tone: "gold" | "green" | "red" | "amber" | "muted" };
+  const entries: Entry[] = [];
+
+  for (const e of events) {
+    if (e.type === AttendanceEventType.CHECK_IN) {
+      const auto = e.source === "AUTO_GEO";
+      entries.push({ at: e.timestamp, icon: "login", tone: "green", text: `${auto ? "بصم تلقائي" : "تسجيل حضور"}${e.location ? ` · ${e.location.name}` : ""}${e.isLate ? " · متأخر" : ""}` });
+    } else if (e.type === AttendanceEventType.CHECK_OUT) {
+      entries.push({ at: e.timestamp, icon: "logout", tone: "muted", text: `تسجيل انصراف${e.location ? ` · ${e.location.name}` : ""}` });
+    } else if (e.type === AttendanceEventType.LOCATION_CHANGE) {
+      entries.push({ at: e.timestamp, icon: "pin", tone: e.outOfZone ? "red" : "gold", text: e.outOfZone ? "تغيير موقع · خارج النطاق" : `انتقل إلى ${e.location?.name ?? "موقع"}` });
+    }
+  }
+
+  // انتقالات النبض فقط (تغيّر الحكم) — النبضات المتتالية مجمّعة ضمنيًا.
+  let lastState: boolean | null | undefined = undefined;
+  for (const pl of pulses) {
+    if (pl.inZone === lastState) continue;
+    lastState = pl.inZone;
+    if (pl.inZone === true) entries.push({ at: pl.at, icon: "radar", tone: "green", text: `دخل نطاق ${pl.location?.name ?? "الموقع"}` });
+    else if (pl.inZone === false) entries.push({ at: pl.at, icon: "radar", tone: "red", text: "خرج من النطاق" });
+  }
+
+  for (const v of verifs) {
+    if (v.sentAt) entries.push({ at: v.sentAt, icon: "bell", tone: "amber", text: v.triggerReason ? "نداء تحقق مشروط" : "نداء تحقق" });
+    if (v.respondedAt) {
+      const ok = v.status === "CONFIRMED" || v.status === "EN_ROUTE";
+      entries.push({ at: v.respondedAt, icon: ok ? "check" : "x", tone: ok ? "green" : "red", text: ok ? "أكّد موقعه" : "رد خارج النطاق" });
+    }
+  }
+
+  const DECISION_TEXT: Record<string, string> = { ON_WAY: "أعلن: بالطريق", LEAVE: "أعلن: إجازة اليوم", EXCUSED: "أعلن: مستأذن", REMOTE: "أعلن: عن بُعد" };
+  for (const d of decisions) {
+    entries.push({ at: d.decidedAt, icon: "clock", tone: "gold", text: `${DECISION_TEXT[d.kind] ?? "قرار"}${d.authorizerLabel ? ` · بإذن ${d.authorizerLabel}` : ""}` });
+    if (d.outcome === "ARRIVED_AUTO" && d.resolvedAt) entries.push({ at: d.resolvedAt, icon: "login", tone: "green", text: "وصل فبُصم تلقائيًا" });
+  }
+
+  for (const ps of pauses) {
+    const label = ps.kind === "NO_RESPONSE" ? "توقف — بلا رد" : ps.kind === "LEFT" ? "توقف — مغادرة" : "توقف — استئذان";
+    entries.push({ at: ps.startedAt, icon: "pause", tone: "amber", text: `${label}${ps.authorizerLabel ? ` · ${ps.authorizerLabel}` : ""}` });
+    if (ps.endedAt) entries.push({ at: ps.endedAt, icon: "play", tone: "green", text: "رجع — استأنف دوامه" });
+  }
+
+  entries.sort((a, b) => a.at.getTime() - b.at.getTime());
+
+  return {
+    radar: { state: radarState, locationName: radarLocationName },
+    devices,
+    timeline: entries.map((e) => ({ atText: formatTime(e.at), icon: e.icon, text: e.text, tone: e.tone })),
+    locationsCount: locations.length,
+  };
+}
+
+export type EmployeeDayTimeline = Awaited<ReturnType<typeof getEmployeeDayTimeline>>;
+
 /** ملخص الفريق لشهر: أيام/ساعات/تأخير/غياب لكل موظف + بداية دوامه. */
 export async function getTeamSummary(month: string) {
   const range = monthRangeKSA(month);
