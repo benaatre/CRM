@@ -7,6 +7,7 @@ import { AttendanceShellProvider } from "@/components/mobile/attendance-shell";
 import { PushRegistrar } from "@/components/mobile/push-registrar";
 import { Heartbeat } from "@/components/layout/heartbeat";
 import { DecisionGate } from "@/components/attendance/decision-gate";
+import { LocationPriming } from "@/components/attendance/location-priming";
 
 /**
  * قشرة التطبيق المحميّة — كل تبويبات /m عداها شاشة الدخول.
@@ -44,6 +45,8 @@ export default async function MobileShellLayout({ children }: { children: React.
       <Heartbeat />
       {/* شاشة الحسم الإجبارية (الدوام الواقعي) — OWNER مستثنى خادميًا وfail-open. */}
       <DecisionGate />
+      {/* تفعيل الموقع (الحضور بالرادار) — بعد الإفصاح v3، المالك لا يراه (لا يقبل الإفصاح). */}
+      <LocationPriming />
       {/*
         المساحة السفلية = ارتفاع الشريط (٤rem) + شريط الإيماءات،
         حتى لا يغطّي الشريط الثابت آخر عنصر في الصفحة.

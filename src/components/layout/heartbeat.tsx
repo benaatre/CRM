@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { queryGeoPermission, readPositionOnce } from "@/lib/geolocation-permission";
 
 /**
- * النبضة كل دقيقتين — «آخر ظهور» + (الثقة المتجددة v3) النبض الجغرافي:
+ * النبضة — «آخر ظهور» + (الثقة المتجددة v3) النبض الجغرافي:
  *
  * الخادم يرد `wantGeo: true` لمن يستحق (جلسة مفتوحة + يوم «في الموقع»)،
  * فنقرأ الموقع **بصمت** ونرسله بنبضة ثانية. قواعد صارمة:
- * - لا prompt إذن أبدًا من النبضة: نقرأ فقط إذا الإذن ممنوح مسبقًا
- *   (navigator.permissions) — أول منح يحدث عند البصمة بموافقة الإفصاح v3.
- * - رفق بالبطارية: بلا enableHighAccuracy وبكاش ٩٠ ثانية — الحكم خادمي،
- *   والدقة الرديئة تصير «حياة بلا حكم موقع» هناك لا حكمًا خاطئًا هنا.
+ * - لا prompt إذن أبدًا من النبضة: نقرأ فقط إذا الإذن `granted` مسبقًا — الطلب
+ *   الرسمي من شاشة التفعيل (الحضور بالرادار — ر١) لا من هنا.
+ * - رفق بالبطارية: بلا enableHighAccuracy وبكاش قصير — الحكم خادمي، والدقة
+ *   الرديئة تصير «حياة بلا حكم موقع» هناك لا حكمًا خاطئًا هنا.
  * - القراءة تتوقف تلقائيًا بإغلاق التطبيق (لا تتبع بالخلفية — WebView معلّق).
+ *
+ * ملاحظة: القراءة الحالية لقطة واحدة خفيفة؛ watchPosition + قرار الدقة
+ * والهامش تأتي في ر٢ (الحضور بالرادار).
  */
 export function Heartbeat() {
   const busyRef = useRef(false);
@@ -19,19 +23,9 @@ export function Heartbeat() {
   useEffect(() => {
     const sendGeo = async () => {
       try {
-        // لا نقرأ إلا بإذن قائم — المتصفحات بلا permissions API تُتخطى بصمت.
-        if (typeof navigator === "undefined" || !navigator.geolocation) return;
-        if (navigator.permissions?.query) {
-          const st = await navigator.permissions.query({ name: "geolocation" });
-          if (st.state !== "granted") return;
-        }
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: false,
-            maximumAge: 90_000,
-            timeout: 10_000,
-          });
-        });
+        // لا نقرأ إلا بإذن قائم — لا prompt من النبض (الطبقة الموحّدة).
+        if ((await queryGeoPermission()) !== "granted") return;
+        const pos = await readPositionOnce({ enableHighAccuracy: false, maximumAge: 90_000, timeout: 10_000 });
         await fetch("/api/heartbeat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
