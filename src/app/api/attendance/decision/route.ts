@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ksaDayKey, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
 import { dayDateOf, ensureAttendanceDay, getAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
-import { activeOnWayDecision, effectiveDayOf } from "@/lib/attendance-auto-punch";
+import { activeOnWayDecision, effectiveDayOf, tryAutoPunch } from "@/lib/attendance-auto-punch";
 import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -64,6 +64,31 @@ async function computeDue(userId: string, now: Date) {
   // «بالطريق» نشطة تؤجل؛ ومنتهية بلا وصول → توسم وتعيد الاستحقاق.
   const onWay = await activeOnWayDecision(userId, now, settings.arrivalMarginMinutes);
   if (onWay) return { due: false as const };
+
+  /*
+   * أولوية البصم على الحسم: نبضة داخل النطاق حديثة = حاضر فعلًا — نبصم له
+   * فورًا (نبضة واحدة تكفي بهذا السياق) والشاشة لا تظهر. الشاشة للغائب فقط.
+   */
+  const freshInZone = await prisma.attendancePulse.findFirst({
+    where: { userId, inZone: true, at: { gte: new Date(now.getTime() - 3 * 60_000) } },
+    orderBy: { at: "desc" },
+    include: { location: { select: { id: true, name: true } } },
+  });
+  if (freshInZone?.locationId) {
+    const outcome = await tryAutoPunch({
+      userId,
+      now,
+      lat: freshInZone.lat,
+      lng: freshInZone.lng,
+      accuracy: freshInZone.accuracy,
+      locationId: freshInZone.locationId,
+      locationName: freshInZone.location?.name ?? null,
+      distanceMeters: 0,
+      singlePulse: true,
+    }).catch(() => ({ punched: false as const }));
+    if (outcome.punched) return { due: false as const };
+  }
+
   await prisma.attendanceDecision.updateMany({
     where: { userId, date: dayDateOf(todayKey), kind: "ON_WAY", resolvedAt: null },
     data: { resolvedAt: now, outcome: "RE_PROMPTED" },
@@ -105,8 +130,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "بيانات غير صالحة" }, { status: 400 });
   }
   const kind = typeof raw.kind === "string" ? raw.kind : "";
-  if (!["ON_WAY", "LEAVE", "EXCUSED", "REMOTE"].includes(kind)) {
+  if (!["ON_WAY", "LEAVE", "EXCUSED", "REMOTE", "REVOKE"].includes(kind)) {
     return NextResponse.json({ ok: false, error: "اختر إجابة" }, { status: 400 });
+  }
+
+  /* ═══════════ التراجع عن إجازة/استئذان ذاتيين — «أبي أداوم اليوم» ═══════════ */
+  if (kind === "REVOKE") {
+    const active = await prisma.attendanceDecision.findFirst({
+      where: { userId, date: dayDateOf(todayKey), kind: { in: ["LEAVE", "EXCUSED"] }, outcome: { not: "REVOKED" } },
+      orderBy: { decidedAt: "desc" },
+    });
+    if (!active) {
+      return NextResponse.json({ ok: false, error: "ما عندك استئذان أو إجازة ذاتية اليوم" });
+    }
+    const me0 = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+    await prisma.$transaction(async (tx) => {
+      await tx.attendanceDecision.updateMany({
+        where: { userId, date: dayDateOf(todayKey), kind: { in: ["LEAVE", "EXCUSED"] }, outcome: { not: "REVOKED" } },
+        data: { resolvedAt: now, outcome: "REVOKED" },
+      });
+      const day = await ensureAttendanceDay(tx, userId, todayKey);
+      // نرجع اليوم «في الموقع» فقط لو كان LEAVE بقرار ذاتي — استثناءات المالك لا تُمس.
+      if (day.mode === "LEAVE") {
+        await tx.attendanceDay.update({ where: { id: day.id }, data: { mode: "ONSITE", lastActivityAt: now } });
+      }
+    });
+    await notify(
+      prisma,
+      await ownerIds(prisma),
+      "attendance.decision",
+      `${me0?.name ?? "موظف"}: تراجع عن ${active.kind === "LEAVE" ? "الإجازة" : "الاستئذان"} · ${formatTime(now)}`,
+      undefined,
+      `/attendance/${userId}`,
+    ).catch(() => {});
+    return NextResponse.json({ ok: true, message: "رجعنا يومك «في الموقع» — بصمتك الحين تمشي عادي" });
   }
 
   let etaMinutes: number | null = null;
@@ -135,21 +192,21 @@ export async function POST(req: Request) {
     }
   });
 
-  // إشعار المالك الفوري (قرار ١٢) — best-effort.
+  // إشعار المالك الفوري (قرار ١٢) — سطر واحد مضغوط.
   try {
     const label =
       kind === "ON_WAY"
-        ? `بالطريق — يوصل خلال ${etaMinutes} دقيقة`
+        ? `بالطريق ${etaMinutes}د`
         : kind === "LEAVE"
           ? "إجازة اليوم"
           : kind === "EXCUSED"
-            ? "مستأذن — ما يداوم اليوم"
-            : "يداوم عن بُعد";
+            ? "مستأذن"
+            : "عن بُعد";
     await notify(
       prisma,
       await ownerIds(prisma),
       "attendance.decision",
-      `${name} أجاب شاشة الحسم: ${label} — ${formatTime(now)}`,
+      `${name}: ${label} · ${formatTime(now)}`,
       undefined,
       `/attendance/${userId}`,
     );
@@ -161,11 +218,11 @@ export async function POST(req: Request) {
     ok: true,
     message:
       kind === "ON_WAY"
-        ? `تمام — ننتظرك خلال ${etaMinutes} دقيقة، وأول ما توصل الموقع نبصم لك تلقائيًا`
+        ? `ننتظرك خلال ${etaMinutes} دقيقة — أول ما تدخل الموقع نبصم لك`
         : kind === "LEAVE"
-          ? "سجّلنا إجازتك اليوم — تقدر تستخدم النظام عادي"
+          ? "سجّلنا إجازتك — النظام مفتوح لك عادي"
           : kind === "EXCUSED"
-            ? "سجّلنا استئذانك اليوم — تقدر تستخدم النظام عادي"
-            : "تم — كمّل مسار «عن بُعد» بجهة الإذن",
+            ? "سجّلنا استئذانك — النظام مفتوح لك عادي"
+            : "كمّل مسار «عن بُعد» بجهة الإذن",
   });
 }

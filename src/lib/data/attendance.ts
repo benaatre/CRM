@@ -200,6 +200,30 @@ export async function getMyAttendanceStatus(userId: string) {
       : null,
     onLeaveToday: eff.onLeave,
     /*
+     * التراجع عن إجازة/استئذان **ذاتيين** (شاشة الحسم): نوع القرار القائم +
+     * هل عنده نبضة داخل النطاق حديثة (≤ ٥ دقائق) فيُعرض بانر «تلغي وتبصم؟».
+     * استثناءات المالك (FULL_DAY_LEAVE) خارج هذا كليًا.
+     */
+    selfOff: await (async () => {
+      if (day?.mode !== "LEAVE" || eff.onLeave) return null;
+      const d = await prisma.attendanceDecision.findFirst({
+        where: { userId, date: dayDateOf(todayKey), kind: { in: ["LEAVE", "EXCUSED"] }, outcome: { not: "REVOKED" } },
+        orderBy: { decidedAt: "desc" },
+        select: { kind: true },
+      });
+      if (!d) return null;
+      const fresh = await prisma.attendancePulse.findFirst({
+        where: { userId, inZone: true, at: { gte: new Date(now.getTime() - 5 * 60_000) } },
+        orderBy: { at: "desc" },
+        include: { location: { select: { name: true } } },
+      });
+      return {
+        kind: d.kind as "LEAVE" | "EXCUSED",
+        inZoneNow: fresh !== null,
+        zoneName: fresh?.location?.name ?? null,
+      };
+    })(),
+    /*
      * حالة التوقف (الدفعة الثالثة) — الأساس المخصوم + التوقف النشط إن وجد.
      */
     pausedMsBase,

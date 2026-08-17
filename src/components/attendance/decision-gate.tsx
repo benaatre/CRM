@@ -164,11 +164,10 @@ export function DecisionGate() {
             </span>
             <div className="min-w-0 flex-1">
               <h2 className="text-[17px] font-extrabold" style={{ color: "var(--att-esp-text)" }}>
-                فاتت نافذة بدايتك — وش وضعك اليوم؟
+                وش وضعك اليوم؟
               </h2>
               <p className="mt-0.5 text-[11.5px]" style={{ color: "var(--att-esp-muted)" }}>
-                {state.windowEndText ? `نافذتك انتهت ${state.windowEndText}` : "ما بصمت وما أعلنت شيئًا"} — اختر إجابة
-                للمتابعة، وما تقدر تكمل قبلها
+                {state.windowEndText ? `فاتت نافذتك (${state.windowEndText})` : "فاتت نافذتك"} وما بصمت — اختر إجابة للمتابعة
               </p>
             </div>
           </div>
@@ -187,7 +186,7 @@ export function DecisionGate() {
                 </span>
                 <span className="flex-1">
                   <span className="block text-[13.5px] font-bold" style={{ color: "var(--att-esp-text)" }}>أنا بالطريق</span>
-                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>حدد متى توصل — وأول ما تدخل الموقع نبصم لك تلقائيًا</span>
+                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>أول ما توصل نبصم لك تلقائيًا</span>
                 </span>
               </button>
               <button type="button" disabled={busy} onClick={() => void answer("LEAVE")} className={rowCls} style={rowStyle}>
@@ -196,7 +195,7 @@ export function DecisionGate() {
                 </span>
                 <span className="flex-1">
                   <span className="block text-[13.5px] font-bold" style={{ color: "var(--att-esp-text)" }}>إجازة اليوم</span>
-                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>يومك يوسم إجازة — والنظام يفتح لك عادي</span>
+                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>يومك إجازة — والنظام مفتوح لك</span>
                 </span>
               </button>
               <button type="button" disabled={busy} onClick={() => void answer("EXCUSED")} className={rowCls} style={rowStyle}>
@@ -205,7 +204,7 @@ export function DecisionGate() {
                 </span>
                 <span className="flex-1">
                   <span className="block text-[13.5px] font-bold" style={{ color: "var(--att-esp-text)" }}>مستأذن — ما أداوم اليوم</span>
-                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>بلّغنا الإدارة — واستخدم النظام عادي</span>
+                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>نبلّغ الإدارة — والنظام مفتوح لك</span>
                 </span>
               </button>
               <button type="button" disabled={busy} onClick={() => void openRemote()} className={rowCls} style={rowStyle}>
@@ -214,11 +213,11 @@ export function DecisionGate() {
                 </span>
                 <span className="flex-1">
                   <span className="block text-[13.5px] font-bold" style={{ color: "var(--att-esp-text)" }}>أداوم عن بُعد</span>
-                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>بجهة إذن — يقاس يومك بالنشاط لا بالموقع</span>
+                  <span className="block text-[10.5px]" style={{ color: "var(--att-esp-muted)" }}>بجهة إذن — يومك يقاس بالنشاط</span>
                 </span>
               </button>
               <p className="pt-1 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
-                لا يمكن إغلاق هذي الشاشة إلا بإجابة — وكل إجابة تُبلَّغ للإدارة فورًا
+                ما تنغلق إلا بإجابة — وكل إجابة تصل الإدارة فورًا
               </p>
             </div>
           )}

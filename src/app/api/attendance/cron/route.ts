@@ -122,7 +122,7 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
         continue;
       }
       const since = new Date(now.getTime() - settings.verificationQuietWindowMinutes * 60_000);
-      if (await hasRecentActivity(v.userId, since)) {
+      if (await hasRecentActivity(v.userId, since, settings.quietWindowCountsCrm)) {
         const nextAt = new Date(now.getTime() + Math.round(settings.verificationQuietWindowMinutes / 2) * 60_000);
         if (windowEnd !== null && nextAt.getTime() > windowEnd) {
           await prisma.attendanceVerification.delete({ where: { id: v.id } });
@@ -157,19 +157,22 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
 
 /**
  * نشاط حديث يقوم مقام التحقق — بصمة/تغيير موقع، فحص صامت **داخل النطاق**،
- * إجراء CRM (بلا ASSIGNMENT — توزيع آلي)، أو رد على نداء سابق.
+ * أو رد على نداء سابق. إجراءات CRM لا تُحتسب افتراضيًا (الدوام الواقعي قرار ٩:
+ * الرقمي لا يعوّض الجسدي) — إلا لو أرجعها المالك بإعداد quietWindowCountsCrm.
  */
-async function hasRecentActivity(userId: string, since: Date): Promise<boolean> {
+async function hasRecentActivity(userId: string, since: Date, countCrm: boolean): Promise<boolean> {
   const [ev, silent, act, resp] = await Promise.all([
     prisma.attendanceEvent.findFirst({ where: { userId, timestamp: { gte: since } }, select: { id: true } }),
     prisma.attendanceSilentCheck.findFirst({
       where: { userId, at: { gte: since }, outOfZone: false },
       select: { id: true },
     }),
-    prisma.activity.findFirst({
-      where: { userId, createdAt: { gte: since }, type: { not: "ASSIGNMENT" } },
-      select: { id: true },
-    }),
+    countCrm
+      ? prisma.activity.findFirst({
+          where: { userId, createdAt: { gte: since }, type: { not: "ASSIGNMENT" } },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
     prisma.attendanceVerification.findFirst({ where: { userId, respondedAt: { gte: since } }, select: { id: true } }),
   ]);
   return Boolean(ev || silent || act || resp);
@@ -592,7 +595,7 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
       prisma,
       await ownerIds(prisma),
       "attendance.auto_closed",
-      `${me?.name ?? "موظف"} نسي الانصراف — أُقفلت جلسته آليًا عند ${formatTime(endDate)} (آخر إثبات + السماحية)`,
+      `${me?.name ?? "موظف"}: أُقفل دوامه آليًا · آخر تواجد ${formatTime(lastProof)}`,
       undefined,
       `/attendance/${s.userId}`,
     ).catch(() => {});
@@ -670,8 +673,8 @@ async function checkHeartbeatGaps(now: Date, settings: Settings): Promise<number
       windowMinutes: settings.conditionalWindowMinutes,
       cooldownMinutes: settings.conditionalCooldownMinutes,
       maxPerDay: settings.maxConditionalPerDay,
-      title: "انقطع إثبات وجودك — أكّد موقعك الآن",
-      body: `ما وصلنا منك أي إشارة من ${durationArabic(settings.heartbeatGapMinutes)} — رد خلال ${durationArabic(settings.conditionalWindowMinutes)} وإلا يتوقف عدّادك`,
+      title: "انقطع إثباتك — أكّد موقعك",
+      body: `أكّد موقعك خلال ${durationArabic(settings.conditionalWindowMinutes)} عشان نكمّل دوامك`,
     });
     if (sent) called++;
   }
@@ -721,7 +724,7 @@ async function watchVisits(now: Date, settings: Settings): Promise<number> {
           prisma,
           [s.userId],
           "attendance.confirm_location",
-          `انقطع اتصالك وأنت بزيارة ${projectName} — افتح التطبيق وأكّد موقعك`,
+          `زيارة ${projectName}: افتح التطبيق وأكّد موقعك`,
           undefined,
           "/m",
         ).catch(() => {});
@@ -754,8 +757,8 @@ async function watchVisits(now: Date, settings: Settings): Promise<number> {
       windowMinutes: settings.conditionalWindowMinutes,
       cooldownMinutes: settings.conditionalCooldownMinutes,
       maxPerDay: settings.maxConditionalPerDay,
-      title: `لسه بمشروع ${projectName}؟ — أكّد موقعك`,
-      body: `التحقق الدوري للزيارات كل ${durationArabic(settings.visitReverifyMinutes)} — رد خلال ${durationArabic(settings.conditionalWindowMinutes)}`,
+      title: `لسه بمشروع ${projectName}؟ أكّد موقعك`,
+      body: `رد خلال ${durationArabic(settings.conditionalWindowMinutes)}`,
     });
     if (sent) acted++;
   }

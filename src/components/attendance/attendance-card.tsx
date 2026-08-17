@@ -80,6 +80,8 @@ type StatusPayload = {
     firstCheckInText: string | null;
   } | null;
   onLeaveToday: boolean;
+  /** إجازة/استئذان ذاتيان (شاشة الحسم) — للتراجع: النوع + هل هو داخل النطاق الآن. */
+  selfOff: { kind: "LEAVE" | "EXCUSED"; inZoneNow: boolean; zoneName: string | null } | null;
 };
 
 type PunchResult = {
@@ -287,6 +289,36 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
   }, [consent, silentCheck]);
 
   /** «رجعت / سجّل حضوري» — يقفل التوقف الجاري ويستأنف العدّاد. */
+  /**
+   * التراجع عن إجازة/استئذان ذاتيين (شاشة الحسم) — «أبي أداوم اليوم»:
+   * يوسم القرار REVOKED ويرجع اليوم «في الموقع»، وإن كان داخل النطاق يبصم فورًا.
+   */
+  const [revokeBusy, setRevokeBusy] = useState(false);
+  const revokeSelfOff = async (thenPunch: boolean) => {
+    setRevokeBusy(true);
+    try {
+      const res = await fetch("/api/attendance/decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "REVOKE" }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string; message?: string };
+      if (!data.ok) {
+        setFeedback({ tone: "warning", text: data.error ?? "ما نفذت — حاول مرة ثانية" });
+      } else {
+        await loadStatus();
+        if (thenPunch) {
+          await punch("CHECK_IN");
+        } else {
+          setFeedback({ tone: "success", text: data.message ?? "رجعنا يومك «في الموقع» — بصم متى جهزت" });
+        }
+      }
+    } catch {
+      setFeedback({ tone: "danger", text: "تعذّر الاتصال — حاول مرة ثانية" });
+    }
+    setRevokeBusy(false);
+  };
+
   const resumeShift = async () => {
     setResumeBusy(true);
     try {
@@ -606,11 +638,39 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                   </p>
                 </div>
               ) : onLeave ? (
-                <div className="relative mt-2 flex items-center gap-2.5 rounded-xl border px-3 py-3" style={{ borderColor: soft("var(--att-leave)", 40), background: soft("var(--att-leave)", 10) }}>
-                  <CalendarDays aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-leave)", flex: "none" }} />
-                  <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--m-text1)" }}>
-                    أنت بإجازة اليوم — لا بصم ولا نداءات، وما تُحتسب غيابًا
-                  </p>
+                <div className="relative mt-2 flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2.5 rounded-xl border px-3 py-3" style={{ borderColor: soft("var(--att-leave)", 40), background: soft("var(--att-leave)", 10) }}>
+                    <CalendarDays aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-leave)", flex: "none" }} />
+                    <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--m-text1)" }}>
+                      {status?.selfOff?.kind === "EXCUSED" ? "مستأذن اليوم" : "بإجازة اليوم"} — لا بصم ولا نداءات
+                    </p>
+                  </div>
+                  {status?.selfOff && (
+                    <>
+                      {status.selfOff.inZoneNow && (
+                        <button
+                          type="button"
+                          onClick={() => void revokeSelfOff(true)}
+                          disabled={revokeBusy || working}
+                          className="min-h-11 rounded-xl border-0 text-[13.5px] font-extrabold"
+                          style={{ background: "var(--m-gold)", color: "var(--m-gold-bg)", opacity: revokeBusy ? 0.6 : 1 }}
+                        >
+                          {revokeBusy
+                            ? "لحظة…"
+                            : `أنت داخل ${status.selfOff.zoneName ?? "دائرة الدوام"} — تلغي ${status.selfOff.kind === "EXCUSED" ? "استئذانك" : "إجازتك"} وتبصم؟`}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void revokeSelfOff(false)}
+                        disabled={revokeBusy || working}
+                        className="min-h-10 rounded-xl border text-[12.5px] font-bold"
+                        style={{ borderColor: "var(--m-hair)", background: "var(--m-sheet)", color: "var(--m-text1)", opacity: revokeBusy ? 0.6 : 1 }}
+                      >
+                        تراجعت — أبي أداوم اليوم
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : noResponsePause ? (
                 /* ===== «دوامك متوقف» — حرجة فتبقى ظاهرة (قرار معتمد) ===== */
@@ -882,12 +942,40 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                 </p>
               </div>
             ) : onLeave ? (
-              /* ===== يوم إجازة ===== */
-              <div className="relative flex items-center gap-2.5 rounded-xl border px-3 py-3" style={{ borderColor: soft("var(--att-leave)", 40), background: soft("var(--att-leave)", 10) }}>
-                <CalendarDays aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-leave)", flex: "none" }} />
-                <p className="text-[12.5px] leading-relaxed text-[var(--att-esp-text)]">
-                  أنت بإجازة اليوم — لا بصم ولا نداءات، وما تُحتسب غيابًا
-                </p>
+              /* ===== يوم إجازة/استئذان — مع التراجع الذاتي ===== */
+              <div className="relative flex flex-col gap-2.5">
+                <div className="flex items-center gap-2.5 rounded-xl border px-3 py-3" style={{ borderColor: soft("var(--att-leave)", 40), background: soft("var(--att-leave)", 10) }}>
+                  <CalendarDays aria-hidden size={17} strokeWidth={1.5} style={{ color: "var(--att-leave)", flex: "none" }} />
+                  <p className="text-[12.5px] leading-relaxed text-[var(--att-esp-text)]">
+                    {status?.selfOff?.kind === "EXCUSED" ? "مستأذن اليوم" : "بإجازة اليوم"} — لا بصم ولا نداءات
+                  </p>
+                </div>
+                {status?.selfOff && (
+                  <>
+                    {status.selfOff.inZoneNow && (
+                      <button
+                        type="button"
+                        onClick={() => void revokeSelfOff(true)}
+                        disabled={revokeBusy || working}
+                        className="min-h-11 rounded-xl border-0 text-[13.5px] font-extrabold"
+                        style={{ background: "var(--att-gold)", color: "var(--att-on-gold)", opacity: revokeBusy ? 0.6 : 1 }}
+                      >
+                        {revokeBusy
+                          ? "لحظة…"
+                          : `أنت داخل ${status.selfOff.zoneName ?? "دائرة الدوام"} — تلغي ${status.selfOff.kind === "EXCUSED" ? "استئذانك" : "إجازتك"} وتبصم؟`}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void revokeSelfOff(false)}
+                      disabled={revokeBusy || working}
+                      className="min-h-10 rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)] text-[12.5px] font-bold text-[var(--att-esp-text)]"
+                      style={{ opacity: revokeBusy ? 0.6 : 1 }}
+                    >
+                      تراجعت — أبي أداوم اليوم
+                    </button>
+                  </>
+                )}
               </div>
             ) : noResponsePause ? (
               /* ===== شاشة «دوامك متوقف» — إيقاف عدم الرد ===== */

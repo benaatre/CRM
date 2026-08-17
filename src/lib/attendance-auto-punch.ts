@@ -11,7 +11,6 @@ import {
   planVerificationTimes,
   type EffectiveDay,
 } from "@/lib/attendance-logic";
-import { checkedInText } from "@/lib/attendance-notify";
 import { dayDateOf, ensureAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
 import { notify, ownerIds } from "@/lib/notify";
 
@@ -77,6 +76,11 @@ export async function tryAutoPunch(args: {
   locationId: string;
   locationName: string | null;
   distanceMeters: number;
+  /**
+   * سياق ما بعد النافذة (استحقاق شاشة الحسم): نبضة واحدة داخل النطاق تكفي —
+   * الحاضر فعلًا يُبصم فورًا ولا تُعرض عليه الشاشة (أولوية البصم على الحسم).
+   */
+  singlePulse?: boolean;
 }): Promise<AutoPunchOutcome> {
   const { userId, now } = args;
   const settings = await getAttendanceSettings();
@@ -94,21 +98,39 @@ export async function tryAutoPunch(args: {
   const eff = await effectiveDayOf(userId, now);
   if (eff.isWeekend || eff.onLeave) return { punched: false };
 
+  /*
+   * الأهلية الزمنية: نافذة الشركة كلها [workStart, workEnd) — البصم المبكر حق
+   * (النافذة الشخصية تحكم التأخير والحسم فقط، لا تمنع بصمًا مبكرًا)، وما بعد
+   * نافذته يظل مؤهلًا حتى إقفال الشركة (بدل ظهور شاشة الحسم على الحاضر).
+   */
   const nowMinutes = ksaMinutesOfDay(now);
-  const inStartWindow = nowMinutes >= eff.startMinutes && nowMinutes <= eff.windowEndMinutes;
-  const onWay = inStartWindow ? null : await activeOnWayDecision(userId, now, settings.arrivalMarginMinutes);
-  if (!inStartWindow && !onWay) return { punched: false };
-
-  // الحماية (أ): نبضة سابقة داخل النطاق خلال النافذة القصيرة — غير الحالية.
-  const prevInZone = await prisma.attendancePulse.findFirst({
+  if (nowMinutes < settings.workStartMinutes || nowMinutes >= settings.workEndMinutes) {
+    return { punched: false };
+  }
+  // قرار إجازة/استئذان/عن بُعد قائم اليوم يمنع البصم التلقائي (حتى يتراجع).
+  const blocking = await prisma.attendanceDecision.findFirst({
     where: {
       userId,
-      inZone: true,
-      at: { gte: new Date(now.getTime() - CONSECUTIVE_WINDOW_MS), lt: now },
+      date: dayDateOf(todayKey),
+      kind: { in: ["LEAVE", "EXCUSED", "REMOTE"] },
+      outcome: { not: "REVOKED" },
     },
     select: { id: true },
   });
-  if (!prevInZone) return { punched: false };
+  if (blocking) return { punched: false };
+
+  // الحماية (أ): نبضتان متتاليتان — إلا في سياق ما بعد النافذة (نبضة تكفي).
+  if (!args.singlePulse) {
+    const prevInZone = await prisma.attendancePulse.findFirst({
+      where: {
+        userId,
+        inZone: true,
+        at: { gte: new Date(now.getTime() - CONSECUTIVE_WINDOW_MS), lt: now },
+      },
+      select: { id: true },
+    });
+    if (!prevInZone) return { punched: false };
+  }
 
   const isLate = isLateCheckIn(nowMinutes, eff, settings.lateThresholdMinutes);
 
@@ -182,8 +204,8 @@ export async function tryAutoPunch(args: {
       prisma,
       [userId],
       "attendance.auto_punch",
-      `بصمنا لك ✓ — ${args.locationName ?? "موقعك"} ${formatTime(now)}`,
-      "وصلت موقع العمل داخل نافذتك فسجّلنا حضورك تلقائيًا — دوامك بدأ",
+      `بصمنا لك ✓ ${args.locationName ?? "موقعك"} · ${formatTime(now)}`,
+      undefined,
       "/m",
     );
     if (settings.notifyAutoPunchOwner) {
@@ -192,7 +214,7 @@ export async function tryAutoPunch(args: {
         prisma,
         await ownerIds(prisma),
         "attendance.checked_in",
-        `${checkedInText(me?.name ?? "موظف", formatTime(now), args.locationName)} (بصم تلقائي)`,
+        `${me?.name ?? "موظف"}: حضر تلقائيًا · ${args.locationName ?? "—"} · ${formatTime(now)}`,
         undefined,
         `/attendance/${userId}`,
       );

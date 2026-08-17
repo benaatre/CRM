@@ -5,9 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { recordSessionBeat } from "@/lib/session-devices";
 import { trackActivityWindow } from "@/lib/activity-window";
 import { matchLocation, nearestLocation } from "@/lib/geofence";
-import { getActiveLocations, getAttendanceSettings, getAttendanceDay } from "@/lib/data/attendance";
+import { dayDateOf, getActiveLocations, getAttendanceSettings, getAttendanceDay } from "@/lib/data/attendance";
 import { ksaDayKey, ksaMinutesOfDay } from "@/lib/ksa-time";
-import { activeOnWayDecision, effectiveDayOf, tryAutoPunch } from "@/lib/attendance-auto-punch";
+import { effectiveDayOf, tryAutoPunch } from "@/lib/attendance-auto-punch";
 import { createConditionalCall } from "@/lib/attendance-conditional";
 
 export const runtime = "nodejs";
@@ -60,22 +60,36 @@ export async function POST(req: Request) {
   /*
    * الاستحقاق الجغرافي:
    * - جلسة مفتوحة بيوم «في الموقع» — مراقبة الدوام.
-   * - أو بلا جلسة داخل نافذة البداية / «بالطريق» نشطة — للبصم التلقائي.
+   * - بلا جلسة داخل نافذة الشركة كلها — للبصم التلقائي (المبكر حق، وما بعد
+   *   نافذته الشخصية يُبصم بدل ما تُعرض عليه شاشة الحسم).
+   * - يوم إجازة/استئذان **ذاتي** (من شاشة الحسم) — نبضات كشف الرجوع: دخوله
+   *   النطاق يفتح بانر «تلغي استئذانك وتبصم؟».
    */
-  const day = await getAttendanceDay(userId, ksaDayKey(now));
+  const todayKey = ksaDayKey(now);
+  const day = await getAttendanceDay(userId, todayKey);
   const onsiteDay = day === null || day.mode === "ONSITE";
   const settings = await getAttendanceSettings();
+  const m = ksaMinutesOfDay(now);
+  const inCompanyWindow = m >= settings.workStartMinutes && m < settings.workEndMinutes;
 
   let geoEligible = false;
-  if (onsiteDay) {
-    if (openSession) {
-      geoEligible = true;
-    } else {
-      const eff = await effectiveDayOf(userId, now);
-      const m = ksaMinutesOfDay(now);
-      const inStartWindow = !eff.isWeekend && !eff.onLeave && m >= eff.startMinutes && m <= eff.windowEndMinutes;
-      geoEligible =
-        inStartWindow || (await activeOnWayDecision(userId, now, settings.arrivalMarginMinutes)) !== null;
+  let latePunchContext = false;
+  if (openSession) {
+    geoEligible = onsiteDay;
+  } else if (inCompanyWindow) {
+    const eff = await effectiveDayOf(userId, now);
+    if (!eff.isWeekend && !eff.onLeave) {
+      if (onsiteDay) {
+        geoEligible = true;
+        latePunchContext = m > eff.windowEndMinutes;
+      } else if (day?.mode === "LEAVE") {
+        // إجازة/استئذان ذاتيان فقط (قرار من شاشة الحسم) — لكشف الرجوع.
+        const selfDeclared = await prisma.attendanceDecision.findFirst({
+          where: { userId, date: dayDateOf(todayKey), kind: { in: ["LEAVE", "EXCUSED"] }, outcome: { not: "REVOKED" } },
+          select: { id: true },
+        });
+        geoEligible = selfDeclared !== null;
+      }
     }
   }
 
@@ -157,9 +171,9 @@ export async function POST(req: Request) {
     }
   }
 
-  // ===== البصم التلقائي — بلا جلسة ونبضة داخل النطاق =====
+  // ===== البصم التلقائي — بلا جلسة ونبضة داخل النطاق (يوم ONSITE فقط) =====
   let autoPunched = false;
-  if (inZone === true && !openSession && match) {
+  if (inZone === true && !openSession && match && onsiteDay) {
     const nearest = nearestLocation(lat, lng, locations);
     const outcome = await tryAutoPunch({
       userId,
@@ -170,6 +184,8 @@ export async function POST(req: Request) {
       locationId: match.id,
       locationName: locations.find((l) => l.id === match.id)?.name ?? null,
       distanceMeters: nearest?.distance ?? match.distance,
+      // ما بعد نافذته الشخصية: نبضة واحدة تكفي — أولوية البصم على شاشة الحسم.
+      singlePulse: latePunchContext,
     }).catch(() => ({ punched: false as const }));
     autoPunched = outcome.punched;
   }

@@ -74,8 +74,15 @@ export function Heartbeat() {
     };
 
     void ping();
+    // رجوع التطبيق للمقدمة = نبضة فورية — يسرّع البصم التلقائي وكشف الرجوع
+    // بعد الاستئذان بلا انتظار الدورة.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void ping();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
   return null;

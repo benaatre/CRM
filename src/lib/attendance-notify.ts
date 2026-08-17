@@ -54,7 +54,7 @@ export function noShowText(name: string, elapsedMinutes: number): string {
 
 /** «أكمل سعود ٨ ساعات دوام اليوم وانصرف من المقر الرئيسي» */
 export function completedText(name: string, targetMinutes: number, locationName: string | null): string {
-  return `أكمل ${name} ${durationArabic(targetMinutes)} دوام اليوم وانصرف${locationName ? ` من ${locationName}` : ""}`;
+  return `${name}: أكمل دوامه ✓ (${durationArabic(targetMinutes)})${locationName ? ` · ${locationName}` : ""}`;
 }
 
 /** «مها ما استجاب لنداء التحقق خلال المهلة — آخر موقع معروف: المقر ١:٣٠ م» */
