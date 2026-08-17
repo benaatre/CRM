@@ -950,6 +950,8 @@ model AttendanceSettings {
   quietWindowCountsCrm       Boolean @default(false)
   /// المدة الافتراضية للاستئذان غير محدد المدة
   excuseDefaultMinutes       Int     @default(60)
+  /// نافذة اعتبار النبضة «حية» لرادار المواقع (الحضور بالرادار) — نبض الدقيقة
+  radarFreshMinutes          Int     @default(3)
 
   // ===== الدوام الواقعي — البصم التلقائي وشاشة الحسم =====
   /// تفعيل البصم التلقائي بالنبض الجغرافي داخل نافذة البداية
@@ -1241,6 +1243,8 @@ model AttendancePulse {
 
   @@index([userId, at])
   @@index([at])
+  /// رادار المواقع المعكوس (الحضور بالرادار): من داخل هذا الموقع الآن؟
+  @@index([locationId, at])
 }
 
 /// الزيارات التلقائية (م٧) — سجل مستقل، لا يمس محطات البصم (قرار معتمد).
@@ -1293,8 +1297,11 @@ model AttendanceDecision {
   decidedAt  DateTime
   /// متى انحسمت (وصول/انتهاء مهلة/إعادة سؤال)
   resolvedAt DateTime?
-  /// ARRIVED_AUTO (نبضة بصمت له) | ARRIVED_MANUAL | RE_PROMPTED (رجعت الشاشة) | EXPIRED
+  /// ARRIVED_AUTO (نبضة بصمت له) | ARRIVED_MANUAL | RE_PROMPTED (رجعت الشاشة) | EXPIRED | REVOKED
   outcome    String?
+  /// جهة الإذن لمستأذن/عن بُعد (الحضور بالرادار — ر٥): معرّف + نسخة نصية تصمد.
+  authorizerId    String?
+  authorizerLabel String?
 
   @@index([userId, date])
 }

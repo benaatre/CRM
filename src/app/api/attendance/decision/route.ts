@@ -123,7 +123,7 @@ export async function POST(req: Request) {
   const now = new Date();
   const todayKey = ksaDayKey(now);
 
-  let raw: { kind?: unknown; etaMinutes?: unknown };
+  let raw: { kind?: unknown; etaMinutes?: unknown; authorizerId?: unknown };
   try {
     raw = (await req.json()) as typeof raw;
   } catch {
@@ -174,12 +174,29 @@ export async function POST(req: Request) {
     }
   }
 
+  /*
+   * جهة الإذن (الحضور بالرادار — ر٥): إلزامية لمستأذن/عن بُعد فقط، الإجازة بلا
+   * جهة. نمط authorizerId + نسخة نصية authorizerLabel تصمد لو حُذفت الجهة.
+   */
+  let authorizerId: string | null = null;
+  let authorizerLabel: string | null = null;
+  if (kind === "EXCUSED" || kind === "REMOTE") {
+    authorizerId = typeof raw.authorizerId === "string" ? raw.authorizerId : "";
+    const authorizer = authorizerId
+      ? await prisma.attendanceAuthorizer.findUnique({ where: { id: authorizerId } })
+      : null;
+    if (!authorizer || !authorizer.isActive) {
+      return NextResponse.json({ ok: false, error: "اختر جهة الإذن" }, { status: 400 });
+    }
+    authorizerLabel = authorizer.label;
+  }
+
   const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
   const name = me?.name ?? "موظف";
 
   await prisma.$transaction(async (tx) => {
     await tx.attendanceDecision.create({
-      data: { userId, date: dayDateOf(todayKey), kind, etaMinutes, decidedAt: now },
+      data: { userId, date: dayDateOf(todayKey), kind, etaMinutes, decidedAt: now, authorizerId, authorizerLabel },
     });
     /*
      * إجازة/استئذان يوسمان اليوم LEAVE (لا نداءات ولا «لم يداوم» — نفس عزل v2)؛
@@ -200,8 +217,8 @@ export async function POST(req: Request) {
         : kind === "LEAVE"
           ? "إجازة اليوم"
           : kind === "EXCUSED"
-            ? "مستأذن"
-            : "عن بُعد";
+            ? `مستأذن بإذن ${authorizerLabel}`
+            : `عن بُعد بإذن ${authorizerLabel}`;
     await notify(
       prisma,
       await ownerIds(prisma),
