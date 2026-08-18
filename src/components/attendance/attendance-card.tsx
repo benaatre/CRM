@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
 import { Zain } from "next/font/google";
 import {
@@ -1621,6 +1622,7 @@ function ModeChips({
   /** كسوة الديوان (بطاقة الجوال): شرائح بمواصفات المرجع — المنطق نفسه حرفيًا. */
   diwan?: boolean;
 }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authorizerId, setAuthorizerId] = useState("");
@@ -1683,7 +1685,7 @@ function ModeChips({
         <Chip diwan={diwan} active={flow === "remote"} onClick={() => setFlow("remote")} icon={<Laptop aria-hidden size={14} strokeWidth={1.5} />}>
           عن بُعد
         </Chip>
-        <Chip diwan={diwan} active={flow === "leave"} onClick={() => setFlow("leave")} icon={<CalendarDays aria-hidden size={14} strokeWidth={1.5} />}>
+        <Chip diwan={diwan} active={false} onClick={() => router.push("/m/leaves?new=1")} icon={<CalendarDays aria-hidden size={14} strokeWidth={1.5} />}>
           إجازة
         </Chip>
       </div>

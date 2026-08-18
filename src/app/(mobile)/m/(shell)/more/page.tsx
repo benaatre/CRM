@@ -1,11 +1,12 @@
 import Link from "next/link";
 import {
   Archive, Share2, Copy, ScrollText, BarChart3, Users, Settings,
-  MessagesSquare, Building2, PhoneMissed, Handshake,
+  MessagesSquare, Building2, PhoneMissed, Handshake, CalendarDays,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadCounts } from "@/lib/data/leads";
+import { listMyLeaves } from "@/lib/data/leaves";
 import { getSettings } from "@/lib/data/settings";
 import { getBookings } from "@/lib/data/bookings";
 import { getProjectsOverview } from "@/lib/data/projects";
@@ -44,7 +45,7 @@ export default async function MobileMorePage() {
   const manager = isManager(user.role);
   const owner = user.role === "OWNER";
 
-  const [settings, counts, bookings, projects, avail, peers, dist, dupCounts, noRespCount] = await Promise.all([
+  const [settings, counts, bookings, projects, avail, peers, dist, dupCounts, noRespCount, myLeaves] = await Promise.all([
     getSettings(),
     getLeadCounts(),
     getBookings(),          // محجَّمة بالدور داخلها (المبالغ تُحجب — ما نعرض منها إلا الأعداد).
@@ -55,10 +56,13 @@ export default async function MobileMorePage() {
     manager ? getDistributionConfig() : Promise.resolve(null),
     owner ? activeDuplicateGroupCount() : Promise.resolve({ total: 0, newToday: 0 }),
     owner ? getNoResponseCount() : Promise.resolve(0),
+    // «إجازاتي» — للموظف فقط (المالك يعتمد من ملف الموظف). الشارة = عدد المعلّق.
+    owner ? Promise.resolve([]) : listMyLeaves(user.id),
   ]);
 
   const units = projects.kpis.available + projects.kpis.reserved + projects.kpis.sold;
   const pausedCount = dist ? dist.employees.filter((e) => e.paused).length : 0;
+  const pendingLeaves = myLeaves.filter((r) => r.status === "PENDING").length;
 
   // ===== البلاطات — كل سطر ثانوي من بيانات موجودة فعلًا =====
   const tiles: Tile[] = [
@@ -78,6 +82,9 @@ export default async function MobileMorePage() {
       href: "/m/chat", label: "الشات الداخلي", icon: MessagesSquare,
       sub: `${toArabicDigits(peers.length)} زميل`,
     },
+    ...(!owner
+      ? [{ href: "/m/leaves", label: "إجازاتي", icon: CalendarDays, sub: "طلباتك وحالتها", badge: pendingLeaves }]
+      : []),
     ...(manager && dist
       ? [
           {
