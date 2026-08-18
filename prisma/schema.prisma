@@ -276,6 +276,8 @@ model User {
   attendanceVisits        AttendanceVisit[]
   attendanceExcuses       AttendanceExcuse[]
   attendanceDecisions     AttendanceDecision[]
+  leaveRequests           LeaveRequest[]
+  leaveBalance            LeaveBalance?
 
   @@index([role])
 }
@@ -1059,6 +1061,12 @@ model AttendanceSchedule {
   /// نهاية نافذة البداية المرنة (الدوام الواقعي — قرار ٢): null = لا نافذة (وقت واحد
   /// كالسابق حرفيًا). التأخير يُحتسب بعد نهاية النافذة، والانصراف المتوقع من البداية الفعلية.
   startWindowEndMinutes Int?
+  /// وضع الإنفاذ لكل موظف (نظام الإجازة م١ — القرار ٢): STRICT الافتراضي = السلوك
+  /// الحالي حرفيًا (لا تغيير سلوك). وِيَرِنغ WATCH_ONLY/EXEMPT (تخطّي البصم/النداءات)
+  /// يُوصَّل في م٤ج — هنا مجرد عمود خامد.
+  enforcementMode AttendanceEnforcementMode @default(STRICT)
+  /// تاريخ انتهاء الإعفاء المؤقت (EXEMPT) — اختياري
+  exemptUntil     DateTime?                 @db.Date
   updatedAt    DateTime @updatedAt
 }
 
@@ -1086,6 +1094,64 @@ model AttendanceException {
   createdAt            DateTime                @default(now())
 
   @@index([userId, dateFrom])
+}
+
+// ===================== نظام طلب الإجازة (م١) =====================
+// جداول جديدة مستقلة + وضع الإنفاذ على AttendanceSchedule. لا مساس بـ Lead.
+
+/// نوع الإجازة (القرار ٥) — أيام كاملة فقط.
+enum LeaveType {
+  ANNUAL // سنوية
+  SICK // مرضية
+  EMERGENCY // طارئة
+}
+
+/// حالة طلب الإجازة (القرار ٤) — لا سريان إلا باعتماد المالك.
+enum LeaveStatus {
+  PENDING // معلّق
+  APPROVED // معتمد
+  REJECTED // مرفوض
+}
+
+/// وضع إنفاذ الدوام لكل موظف (القرار ٢).
+enum AttendanceEnforcementMode {
+  STRICT // ملزمة بالبصمة — الافتراضي = السلوك الحالي
+  WATCH_ONLY // مراقبة فقط — لا بصمة/نداءات/تأخر/غياب
+  EXEMPT // معفاة مؤقتًا — إيقاف كامل
+}
+
+/// طلب إجازة — الموظف يقدّمه، المالك يقرّره. الاعتماد يُنشئ AttendanceException.
+model LeaveRequest {
+  id                String      @id @default(cuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id])
+  type              LeaveType
+  dateFrom          DateTime    @db.Date // شامل
+  dateTo            DateTime    @db.Date // شامل
+  reason            String
+  status            LeaveStatus @default(PENDING)
+  /// قرار المالك (OWNER حصريًا — القرار ٦)
+  decidedById       String?
+  decidedAt         DateTime?
+  decisionNote      String?
+  /// toggle الخصم من الرصيد عند الاعتماد (القرار ٣)
+  deductFromBalance Boolean     @default(true)
+  /// AttendanceException المُنشأ بعد الاعتماد — للربط والتتبّع
+  exceptionId       String?
+  createdAt         DateTime    @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// رصيد الإجازة السنوي — للمالك فقط (القرار ٣). usedDays مشتق لا مخزَّن (بلا drift).
+model LeaveBalance {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
+  /// قابل للتعديل من ملف الموظف (المالك فقط)
+  entitledDays Int      @default(21)
+  updatedAt    DateTime @updatedAt
 }
 
 /// نداء تحقق عشوائي أثناء الدوام — الجدولة والرد والحكم كلها بالسيرفر.
