@@ -1,8 +1,17 @@
-// نسخ الأصول داخل خرج الـ standalone بعد البناء (postbuild)، ثم إعادة تشغيل Passenger.
-// على الخادم يُبنى التطبيق داخل مجلد التشغيل نفسه (public_html = PassengerAppRoot)، فلا نسخ مطلوب —
-// يكفي لمس tmp/restart.txt. عابر للأنظمة: يتخطّى إعادة التشغيل تلقائيًا في التطوير المحلي (ويندوز).
+// إكمال حمولة Next standalone بعد البناء (postbuild) لنشر Hostinger Node.
+//
+// نموذج Hostinger: البناء يُنتج .next/standalone، ثم النشر يُسطّح محتواه إلى public_html
+// (PassengerAppRoot). فالمطلوب من postbuild شيئان فقط:
+//   ١) إكمال الحمولة: next لا يُدرج public/ ولا .next/static داخل standalone تلقائيًا.
+//   ٢) إشارة إعادة تشغيل *داخل الحمولة* (tmp/restart.txt) بطابع زمني جديد كل بناء —
+//      فينسخها النشر مع الكود، وتصل Passenger بعد اكتمال النشر فتعيد التشغيل حتمًا.
+//
+// لا نكتب شيئًا على المسار المطلق لـ public_html أثناء البناء (حادثة 2026-08-18):
+// تلك الكتابة تُمحى بالنشر (عديمة الأثر — بشهادة النسخة السابقة نفسها)، وتُنشئ
+// public_html/tmp وتلمس مجلد التطبيق الحيّ أثناء نافذة بناء/فحص Hostinger، فتتعارض مع
+// فحص «standalone output» ⇒ فشل متقطّع للبناء («no standalone output») ⇒ Hostinger
+// يتخطّى النشر وتبقى الحمولة القديمة تخدم. الاعتماد كليًا على إشارة الحمولة (الخطوة ٢).
 import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
 
 const standalone = ".next/standalone";
 
@@ -11,7 +20,14 @@ if (!existsSync(standalone)) {
   process.exit(1);
 }
 
-// ===== ١) نسخ الأصول داخل standalone =====
+// تحقّق صريح أن خادم standalone أُنتج فعلًا — يظهر بالسجل ويكشف مبكرًا أي «no standalone output».
+if (!existsSync(`${standalone}/server.js`)) {
+  console.error("✗ ما لقيت .next/standalone/server.js — البناء ما أنتج خادم standalone. أوقف قبل نشر حمولة ناقصة.");
+  process.exit(1);
+}
+console.log("✓ خادم standalone موجود: .next/standalone/server.js");
+
+// ===== ١) إكمال حمولة standalone (نسخ، لا نقل — نُبقي .next/static في مكانه الأصلي أيضًا) =====
 if (existsSync("public")) {
   cpSync("public", `${standalone}/public`, { recursive: true });
   console.log("✓ نُسخ public → .next/standalone/public");
@@ -22,33 +38,11 @@ if (existsSync(".next/static")) {
   console.log("✓ نُسخ .next/static → .next/standalone/.next/static");
 }
 
-// ===== ١ب) إشارة إعادة التشغيل داخل الحمولة نفسها (حادثة 2026-07-27) =====
-// النشر يستبدل محتوى public_html بالكامل بحمولة الـstandalone، فأي شيء يكتبه هذا
-// السكربت على المسار المطلق (الخطوة ٢) يُمحى قبل أن تراه Passenger — ولهذا بقي
-// tmp/ مفقودًا وصارت إعادة التشغيل عرَضية: نشرة 14:08 ظلّت على القرص ٢٥ دقيقة
-// والعملية القديمة تخدم كودًا قديمًا. الحل: نجعل tmp/restart.txt جزءًا من الحمولة،
-// فينسخه النشر مع الكود لا قبله، بطابع زمني جديد كل بناء ⇒ Passenger ترى تغيّرًا
-// حقيقيًا بعد اكتمال النشر فتعيد التشغيل حتمًا، ويبقى PassengerRestartDir صالحًا.
+// ===== ٢) إشارة إعادة التشغيل داخل الحمولة نفسها =====
+// تُنسخ مع الكود عند النشر، بطابع زمني جديد كل بناء ⇒ Passenger ترى تغيّرًا بعد اكتمال
+// النشر فتعيد التشغيل على الكود الجديد حتمًا. لا لمس لأي مسار مطلق خارج الحمولة.
 mkdirSync(`${standalone}/tmp`, { recursive: true });
 writeFileSync(`${standalone}/tmp/restart.txt`, String(Date.now()));
-console.log("✓ أُدرج tmp/restart.txt في الحمولة — إشارة إعادة تشغيل تصل مع الكود");
-
-// ===== ٢) إعادة تشغيل Passenger (بلا نسخ — البناء يتمّ داخل مجلد التشغيل نفسه) =====
-// مجلد تشغيل Passenger = PassengerAppRoot للدومين (public_html). على الخادم يُبنى التطبيق داخله
-// مباشرة، فالبناء ينزل في .next هناك ولا حاجة لأي نسخ؛ يكفي لمس tmp/restart.txt (= PassengerRestartDir)
-// لتُعيد Passenger تشغيل العملية. يمكن تجاوز المسار عبر HOSTINGER_APP_DIR.
-const appDir = process.env.HOSTINGER_APP_DIR || "/home/u616466986/domains/crm.benaatre.com/public_html";
-
-if (!existsSync(appDir)) {
-  // تطوير محلي (ويندوز): مجلد تشغيل Passenger غير موجود — نتخطّى إعادة التشغيل بدون خطأ.
-  console.log(`ℹ️  تشغيل محلي — مجلد تشغيل Passenger غير موجود (${appDir})، نتخطّى إعادة التشغيل.`);
-} else {
-  // تشغيل على الخادم: البناء نزل في .next داخل مجلد التشغيل. نكتفي بإشارة إعادة التشغيل لـ Passenger.
-  const tmpDir = path.join(appDir, "tmp");
-  mkdirSync(tmpDir, { recursive: true });
-  const restartFile = path.join(tmpDir, "restart.txt");
-  writeFileSync(restartFile, String(Date.now())); // إنشاء/تحديث الملف = إشارة restart لـ Passenger
-  console.log(`✓ نشر على الخادم — لُمس ${restartFile}، Passenger سيعيد تشغيل التطبيق.`);
-}
+console.log("✓ أُدرج tmp/restart.txt في الحمولة — إشارة إعادة تشغيل تصل مع الكود بعد النشر");
 
 console.log("postbuild: تمّ ✅");
