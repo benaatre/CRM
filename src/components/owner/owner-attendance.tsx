@@ -87,7 +87,7 @@ function remainingMs(r: LiveBoardRow, nowMs: number): number {
   return Math.max(0, end - nowMs);
 }
 
-function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpen: () => void }) {
+function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpen: (() => void) | null }) {
   const meta = STATE_META[r.state];
   const active = r.state === "on" || r.state === "late" || r.state === "paused";
   const workedMin = active ? liveWorkedMs(r, nowMs) / 60_000 : r.doneMinutes;
@@ -103,8 +103,14 @@ function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpe
       {/* هالة الحالة */}
       <span aria-hidden className="pointer-events-none absolute -top-8 end-[-30px] size-[130px] rounded-full opacity-30 blur-[45px]" style={{ background: meta.color }} />
       <div className="relative">
-        {/* الرأس: الاسم + الحالة + سهم الملف */}
-        <div className="mb-2.5 flex items-center gap-2">
+        {/* الرأس: الاسم + الحالة + سهم الملف — الرأس كله ينقل لملف الموظف (للمالك) */}
+        <div
+          className={`mb-2.5 flex items-center gap-2 ${onOpen ? "cursor-pointer" : ""}`}
+          onClick={onOpen ?? undefined}
+          role={onOpen ? "button" : undefined}
+          tabIndex={onOpen ? 0 : undefined}
+          onKeyDown={onOpen ? (e) => (e.key === "Enter" || e.key === " ") && onOpen() : undefined}
+        >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 text-[14.5px] font-bold text-foreground">
               <span className="truncate">{r.name}</span>
@@ -119,15 +125,17 @@ function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpe
           <span className="flex-none rounded-[20px] px-[11px] py-1 text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${meta.color} 14%, transparent)`, color: meta.color }}>
             {meta.label}
           </span>
+          {onOpen && (
           <button
             type="button"
-            onClick={onOpen}
-            aria-label={`ملف دوام ${r.name}`}
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            aria-label={`ملف ${r.name}`}
             className="grid size-[26px] flex-none place-items-center rounded-lg transition-colors hover:text-gold"
             style={{ background: "rgba(255,255,255,.04)", color: "var(--od-t3)" }}
           >
             <svg viewBox="0 0 24 24" className="size-[15px]" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
           </button>
+          )}
         </div>
 
         {(active || r.state === "done") && (
@@ -227,7 +235,7 @@ function RangeRow({ r }: { r: RangeBoardRow }) {
   );
 }
 
-export function OwnerAttendance() {
+export function OwnerAttendance({ isOwner = false }: { isOwner?: boolean } = {}) {
   const router = useRouter();
   const [chip, setChip] = useState<Chip>("today");
   const [data, setData] = useState<LivePayload | null>(null);
@@ -297,7 +305,7 @@ export function OwnerAttendance() {
       {!data && <div className="grid h-32 place-items-center text-xs" style={{ color: "var(--od-t3)" }}>يحمّل الدوام…</div>}
 
       {today && today.rows.map((r) => (
-        <TodayTile key={r.id} r={r} nowMs={nowMs} onOpen={() => router.push(`/attendance/${r.id}`)} />
+        <TodayTile key={r.id} r={r} nowMs={nowMs} onOpen={isOwner ? () => router.push(`/employees/${r.id}`) : null} />
       ))}
 
       {data && data.mode === "range" && (

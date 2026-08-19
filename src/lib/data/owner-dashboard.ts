@@ -157,6 +157,8 @@ export type OwnerFollowupRow = {
   kind: "followup" | "visit";
   note: string | null;
   employeeName: string | null;
+  /** معرّف الموظف المُسند — لرابط ملفه (قرار توحيد المداخل، إضافة شكلية للقراءة). */
+  employeeId: string | null;
   status: OwnerFuStatus;
   /** «تمّت» — وقت المتابعة المنجزة. */
   doneTimeText: string | null;
@@ -194,7 +196,7 @@ export async function getOwnerFollowups(p: OwnerPeriod, fromKey?: string, toKey?
       phone: true,
       nextFollowup: true,
       visitAt: true,
-      assignedTo: { select: { name: true, role: true } },
+      assignedTo: { select: { id: true, name: true, role: true } },
       // الأحدث أولًا: [0] يحسم الإنجاز، وأول ملاحظة غير فارغة تُعرض تحت الاسم.
       followUps: { orderBy: { createdAt: "desc" }, take: 5, select: { note: true, createdAt: true } },
     },
@@ -206,6 +208,7 @@ export async function getOwnerFollowups(p: OwnerPeriod, fromKey?: string, toKey?
     const note = l.followUps.find((f) => f.note && f.note.trim())?.note?.trim() ?? null;
     // المالك لا يظهر كموظف مُسند (نفس قاعدة toMini في dashboard.ts).
     const employeeName = l.assignedTo && l.assignedTo.role !== "OWNER" ? l.assignedTo.name : null;
+    const employeeId = l.assignedTo && l.assignedTo.role !== "OWNER" ? l.assignedTo.id : null;
 
     const appts: { at: Date; kind: "followup" | "visit" }[] = [];
     if (l.nextFollowup && l.nextFollowup >= gte && l.nextFollowup < lt) appts.push({ at: l.nextFollowup, kind: "followup" });
@@ -227,6 +230,7 @@ export async function getOwnerFollowups(p: OwnerPeriod, fromKey?: string, toKey?
         kind: a.kind,
         note,
         employeeName,
+        employeeId,
         status: done ? "done" : late ? "late" : soon ? "soon" : "next",
         doneTimeText: done && latest ? formatTime(latest.createdAt) : null,
         lateMinutes: late ? Math.max(1, Math.floor((now.getTime() - a.at.getTime()) / 60_000)) : null,

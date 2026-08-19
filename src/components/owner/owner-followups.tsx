@@ -46,7 +46,7 @@ function StatusIcon({ s }: { s: OwnerFuStatus }) {
   return <svg viewBox="0 0 24 24" {...common}><path d="M5 12h14M13 6l6 6-6 6" /></svg>;
 }
 
-function Card({ r, onOpen }: { r: OwnerFollowupRow; onOpen: () => void }) {
+function Card({ r, onOpen, onOpenEmployee }: { r: OwnerFollowupRow; onOpen: () => void; onOpenEmployee: ((id: string) => void) | null }) {
   const meta = STATUS_META[r.status];
   const c = colorFor(r.employeeName ?? r.name);
   return (
@@ -80,7 +80,13 @@ function Card({ r, onOpen }: { r: OwnerFollowupRow; onOpen: () => void }) {
         {r.note && <span className="mt-[5px] block truncate text-[13.5px] leading-normal" style={{ color: "var(--od-t2)" }}>{r.note}</span>}
         <span className="mt-1.5 flex items-center gap-2">
           {r.employeeName && (
-            <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: "var(--od-t3)" }}>
+            <span
+              className={`inline-flex items-center gap-1.5 text-xs ${onOpenEmployee && r.employeeId ? "transition-colors hover:text-gold" : ""}`}
+              style={{ color: "var(--od-t3)" }}
+              // شارة الموظف تنقل لملفه (للمالك) — النقرة معزولة، والبطاقة تبقى للعميل.
+              onClick={onOpenEmployee && r.employeeId ? (e) => { e.stopPropagation(); onOpenEmployee(r.employeeId!); } : undefined}
+              title={onOpenEmployee && r.employeeId ? "ملف الموظف الكامل" : undefined}
+            >
               <span className="size-[7px] rounded-full" style={{ background: c }} aria-hidden />
               {r.employeeName}
             </span>
@@ -99,8 +105,9 @@ function Card({ r, onOpen }: { r: OwnerFollowupRow; onOpen: () => void }) {
   );
 }
 
-export function OwnerFollowups({ rows }: { rows: OwnerFollowupRow[] }) {
+export function OwnerFollowups({ rows, isOwner = false }: { rows: OwnerFollowupRow[]; isOwner?: boolean }) {
   const router = useRouter();
+  const openEmployee = isOwner ? (id: string) => router.push(`/employees/${id}`) : null;
   const [filter, setFilter] = useState<OwnerFuStatus | "all">("all");
 
   const counts = useMemo(() => {
@@ -155,13 +162,13 @@ export function OwnerFollowups({ rows }: { rows: OwnerFollowupRow[] }) {
             style={flowing ? { animationDuration: `${Math.max(30, shown.length * 5)}s` } : undefined}
           >
             {shown.map((r) => (
-              <Card key={`${r.leadId}-${r.kind}`} r={r} onOpen={() => router.push(`/leads/${r.leadId}`)} />
+              <Card key={`${r.leadId}-${r.kind}`} r={r} onOpen={() => router.push(`/leads/${r.leadId}`)} onOpenEmployee={openEmployee} />
             ))}
             {/* نسخة ثانية للحلقة المتصلة — تمرير لا نهائي بلا قفزة. */}
             {flowing && (
               <div className="flex flex-col gap-2.5" aria-hidden>
                 {shown.map((r) => (
-                  <Card key={`${r.leadId}-${r.kind}-b`} r={r} onOpen={() => router.push(`/leads/${r.leadId}`)} />
+                  <Card key={`${r.leadId}-${r.kind}-b`} r={r} onOpen={() => router.push(`/leads/${r.leadId}`)} onOpenEmployee={openEmployee} />
                 ))}
               </div>
             )}

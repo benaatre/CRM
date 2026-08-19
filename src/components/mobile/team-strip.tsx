@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 
@@ -35,7 +36,7 @@ function tone(state: StripTile["state"]) {
   return { base: MOBILE_COLORS.textMuted, bg: MOBILE_COLORS.card, border: MOBILE_COLORS.border };
 }
 
-function Tile({ t }: { t: StripTile }) {
+function Tile({ t, onOpen }: { t: StripTile; onOpen: (() => void) | null }) {
   const c = tone(t.state);
   const sub = [
     t.visits > 0 ? `${toArabicDigits(t.visits)} ${t.visits === 1 ? "زيارة" : "زيارات"}` : null,
@@ -44,9 +45,13 @@ function Tile({ t }: { t: StripTile }) {
   return (
     <div
       className="m-press relative flex-none overflow-hidden text-center"
+      // البلاطة كانت خاملة — صارت تفتح ملف الموظف (للمالك فقط)؛ أسهم التمرير خارج البلاطات.
+      onClick={onOpen ?? undefined}
+      role={onOpen ? "button" : undefined}
       style={{
         boxSizing: "border-box", width: 112, borderRadius: 16, padding: "12px 10px 12px",
         background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
+        cursor: onOpen ? "pointer" : undefined,
       }}
     >
       {/* الخط العلوي المضيء بلون الحالة */}
@@ -67,13 +72,17 @@ function Tile({ t }: { t: StripTile }) {
   );
 }
 
-export function TeamStrip({ tiles, dorm, onlineCount }: {
+export function TeamStrip({ tiles, dorm, onlineCount, fileLinks = false }: {
   /** المتصلون أولًا ثم البقية بالأحدث ظهورًا (ترتيب الخادم). */
   tiles: StripTile[];
   /** الراكدون (≥ ١٥ يوم أو ما دخلوا) — خلف شريط قابل للطي. */
   dorm: StripTile[];
   onlineCount: number;
+  /** نقر البلاطة يفتح ملف الموظف — يُمرَّر true للمالك فقط. */
+  fileLinks?: boolean;
 }) {
+  const router = useRouter();
+  const openOf = (id: string) => (fileLinks ? () => router.push(`/m/employees/${id}`) : null);
   const stripRef = useRef<HTMLDivElement>(null);
   const [first, setFirst] = useState(0);
   const [perView, setPerView] = useState(3);
@@ -161,7 +170,7 @@ export function TeamStrip({ tiles, dorm, onlineCount }: {
         {tiles.map((t, i) => (
           <span key={t.id} className="flex" style={{ gap: 9 }}>
             {i === sepIdx && sepIdx > 0 && <span aria-hidden className="flex-none" style={{ width: 1, background: MOBILE_COLORS.border, margin: "8px 1px" }} />}
-            <Tile t={t} />
+            <Tile t={t} onOpen={openOf(t.id)} />
           </span>
         ))}
         {tiles.length === 0 && (
@@ -218,7 +227,7 @@ export function TeamStrip({ tiles, dorm, onlineCount }: {
           </button>
           {dormOpen && (
             <div className="m-noscroll flex overflow-x-auto" style={{ gap: 9, padding: 14, borderTop: `1px solid ${MOBILE_COLORS.border}` }}>
-              {dorm.map((t) => <Tile key={t.id} t={t} />)}
+              {dorm.map((t) => <Tile key={t.id} t={t} onOpen={openOf(t.id)} />)}
             </div>
           )}
         </>

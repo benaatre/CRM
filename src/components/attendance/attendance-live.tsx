@@ -144,14 +144,14 @@ export function LiveTab({ initial, radar }: { initial: LiveBoardPayload; radar: 
           <LocationRadar initial={radar} onPresent={onPresent} />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {payload.rows.map((r) => (
-              <TodayTile key={r.id} row={r} now={now} radarPresent={radarPresent.has(r.id)} onOpen={() => router.push(`/attendance/${r.id}`)} />
+              <TodayTile key={r.id} row={r} now={now} radarPresent={radarPresent.has(r.id)} onOpen={() => router.push(`/employees/${r.id}`)} />
             ))}
           </div>
         </>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {payload.rows.map((r) => (
-            <RangeTile key={r.id} row={r} onOpen={() => router.push(`/attendance/${r.id}`)} />
+            <RangeTile key={r.id} row={r} onOpen={() => router.push(`/employees/${r.id}`)} />
           ))}
         </div>
       )}
