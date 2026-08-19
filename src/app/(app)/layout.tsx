@@ -42,6 +42,7 @@ export default async function AppLayout({
     { href: "/analytics", label: "التحليلات", icon: "analytics", show: true, badge: 0 },
     { href: "/admin", label: "الفريق", icon: "team", show: manager, badge: 0 },
     { href: "/distribution", label: "التوزيع التلقائي", icon: "distribution", show: manager, badge: 0 },
+    { href: "/leaves", label: "الإجازات", icon: "leaves", show: true, badge: 0 },
     { href: "/attendance", label: "حوكمة الدوام", icon: "attendance", show: owner, badge: 0 },
     { href: "/audit", label: "سجل التدقيق", icon: "audit", show: manager, badge: 0 },
     { href: "/settings", label: "الإعدادات", icon: "settings", show: manager, badge: 0 },
