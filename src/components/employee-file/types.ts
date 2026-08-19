@@ -19,7 +19,7 @@ export type EFLogDay = {
   key: string;
   dayNum: string; // «١٧ أغسطس»
   dayName: string;
-  status: "full" | "part" | "abs" | "wk" | "fut" | "leave" | "open";
+  status: "full" | "part" | "abs" | "wk" | "fut" | "leave" | "open" | "off";
   io: string | null; // «١٢:١١ م → ٤:٢٥ م»
   hoursHM: string | null;
   confPct: number; // عرض شريط المؤكد ٪ من الهدف
@@ -67,7 +67,27 @@ export type EFBundle = {
   rangeTo: string | null;
   monthOptions: { value: string; label: string; current: boolean }[];
   schedule: { startMinutes: number; shiftMinutes: number; startWindowEndMinutes: number | null; isDefault: boolean };
-  enforcement: { mode: "STRICT" | "WATCH_ONLY" | "EXEMPT"; exemptUntilKey: string | null };
+  /** الإعدادات الفعلية المدموجة (ملف الموظف الحي) — كلها قابلة للحفظ الحقيقي. */
+  config: {
+    mode: "STRICT" | "WATCH_ONLY" | "EXEMPT";
+    exemptUntilKey: string | null;
+    exemptReason: string | null;
+    verificationPerDay: number;
+    weekendDays: string;
+    outZoneCallEnabled: boolean;
+    dayLockEnabled: boolean;
+    notifyMissedCall: boolean;
+    watchFromMinutes: number;
+    watchToMinutes: number;
+    watchAlertFirstSeen: boolean;
+    custom: {
+      verificationPerDay: boolean;
+      weekendDays: boolean;
+      outZoneCallEnabled: boolean;
+      dayLockEnabled: boolean;
+      notifyMissedCall: boolean;
+    };
+  };
   globalView: {
     verificationPerDay: number;
     verificationEnabled: boolean;
@@ -76,6 +96,7 @@ export type EFBundle = {
     maxOutOfZoneMinutes: number;
     heartbeatSeconds: number;
   };
+  todayLocked: boolean;
   radar: { state: "present" | "out" | "weak" | "gap" | "off"; locationName: string | null };
   deviceLine: string;
   today: EFDayCard | null;

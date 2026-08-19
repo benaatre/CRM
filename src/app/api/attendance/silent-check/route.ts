@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { matchLocation, nearestLocation } from "@/lib/geofence";
 import { ksaDayKey } from "@/lib/ksa-time";
 import { getActiveLocations, getAttendanceSettings, getAttendanceDay } from "@/lib/data/attendance";
+import { effectiveConfigFor } from "@/lib/attendance-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,8 +42,11 @@ export async function POST(req: Request) {
     getAttendanceSettings(),
   ]);
 
-  // الاستحقاق: يوم موقعي + جلسة مفتوحة + فاصل كافٍ عن آخر فحص.
-  const eligible = openSession !== null && (day === null || day.mode === "ONSITE");
+  // «مراقبة/معفى» (ملف الموظف الحي): لا فحص صامت — الرقابة الإلزامية ساقطة عنه.
+  const config = await effectiveConfigFor(userId, { settings }, now);
+
+  // الاستحقاق: يوم موقعي + جلسة مفتوحة + إلزام قائم + فاصل كافٍ عن آخر فحص.
+  const eligible = config.enforced && openSession !== null && (day === null || day.mode === "ONSITE");
   let due = eligible;
   if (eligible) {
     const last = await prisma.attendanceSilentCheck.findFirst({

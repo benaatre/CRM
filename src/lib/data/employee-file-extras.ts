@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { KSA_OFFSET_MS, DAY_MS, ksaDayKey } from "@/lib/ksa-time";
 import { currentMonthKSA } from "@/lib/attendance-logic";
 import { getEmployeeFile, getEmployeeDayTimeline, getAttendanceSettings, getAllLocations } from "@/lib/data/attendance";
+import { effectiveConfigFor } from "@/lib/attendance-config";
 import { getLeaveBalance, LEAVE_LABEL, calendarDays } from "@/lib/data/leaves";
 import { toArabicDigits, formatTime, ONLINE_THRESHOLD_MS } from "@/lib/format";
 import { stageLabels } from "@/lib/labels";
@@ -255,15 +256,22 @@ export async function getTeamPerConfirmedHour(r: RangeKeys): Promise<number | nu
   return Math.round((fuCount / confirmedHours) * 10) / 10;
 }
 
-/** وضع الإلزام المخزَّن (أعمدة م٤ج النائمة — عرض فقط، المحرك غير موصول). */
-export async function getEnforcementView(userId: string): Promise<{ mode: "STRICT" | "WATCH_ONLY" | "EXEMPT"; exemptUntilKey: string | null }> {
-  const row = await prisma.attendanceSchedule.findUnique({
-    where: { userId },
-    select: { enforcementMode: true, exemptUntil: true },
-  });
+/** الإعدادات الفعلية للموظف (ملف الموظف الحي) — للحزمة. */
+export async function getConfigView(userId: string, now = new Date()) {
+  const c = await effectiveConfigFor(userId, undefined, now);
   return {
-    mode: row?.enforcementMode ?? "STRICT",
-    exemptUntilKey: row?.exemptUntil ? row.exemptUntil.toISOString().slice(0, 10) : null,
+    mode: c.mode,
+    exemptUntilKey: c.exemptUntilKey,
+    exemptReason: c.exemptReason,
+    verificationPerDay: c.verificationPerDay,
+    weekendDays: c.weekendDays,
+    outZoneCallEnabled: c.outZoneCallEnabled,
+    dayLockEnabled: c.dayLockEnabled,
+    notifyMissedCall: c.notifyMissedCall,
+    watchFromMinutes: c.watchFromMinutes,
+    watchToMinutes: c.watchToMinutes,
+    watchAlertFirstSeen: c.watchAlertFirstSeen,
+    custom: c.custom,
   };
 }
 
@@ -367,6 +375,7 @@ function toLogDay(d: FileDay, todayKey: string): EFLogDay {
   else if (d.status === "LEAVE") status = "leave";
   else if (d.status === "WEEKEND") status = "wk";
   else if (d.status === "PENDING") status = "fut";
+  else if (d.status === "UNENFORCED") status = "off";
   else status = "abs";
   const conf = Math.max(0, d.workedMinutes - (d.unconfirmedMinutes ?? 0));
   const denom = Math.max(d.targetMinutes, d.workedMinutes, 1);
@@ -459,16 +468,16 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
   if (!baseFile) return null;
 
   const [
-    user, timeline, settings, locations, enforcement,
+    user, timeline, settings, locations, config,
     kpiDays, days14, logDaysRaw,
     crm, fusByDay14, fuHours, stagesDist, teamPerHour,
-    leaveRows, balance, histogram,
+    leaveRows, balance, histogram, todayRow,
   ] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, role: true, active: true, lastSeenAt: true } }),
     getEmployeeDayTimeline(userId, now),
     getAttendanceSettings(),
     getAllLocations(),
-    getEnforcementView(userId),
+    getConfigView(userId, now),
     daysOf(kpiRange),
     daysOf(range14),
     daysOf(logRange),
@@ -480,6 +489,10 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
     getUserLeaveRequests(userId),
     getLeaveBalance(userId),
     getCheckinHistogram(userId, kpiRange),
+    prisma.attendanceDay.findUnique({
+      where: { userId_date: { userId, date: new Date(`${todayKey}T00:00:00Z`) } },
+      select: { lockedAt: true },
+    }),
   ]);
   if (!user || user.role === Role.OWNER) return null;
 
@@ -603,7 +616,8 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
     rangeTo,
     monthOptions,
     schedule: baseFile.schedule,
-    enforcement,
+    config,
+    todayLocked: !!todayRow?.lockedAt,
     globalView: {
       verificationPerDay: settings.verificationPerDay,
       verificationEnabled: settings.verificationEnabled,

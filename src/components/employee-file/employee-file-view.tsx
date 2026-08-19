@@ -23,6 +23,22 @@ const LOCK_SVG = (
 
 export type ToastFn = (msg: string, err?: boolean) => void;
 
+/** حالة إعدادات ملف الموظف الحي — مشتركة بين اللوحة والعمود الجانبي. */
+export type EFCfgState = {
+  mode: "STRICT" | "WATCH_ONLY" | "EXEMPT";
+  exemptUntilKey: string | null;
+  exemptReason: string;
+  verificationPerDay: number;
+  weekendDays: string[];
+  outZoneCallEnabled: boolean;
+  dayLockEnabled: boolean;
+  notifyMissedCall: boolean;
+  watchFromMinutes: number;
+  watchToMinutes: number;
+  watchAlertFirstSeen: boolean;
+};
+export type PatchCfgFn = <K extends keyof EFCfgState>(k: K, v: EFCfgState[K]) => void;
+
 function Strip({ card }: { card: EFDayCard }) {
   return (
     <div className="strip-wrap">
@@ -95,6 +111,24 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
   const [goalHours, setGoalHours] = useState(Math.round(bundle.schedule.shiftMinutes / 60));
   const [savingSched, setSavingSched] = useState(false);
 
+  // إعدادات ملف الموظف الحي — كل عناصر اللوحة والإعدادات السريعة حقيقية الآن.
+  const [cfg, setCfg] = useState<EFCfgState>({
+    mode: bundle.config.mode,
+    exemptUntilKey: bundle.config.exemptUntilKey,
+    exemptReason: bundle.config.exemptReason ?? "",
+    verificationPerDay: bundle.config.verificationPerDay,
+    weekendDays: bundle.config.weekendDays.split(",").map((c) => c.trim()).filter(Boolean),
+    outZoneCallEnabled: bundle.config.outZoneCallEnabled,
+    dayLockEnabled: bundle.config.dayLockEnabled,
+    notifyMissedCall: bundle.config.notifyMissedCall,
+    watchFromMinutes: bundle.config.watchFromMinutes,
+    watchToMinutes: bundle.config.watchToMinutes,
+    watchAlertFirstSeen: bundle.config.watchAlertFirstSeen,
+  });
+  const patchCfg = useCallback<PatchCfgFn>((k, v) => {
+    setCfg((c) => ({ ...c, [k]: v }));
+  }, []);
+
   const showToast: ToastFn = useCallback((msg, err = false) => {
     setToast({ msg, err });
     setTimeout(() => setToast(null), 4600);
@@ -119,7 +153,22 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
       const res = await fetch(`/api/attendance/schedule/${bundle.user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startMinutes: winStart, shiftMinutes: goalHours * 60, startWindowEndMinutes: winEnd }),
+        body: JSON.stringify({
+          startMinutes: winStart,
+          shiftMinutes: goalHours * 60,
+          startWindowEndMinutes: winEnd,
+          enforcementMode: cfg.mode,
+          exemptUntil: cfg.mode === "EXEMPT" ? cfg.exemptUntilKey : null,
+          exemptReason: cfg.mode === "EXEMPT" ? cfg.exemptReason || null : null,
+          verificationPerDay: cfg.verificationPerDay,
+          weekendDays: cfg.weekendDays.join(","),
+          outZoneCallEnabled: cfg.outZoneCallEnabled,
+          dayLockEnabled: cfg.dayLockEnabled,
+          notifyMissedCall: cfg.notifyMissedCall,
+          watchFromMinutes: cfg.watchFromMinutes,
+          watchToMinutes: cfg.watchToMinutes,
+          watchAlertFirstSeen: cfg.watchAlertFirstSeen,
+        }),
       });
       const d = (await res.json()) as { ok: boolean; error?: string };
       if (d.ok) {
@@ -130,7 +179,7 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
       showToast("تعذّر الاتصال — حاول مرة ثانية", true);
     }
     setSavingSched(false);
-  }, [bundle.user.id, winStart, winEnd, goalHours, router, showToast]);
+  }, [bundle.user.id, winStart, winEnd, goalHours, cfg, router, showToast]);
 
   const card = day === "today" ? bundle.today : bundle.yesterday;
   const histMax = Math.max(1, ...bundle.histogram);
@@ -140,7 +189,6 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
 
   const periodLabel = { w: "الأسبوع", m: AR_M[Number(bundle.month.slice(5)) - 1], q: "٩٠ يوم" } as const;
   const gv = bundle.globalView;
-  const weekend = new Set(gv.weekendDays.split(","));
   const DAY_CHIPS: [string, string][] = [["SUN", "الأحد"], ["MON", "الاثنين"], ["TUE", "الثلاثاء"], ["WED", "الأربعاء"], ["THU", "الخميس"], ["FRI", "الجمعة"], ["SAT", "السبت"]];
 
   const exportCsv = useCallback(() => {
@@ -204,23 +252,25 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
                 إلزام البصمة <span className="hc">اختر الوضع — وكل وضع بإعداداته تحته · الحفظ يُقيَّد بالتدقيق باسمك</span>
               </h4>
               <div className="modes">
-                <div className={`mode locked ${bundle.enforcement.mode === "STRICT" ? "on" : ""}`} title="تبديل الأوضاع غير موصول بعد — النظام الكامل مفعّل للجميع (م٤ج)">
+                <div className={`mode ${cfg.mode === "STRICT" ? "on" : ""}`} onClick={() => patchCfg("mode", "STRICT")} role="button" tabIndex={0}>
                   <span className="radio" />
-                  <div className="mt">ملزمة بالبصمة</div>
+                  <div className="mt">ملزم بالبصمة</div>
                   <div className="md">النظام الكامل: بصمة ونداءات وتأخر وغياب.</div>
                 </div>
-                <div className={`mode m-watch locked ${bundle.enforcement.mode === "WATCH_ONLY" ? "on" : ""}`} title="تبديل الأوضاع غير موصول بعد (م٤ج)">
+                <div className={`mode m-watch ${cfg.mode === "WATCH_ONLY" ? "on" : ""}`} onClick={() => patchCfg("mode", "WATCH_ONLY")} role="button" tabIndex={0}>
                   <span className="radio" />
                   <div className="mt">مراقبة فقط</div>
                   <div className="md">بلا إلزام — يُسجَّل الاتصال والتواجد فقط.</div>
                 </div>
-                <div className={`mode m-off locked ${bundle.enforcement.mode === "EXEMPT" ? "on" : ""}`} title="تبديل الأوضاع غير موصول بعد (م٤ج)">
+                <div className={`mode m-off ${cfg.mode === "EXEMPT" ? "on" : ""}`} onClick={() => patchCfg("mode", "EXEMPT")} role="button" tabIndex={0}>
                   <span className="radio" />
-                  <div className="mt">معفاة مؤقتًا</div>
+                  <div className="mt">معفى مؤقتًا</div>
                   <div className="md">إيقاف كامل حتى تاريخ تحدده.</div>
                 </div>
               </div>
-              <div className="subpanel on">
+
+              {/* ===== إعدادات «ملزم بالبصمة» ===== */}
+              <div className={`subpanel ${cfg.mode === "STRICT" ? "on" : ""}`}>
                 <div className="subgrid">
                   <div className="fld sub2">
                     <div className="fl">نافذة البداية المرنة</div>
@@ -246,38 +296,121 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
                       <button type="button" onClick={() => setGoalHours((g) => Math.min(12, g + 1))}>+</button>
                     </div>
                   </div>
-                  <div className="fld" title="إعداد عام لكل الفريق — يُضبط من حوكمة الدوام">
-                    <div className="fl">نداءات عشوائية/يوم — عام</div>
+                  <div className="fld">
+                    <div className="fl">نداءات عشوائية/يوم{bundle.config.custom.verificationPerDay ? " — مخصص" : ` — افتراضي العام ${toArabicDigits(gv.verificationPerDay)}`}</div>
                     <div className="stepper">
-                      <button type="button" disabled>−</button>
-                      <span className="sv num">{toArabicDigits(gv.verificationPerDay)}</span>
-                      <button type="button" disabled>+</button>
+                      <button type="button" onClick={() => patchCfg("verificationPerDay", Math.max(0, cfg.verificationPerDay - 1))}>−</button>
+                      <span className="sv num">{toArabicDigits(cfg.verificationPerDay)}</span>
+                      <button type="button" onClick={() => patchCfg("verificationPerDay", Math.min(4, cfg.verificationPerDay + 1))}>+</button>
                     </div>
                   </div>
-                  <div className="fld sub2" title="إعداد عام لكل الفريق — يُضبط من حوكمة الدوام">
-                    <div className="fl">أيام العمل — عام</div>
+                  <div className="fld sub2">
+                    <div className="fl">أيام العمل{bundle.config.custom.weekendDays ? " — مخصصة" : ""}</div>
                     <div className="chips">
-                      {DAY_CHIPS.map(([code, label]) => (
-                        <button key={code} type="button" className={`chip ${weekend.has(code) ? "" : "on"}`} disabled>
-                          {label}
+                      {DAY_CHIPS.map(([code, label]) => {
+                        const isWork = !cfg.weekendDays.includes(code);
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            className={`chip ${isWork ? "on" : ""}`}
+                            onClick={() =>
+                              patchCfg(
+                                "weekendDays",
+                                isWork
+                                  ? [...cfg.weekendDays, code].slice(0, 6)
+                                  : cfg.weekendDays.filter((c) => c !== code),
+                              )
+                            }
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="fld sub2">
+                    <div className="fl">سلوك النظام</div>
+                    <div className="frow">
+                      <div>نداء خروج النطاق<div className="d">مهلة {toArabicDigits(gv.maxOutOfZoneMinutes)} د</div></div>
+                      <button type="button" className={`tog ${cfg.outZoneCallEnabled ? "on" : ""}`} onClick={() => patchCfg("outZoneCallEnabled", !cfg.outZoneCallEnabled)} aria-label="نداء خروج النطاق" />
+                    </div>
+                    <div className="frow">
+                      <div>قفل اليوم نهائيًا<div className="d">يوم انقفل انقفل — بصمة جديدة = يوم جديد</div></div>
+                      <button type="button" className={`tog ${cfg.dayLockEnabled ? "on" : ""}`} onClick={() => patchCfg("dayLockEnabled", !cfg.dayLockEnabled)} aria-label="قفل اليوم نهائيًا" />
+                    </div>
+                    <div className="frow">
+                      <div>إشعارك عند فوات النداء</div>
+                      <button type="button" className={`tog ${cfg.notifyMissedCall ? "on" : ""}`} onClick={() => patchCfg("notifyMissedCall", !cfg.notifyMissedCall)} aria-label="إشعار فوات النداء" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ===== إعدادات «مراقبة فقط» ===== */}
+              <div className={`subpanel ${cfg.mode === "WATCH_ONLY" ? "on" : ""}`}>
+                <div className="subgrid">
+                  <div className="fld sub2">
+                    <div className="fl">نطاق الرصد — خارجه ما يُسجَّل شيء</div>
+                    <div className="chips">
+                      {[420, 480, 540, 600].map((v) => (
+                        <button key={v} type="button" className={`chip on t ${cfg.watchFromMinutes === v ? "" : "off"}`} style={cfg.watchFromMinutes === v ? undefined : { opacity: 0.45 }} onClick={() => patchCfg("watchFromMinutes", v)}>
+                          {winLabel(v)}
+                        </button>
+                      ))}
+                      <span style={{ color: "var(--muted)", fontSize: 11, padding: "6px 2px" }}>إلى</span>
+                      {[1080, 1200, 1320].map((v) => (
+                        <button key={v} type="button" className={`chip on t ${cfg.watchToMinutes === v ? "" : "off"}`} style={cfg.watchToMinutes === v ? undefined : { opacity: 0.45 }} onClick={() => patchCfg("watchToMinutes", v)}>
+                          {winLabel(v)}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div className="fld sub2">
-                    <div className="fl">سلوك النظام — عام</div>
+                    <div className="fl">وش يُسجَّل</div>
+                    <div className="frow"><div>التواجد داخل الدوائر<div className="d">نبض جغرافي داخل نطاق الرصد</div></div><button type="button" className="tog on" disabled aria-label="يُسجَّل دائمًا بوضع المراقبة" /></div>
                     <div className="frow">
-                      <div>نداء خروج النطاق<div className="d">مهلة {toArabicDigits(gv.maxOutOfZoneMinutes)} د</div></div>
-                      <button type="button" className="tog on" disabled aria-label="إعداد عام" />
-                    </div>
-                    <div className="frow">
-                      <div>نداءات التحقق<div className="d">مفعّلة لكل الفريق</div></div>
-                      <button type="button" className={`tog ${gv.verificationEnabled ? "on" : ""}`} disabled aria-label="إعداد عام" />
+                      <div>تنبيهك عند أول ظهور</div>
+                      <button type="button" className={`tog ${cfg.watchAlertFirstSeen ? "on" : ""}`} onClick={() => patchCfg("watchAlertFirstSeen", !cfg.watchAlertFirstSeen)} aria-label="تنبيه أول ظهور" />
                     </div>
                   </div>
                 </div>
-                <div className="lockhint">
-                  الأوضاع الثلاثة والإعدادات الموسومة «عام» غير قابلة للتخصيص لكل موظف بعد — القابل للحفظ هنا: النافذة وهدف اليوم (يُقيَّد بالتدقيق).
+              </div>
+
+              {/* ===== إعدادات «معفى مؤقتًا» ===== */}
+              <div className={`subpanel ${cfg.mode === "EXEMPT" ? "on" : ""}`}>
+                <div className="subgrid">
+                  <div className="fld sub2">
+                    <div className="fl">معفى حتى</div>
+                    <div className="chips" style={{ alignItems: "center" }}>
+                      <input
+                        type="date"
+                        value={cfg.exemptUntilKey ?? ""}
+                        onChange={(e) => patchCfg("exemptUntilKey", e.target.value || null)}
+                        dir="ltr"
+                        style={{ background: "#0c0d0f", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", padding: "6px 10px", fontSize: 11 }}
+                      />
+                      <button type="button" className={`chip ${cfg.exemptUntilKey === null ? "on" : ""}`} onClick={() => patchCfg("exemptUntilKey", null)}>
+                        بلا نهاية
+                      </button>
+                    </div>
+                  </div>
+                  <div className="fld sub2">
+                    <div className="fl">السبب — يظهر بالتدقيق</div>
+                    <div className="chips">
+                      {["إجازة سنوية", "انتداب", "ظرف خاص"].map((r) => (
+                        <button key={r} type="button" className={`chip ${cfg.exemptReason === r ? "on" : ""}`} onClick={() => patchCfg("exemptReason", r)}>
+                          {r}
+                        </button>
+                      ))}
+                      <input
+                        value={["إجازة سنوية", "انتداب", "ظرف خاص"].includes(cfg.exemptReason) ? "" : cfg.exemptReason}
+                        onChange={(e) => patchCfg("exemptReason", e.target.value)}
+                        placeholder="سبب مخصص…"
+                        style={{ background: "#0c0d0f", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", padding: "6px 10px", fontSize: 11, minWidth: 120 }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 14 }}>
@@ -508,6 +641,7 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
                         : d.status === "part" ? <span className="pill p-warn">داوم جزئيًا</span>
                         : d.status === "open" ? <span className="pill p-ok">جارٍ الآن</span>
                         : d.status === "wk" ? <span className="pill p-mute">عطلة</span>
+                        : d.status === "off" ? <span className="pill p-mute">بلا إلزام</span>
                         : d.status === "fut" ? <span className="pill p-mute">قادم</span>
                         : d.status === "leave" ? <span className="pill p-leave">إجازة معتمدة</span>
                         : <span className="pill p-bad">غياب</span>;
@@ -548,6 +682,8 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
             setWinStart={setWinStart}
             setWinEnd={setWinEnd}
             setGoalHours={setGoalHours}
+            cfg={cfg}
+            patchCfg={patchCfg}
             onSaveSchedule={() => void saveSchedule()}
             savingSched={savingSched}
             refresh={() => startTransition(() => router.refresh())}

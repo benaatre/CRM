@@ -28,6 +28,7 @@ const STATUS_META: Record<DayLogEntry["status"], { label: string; cls: string }>
   REMOTE: { label: "عن بُعد", cls: "border-info/40 text-info" },
   PENDING: { label: "لسة ما داوم", cls: "border-border text-muted-foreground" },
   WEEKEND: { label: "إجازة أسبوعية", cls: "border-border text-muted-foreground" },
+  UNENFORCED: { label: "بلا إلزام", cls: "border-border text-muted-foreground" },
 };
 
 const EXCEPTION_LABEL: Record<string, string> = {

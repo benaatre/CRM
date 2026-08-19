@@ -861,6 +861,9 @@ enum AttendanceSource {
   NATIVE
   /// بصم تلقائي بالنبض الجغرافي (الدوام الواقعي — قرار ٣)
   AUTO_GEO
+  /// بصمة سجّلها المالك بالنيابة (ملف الموظف الحي) — إحداثيات صفرية بلا مطابقة نطاق.
+  /// ⚠️ قيمة enum جديدة: migrate deploy على الإنتاج **قبل** نشر أي كود يستخدمها.
+  OWNER
 }
 
 /// موقع معتمد للبصم — دائرة (مركز + نصف قطر بالأمتار) يضيفها المالك.
@@ -1061,12 +1064,32 @@ model AttendanceSchedule {
   /// نهاية نافذة البداية المرنة (الدوام الواقعي — قرار ٢): null = لا نافذة (وقت واحد
   /// كالسابق حرفيًا). التأخير يُحتسب بعد نهاية النافذة، والانصراف المتوقع من البداية الفعلية.
   startWindowEndMinutes Int?
-  /// وضع الإنفاذ لكل موظف (نظام الإجازة م١ — القرار ٢): STRICT الافتراضي = السلوك
-  /// الحالي حرفيًا (لا تغيير سلوك). وِيَرِنغ WATCH_ONLY/EXEMPT (تخطّي البصم/النداءات)
-  /// يُوصَّل في م٤ج — هنا مجرد عمود خامد.
+  /// وضع الإنفاذ لكل موظف — وُصِّل فعليًا في «ملف الموظف الحي» (2026-08-19):
+  /// STRICT = النظام الكامل · WATCH_ONLY = رصد بلا إلزام (لا نداءات/غياب/تأخر)
+  /// · EXEMPT = إيقاف كامل حتى exemptUntil (انقضاؤه يعيده STRICT وقت القراءة).
   enforcementMode AttendanceEnforcementMode @default(STRICT)
   /// تاريخ انتهاء الإعفاء المؤقت (EXEMPT) — اختياري
   exemptUntil     DateTime?                 @db.Date
+  /// سبب الإعفاء — يظهر بالتدقيق وبطاقة الملف
+  exemptReason    String?
+
+  // ===== تخصيصات لكل موظف (ملف الموظف الحي) — null = اتبع الإعداد العام =====
+  /// نداءات عشوائية/يوم — null = AttendanceSettings.verificationPerDay
+  verificationPerDay  Int?
+  /// أيام عطلته "FRI,SAT" — null = AttendanceSettings.weekendDays
+  weekendDays         String?
+  /// نداء خروج النطاق (سلّم التصعيد OUT_ZONE/SILENT_OUT) — null = مفعّل (السلوك العام)
+  outZoneCallEnabled  Boolean?
+  /// قفل اليوم نهائيًا عند إغلاق الجلسة (يوم انقفل انقفل) — null = لا قفل تلقائي
+  dayLockEnabled      Boolean?
+  /// إشعار المالك عند فوات نداء هذا الموظف — null = العام
+  notifyMissedCall    Boolean?
+  /// «مراقبة فقط»: نطاق الرصد بالدقائق (خارجه لا يُسجَّل) — null = ٤٨٠→١٣٢٠ (٨ص→١٠م)
+  watchFromMinutes    Int?
+  watchToMinutes      Int?
+  /// «مراقبة فقط»: تنبيه المالك عند أول ظهور لليوم
+  watchAlertFirstSeen Boolean?
+
   updatedAt    DateTime @updatedAt
 }
 
@@ -1246,6 +1269,11 @@ model AttendanceDay {
   remoteAuthorizerId    String?
   remoteAuthorizerLabel String?
   createdAt          DateTime          @default(now())
+
+  /// قفل نهائي يدوي/تلقائي (يوم انقفل انقفل — القرار أ): بعده أي بصمة بنفس اليوم
+  /// تُرفض «يومك مقفول — دوامك يبدأ بكرة»، واليوم التالي طبيعي.
+  lockedAt   DateTime?
+  lockedById String?
 
   sessions AttendanceSession[]
 

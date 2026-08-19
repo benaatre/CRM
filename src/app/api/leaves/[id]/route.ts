@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOwnerApi } from "@/lib/attendance-guard";
-import { decideLeave } from "@/lib/data/leaves";
+import { decideLeave, editLeaveRequest } from "@/lib/data/leaves";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +14,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!guard.ok) return guard.res;
 
   const { id } = await params;
-  let body: { decision?: unknown; deductFromBalance?: unknown; note?: unknown };
+  let body: {
+    decision?: unknown;
+    deductFromBalance?: unknown;
+    note?: unknown;
+    notifyEmployee?: unknown;
+    edit?: { type?: unknown; fromKey?: unknown; toKey?: unknown };
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ ok: false, message: "بيانات غير صالحة" }, { status: 400 });
+  }
+
+  // تعديل المدى/النوع قبل البتّ (ملف الموظف الحي) — decision:"EDIT".
+  if (body.decision === "EDIT") {
+    const r = await editLeaveRequest(guard.userId, "OWNER", id, body.edit ?? {});
+    return NextResponse.json(r, r.ok ? undefined : { status: r.status ?? 400 });
   }
 
   const decision = body.decision === "APPROVE" || body.decision === "REJECT" ? body.decision : null;
@@ -28,6 +40,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     approve: decision === "APPROVE",
     deductFromBalance: body.deductFromBalance !== false,
     note: typeof body.note === "string" ? body.note : undefined,
+    notifyEmployee: body.notifyEmployee !== false,
   });
   return NextResponse.json(r, r.ok ? undefined : { status: r.status ?? 400 });
 }

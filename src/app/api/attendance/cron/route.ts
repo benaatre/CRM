@@ -11,8 +11,8 @@ import {
   effectiveDay,
   minutesToDate,
   momentOfActiveTarget,
-  parseWeekendDays,
 } from "@/lib/attendance-logic";
+import { effectiveConfigsFor, mergeConfig } from "@/lib/attendance-config";
 import {
   PAUSE_REMINDER_TEXT,
   arrivalMissedText,
@@ -67,6 +67,8 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
   if (due.length === 0) return 0;
 
   const userIds = [...new Set(due.map((v) => v.userId))];
+  // إعدادات فعلية لكل موظف (ملف الموظف الحي) — «مراقبة/معفى» لا تصله نداءات.
+  const configs = await effectiveConfigsFor(userIds, now);
   const [openSessions, activePauses] = await Promise.all([
     prisma.attendanceSession.findMany({
       where: { endedAt: null, userId: { in: userIds } },
@@ -97,6 +99,11 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
 
   let sent = 0;
   for (const v of due) {
+    // بدّله المالك لوضع بلا إلزام بعد الجدولة — النداءات المعلقة تُحذف.
+    if (configs.get(v.userId)?.enforced === false) {
+      await prisma.attendanceVerification.delete({ where: { id: v.id } });
+      continue;
+    }
     // انصرف أو أُقفلت جلسته قبل إرسال النداء — النداء صار بلا معنى.
     if (!onDuty.has(v.userId)) {
       await prisma.attendanceVerification.delete({ where: { id: v.id } });
@@ -185,7 +192,15 @@ async function expireMissedVerifications(now: Date): Promise<number> {
     include: { user: { select: { name: true } } },
   });
 
+  // إعدادات فعلية دفعة واحدة — تصعيد وإشعارات الفوات حسب وضع/تخصيص كل موظف.
+  const expiredConfigs = await effectiveConfigsFor([...new Set(expired.map((v) => v.userId))], now);
+
   for (const v of expired) {
+    // بدّله المالك لوضع بلا إلزام والنداء SENT معلق — يُلغى بلا تصعيد ولا إيقاف عدّاد.
+    if (expiredConfigs.get(v.userId)?.enforced === false) {
+      await prisma.attendanceVerification.delete({ where: { id: v.id } });
+      continue;
+    }
     await prisma.attendanceVerification.update({ where: { id: v.id }, data: { status: "MISSED" } });
 
     /*
@@ -246,14 +261,16 @@ async function expireMissedVerifications(now: Date): Promise<number> {
             });
             await tx.attendanceVerification.deleteMany({ where: { userId: v.userId, status: "PENDING" } });
           });
-          await notify(
-            prisma,
-            await ownerIds(prisma),
-            "attendance.verify_missed",
-            noResponseStopText(v.user.name, formatTime(now)),
-            undefined,
-            `/attendance/${v.userId}`,
-          );
+          if (expiredConfigs.get(v.userId)?.notifyMissedCall !== false) {
+            await notify(
+              prisma,
+              await ownerIds(prisma),
+              "attendance.verify_missed",
+              noResponseStopText(v.user.name, formatTime(now)),
+              undefined,
+              `/employees/${v.userId}`,
+            );
+          }
         }
       }
       continue;
@@ -298,20 +315,23 @@ async function expireMissedVerifications(now: Date): Promise<number> {
             // الجدول ما عاد يعني — الموقوف لا تصله نداءات.
             await tx.attendanceVerification.deleteMany({ where: { userId: v.userId, status: "PENDING" } });
           });
-          await notify(
-            prisma,
-            await ownerIds(prisma),
-            "attendance.verify_missed",
-            noResponseStopText(v.user.name, formatTime(now)),
-            undefined,
-            `/attendance/${v.userId}`,
-          );
+          if (expiredConfigs.get(v.userId)?.notifyMissedCall !== false) {
+            await notify(
+              prisma,
+              await ownerIds(prisma),
+              "attendance.verify_missed",
+              noResponseStopText(v.user.name, formatTime(now)),
+              undefined,
+              `/employees/${v.userId}`,
+            );
+          }
         }
       }
       continue;
     }
 
-    // ARRIVAL/MANUAL — إشعار المالك كما كان.
+    // ARRIVAL/MANUAL — إشعار المالك كما كان (إلا لو أطفأه لهذا الموظف).
+    if (expiredConfigs.get(v.userId)?.notifyMissedCall === false) continue;
     const lastEvent = await prisma.attendanceEvent.findFirst({
       where: { userId: v.userId },
       orderBy: { timestamp: "desc" },
@@ -340,7 +360,6 @@ async function expireMissedVerifications(now: Date): Promise<number> {
 async function checkNoShows(now: Date, settings: Settings): Promise<number> {
   const todayKey = ksaDayKey(now);
   const dayStart = dayStartKSA(now);
-  const weekend = parseWeekendDays(settings.weekendDays);
   const dow = ksaDayOfWeek(now);
   const nowMinutes = ksaMinutesOfDay(now);
 
@@ -378,12 +397,15 @@ async function checkNoShows(now: Date, settings: Settings): Promise<number> {
   for (const u of users) {
     if (attended.has(u.id)) continue;
     if (offSite.has(u.id)) continue;
+    // إعدادات الموظف الفعلية: «مراقبة/معفى» لا غياب عنه، وعطلته المخصصة تُحترم.
+    const cfg = mergeConfig(settings, scheduleByUser.get(u.id) ?? null, now);
+    if (!cfg.enforced) continue;
     const eff = effectiveDay(
       scheduleByUser.get(u.id),
       exceptions.filter((e) => e.userId === u.id),
       todayKey,
       dow,
-      weekend,
+      cfg.weekendSet,
     );
     if (eff.isWeekend || eff.onLeave) continue;
     // الاستئذان يؤخّر بداية المحاسبة — لا ننذر «لم يداوم» وهو معذور.
@@ -422,7 +444,6 @@ async function closeCompletedTargets(now: Date, settings: Settings): Promise<num
   });
   if (open.length === 0) return 0;
 
-  const weekend = parseWeekendDays(settings.weekendDays);
   const scheduleByUser = new Map(
     (
       await prisma.attendanceSchedule.findMany({
@@ -443,7 +464,8 @@ async function closeCompletedTargets(now: Date, settings: Settings): Promise<num
         dateTo: { gte: new Date(`${dayKey}T00:00:00Z`) },
       },
     });
-    const eff = effectiveDay(scheduleByUser.get(s.userId), exceptions, dayKey, ksaDayOfWeek(s.startedAt), weekend);
+    const cfg = mergeConfig(settings, scheduleByUser.get(s.userId) ?? null, now);
+    const eff = effectiveDay(scheduleByUser.get(s.userId), exceptions, dayKey, ksaDayOfWeek(s.startedAt), cfg.weekendSet);
 
     // أساس اليوم من الجلسات المغلقة السابقة — نفس تعريف الحساب اليومي.
     const dayStart = new Date(`${dayKey}T00:00:00+03:00`);
@@ -482,6 +504,11 @@ async function closeCompletedTargets(now: Date, settings: Settings): Promise<num
         data: { endedAt: targetMoment, workedMinutes: remaining, closedBy: "TARGET" },
       });
       await tx.attendanceVerification.deleteMany({ where: { userId: s.userId, status: "PENDING" } });
+      // «قفل اليوم نهائيًا» المفعّل: اكتمال الهدف يقفل اليوم (بصمة جديدة تُرفض).
+      if (cfg.dayLockEnabled) {
+        const day = await ensureAttendanceDay(tx, s.userId, dayKey);
+        if (!day.lockedAt) await tx.attendanceDay.update({ where: { id: day.id }, data: { lockedAt: targetMoment } });
+      }
     });
     const me = await prisma.user.findUnique({ where: { id: s.userId }, select: { name: true } });
     await notify(
@@ -508,6 +535,8 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
   if (open.length === 0) return 0;
 
   const graceMs = settings.autoCloseAliveGraceMinutes * 60_000;
+  // «قفل اليوم نهائيًا» لكل موظف — يُطبَّق عند الإقفال القانوني أيضًا.
+  const closeConfigs = await effectiveConfigsFor([...new Set(open.map((s) => s.userId))], now);
 
   let closed = 0;
   for (const s of open) {
@@ -587,6 +616,10 @@ async function autoCloseForgotten(now: Date, settings: Settings): Promise<number
         });
       }
       await tx.attendanceVerification.deleteMany({ where: { userId: s.userId, status: "PENDING" } });
+      if (closeConfigs.get(s.userId)?.dayLockEnabled) {
+        const day = await ensureAttendanceDay(tx, s.userId, dayKey);
+        if (!day.lockedAt) await tx.attendanceDay.update({ where: { id: day.id }, data: { lockedAt: endDate } });
+      }
     });
 
     // إشعار المالك بالتفصيل (قرار ١٢) — best-effort.
@@ -655,10 +688,12 @@ async function checkHeartbeatGaps(now: Date, settings: Settings): Promise<number
     ).map((d) => d.userId),
   );
 
+  const gapConfigs = await effectiveConfigsFor([...new Set(open.map((s) => s.userId))], now);
   let called = 0;
   for (const s of open) {
     if (s.pauses.length > 0) continue; // موقوف/مستأذن — عدّاده واقف أصلًا
     if (offSite.has(s.userId)) continue;
+    if (gapConfigs.get(s.userId)?.enforced === false) continue; // مراقبة/معفى — بلا نداءات
     const companyEnd = minutesToDate(ksaDayKey(s.startedAt), settings.workEndMinutes).getTime();
     if (now.getTime() >= companyEnd) continue;
 
@@ -695,9 +730,11 @@ async function watchVisits(now: Date, settings: Settings): Promise<number> {
   });
   if (open.length === 0) return 0;
 
+  const visitConfigs = await effectiveConfigsFor([...new Set(open.map((s) => s.userId))], now);
   let acted = 0;
   for (const s of open) {
     if (s.pauses.length > 0) continue;
+    if (visitConfigs.get(s.userId)?.enforced === false) continue; // مراقبة/معفى — بلا تذكير ولا نداء
 
     // محطة المشروع الجارية = آخر حدث موقعي للجلسة على دائرة PROJECT داخل النطاق.
     const lastLocEvent = await prisma.attendanceEvent.findFirst({

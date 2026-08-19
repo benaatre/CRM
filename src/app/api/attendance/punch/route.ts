@@ -27,6 +27,7 @@ import {
   resumedCheckInText,
 } from "@/lib/attendance-notify";
 import { daySessionsOf, ensureAttendanceDay } from "@/lib/data/attendance";
+import { mergeConfig } from "@/lib/attendance-config";
 import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -281,12 +282,14 @@ export async function POST(req: Request) {
       },
     }),
   ]);
+  // إعدادات الموظف الفعلية (ملف الموظف الحي) — العطلة والنداءات والإلزام لكل موظف.
+  const config = mergeConfig(settings, schedule, now);
   const eff = effectiveDay(
     schedule,
     todayExceptions,
     todayKey,
     ksaDayOfWeek(now),
-    parseWeekendDays(settings.weekendDays),
+    config.weekendSet,
   );
 
   /*
@@ -304,6 +307,10 @@ export async function POST(req: Request) {
     }
     if (day!.mode === "LEAVE" || eff.onLeave) {
       return refuse("on_leave", "أنت بإجازة اليوم — ما تحتاج تبصم");
+    }
+    // القفل النهائي (يوم انقفل انقفل — القرار أ): أي بصمة بنفس اليوم تُرفض.
+    if (day!.lockedAt) {
+      return refuse("day_locked", "يومك مقفول — دوامك يبدأ بكرة");
     }
   }
   const isResume = body.intent === AttendanceEventType.CHECK_IN && day!.firstCheckInAt !== null;
@@ -329,9 +336,11 @@ export async function POST(req: Request) {
       return refuse("target_done", "أكملت دوامك اليوم ✓ — ما فيه وقت إضافي يُحسب بعد الهدف");
     }
   }
+  // «مراقبة فقط»/«معفى»: البصم يُسجَّل لكن بلا احتساب تأخير (لا إلزام).
   const isLate =
     body.intent === AttendanceEventType.CHECK_IN &&
     !isResume &&
+    config.enforced &&
     isLateCheckIn(nowMinutes, eff, settings.lateThresholdMinutes);
 
   const location = candidates.find((l) => l.id === match.id) ?? null;
@@ -407,8 +416,8 @@ export async function POST(req: Request) {
        * يوم إجازة أسبوعية. عند الاستئناف تُجدول داخل **المتبقي من هدف اليوم**
        * وبما لا يتجاوز السقف اليومي مع نداءات اليوم السابقة.
        */
-      if (settings.verificationEnabled && !eff.isWeekend) {
-        const dailyCap = Math.min(settings.verificationPerDay, 2);
+      if (settings.verificationEnabled && config.enforced && !eff.isWeekend) {
+        const dailyCap = Math.min(config.verificationPerDay, 2);
         const alreadyToday = await tx.attendanceVerification.count({
           where: {
             userId,
@@ -448,6 +457,13 @@ export async function POST(req: Request) {
       });
       // انصرف — نداءات اليوم التي لم تُرسل بعد صارت بلا معنى.
       await tx.attendanceVerification.deleteMany({ where: { userId, status: "PENDING" } });
+      // «قفل اليوم نهائيًا» المفعّل لهذا الموظف: الانصراف يقفل اليوم (بصمة جديدة تُرفض).
+      if (config.dayLockEnabled) {
+        const dayRow = await ensureAttendanceDay(tx, userId, todayKey);
+        if (!dayRow.lockedAt) {
+          await tx.attendanceDay.update({ where: { id: dayRow.id }, data: { lockedAt: now } });
+        }
+      }
     } else if (body.intent === AttendanceEventType.LOCATION_CHANGE && openSession) {
       // تغيير موقع داخل النطاق = إثبات حياة وموقع (v3) — الجلسة نفسها لا تُمس عداهما.
       await tx.attendanceSession.update({
