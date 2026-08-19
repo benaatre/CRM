@@ -139,7 +139,23 @@ export type DayStatus =
   | "LEAVE" // إجازة معتمدة
   | "REMOTE" // يوم «عن بُعد» — قياس نشاط لا ساعات، ولا يُحتسب غيابًا
   | "PENDING" // اليوم الجاري ولم يداوم بعد — ليست غيابًا بعد
-  | "WEEKEND"; // إجازة أسبوعية
+  | "WEEKEND" // إجازة أسبوعية
+  | "UNENFORCED"; // «مراقبة/معفى» (ملف الموظف الحي) — يوم بلا جلسة لا يُحتسب غيابًا
+
+/**
+ * حسم وضع الإنفاذ لحظة القراءة (ملف الموظف الحي) — نقية ليشاركها
+ * attendance-config وطبقة القراءة بلا استيراد دائري:
+ * EXEMPT منتهي المدة (exemptUntil < اليوم) يُعامل STRICT؛ وبلا نهاية = إعفاء مفتوح.
+ */
+export function resolveEnforcement(
+  mode: "STRICT" | "WATCH_ONLY" | "EXEMPT" | undefined | null,
+  exemptUntil: Date | null | undefined,
+  todayKey: string,
+): "STRICT" | "WATCH_ONLY" | "EXEMPT" {
+  if (!mode || mode === "STRICT") return "STRICT";
+  if (mode === "EXEMPT" && exemptUntil && exemptUntil.toISOString().slice(0, 10) < todayKey) return "STRICT";
+  return mode;
+}
 
 export function dayStatus(args: {
   eff: EffectiveDay;
@@ -150,6 +166,8 @@ export function dayStatus(args: {
   isPast: boolean;
   /** وضع اليوم المنطقي (الدفعة الرابعة) — REMOTE يطغى على الغياب. */
   dayMode?: "ONSITE" | "REMOTE" | "LEAVE" | null;
+  /** إلزام الموظف قائم (STRICT) — false = «مراقبة/معفى»: الغياب لا يُحتسب. */
+  enforced?: boolean;
 }): DayStatus {
   const { eff, workedMinutes, hasSession, hasOpenSession, isToday, isPast } = args;
   if (eff.isWeekend) return "WEEKEND";
@@ -158,7 +176,7 @@ export function dayStatus(args: {
   if (hasOpenSession) return "OPEN";
   if (hasSession) return workedMinutes >= eff.targetMinutes ? "COMPLETED" : "PARTIAL";
   if (isToday) return "PENDING";
-  if (isPast) return "ABSENT";
+  if (isPast) return args.enforced === false ? "UNENFORCED" : "ABSENT";
   return "PENDING";
 }
 

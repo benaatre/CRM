@@ -6,6 +6,7 @@ import { ksaDayKey, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
 import { dayDateOf, ensureAttendanceDay, getAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
 import { activeOnWayDecision, effectiveDayOf, tryAutoPunch } from "@/lib/attendance-auto-punch";
+import { effectiveConfigFor } from "@/lib/attendance-config";
 import { notify, ownerIds } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -44,6 +45,10 @@ async function computeDue(userId: string, now: Date) {
 
   if (openOrToday) return { due: false as const };
   if (day && day.mode !== "ONSITE") return { due: false as const };
+
+  // «مراقبة/معفى» (ملف الموظف الحي): لا شاشة حسم — الإلزام كله ساقط عنه.
+  const config = await effectiveConfigFor(userId, { settings }, now);
+  if (!config.enforced) return { due: false as const };
 
   const eff = await effectiveDayOf(userId, now);
   if (eff.isWeekend || eff.onLeave) return { due: false as const };

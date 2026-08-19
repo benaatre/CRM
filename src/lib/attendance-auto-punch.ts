@@ -12,6 +12,7 @@ import {
   type EffectiveDay,
 } from "@/lib/attendance-logic";
 import { dayDateOf, ensureAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
+import { mergeConfig } from "@/lib/attendance-config";
 import { notify, ownerIds } from "@/lib/notify";
 
 /**
@@ -60,7 +61,8 @@ export async function effectiveDayOf(userId: string, now: Date): Promise<Effecti
     }),
     getAttendanceSettings(),
   ]);
-  return effectiveDay(schedule, exceptions, todayKey, ksaDayOfWeek(now), parseWeekendDays(settings.weekendDays));
+  // عطلة الموظف المخصصة أولًا (ملف الموظف الحي) ثم العامة.
+  return effectiveDay(schedule, exceptions, todayKey, ksaDayOfWeek(now), parseWeekendDays(schedule?.weekendDays ?? settings.weekendDays));
 }
 
 /**
@@ -134,9 +136,15 @@ export async function tryAutoPunch(args: {
 
   const isLate = isLateCheckIn(nowMinutes, eff, settings.lateThresholdMinutes);
 
+  // إعدادات الموظف الفعلية — للنداءات المخصصة، والمُستدعي يضمن STRICT أصلًا.
+  const schedRow = await prisma.attendanceSchedule.findUnique({ where: { userId } });
+  const config = mergeConfig(settings, schedRow, now);
+
   const punched = await prisma.$transaction(async (tx) => {
     const day = await ensureAttendanceDay(tx, userId, todayKey);
     if (day.mode !== "ONSITE") return false;
+    // يوم مقفول نهائيًا (القرار أ): لا بصم تلقائيًا أيضًا — دوامه يبدأ بكرة.
+    if (day.lockedAt) return false;
     // الحماية (ب): القفل الذري — من خسره لا يبصم (بصمة أخرى سبقته بالملّي ثانية).
     const lock = await tx.attendanceDay.updateMany({
       where: { id: day.id, firstCheckInAt: null },
@@ -167,9 +175,9 @@ export async function tryAutoPunch(args: {
       },
     });
 
-    // جدولة النداءات — نفس قواعد punch حرفيًا (السقف والحرسان).
+    // جدولة النداءات — نفس قواعد punch حرفيًا (السقف والحرسان)، بنداءات الموظف المخصصة.
     if (settings.verificationEnabled && !eff.isWeekend) {
-      const dailyCap = Math.min(settings.verificationPerDay, 2);
+      const dailyCap = Math.min(config.verificationPerDay, 2);
       const alreadyToday = await tx.attendanceVerification.count({
         where: { userId, kind: "RANDOM", scheduledAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) } },
       });

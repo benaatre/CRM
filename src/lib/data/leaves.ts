@@ -5,6 +5,7 @@ import { ksaDayKey } from "@/lib/ksa-time";
 import { dayDateOf, getAttendanceSettings } from "@/lib/data/attendance";
 import { recordAuditEvent } from "@/lib/audit-event";
 import { createFullDayLeaveException } from "@/lib/attendance-leave-exception";
+import { notify } from "@/lib/notify";
 
 /**
  * منطق نظام الإجازة (م١) — طلب/عرض/قرار/رصيد. المصدر الوحيد المشترك بين المسارات.
@@ -126,7 +127,7 @@ export async function decideLeave(
   ownerId: string,
   ownerRole: string,
   id: string,
-  input: { approve: boolean; deductFromBalance?: boolean; note?: string },
+  input: { approve: boolean; deductFromBalance?: boolean; note?: string; notifyEmployee?: boolean },
 ): Promise<Result<{ exceptionCreated: boolean; exceptionId?: string }>> {
   const req = await prisma.leaveRequest.findUnique({ where: { id } });
   if (!req) return { ok: false, message: "الطلب غير موجود", status: 404 };
@@ -150,6 +151,17 @@ export async function decideLeave(
       after: { decision: "REJECTED" },
       reason: note,
     });
+    // إشعار الموظف بالقرار (ملف الموظف الحي) — الافتراضي يُرسل، وفصله خيار المالك.
+    if (input.notifyEmployee !== false) {
+      await notify(
+        prisma,
+        [req.userId],
+        "leave.decided",
+        "قرار طلب الإجازة",
+        `رُفض طلب إجازتك (${LEAVE_LABEL[req.type] ?? ""} · من ${ymd(req.dateFrom)} إلى ${ymd(req.dateTo)})${note ? ` — ${note}` : ""}`,
+        "/m/leaves",
+      ).catch(() => {});
+    }
     return { ok: true, exceptionCreated: false };
   }
 
@@ -209,5 +221,65 @@ export async function decideLeave(
     return exc.id;
   });
 
+  if (input.notifyEmployee !== false) {
+    await notify(
+      prisma,
+      [req.userId],
+      "leave.decided",
+      "قرار طلب الإجازة",
+      `اعتُمدت إجازتك (${LEAVE_LABEL[req.type] ?? ""} · من ${fromKey} إلى ${toKey}) — مستثناة من الغياب تلقائيًا.`,
+      "/m/leaves",
+    ).catch(() => {});
+  }
+
   return { ok: true, exceptionCreated: true, exceptionId: result };
+}
+
+/**
+ * تعديل مدى/نوع طلب معلّق قبل البتّ (ملف الموظف الحي) — المالك فقط:
+ * نفس قيود الإنشاء (الأنواع/الترتيب/سقف الأيام/التداخل ضد بقية طلباته) +
+ * تدقيق LEAVE_EDITED بقبل/بعد. المعتمد/المرفوض لا يُعدَّل.
+ */
+export async function editLeaveRequest(
+  ownerId: string,
+  ownerRole: string,
+  id: string,
+  input: { type?: unknown; fromKey?: unknown; toKey?: unknown },
+): Promise<Result> {
+  const req = await prisma.leaveRequest.findUnique({ where: { id } });
+  if (!req) return { ok: false, message: "الطلب غير موجود", status: 404 };
+  if (req.status !== "PENDING") return { ok: false, message: "الطلب مو معلّق — ما يُعدَّل بعد البتّ", status: 409 };
+
+  const type = input.type === undefined ? req.type : typeof input.type === "string" && LEAVE_TYPES.has(input.type) ? input.type : null;
+  const fromKey = input.fromKey === undefined ? ymd(req.dateFrom) : typeof input.fromKey === "string" && DAY_KEY.test(input.fromKey) ? input.fromKey : null;
+  const toKey = input.toKey === undefined ? ymd(req.dateTo) : typeof input.toKey === "string" && DAY_KEY.test(input.toKey) ? input.toKey : null;
+  if (!type || !fromKey || !toKey) return { ok: false, message: "بيانات التعديل غير صحيحة", status: 400 };
+  if (toKey < fromKey) return { ok: false, message: "تاريخ النهاية قبل البداية", status: 400 };
+  if (calendarDays(fromKey, toKey) > MAX_REQUEST_DAYS) {
+    return { ok: false, message: `الطلب أطول من ${MAX_REQUEST_DAYS} أيام`, status: 400 };
+  }
+
+  const clashing = await prisma.leaveRequest.findMany({
+    where: { userId: req.userId, id: { not: id }, status: { in: ["PENDING", "APPROVED"] } },
+    select: { dateFrom: true, dateTo: true, status: true },
+  });
+  const clash = clashing.find((r) => overlapsStored(fromKey, toKey, r.dateFrom, r.dateTo));
+  if (clash) {
+    return { ok: false, message: `يتقاطع مع طلب ${clash.status === "APPROVED" ? "معتمد" : "معلّق"} آخر — عدّل التواريخ`, status: 409 };
+  }
+
+  await prisma.leaveRequest.update({
+    where: { id },
+    data: { type: type as never, dateFrom: dayDateOf(fromKey), dateTo: dayDateOf(toKey) },
+  });
+  await recordAuditEvent(prisma, {
+    actorId: ownerId,
+    actorRole: ownerRole,
+    action: "LEAVE_EDITED",
+    resourceType: "leave_request",
+    resourceId: id,
+    before: { type: req.type, fromKey: ymd(req.dateFrom), toKey: ymd(req.dateTo) },
+    after: { type, fromKey, toKey, days: calendarDays(fromKey, toKey) },
+  });
+  return { ok: true };
 }

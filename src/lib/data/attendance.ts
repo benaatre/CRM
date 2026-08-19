@@ -19,6 +19,7 @@ import {
   monthLastDayKey,
   monthRangeKSA,
   parseWeekendDays,
+  resolveEnforcement,
   rangeBoundsKSA,
   rangeDaysKSA,
   sumSessionsMinutes,
@@ -373,7 +374,8 @@ export async function getEffectiveDayFor(userId: string, ref: Date = new Date())
     getAttendanceSettings(),
     exceptionsOverlapping(userId, ksaDayKey(ref), ksaDayKey(ref)),
   ]);
-  return effectiveDay(schedule, exceptions, dayKey, ksaDayOfWeek(ref), parseWeekendDays(settings.weekendDays));
+  // عطلة الموظف المخصصة أولًا (ملف الموظف الحي) ثم العامة.
+  return effectiveDay(schedule, exceptions, dayKey, ksaDayOfWeek(ref), parseWeekendDays(schedule?.weekendDays ?? settings.weekendDays));
 }
 
 /* ═══════════ اليوم المنطقي (الدفعة الرابعة) ═══════════ */
@@ -971,7 +973,16 @@ export type DayLogEntry = {
 function buildDaysLog(args: {
   days: MonthDay[];
   now: Date;
-  schedule: { startMinutes: number; shiftMinutes: number } | null | undefined;
+  schedule:
+    | {
+        startMinutes: number;
+        shiftMinutes: number;
+        weekendDays?: string | null;
+        enforcementMode?: "STRICT" | "WATCH_ONLY" | "EXEMPT";
+        exemptUntil?: Date | null;
+      }
+    | null
+    | undefined;
   exceptions: AttendanceException[];
   sessions: AttendanceSession[];
   weekend: Set<number>;
@@ -987,8 +998,14 @@ function buildDaysLog(args: {
   const todayKey = ksaDayKey(now);
   const byDay = groupSessionsByDay(sessions);
 
+  // ملف الموظف الحي: عطلة الموظف المخصصة تطغى على العامة، ووضع «مراقبة/معفى»
+  // يلغي احتساب الغياب — تُحسم هنا مرة واحدة فتسري على كل اللوحات والملفات.
+  const userWeekend = schedule?.weekendDays ? parseWeekendDays(schedule.weekendDays) : weekend;
+  const enforced =
+    resolveEnforcement(schedule?.enforcementMode ?? null, schedule?.exemptUntil ?? null, todayKey) === "STRICT";
+
   return args.days.map((day) => {
-    const eff = effectiveDay(schedule, exceptions, day.key, day.dayOfWeek, weekend);
+    const eff = effectiveDay(schedule, exceptions, day.key, day.dayOfWeek, userWeekend);
     const daySessions = byDay.get(day.key) ?? [];
     const open = daySessions.find((s) => s.endedAt === null) ?? null;
     const first = daySessions[0] ?? null;
@@ -1005,6 +1022,7 @@ function buildDaysLog(args: {
       isToday: day.key === todayKey,
       isPast: day.key < todayKey,
       dayMode: args.dayModesByKey?.get(day.key) ?? null,
+      enforced,
     });
 
     const shiftEndMs = first ? first.startedAt.getTime() + eff.targetMinutes * 60_000 : null;

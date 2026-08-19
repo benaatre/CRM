@@ -9,6 +9,9 @@ import { dayDateOf, getActiveLocations, getAttendanceSettings, getAttendanceDay 
 import { ksaDayKey, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { effectiveDayOf, tryAutoPunch } from "@/lib/attendance-auto-punch";
 import { createConditionalCall } from "@/lib/attendance-conditional";
+import { effectiveConfigFor } from "@/lib/attendance-config";
+import { notify, ownerIds } from "@/lib/notify";
+import { formatTime } from "@/lib/format";
 
 export const runtime = "nodejs";
 
@@ -71,6 +74,17 @@ export async function POST(req: Request) {
   const settings = await getAttendanceSettings();
   const m = ksaMinutesOfDay(now);
   const inCompanyWindow = m >= settings.workStartMinutes && m < settings.workEndMinutes;
+
+  // إعدادات الموظف الفعلية (ملف الموظف الحي) — الأوضاع الثلاثة تُنفَّذ هنا فعليًا.
+  const config = await effectiveConfigFor(userId, { settings }, now);
+  // «معفى مؤقتًا» = إيقاف كامل: لا رصد جغرافي ولا بصم تلقائي ولا نداءات — حياة رقمية فقط.
+  if (config.mode === "EXEMPT") {
+    return NextResponse.json({ ok: true, wantGeo: false, openSession: openSession !== null });
+  }
+  // «مراقبة فقط»: الرصد داخل نطاق الرصد المحدد حصرًا — خارجه لا يُسجَّل شيء.
+  if (config.mode === "WATCH_ONLY" && (m < config.watchFromMinutes || m >= config.watchToMinutes)) {
+    return NextResponse.json({ ok: true, wantGeo: false, openSession: openSession !== null });
+  }
 
   let geoEligible = false;
   let latePunchContext = false;
@@ -158,7 +172,7 @@ export async function POST(req: Request) {
         include: { location: { select: { name: true } } },
       })
       .catch(() => null);
-    if (prev?.inZone === true) {
+    if (prev?.inZone === true && config.enforced && config.outZoneCallEnabled) {
       await createConditionalCall({
         userId,
         sessionId: openSession.id,
@@ -173,9 +187,27 @@ export async function POST(req: Request) {
     }
   }
 
-  // ===== البصم التلقائي — بلا جلسة ونبضة داخل النطاق (يوم ONSITE فقط) =====
+  // «مراقبة فقط» + تنبيه أول ظهور: أول نبضة داخل نطاق اليوم تُعلم المالك.
+  if (config.mode === "WATCH_ONLY" && config.watchAlertFirstSeen && inZone === true) {
+    const earlier = await prisma.attendancePulse.count({
+      where: { userId, at: { gte: new Date(`${todayKey}T00:00:00+03:00`), lt: now }, inZone: true },
+    });
+    if (earlier === 0) {
+      const locName = locations.find((l) => l.id === match?.id)?.name ?? "داخل النطاق";
+      await notify(
+        prisma,
+        await ownerIds(prisma),
+        "attendance.watch_first_seen",
+        `أول ظهور ${session.user.name ?? "موظف"} اليوم — ${locName} · ${formatTime(now)}`,
+        undefined,
+        `/employees/${userId}`,
+      ).catch(() => {});
+    }
+  }
+
+  // ===== البصم التلقائي — بلا جلسة ونبضة داخل النطاق (يوم ONSITE و«ملزم» فقط) =====
   let autoPunched = false;
-  if (inZone === true && !openSession && match && onsiteDay) {
+  if (inZone === true && !openSession && match && onsiteDay && config.enforced) {
     const nearest = nearestLocation(lat, lng, locations);
     const outcome = await tryAutoPunch({
       userId,

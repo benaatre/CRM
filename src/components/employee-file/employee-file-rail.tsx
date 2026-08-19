@@ -3,17 +3,21 @@
 import { useState } from "react";
 import { toArabicDigits } from "@/lib/format";
 import type { EFBundle } from "./types";
-import type { ToastFn } from "./employee-file-view";
+import type { ToastFn, EFCfgState, PatchCfgFn } from "./employee-file-view";
 
 /**
- * العمود الجانبي اللاصق — هوية بنبض حي + أدوات المالك + بند الإجازة المتوسّع +
- * الإعدادات السريعة (متزامنة مع اللوحة الكاملة — نفس الحالة من الأب) + الدوائر.
- * القرارات كلها عبر مسارات v3/الإجازات القائمة؛ المعطّل بصريًا = فجوة موثّقة.
+ * العمود الجانبي اللاصق — كل عنصر حي (ملف الموظف الحي): هوية بنبض + أدوات المالك
+ * الأربعة شغّالة + بند الإجازة (اعتماد/رفض/تعديل + إشعار القرار) + الإعدادات
+ * السريعة المتزامنة مع اللوحة (نفس الحالة من الأب) + الدوائر.
  */
 
 const RADAR_LABEL: Record<string, string> = {
   present: "بالموقع", out: "خارج النطاق", weak: "إشارة ضعيفة", gap: "انقطاع نبض", off: "غير متصل",
 };
+const MODE_LABEL: Record<EFCfgState["mode"], string> = {
+  STRICT: "ملزم — كامل", WATCH_ONLY: "مراقبة فقط", EXEMPT: "معفى مؤقتًا",
+};
+const MODE_ORDER: EFCfgState["mode"][] = ["STRICT", "WATCH_ONLY", "EXEMPT"];
 
 export function EmployeeFileRail(props: {
   bundle: EFBundle;
@@ -26,19 +30,28 @@ export function EmployeeFileRail(props: {
   setWinStart: (v: number) => void;
   setWinEnd: (v: number) => void;
   setGoalHours: (f: (g: number) => number) => void;
+  cfg: EFCfgState;
+  patchCfg: PatchCfgFn;
   onSaveSchedule: () => void;
   savingSched: boolean;
   refresh: () => void;
 }) {
-  const { bundle, showToast, refresh } = props;
+  const { bundle, showToast, refresh, cfg, patchCfg } = props;
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveDone, setLeaveDone] = useState<string | null>(null);
   const [deduct, setDeduct] = useState(true);
+  const [notifyDecision, setNotifyDecision] = useState(true);
   const [rejecting, setRejecting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editFrom, setEditFrom] = useState("");
+  const [editTo, setEditTo] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [callBusy, setCallBusy] = useState(false);
   const [repairOpen, setRepairOpen] = useState(false);
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [lockConfirm, setLockConfirm] = useState(false);
+  const [lockReason, setLockReason] = useState("");
 
   const lv = bundle.leaves.pending[0] ?? null;
   const bal = bundle.leaves.balance;
@@ -68,17 +81,19 @@ export function EmployeeFileRail(props: {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          approve ? { decision: "APPROVE", deductFromBalance: deduct } : { decision: "REJECT", note: note.trim() || undefined },
+          approve
+            ? { decision: "APPROVE", deductFromBalance: deduct, notifyEmployee: notifyDecision }
+            : { decision: "REJECT", note: note.trim() || undefined, notifyEmployee: notifyDecision },
         ),
       });
       const d = (await res.json()) as { ok: boolean; message?: string };
       if (d.ok) {
         if (approve) {
-          setLeaveDone(`اعتُمدت ${lv.rangeText} · استُثنيت تلقائيًا${deduct ? " · خُصمت من رصيده" : ""}`);
-          showToast(`✓ اعتُمدت الإجازة ${lv.rangeText} · استُثنيت من الغياب تلقائيًا${deduct ? ` · خُصمت من رصيده` : ""}`);
+          setLeaveDone(`اعتُمدت ${lv.rangeText} · استُثنيت تلقائيًا${deduct ? " · خُصمت من رصيده" : ""}${notifyDecision ? " · وصله الإشعار" : ""}`);
+          showToast(`✓ اعتُمدت الإجازة ${lv.rangeText} · استُثنيت من الغياب تلقائيًا${deduct ? ` · خُصمت من رصيده` : ""}${notifyDecision ? " · وأُشعر الموظف" : ""}`);
         } else {
-          setLeaveDone(`رُفض طلب ${lv.rangeText}`);
-          showToast(`رُفض طلب الإجازة ${lv.rangeText} · قُيّد بالتدقيق`);
+          setLeaveDone(`رُفض طلب ${lv.rangeText}${notifyDecision ? " · وصله الإشعار" : ""}`);
+          showToast(`رُفض طلب الإجازة ${lv.rangeText} · قُيّد بالتدقيق${notifyDecision ? " · وأُشعر الموظف" : ""}`);
         }
         refresh();
       } else showToast(d.message ?? "تعذّر تنفيذ القرار", true);
@@ -88,23 +103,41 @@ export function EmployeeFileRail(props: {
     setBusy(false);
   };
 
-  const closeDayNow = async () => {
-    if (!bundle.openSession) return;
+  const submitEdit = async () => {
+    if (!lv || !editFrom || !editTo) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/attendance/session-repair", {
+      const res = await fetch(`/api/leaves/${lv.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "EDIT", edit: { fromKey: editFrom, toKey: editTo } }),
+      });
+      const d = (await res.json()) as { ok: boolean; message?: string };
+      if (d.ok) {
+        showToast("✓ عُدّل مدى الطلب · قُيّد بالتدقيق باسمك");
+        setEditing(false);
+        refresh();
+      } else showToast(d.message ?? "تعذّر التعديل", true);
+    } catch {
+      showToast("تعذّر الاتصال", true);
+    }
+    setBusy(false);
+  };
+
+  const lockDay = async () => {
+    if (!lockReason.trim()) { showToast("اكتب سبب القفل", true); return; }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/attendance/day-lock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          op: "CLOSE",
-          sessionId: bundle.openSession.id,
-          atIso: new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 16),
-          reason: "قفل اليوم يدويًا من ملف الموظف",
-        }),
+        body: JSON.stringify({ userId: bundle.user.id, reason: lockReason.trim() }),
       });
       const d = (await res.json()) as { ok: boolean; error?: string };
       if (d.ok) {
-        showToast("✓ قُفل اليوم يدويًا · قُيّد بالتدقيق باسمك");
+        showToast("✓ قُفل اليوم نهائيًا — بصمة جديدة = يوم جديد · قُيّد بالتدقيق باسمك");
+        setLockConfirm(false);
+        setLockReason("");
         refresh();
       } else showToast(d.error ?? "تعذّر القفل", true);
     } catch {
@@ -127,7 +160,7 @@ export function EmployeeFileRail(props: {
               {RADAR_LABEL[bundle.radar.state] ?? bundle.radar.state}
               {bundle.radar.locationName ? ` — ${bundle.radar.locationName}` : ""}
               {" · "}
-              {bundle.enforcement.mode === "STRICT" ? "ملزم بالبصمة" : bundle.enforcement.mode === "WATCH_ONLY" ? "مراقبة فقط" : "معفى مؤقتًا"}
+              {cfg.mode === "STRICT" ? "ملزم بالبصمة" : cfg.mode === "WATCH_ONLY" ? "مراقبة فقط" : "معفى مؤقتًا"}
             </p>
           </div>
         </div>
@@ -155,7 +188,14 @@ export function EmployeeFileRail(props: {
           >
             سجّل له انصراف الآن
           </button>
-          <button type="button" className="btn ghost mini" style={{ justifyContent: "flex-start" }} disabled title="تسجيل حضور بالنيابة غير موصول بعد — البصم ذاتي فقط (فجوة موثّقة)">
+          <button
+            type="button"
+            className="btn ghost mini"
+            style={{ justifyContent: "flex-start" }}
+            onClick={() => setCheckinOpen(true)}
+            disabled={!!bundle.openSession || bundle.todayLocked}
+            title={bundle.openSession ? "عنده جلسة مفتوحة أصلًا" : bundle.todayLocked ? "يومه مقفول" : undefined}
+          >
             سجّل له حضورًا
           </button>
           <button type="button" className="btn ghost mini" style={{ justifyContent: "flex-start" }} onClick={() => setRepairOpen((v) => !v)}>
@@ -165,13 +205,29 @@ export function EmployeeFileRail(props: {
             type="button"
             className="btn ghost mini"
             style={{ justifyContent: "flex-start" }}
-            onClick={() => void closeDayNow()}
-            disabled={!bundle.openSession || busy}
-            title={bundle.openSession ? "يقفل الجلسة المفتوحة الآن" : "ما فيه جلسة مفتوحة — اليوم مقفول أصلًا"}
+            onClick={() => setLockConfirm((v) => !v)}
+            disabled={bundle.todayLocked}
+            title={bundle.todayLocked ? "اليوم مقفول أصلًا" : "يوم انقفل انقفل — بصمة جديدة = يوم جديد"}
           >
-            قفل اليوم يدويًا
+            {bundle.todayLocked ? "اليوم مقفول ✓" : "قفل اليوم يدويًا"}
           </button>
         </div>
+        {lockConfirm && !bundle.todayLocked && (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+            <input
+              value={lockReason}
+              onChange={(e) => setLockReason(e.target.value)}
+              placeholder="سبب القفل (إلزامي — يظهر بالتدقيق)"
+              style={{ width: "100%", borderRadius: 9, border: "1px solid var(--line)", background: "#0c0d0f", color: "var(--text)", padding: "7px 9px", fontSize: 11, fontFamily: "inherit" }}
+            />
+            <div style={{ display: "flex", gap: 7 }}>
+              <button type="button" className="btn red mini" disabled={busy || !lockReason.trim()} onClick={() => void lockDay()}>
+                {busy ? "..." : "تأكيد القفل — يوم انقفل انقفل"}
+              </button>
+              <button type="button" className="btn ghost mini" onClick={() => setLockConfirm(false)}>إلغاء</button>
+            </div>
+          </div>
+        )}
         {repairOpen && <RepairPanel bundle={bundle} showToast={showToast} refresh={refresh} />}
       </div>
 
@@ -197,17 +253,34 @@ export function EmployeeFileRail(props: {
             <div className="lq">«{lv.reason}»</div>
             <div className="lvctl">
               <div>استثناء تلقائي من الغياب<div className="d">أول ما تعتمد — ما يُحسب غيابًا ولا يُنادى</div></div>
-              <button type="button" className="tog on" disabled title="يحدث دائمًا مع الاعتماد — غير قابل للفصل" aria-label="استثناء تلقائي" />
+              <button type="button" className="tog on" disabled title="يحدث دائمًا مع الاعتماد" aria-label="استثناء تلقائي" />
             </div>
             <div className="lvctl">
               <div>خصم من رصيده<div className="d">رصيده الآن {toArabicDigits(bal.remainingDays)} من {toArabicDigits(bal.entitledDays)}{deduct ? ` — بعد الاعتماد ${toArabicDigits(Math.max(0, bal.remainingDays - lv.days))}` : ""}</div></div>
               <button type="button" className={`tog ${deduct ? "on" : ""}`} onClick={() => setDeduct((v) => !v)} aria-label="خصم من الرصيد" />
             </div>
             <div className="lvctl">
-              <div>إشعاره بالقرار</div>
-              <button type="button" className="tog on" disabled title="إشعار قرار الإجازة غير موصول بعد (فجوة موثّقة)" aria-label="إشعار القرار" />
+              <div>إشعاره بالقرار<div className="d">push فوري باعتماد/رفض طلبه</div></div>
+              <button type="button" className={`tog ${notifyDecision ? "on" : ""}`} onClick={() => setNotifyDecision((v) => !v)} aria-label="إشعار القرار" />
             </div>
-            {rejecting ? (
+            {editing ? (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+                <div style={{ display: "flex", gap: 7 }}>
+                  <label style={{ flex: 1, fontSize: 9.5, color: "var(--muted)" }}>
+                    من
+                    <input type="date" value={editFrom} onChange={(e) => setEditFrom(e.target.value)} dir="ltr" style={{ marginTop: 3, width: "100%", borderRadius: 9, border: "1px solid var(--line)", background: "#0c0d0f", color: "var(--text)", padding: "6px 8px", fontSize: 11 }} />
+                  </label>
+                  <label style={{ flex: 1, fontSize: 9.5, color: "var(--muted)" }}>
+                    إلى
+                    <input type="date" value={editTo} min={editFrom} onChange={(e) => setEditTo(e.target.value)} dir="ltr" style={{ marginTop: 3, width: "100%", borderRadius: 9, border: "1px solid var(--line)", background: "#0c0d0f", color: "var(--text)", padding: "6px 8px", fontSize: 11 }} />
+                  </label>
+                </div>
+                <div style={{ display: "flex", gap: 7 }}>
+                  <button type="button" className="btn gold mini" disabled={busy || !editFrom || !editTo} onClick={() => void submitEdit()}>{busy ? "..." : "حفظ التعديل"}</button>
+                  <button type="button" className="btn ghost mini" onClick={() => setEditing(false)}>إلغاء</button>
+                </div>
+              </div>
+            ) : rejecting ? (
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
                 <textarea
                   value={note}
@@ -225,7 +298,7 @@ export function EmployeeFileRail(props: {
               <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
                 <button type="button" className="btn green mini" disabled={busy} onClick={() => void decideLeave(true)}>✓ اعتماد</button>
                 <button type="button" className="btn red mini" disabled={busy} onClick={() => setRejecting(true)}>رفض</button>
-                <button type="button" className="btn ghost mini" disabled title="تعديل مدة الطلب غير موصول بعد (فجوة موثّقة)">تعديل</button>
+                <button type="button" className="btn ghost mini" disabled={busy} onClick={() => { setEditFrom(lv.fromKey); setEditTo(lv.toKey); setEditing(true); }}>تعديل</button>
               </div>
             )}
           </div>
@@ -237,13 +310,17 @@ export function EmployeeFileRail(props: {
         </div>
       )}
 
-      {/* الإعدادات السريعة — متزامنة مع اللوحة الكاملة */}
+      {/* الإعدادات السريعة — متزامنة مع اللوحة الكاملة (نفس الحالة) */}
       <div className="card">
         <h4>الإعدادات <span className="hc">عدّل مباشرة — يُقيَّد بالتدقيق</span></h4>
         <div className="srow">
-          <div>وضع الدوام<div className="sd">تبديل الأوضاع غير موصول بعد (م٤ج)</div></div>
-          <span className="sv2" style={{ opacity: 0.7 }}>
-            {bundle.enforcement.mode === "STRICT" ? "ملزم — كامل" : bundle.enforcement.mode === "WATCH_ONLY" ? "مراقبة فقط" : "معفى مؤقتًا"}
+          <div>وضع الدوام<div className="sd">اضغط للتبديل بين الأوضاع</div></div>
+          <span
+            className="sv2 chipq"
+            style={{ fontFamily: "inherit" }}
+            onClick={() => patchCfg("mode", MODE_ORDER[(MODE_ORDER.indexOf(cfg.mode) + 1) % 3])}
+          >
+            {MODE_LABEL[cfg.mode]}
           </span>
         </div>
         <div className="srow">
@@ -280,16 +357,20 @@ export function EmployeeFileRail(props: {
           </div>
         </div>
         <div className="srow">
-          <div>نداءات عشوائية/يوم<div className="sd">إعداد عام لكل الفريق</div></div>
+          <div>نداءات عشوائية/يوم</div>
           <div className="mini-step">
-            <button type="button" disabled>−</button>
-            <span className="v num">{toArabicDigits(bundle.globalView.verificationPerDay)}</span>
-            <button type="button" disabled>+</button>
+            <button type="button" onClick={() => patchCfg("verificationPerDay", Math.max(0, cfg.verificationPerDay - 1))}>−</button>
+            <span className="v num">{toArabicDigits(cfg.verificationPerDay)}</span>
+            <button type="button" onClick={() => patchCfg("verificationPerDay", Math.min(4, cfg.verificationPerDay + 1))}>+</button>
           </div>
         </div>
         <div className="srow">
-          <div>نداء خروج النطاق<div className="sd">مهلة {toArabicDigits(bundle.globalView.maxOutOfZoneMinutes)} د — عام</div></div>
-          <button type="button" className="tog on" disabled aria-label="إعداد عام" />
+          <div>قفل اليوم نهائيًا<div className="sd">بصمة جديدة = يوم جديد</div></div>
+          <button type="button" className={`tog ${cfg.dayLockEnabled ? "on" : ""}`} onClick={() => patchCfg("dayLockEnabled", !cfg.dayLockEnabled)} aria-label="قفل اليوم نهائيًا" />
+        </div>
+        <div className="srow">
+          <div>نداء خروج النطاق<div className="sd">مهلة {toArabicDigits(bundle.globalView.maxOutOfZoneMinutes)} د</div></div>
+          <button type="button" className={`tog ${cfg.outZoneCallEnabled ? "on" : ""}`} onClick={() => patchCfg("outZoneCallEnabled", !cfg.outZoneCallEnabled)} aria-label="نداء خروج النطاق" />
         </div>
         <button type="button" className="btn gold mini" style={{ width: "100%", justifyContent: "center", marginTop: 11 }} onClick={props.onSaveSchedule} disabled={props.savingSched}>
           {props.savingSched ? "جاري الحفظ…" : "حفظ التعديلات"}
@@ -307,6 +388,93 @@ export function EmployeeFileRail(props: {
           ))}
         </div>
         <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 9 }}>{bundle.deviceLine}</div>
+      </div>
+
+      {checkinOpen && (
+        <ManualCheckinModal bundle={bundle} onClose={() => setCheckinOpen(false)} showToast={showToast} refresh={refresh} />
+      )}
+    </div>
+  );
+}
+
+/** مودال «تسجيل حضور بالنيابة» — الآن/وقت مخصص + إشعار أو صامت + سبب إلزامي. */
+function ManualCheckinModal({ bundle, onClose, showToast, refresh }: { bundle: EFBundle; onClose: () => void; showToast: ToastFn; refresh: () => void }) {
+  const [timeMode, setTimeMode] = useState<"now" | "custom">("now");
+  const [customLocal, setCustomLocal] = useState("");
+  const [notifyOn, setNotifyOn] = useState(true);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const confirm = async () => {
+    if (!reason.trim()) { showToast("اكتب سبب التسجيل", true); return; }
+    if (timeMode === "custom" && !customLocal) { showToast("حدّد الوقت", true); return; }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/attendance/manual-checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: bundle.user.id,
+          atIso: timeMode === "custom" ? customLocal : undefined,
+          reason: reason.trim(),
+          notify: notifyOn,
+        }),
+      });
+      const d = (await res.json()) as { ok: boolean; error?: string };
+      if (d.ok) {
+        onClose();
+        showToast(notifyOn ? "✓ سُجّل الحضور · أُرسل الإشعار · قُيّد بالتدقيق" : "✓ سُجّل الحضور · صامت — ما وصله شيء · قُيّد بالتدقيق");
+        refresh();
+      } else showToast(d.error ?? "تعذّر التسجيل", true);
+    } catch {
+      showToast("تعذّر الاتصال — حاول مرة ثانية", true);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="ef ef-overlay" dir="rtl" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <h3>تسجيل حضور — {bundle.user.name}</h3>
+        <div className="ms">حاضر فعلًا وما بصم (جهاز/إذن/ظرف)؟ سجّل له أنت — وأنت تقرر توصله رسالة أو لا.</div>
+        <div className="mrow">
+          <label>وقت الحضور</label>
+          <div className="timebox">
+            <button type="button" className={`tchip ${timeMode === "now" ? "on" : ""}`} onClick={() => setTimeMode("now")}>الآن</button>
+            <button type="button" className={`tchip ${timeMode === "custom" ? "on" : ""}`} onClick={() => setTimeMode("custom")}>وقت مخصص…</button>
+          </div>
+          {timeMode === "custom" && (
+            <input type="datetime-local" value={customLocal} onChange={(e) => setCustomLocal(e.target.value)} style={{ marginTop: 8 }} dir="ltr" />
+          )}
+        </div>
+        <div className="mrow">
+          <label>السبب — إلزامي، يظهر بالتدقيق</label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="مثال: جواله خرب وحضر بالمقر"
+            style={{ width: "100%", borderRadius: 10, border: "1px solid #1c1e22", background: "#0c0d0f", color: "#EDEDEF", padding: "9px 12px", fontSize: 12, fontFamily: "inherit" }}
+          />
+        </div>
+        <div className="mrow">
+          <label>الإشعار — أنت المتحكم</label>
+          <div className={`notify-opt ${notifyOn ? "on" : ""}`} onClick={() => setNotifyOn(true)}>
+            <span className="radio2" />
+            <div style={{ flex: 1 }}>
+              <div className="nt">أرسل له إشعارًا</div>
+              <div className="ns">توصله رسالة push فورية:</div>
+              <div className="msg-preview">«سجّلت لك الإدارة حضورًا — عدّاد دوامك شغّال الآن.»</div>
+            </div>
+          </div>
+          <div className={`notify-opt ${!notifyOn ? "on" : ""}`} onClick={() => setNotifyOn(false)}>
+            <span className="radio2" />
+            <div><div className="nt">بدون رسالة — تسجيل صامت</div><div className="ns">يُقيَّد بملفه وسجل التدقيق فقط.</div></div>
+          </div>
+        </div>
+        <div className="mfoot">
+          <button type="button" className="btn gold" onClick={() => void confirm()} disabled={busy}>{busy ? "جاري…" : "تأكيد الحضور"}</button>
+          <button type="button" className="btn ghost" onClick={onClose}>إلغاء</button>
+        </div>
       </div>
     </div>
   );
