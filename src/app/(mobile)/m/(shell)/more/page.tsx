@@ -6,7 +6,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadCounts } from "@/lib/data/leads";
-import { listMyLeaves, listLeaves } from "@/lib/data/leaves";
+import { listMyLeaves } from "@/lib/data/leaves";
 import { getSettings } from "@/lib/data/settings";
 import { getBookings } from "@/lib/data/bookings";
 import { getProjectsOverview } from "@/lib/data/projects";
@@ -56,13 +56,14 @@ export default async function MobileMorePage() {
     manager ? getDistributionConfig() : Promise.resolve(null),
     owner ? activeDuplicateGroupCount() : Promise.resolve({ total: 0, newToday: 0 }),
     owner ? getNoResponseCount() : Promise.resolve(0),
-    // الإجازة — المالك: معلّق الفريق (لشارة الاعتماد) · الموظف: طلباته (لعدّ معلّقه).
-    owner ? listLeaves({ status: "PENDING" }) : listMyLeaves(user.id),
+    // الإجازة — الموظف/المدير: طلباته (لعدّ معلّقه). المالك بلا بلاطة إجازات أصلًا
+    // (يديرها حصرًا من ملف الموظف) فلا جلب له.
+    owner ? Promise.resolve([]) : listMyLeaves(user.id),
   ]);
 
   const units = projects.kpis.available + projects.kpis.reserved + projects.kpis.sold;
   const pausedCount = dist ? dist.employees.filter((e) => e.paused).length : 0;
-  const pendingLeaves = owner ? leaveList.length : leaveList.filter((r) => r.status === "PENDING").length;
+  const pendingLeaves = leaveList.filter((r) => r.status === "PENDING").length;
 
   // ===== البلاطات — كل سطر ثانوي من بيانات موجودة فعلًا =====
   const tiles: Tile[] = [
@@ -82,13 +83,16 @@ export default async function MobileMorePage() {
       href: "/m/chat", label: "الشات الداخلي", icon: MessagesSquare,
       sub: `${toArabicDigits(peers.length)} زميل`,
     },
-    {
-      href: "/m/leaves",
-      label: owner ? "طلبات الإجازة" : "إجازاتي",
-      icon: CalendarDays,
-      sub: owner ? "اعتماد الفريق" : "طلباتك وحالتها",
-      badge: pendingLeaves,
-    },
+    // «إجازاتي» — تختفي عن المالك (يدير إجازات الفريق حصرًا من ملف الموظف؛ الحارس الخادمي باقٍ).
+    ...(!owner
+      ? [{
+          href: "/m/leaves",
+          label: "إجازاتي",
+          icon: CalendarDays,
+          sub: "طلباتك وحالتها",
+          badge: pendingLeaves,
+        }]
+      : []),
     ...(manager && dist
       ? [
           {
