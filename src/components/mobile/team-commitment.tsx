@@ -27,12 +27,14 @@ function pctTone(pct: number) {
   return MOBILE_STATUS.danger.base;
 }
 
-export function TeamCommitment({ rows, idleNames, teamHref = "/m/team" }: {
+export function TeamCommitment({ rows, idleNames, teamHref = "/m/team", fileLinks = false }: {
   /** أصحاب المواعيد بالنافذة فقط — الأسوأ نسبةً أولًا (ترتيب الخادم). */
   rows: CommitmentRow[];
   /** من بلا مواعيد مجدولة بالنافذة — سطر مصغّر. */
   idleNames: string[];
   teamHref?: string;
+  /** اسم الموظف يفتح ملفه /m/employees/[id] — يُمرَّر true للمالك فقط. */
+  fileLinks?: boolean;
 }) {
   return (
     <div className="overflow-hidden" style={{ borderRadius: 18, background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}` }}>
@@ -50,7 +52,13 @@ export function TeamCommitment({ rows, idleNames, teamHref = "/m/team" }: {
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center" style={{ gap: 6 }}>
-                <span className="truncate" style={{ fontSize: "13.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>{r.name}</span>
+                {fileLinks ? (
+                  <Link href={`/m/employees/${r.id}`} className="truncate" style={{ fontSize: "13.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>
+                    {r.name}
+                  </Link>
+                ) : (
+                  <span className="truncate" style={{ fontSize: "13.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>{r.name}</span>
+                )}
                 {r.missed > 0 && (
                   <span className="flex-none" style={{ boxSizing: "border-box", fontSize: "9.5px", fontWeight: 800, padding: "3px 8px", borderRadius: 8, background: MOBILE_STATUS.danger.bg, color: MOBILE_STATUS.danger.base }}>
                     {toArabicDigits(r.missed)} فايتة

@@ -89,7 +89,7 @@ export function TeamTab({ initialMonth, initialRows }: { initialMonth: string; i
             {visible.map((r) => (
               <tr
                 key={r.id}
-                onClick={() => router.push(`/attendance/${r.id}?month=${month}`)}
+                onClick={() => router.push(`/employees/${r.id}?month=${month}`)}
                 className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-secondary/40"
               >
                 <td className="px-4 py-3 font-medium text-foreground">{r.name}</td>

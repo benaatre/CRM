@@ -122,7 +122,7 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
             />
           </SecHeader>
           <div className="grid items-start gap-4 2xl:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
-            <OwnerFollowups rows={followups.rows} />
+            <OwnerFollowups rows={followups.rows} isOwner={userRole === Role.OWNER} />
             <OwnerAuditFeed rows={audit} />
           </div>
 
@@ -152,7 +152,7 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
 
         {/* العمود الجانبي: الدوام (عدّاد حي) + معدّل النشاط — sticky كما بالمرجع */}
         <aside className="min-w-0 xl:sticky xl:top-20">
-          <OwnerAttendance />
+          <OwnerAttendance isOwner={userRole === Role.OWNER} />
           <OwnerActivity rows={activity} />
         </aside>
       </div>

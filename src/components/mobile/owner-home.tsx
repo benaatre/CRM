@@ -339,12 +339,12 @@ export async function MobileOwnerHome({
 
       {/* ===== الفريق الآن ===== */}
       <Sec color={MOBILE_STATUS.success.base} title="الفريق الآن" sub="آخر ظهور وإنتاج اليوم — يلف تلقائيًا أو اسحب" />
-      <TeamStrip tiles={stripTiles} dorm={dormTiles} onlineCount={onlineCount} />
+      <TeamStrip tiles={stripTiles} dorm={dormTiles} onlineCount={onlineCount} fileLinks={user.role === "OWNER"} />
 
       {/* ===== التزام الموظفين بالمتابعات ===== */}
       <Sec title="التزام الموظفين بالمتابعات" sub={FU_SUB[fuWin]} cnt={`الكل (${toArabicDigits(data.team.length)}) ←`} cntHref="/m/team" />
       <MobileChips param="fu" current={fuWin} base="/m" items={FU_WINDOWS} goldGradient keep={period !== "all" ? { p: period } : undefined} />
-      <TeamCommitment rows={commitRows} idleNames={idleNames} />
+      <TeamCommitment rows={commitRows} idleNames={idleNames} fileLinks={user.role === "OWNER"} />
 
       {/* ===== سجل التدقيق ===== */}
       <Sec title="سجل التدقيق" sub="كل حركة بالنظام — اضغط أي سطر يفتح تفاصيله" cnt="الكامل ←" cntHref="/m/audit" />

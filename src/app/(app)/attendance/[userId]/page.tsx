@@ -1,16 +1,13 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 import { requireRole } from "@/lib/auth-guards";
-import { getEmployeeFile } from "@/lib/data/attendance";
-import { currentMonthKSA } from "@/lib/attendance-logic";
-import { AttendanceEmployeeFile } from "@/components/attendance/attendance-file";
 
 export const dynamic = "force-dynamic";
 
 /**
- * ملف الموظف — المالك فقط: إحصاءات الشهر، دوامه المحدد، سجل الأيام،
- * الاستثناءات، ونداءات التحقق. فلتر الشهر يمرّ بالرابط (?month=) فيجلب الخادم
- * شهرًا كاملًا؛ بحث اليوم client-side ضمن الشهر المحمّل.
+ * المسار القديم لملف الدوام — يحوّل خادميًا لملف الموظف الكامل /employees/[id]
+ * (قرار توحيد المداخل 2026-08-19) مع تمرير ?month. الملفات القديمة باقية
+ * (AttendanceEmployeeFile صار يتيمًا غير مستدعى — لا حذف).
  */
 export default async function EmployeeAttendancePage({
   params,
@@ -23,14 +20,7 @@ export default async function EmployeeAttendancePage({
 
   const { userId } = await params;
   const sp = await searchParams;
-  const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : currentMonthKSA();
+  const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : null;
 
-  const file = await getEmployeeFile(userId, month);
-  if (!file) notFound();
-
-  return (
-    <div className="mx-auto max-w-4xl">
-      <AttendanceEmployeeFile file={file} />
-    </div>
-  );
+  redirect(`/employees/${userId}${month ? `?month=${month}` : ""}`);
 }
