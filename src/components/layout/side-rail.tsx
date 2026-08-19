@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users2, Contact, KanbanSquare, Building2, Handshake,
-  BarChart3, ScrollText, MessagesSquare, Share2, Copy, PhoneMissed, Settings, MapPin,
+  BarChart3, ScrollText, MessagesSquare, Share2, Copy, PhoneMissed, Settings, MapPin, CalendarDays,
 } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
 
@@ -32,7 +32,7 @@ const ICONS = {
   dashboard: LayoutDashboard, leads: Contact, duplicates: Copy, noResponse: PhoneMissed,
   pipeline: KanbanSquare, projects: Building2, bookings: Handshake, chat: MessagesSquare,
   analytics: BarChart3, team: Users2, distribution: Share2, audit: ScrollText, settings: Settings,
-  attendance: MapPin,
+  attendance: MapPin, leaves: CalendarDays,
 } as const;
 
 export type RailItem = {
