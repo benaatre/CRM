@@ -6,11 +6,11 @@ import { TeamView } from "@/components/team/team-view";
 export const dynamic = "force-dynamic";
 
 export default async function TeamPage() {
-  await requireManager();
+  const user = await requireManager();
   const [data, employees] = await Promise.all([getTeam(), getEmployees()]);
   return (
     <div className="space-y-4">
-      <TeamView data={data} employees={employees} />
+      <TeamView data={data} employees={employees} isOwner={user.role === "OWNER"} />
     </div>
   );
 }

@@ -59,7 +59,7 @@ export default async function MobileTeamPage({
 }: {
   searchParams: Promise<{ sp?: string }>;
 }) {
-  await requireManager(); // OWNER + ADMIN — نفس حارس (app)/admin.
+  const viewer = await requireManager(); // OWNER + ADMIN — نفس حارس (app)/admin.
 
   const sp = await searchParams;
   const period: StatPeriod = STAT_PERIODS.some((p) => p.key === sp.sp) ? (sp.sp as StatPeriod) : "today";
@@ -172,7 +172,7 @@ export default async function MobileTeamPage({
           ما فيه موظفون بعد.
         </p>
       ) : (
-        <MobileTeamRoster rows={rows} />
+        <MobileTeamRoster rows={rows} fileLinks={viewer.role === "OWNER"} />
       )}
     </div>
   );

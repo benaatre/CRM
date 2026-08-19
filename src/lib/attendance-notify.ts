@@ -106,6 +106,11 @@ export function checkoutText(
   return `انصرف ${name} الساعة ${timeText} من ${locationName ?? "خارج النطاق"}${beforeTarget ? " — قبل إكمال دوامه" : ""}`;
 }
 
+/** انصراف سجّله المالك يدويًا — رسالة للموظف نفسه (نص مودال ملف الموظف). */
+export function ownerCheckoutEmployeeText(timeText: string): string {
+  return `تم تسجيل انصراف لك الساعة ${timeText} — غادرت موقع العمل بدون تسجيل. لو فيه خطأ كلّم الإدارة.`;
+}
+
 /** تذكير الموقوف — نص واحد موحّد، للموظف نفسه. */
 export const PAUSE_REMINDER_TEXT = "لا زلت مستأذنًا — رجعت؟";
 

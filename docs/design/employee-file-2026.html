@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ملف أسماء الشهري — ٢٠٢٦</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Zain:wght@400;700;800;900&display=swap');
+:root{
+  --bg:#0A0A0B;--card:#111214;--card2:#16171b;--line:#1c1e22;--text:#EDEDEF;--muted:#82848c;
+  --gold:#CBA45E;--gold-soft:#A98C60;--green:#46A758;--green-l:#6fd47f;--red:#E5484D;--red-l:#ff8b8e;
+  --amber:#E5A54D;--amber-l:#f2c078;--blue:#6E9BE6;--blue-l:#9ec1f5;--teal:#4FE3C1;--purple:#a98edb;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans Arabic',sans-serif;padding-bottom:90px}
+.num{font-family:'Zain',sans-serif;font-weight:800;letter-spacing:-.3px}
+.wrap{max-width:1220px;margin:0 auto;padding:0 22px}
+svg{display:block}
+
+/* ═ شريط الذكاء اللاصق ═ */
+.aibar{position:sticky;top:0;z-index:95;background:rgba(10,10,11,.94);backdrop-filter:blur(20px);border-bottom:1px solid rgba(79,227,193,.18);padding:11px 0}
+.aibar .wrap{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.aibar .ai-ic{width:30px;height:30px;border-radius:10px;background:rgba(79,227,193,.13);display:flex;align-items:center;justify-content:center;flex:none}
+.aibar .tx{flex:1;min-width:260px;font-size:12px;line-height:1.8}
+.aibar .tx b{color:var(--teal)} .aibar .tx .w{color:var(--amber-l)}
+.aibar .acts{display:flex;gap:7px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:none;font-family:'IBM Plex Sans Arabic';font-weight:600;font-size:12px;cursor:pointer;transition:.18s}
+.btn:active{transform:scale(.97)}
+.btn.gold{background:linear-gradient(135deg,var(--gold),var(--gold-soft));color:#0A0A0B;box-shadow:0 5px 16px rgba(203,164,94,.2)}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+.btn.red{background:rgba(229,72,77,.13);color:var(--red-l);border:1px solid rgba(229,72,77,.3)}
+.btn.green{background:rgba(70,167,88,.15);color:var(--green-l);border:1px solid rgba(70,167,88,.35)}
+.btn.mini{padding:6px 12px;font-size:11px;border-radius:9px}
+
+/* ═ الكابينة ═ */
+.cockpit{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start;margin-top:18px}
+.main{display:flex;flex-direction:column;gap:15px;min-width:0}
+.rail{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px}
+.card{border-radius:17px;background:var(--card);border:1px solid var(--line);padding:18px}
+.card h4{font-size:13px;font-weight:700;margin-bottom:13px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card h4 .hc{font-size:10px;color:var(--muted);font-weight:400}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:99px;font-size:10.5px;font-weight:600}
+.p-ok{background:rgba(70,167,88,.12);color:var(--green-l)} .p-warn{background:rgba(229,165,77,.12);color:var(--amber-l)}
+.p-bad{background:rgba(229,72,77,.1);color:var(--red-l)} .p-mute{background:rgba(255,255,255,.05);color:var(--muted)}
+.p-leave{background:rgba(79,227,193,.12);color:var(--teal)}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--green-l);box-shadow:0 0 9px var(--green-l);animation:pl 1.7s infinite;display:inline-block}
+@keyframes pl{50%{opacity:.3}}
+.tog{width:40px;height:22px;border-radius:99px;background:#2a2d33;position:relative;cursor:pointer;flex:none;transition:.2s}
+.tog::after{content:"";position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#82848c;transition:.2s}
+.tog.on{background:rgba(70,167,88,.35)}
+.tog.on::after{background:var(--green-l);transform:translateX(-18px)}
+
+/* الشريط الجانبي */
+.idmini{display:flex;align-items:center;gap:12px}
+.idmini .av{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--gold),var(--gold-soft));display:flex;align-items:center;justify-content:center;font-family:'Zain';font-weight:800;font-size:20px;color:#0A0A0B;flex:none}
+.idmini h2{font-size:16.5px;font-weight:700}
+.idmini p{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.7}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.045);font-size:12px}
+.srow:last-child{border-bottom:none}
+.srow .sd{font-size:9.5px;color:var(--muted);margin-top:2px}
+.srow .sv2{font-size:11.5px;color:var(--gold);font-weight:600}
+.zones{display:flex;flex-wrap:wrap;gap:6px}
+.zone{display:inline-flex;padding:5px 11px;border-radius:9px;font-size:10.5px;font-weight:600;background:rgba(70,167,88,.1);color:var(--green-l);border:1px solid rgba(70,167,88,.25)}
+.zone.off{background:rgba(255,255,255,.04);color:var(--muted);border-color:var(--line)}
+.leave-chip{display:flex;align-items:center;gap:11px;border-radius:14px;border:1px solid rgba(79,227,193,.3);background:rgba(79,227,193,.06);padding:12px 14px;cursor:pointer;transition:.18s}
+.leave-chip:hover{background:rgba(79,227,193,.1)}
+.leave-chip .n{width:22px;height:22px;border-radius:50%;background:var(--teal);color:#06231c;display:flex;align-items:center;justify-content:center;font-family:'Zain';font-weight:800;font-size:12px;animation:pl 2s infinite;flex:none}
+.leave-chip .tt2{font-size:12px;font-weight:600;flex:1}
+.leave-chip .tt2 span{display:block;font-size:9.5px;color:var(--muted);font-weight:400;margin-top:2px}
+.leave-chip .chev{transition:.2s;color:var(--teal)}
+.leave-wrap.open .leave-chip .chev{transform:rotate(90deg)}
+.leave-exp{display:none;margin-top:9px;padding:14px;border-radius:13px;background:#0c0d0f;border:1px solid var(--line)}
+.leave-wrap.open .leave-exp{display:block}
+.leave-exp .lq{font-size:11.5px;color:#c8d6d1;line-height:1.9;border-right:2px solid var(--teal);padding-right:10px;margin-bottom:11px}
+.lvctl{display:flex;align-items:center;justify-content:space-between;font-size:11px;padding:6px 0}
+.lvctl .d{font-size:9px;color:var(--muted);margin-top:1px}
+.leave-done{display:none;align-items:center;gap:9px;font-size:11.5px;font-weight:600;color:var(--green-l);background:rgba(70,167,88,.1);border:1px solid rgba(70,167,88,.3);border-radius:11px;padding:11px 13px;margin-top:9px}
+.leave-wrap.approved .leave-exp,.leave-wrap.approved .leave-chip{display:none}
+.leave-wrap.approved .leave-done{display:flex}
+
+/* ═ رادار اليوم ═ */
+.radar{border-radius:20px;background:radial-gradient(ellipse at 25% 0%,#10202b,#0c0e12 62%);border:1px solid rgba(110,155,230,.16);padding:22px;position:relative;overflow:hidden}
+.radar .rh2{display:flex;align-items:center;gap:11px;margin-bottom:16px;flex-wrap:wrap}
+.radar .rh2 h3{font-size:15px;font-weight:700}
+.dayseg{display:flex;background:#0c0d0f;border:1px solid var(--line);border-radius:11px;padding:3px;gap:3px}
+.dayseg button{padding:7px 16px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-family:'IBM Plex Sans Arabic';font-size:11.5px;font-weight:600;cursor:pointer;transition:.2s}
+.dayseg button.on{background:linear-gradient(135deg,var(--gold),var(--gold-soft));color:#0A0A0B}
+.radar .rh2 .sp{flex:1}
+.state{font-size:10.5px;font-weight:600;padding:5px 12px;border-radius:99px;display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.06);color:var(--muted)}
+.state.ok{background:rgba(70,167,88,.1);color:var(--green-l)}
+.rgrid{display:grid;grid-template-columns:300px 1fr;gap:24px;align-items:center}
+.dial{position:relative;width:280px;height:280px;margin:0 auto}
+.dial .cv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.dial .cv .big{font-size:36px;line-height:1;color:var(--gold)}
+.dial .cv .l{font-size:9.5px;color:var(--muted);margin-top:6px;line-height:1.9}
+.evlist{display:flex;flex-direction:column;gap:9px}
+.ev{display:flex;align-items:flex-start;gap:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:11px 14px;font-size:12px}
+.ev .tm{font-family:'Zain';font-weight:800;font-size:12.5px;color:var(--gold);min-width:50px;padding-top:1px}
+.ev .dot{width:8px;height:8px;border-radius:50%;flex:none;margin-top:5px}
+.ev .b2{flex:1}
+.ev .s2{font-size:10px;color:var(--muted);margin-top:2px}
+
+/* ═ خط اليوم الأفقي ═ */
+.dayline{display:flex;flex-direction:column;gap:6px}
+.dl-top{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.dl-big{font-size:44px;line-height:1;color:var(--gold)}
+.dl-meta{font-size:10.5px;color:var(--muted);line-height:1.9;padding-bottom:4px}
+.strip-wrap{position:relative;padding:30px 6px 24px}
+.strip{position:relative;height:18px;border-radius:99px;background:#0c0d0f;border:1px solid var(--line)}
+.seg{position:absolute;top:-1px;bottom:-1px;border-radius:99px}
+.seg.win{border:1.5px dashed rgba(203,164,94,.45);background:rgba(203,164,94,.05)}
+.seg.conf{background:linear-gradient(90deg,#3d9350,#6fd47f);box-shadow:0 0 16px rgba(70,167,88,.35)}
+.seg.unc{background:linear-gradient(90deg,#c9913f,#f2c078);opacity:.85}
+.mark{position:absolute;top:50%;transform:translate(50%,-50%);width:13px;height:13px;border-radius:50%;border:2.5px solid var(--bg);z-index:2}
+.mark span{position:absolute;bottom:17px;right:50%;transform:translateX(50%);font-family:'Zain';font-size:10.5px;font-weight:800;color:var(--text);white-space:nowrap;background:rgba(20,21,25,.92);padding:2px 8px;border-radius:6px;border:1px solid var(--line)}
+.scaleAbs{position:absolute;left:6px;right:6px;top:calc(100% - 20px);height:14px}
+.scaleAbs span{position:absolute;transform:translateX(50%);font-family:'Zain';font-size:9.5px;color:var(--muted)}
+/* تعديل مباشر بالعمود الجانبي */
+.mini-step{display:flex;align-items:center;gap:7px}
+.mini-step button{width:25px;height:25px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--gold);font-size:14px;cursor:pointer;transition:.15s}
+.mini-step button:active{transform:scale(.9);background:rgba(203,164,94,.12)}
+.mini-step .v{font-family:'Zain';font-weight:800;font-size:16px;color:var(--gold);min-width:32px;text-align:center}
+.chipq{display:inline-flex;padding:5px 11px;border-radius:8px;font-size:11px;font-weight:700;font-family:'Zain';border:1px solid rgba(203,164,94,.5);background:rgba(203,164,94,.13);color:var(--gold);cursor:pointer;user-select:none;transition:.15s}
+.chipq:active{transform:scale(.93)}
+.cycle{cursor:pointer;user-select:none;border-bottom:1px dashed rgba(203,164,94,.4);padding-bottom:1px}
+.zones .zone{cursor:pointer;user-select:none;transition:.15s}
+.zones .zone:active{transform:scale(.95)}
+
+/* ═ لوحة الإلزام ═ */
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+.mode{border:1px solid var(--line);border-radius:15px;padding:15px;cursor:pointer;transition:.2s;position:relative}
+.mode:hover{border-color:rgba(255,255,255,.15)}
+.mode .radio{position:absolute;top:13px;left:13px;width:17px;height:17px;border-radius:50%;border:2px solid #3a3d44;transition:.2s}
+.mode.on{border-color:rgba(203,164,94,.55);background:rgba(203,164,94,.06)}
+.mode.on .radio{border-color:var(--gold)}
+.mode.on .radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--gold)}
+.mode.m-watch.on{border-color:rgba(79,227,193,.5);background:rgba(79,227,193,.05)}
+.mode.m-watch.on .radio{border-color:var(--teal)} .mode.m-watch.on .radio::after{background:var(--teal)}
+.mode.m-off.on{border-color:rgba(130,132,140,.5);background:rgba(255,255,255,.04)}
+.mode.m-off.on .radio{border-color:var(--muted)} .mode.m-off.on .radio::after{background:var(--muted)}
+.mode .mt{font-size:13.5px;font-weight:700}
+.mode .md{font-size:10.5px;color:var(--muted);margin-top:5px;line-height:1.7}
+.subpanel{margin-top:15px;border-top:1px solid var(--line);padding-top:15px;display:none}
+.subpanel.on{display:block}
+.subgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}
+.sub2{grid-column:span 2}
+.fld{background:#0c0d0f;border:1px solid var(--line);border-radius:12px;padding:13px}
+.fld .fl{font-size:10px;color:var(--muted);margin-bottom:9px}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{padding:6px 12px;border-radius:8px;border:1px solid var(--line);font-size:11px;font-weight:600;color:var(--muted);cursor:pointer;transition:.15s}
+.chip.on{border-color:rgba(203,164,94,.5);background:rgba(203,164,94,.13);color:var(--gold)}
+.chip.on.t{border-color:rgba(79,227,193,.5);background:rgba(79,227,193,.1);color:var(--teal)}
+.stepper{display:flex;align-items:center;gap:12px}
+.stepper button{width:29px;height:29px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--gold);font-size:16px;cursor:pointer}
+.stepper .sv{font-family:'Zain';font-weight:800;font-size:21px;min-width:46px;text-align:center}
+.frow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;font-size:11.5px}
+.frow .d{font-size:9.5px;color:var(--muted);margin-top:1px}
+
+/* ═ KPI + تحليل ═ */
+.sechead{display:flex;align-items:center;gap:10px;margin:4px 2px 0;flex-wrap:wrap}
+.sechead .bar{width:3px;height:16px;background:var(--gold);border-radius:2px}
+.sechead.b-blue .bar{background:var(--blue)} .sechead.b-purple .bar{background:var(--purple)}
+.sechead h3{font-size:15px;font-weight:700}
+.sechead .sp{flex:1}
+.fseg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.fseg button{padding:6px 13px;border-radius:7px;border:none;background:transparent;color:var(--muted);font-family:'IBM Plex Sans Arabic';font-size:11px;font-weight:600;cursor:pointer;transition:.2s}
+.fseg button.on{background:rgba(203,164,94,.15);color:var(--gold)}
+.kwrap{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.kpi{border-radius:14px;background:linear-gradient(160deg,var(--card2),#0e0f12);border:1px solid rgba(255,255,255,.05);padding:14px;transition:.18s}
+.kpi:hover{transform:translateY(-2px)}
+.kpi .kv{font-size:24px;line-height:1}
+.kpi .kl{font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5}
+.c-gold .kv{color:var(--gold)} .c-green .kv{color:var(--green-l)} .c-amber .kv{color:var(--amber-l)}
+.c-red .kv{color:var(--red-l)} .c-blue .kv{color:var(--blue-l)} .c-purple .kv{color:var(--purple)} .c-teal .kv{color:var(--teal)}
+.panelrow{display:grid;grid-template-columns:1.2fr 1fr;gap:12px}
+.an h4{font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:12px}
+.hist{display:flex;align-items:flex-end;gap:5px;height:76px}
+.hist .hb{flex:1;border-radius:4px 4px 0 0;background:#23252b;transition:.18s;cursor:pointer;min-height:4px}
+.hist .hb:hover{filter:brightness(1.45)}
+.hist .hb.b{background:linear-gradient(180deg,var(--blue-l),var(--blue))}
+.hist .hb.hot{background:linear-gradient(180deg,var(--gold),var(--gold-soft))}
+.histlbl{display:flex;gap:5px;margin-top:6px}
+.histlbl span{flex:1;text-align:center;font-size:8.5px;color:var(--muted);font-family:'Zain'}
+.subtxt{font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.8}
+.center{display:flex;align-items:center;gap:14px}
+.cmp{display:flex;flex-direction:column;gap:10px}
+.cmp .cr{display:flex;align-items:center;gap:11px;font-size:11.5px}
+.cmp .cl{width:105px;color:var(--muted)}
+.cmp .cb{flex:1;height:20px;border-radius:7px;background:#0c0d0f;overflow:hidden}
+.cmp .cb i{display:flex;height:100%;border-radius:7px;align-items:center;padding-inline-start:9px;font-size:10.5px;font-family:'Zain';font-weight:800;color:#0A0A0B}
+
+/* ═ الدمج ═ */
+.merge{border-radius:18px;background:linear-gradient(155deg,#0f1420,#0d0e11);border:1px solid rgba(110,155,230,.2);padding:20px;position:relative;overflow:hidden}
+.merge::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(110,155,230,.55),rgba(203,164,94,.55),transparent)}
+.mgrid{display:grid;grid-template-columns:250px 1fr;gap:20px;align-items:center}
+.mhero .mv{font-size:44px;line-height:1;background:linear-gradient(90deg,var(--blue-l),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.mhero .ml{font-size:11.5px;color:var(--muted);margin-top:9px;line-height:1.8}
+.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.ins{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:13px}
+.ins .it{font-size:11.5px;font-weight:600;line-height:1.7}
+.ins .is{font-size:9.5px;color:var(--muted);margin-top:5px;line-height:1.7}
+.ins .tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 8px;border-radius:99px;margin-bottom:7px}
+.ins .tag.g{background:rgba(70,167,88,.13);color:var(--green-l)}
+.ins .tag.a{background:rgba(229,165,77,.13);color:var(--amber-l)}
+.ins .tag.b{background:rgba(110,155,230,.13);color:var(--blue-l)}
+
+/* ═ السجل ═ */
+.logbar{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:17px}
+.vseg{display:flex;background:#0c0d0f;border:1px solid var(--line);border-radius:11px;padding:3px;gap:3px}
+.vseg button{padding:8px 15px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-family:'IBM Plex Sans Arabic';font-size:11.5px;font-weight:600;cursor:pointer;transition:.2s}
+.vseg button.on{background:linear-gradient(135deg,var(--gold),var(--gold-soft));color:#0A0A0B}
+.msel{position:relative}
+.msel .cur{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:#0c0d0f;font-size:11.5px;font-weight:600;cursor:pointer}
+.msel.open .cur svg{transform:rotate(180deg)}
+.msel .list{position:absolute;top:calc(100% + 7px);right:0;width:200px;max-height:270px;overflow:auto;background:#141519;border:1px solid var(--line);border-radius:13px;padding:5px;display:none;z-index:50;box-shadow:0 16px 46px rgba(0,0,0,.6)}
+.msel.open .list{display:block}
+.msel .list div{padding:9px 12px;border-radius:8px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;color:var(--text)}
+.msel .list div:hover{background:rgba(255,255,255,.05)}
+.msel .list div.on{background:rgba(203,164,94,.13);color:var(--gold)}
+.msel .list div span{font-size:9.5px;color:var(--muted)}
+.rangebtn{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px dashed rgba(203,164,94,.4);background:transparent;color:var(--gold);font-size:11px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans Arabic'}
+.logbar .sp{flex:1}
+.logsum{font-size:10.5px;color:var(--muted)}
+.calpop{position:absolute;top:calc(100% + 7px);right:0;width:290px;background:#141519;border:1px solid rgba(203,164,94,.3);border-radius:15px;padding:15px;display:none;z-index:60;box-shadow:0 16px 46px rgba(0,0,0,.65)}
+.calpop.on{display:block}
+.calpop .ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.calpop .ch b{font-size:12.5px}
+.calpop .nav span{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--gold)}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calgrid .h{font-size:9px;color:var(--muted);text-align:center;padding:3px 0}
+.calgrid .d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-family:'Zain';font-weight:700;font-size:12px;cursor:pointer;transition:.12s}
+.calgrid .d:hover{background:rgba(203,164,94,.15)}
+.calgrid .d.sel{background:var(--gold);color:#0A0A0B}
+.calgrid .d.inrange{background:rgba(203,164,94,.14);color:var(--gold)}
+.calgrid .d.dis{opacity:.25;pointer-events:none}
+.calpop .hint{font-size:9.5px;color:var(--muted);margin-top:9px;text-align:center}
+.calpop .cf{display:flex;gap:7px;margin-top:11px}
+.calpop .cf button{flex:1;padding:7px;border-radius:8px;font-size:11px;justify-content:center}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;color:var(--muted);font-weight:500;text-align:right;padding:0 9px 11px}
+td{padding:11px 9px;border-top:1px solid var(--line);font-size:12px;vertical-align:middle}
+tr:hover td{background:rgba(255,255,255,.02)}
+.dn{font-family:'Zain';font-weight:800;font-size:14px}
+.dn .dw{font-size:10px;color:var(--muted);font-weight:400;font-family:'IBM Plex Sans Arabic'}
+.locktag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--muted)}
+.bar2{height:7px;border-radius:5px;background:#0c0d0f;overflow:hidden;display:flex;min-width:120px}
+.bar2 i{height:100%}
+.hrs{font-family:'Zain';font-weight:800;font-size:13px}
+.dim td{opacity:.4}
+
+/* ═ مودال ═ */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);z-index:200;display:none;align-items:center;justify-content:center;padding:20px}
+.overlay.on{display:flex}
+.modal{width:520px;max-width:100%;border-radius:21px;background:#141519;border:1px solid rgba(203,164,94,.25);padding:24px;animation:mup .3s cubic-bezier(.34,1.4,.64,1)}
+@keyframes mup{from{opacity:0;transform:translateY(22px) scale(.97)}}
+.modal h3{font-size:16px;font-weight:700;margin-bottom:5px}
+.modal .ms{font-size:11.5px;color:var(--muted);line-height:1.8;margin-bottom:16px}
+.mrow{margin-bottom:15px}
+.mrow label{font-size:11px;color:var(--muted);display:block;margin-bottom:7px}
+.timebox{display:flex;gap:8px;flex-wrap:wrap}
+.tchip{padding:8px 13px;border-radius:10px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);transition:.15s}
+.tchip.on{border-color:rgba(203,164,94,.5);background:rgba(203,164,94,.12);color:var(--gold)}
+.notify-opt{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;transition:.15s;margin-bottom:8px}
+.notify-opt.on{border-color:rgba(203,164,94,.5);background:rgba(203,164,94,.07)}
+.notify-opt .radio2{width:16px;height:16px;border-radius:50%;border:2px solid #3a3d44;flex:none;margin-top:2px;position:relative}
+.notify-opt.on .radio2{border-color:var(--gold)}
+.notify-opt.on .radio2::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--gold)}
+.notify-opt .nt{font-size:12.5px;font-weight:600}
+.notify-opt .ns{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.7}
+.msg-preview{margin-top:8px;background:#0c0d0f;border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:11px;color:var(--amber-l);line-height:1.8;display:none}
+.notify-opt.on .msg-preview{display:block}
+.mfoot{display:flex;gap:9px;margin-top:18px}
+.toast{position:fixed;bottom:24px;right:50%;transform:translateX(50%);background:#142317;border:1px solid rgba(70,167,88,.4);color:var(--green-l);padding:12px 20px;border-radius:12px;font-size:12.5px;font-weight:600;z-index:300;display:none;animation:tup .3s;max-width:90%;text-align:center;line-height:1.8}
+@keyframes tup{from{opacity:0;transform:translateX(50%) translateY(14px)}}
+.toast.on{display:block}
+
+@media(max-width:980px){
+ .cockpit{grid-template-columns:1fr}
+ .rail{position:static;order:-1}
+ .rgrid{grid-template-columns:1fr}
+ .kwrap{grid-template-columns:repeat(3,1fr)}
+ .panelrow,.mgrid,.insights,.modes{grid-template-columns:1fr}
+ .subgrid{grid-template-columns:1fr}.sub2{grid-column:span 1}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap" style="padding-top:18px">
+<div class="cockpit">
+
+  <!-- ═════════ العمود الرئيسي ═════════ -->
+  <div class="main">
+
+    <!-- رادار اليوم -->
+    <div class="radar">
+      <div class="rh2">
+        <h3>سجل اليوم — خط الزمن</h3>
+        <div class="dayseg" id="daySeg">
+          <button class="on" data-d="today">اليوم</button>
+          <button data-d="yday">أمس</button>
+        </div>
+        <span class="sp"></span>
+        <span class="state" id="dayState">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+          مقفول نهائيًا · ٤:٢٥ م — بصمة جديدة = يوم جديد
+        </span>
+      </div>
+      <div class="dayline">
+        <div class="dl-top">
+          <div class="dl-big num" id="dialBig">٤:١٣</div>
+          <div class="dl-meta" id="dialSub">من ٨:٠٠ س · مقفول ٤:٢٥ م<br><span style="color:var(--green-l)">■</span> مؤكّد بالموقع <span style="color:var(--amber-l);margin-inline-start:7px">■</span> غير مؤكّد <span style="color:var(--gold);margin-inline-start:7px">┄</span> نافذة الحضور</div>
+        </div>
+        <div class="strip-wrap">
+          <div class="strip" id="stripBox"></div>
+          <div class="scaleAbs">
+            <span style="right:0%">٨ ص</span><span style="right:28.6%">١٢ م</span><span style="right:57.1%">٤ م</span><span style="right:85.7%">٨ م</span><span style="right:100%">١٠ م</span>
+          </div>
+        </div>
+        <div class="evlist" id="evList"></div>
+      </div>
+    </div>
+
+    <!-- لوحة الإلزام -->
+    <div class="card">
+      <h4>إلزام البصمة <span class="hc">اختر الوضع — وكل وضع بإعداداته تحته · الحفظ يُقيَّد بالتدقيق باسمك</span></h4>
+      <div class="modes">
+        <div class="mode on" data-m="strict">
+          <span class="radio"></span>
+          <div class="mt">ملزمة بالبصمة</div>
+          <div class="md">النظام الكامل: بصمة ونداءات وتأخر وغياب.</div>
+        </div>
+        <div class="mode m-watch" data-m="watch">
+          <span class="radio"></span>
+          <div class="mt">مراقبة فقط</div>
+          <div class="md">بلا إلزام — يُسجَّل الاتصال والتواجد فقط.</div>
+        </div>
+        <div class="mode m-off" data-m="off">
+          <span class="radio"></span>
+          <div class="mt">معفاة مؤقتًا</div>
+          <div class="md">إيقاف كامل حتى تاريخ تحدده.</div>
+        </div>
+      </div>
+      <div class="subpanel on" id="sp-strict">
+        <div class="subgrid">
+          <div class="fld sub2">
+            <div class="fl">نافذة البداية المرنة</div>
+            <div class="chips">
+              <span class="chip">٨:٠٠ ص</span><span class="chip on">٩:٠٠ ص</span><span class="chip">١٠:٠٠ ص</span>
+              <span style="color:var(--muted);font-size:11px;padding:6px 2px">إلى</span>
+              <span class="chip">١٠:٠٠ ص</span><span class="chip on">١١:٠٠ ص</span><span class="chip">١٢:٠٠ م</span>
+            </div>
+          </div>
+          <div class="fld"><div class="fl">هدف اليوم — ساعات</div><div class="stepper"><button>−</button><span class="sv num">٨</span><button>+</button></div></div>
+          <div class="fld"><div class="fl">نداءات عشوائية/يوم</div><div class="stepper"><button>−</button><span class="sv num">٢</span><button>+</button></div></div>
+          <div class="fld sub2">
+            <div class="fl">أيام العمل</div>
+            <div class="chips"><span class="chip on">الأحد</span><span class="chip on">الاثنين</span><span class="chip on">الثلاثاء</span><span class="chip on">الأربعاء</span><span class="chip on">الخميس</span><span class="chip">الجمعة</span><span class="chip">السبت</span></div>
+          </div>
+          <div class="fld sub2">
+            <div class="fl">سلوك النظام</div>
+            <div class="frow"><div>نداء خروج النطاق<div class="d">مهلة ٦٠ د</div></div><div class="tog on"></div></div>
+            <div class="frow"><div>قفل اليوم نهائيًا<div class="d">يوم انقفل انقفل — بصمة جديدة = يوم جديد</div></div><div class="tog on"></div></div>
+            <div class="frow"><div>إشعارك عند فوات النداء</div><div class="tog on"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="subpanel" id="sp-watch">
+        <div class="subgrid">
+          <div class="fld sub2"><div class="fl">نطاق الرصد — خارجه ما يُسجَّل شيء</div>
+            <div class="chips"><span class="chip on t">٨:٠٠ ص</span><span style="color:var(--muted);font-size:11px;padding:6px 2px">إلى</span><span class="chip on t">١٠:٠٠ م</span></div></div>
+          <div class="fld sub2"><div class="fl">وش يُسجَّل</div>
+            <div class="frow"><div>أوقات الاتصال</div><div class="tog on"></div></div>
+            <div class="frow"><div>التواجد داخل الدوائر</div><div class="tog on"></div></div>
+            <div class="frow"><div>تنبيهك عند أول ظهور</div><div class="tog"></div></div></div>
+        </div>
+      </div>
+      <div class="subpanel" id="sp-off">
+        <div class="subgrid">
+          <div class="fld sub2"><div class="fl">معفاة حتى</div><div class="chips"><span class="chip on">١ سبتمبر ٢٠٢٦</span><span class="chip">تاريخ مخصص…</span><span class="chip">بلا نهاية</span></div></div>
+          <div class="fld sub2"><div class="fl">السبب — يظهر بالتدقيق</div><div class="chips"><span class="chip on">إجازة سنوية</span><span class="chip">انتداب</span><span class="chip">ظرف خاص</span></div></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;margin-top:14px">
+        <button class="btn gold mini">حفظ الإعدادات</button>
+        <span style="font-size:10px;color:var(--muted)">أي تغيير يُقيَّد بسجل التدقيق باسمك ووقته</span>
+      </div>
+    </div>
+
+    <!-- مؤشرات الدوام -->
+    <div class="sechead"><span class="bar"></span><h3>مؤشرات الدوام</h3><span class="sp"></span>
+      <div class="fseg" id="attFilter"><button data-p="w">الأسبوع</button><button class="on" data-p="m">أغسطس</button><button data-p="q">٩٠ يوم</button></div>
+    </div>
+    <div class="kwrap">
+      <div class="kpi c-gold"><div class="kv num" id="k0">٢</div><div class="kl">أيام دوام</div></div>
+      <div class="kpi c-green"><div class="kv num" id="k1">٨:١٣</div><div class="kl">ساعات مؤكّدة</div></div>
+      <div class="kpi c-amber"><div class="kv num" id="k2">٤:٠٠</div><div class="kl">غير مؤكّد</div></div>
+      <div class="kpi c-teal"><div class="kv num" id="kLeave">٠</div><div class="kl">إجازة معتمدة</div></div>
+      <div class="kpi c-red"><div class="kv num" id="k4">١٠</div><div class="kl">غياب</div></div>
+      <div class="kpi c-teal"><div class="kv num" id="k5">١٧٪</div><div class="kl">الالتزام</div></div>
+    </div>
+    <div class="panelrow">
+      <div class="card an">
+        <h4>توزيع أوقات الحضور — متى تبصم عادة؟</h4>
+        <div class="hist">
+          <div class="hb" style="height:12%"></div><div class="hb" style="height:20%"></div>
+          <div class="hb" style="height:32%"></div><div class="hb hot" style="height:56%"></div>
+          <div class="hb hot" style="height:100%"></div><div class="hb hot" style="height:70%"></div>
+          <div class="hb" style="height:24%"></div>
+        </div>
+        <div class="histlbl"><span>٨ص</span><span>٩ص</span><span>١٠ص</span><span>١١ص</span><span>١٢م</span><span>١م</span><span>٢م</span></div>
+        <div class="subtxt">ذروة بصماتها <b style="color:var(--amber-l)">١٢م</b> — بعد نافذتها بساعة، وهذا مصدر التأخر.</div>
+      </div>
+      <div class="card an">
+        <h4>نسبة التأكيد بإثبات الموقع</h4>
+        <div class="center">
+          <svg width="88" height="88" viewBox="0 0 88 88">
+            <circle cx="44" cy="44" r="36" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="9"/>
+            <circle cx="44" cy="44" r="36" fill="none" stroke="#46A758" stroke-width="9" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="75" transform="rotate(-90 44 44)"/>
+          </svg>
+          <div><div class="num" style="font-size:29px;color:var(--green-l)">٦٧٪</div><div class="subtxt" style="margin-top:5px">من وقتها مثبت بموقع فعلي — الباقي «غير مؤكّد»</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- النشاط والإنجاز -->
+    <div class="sechead b-blue"><span class="bar"></span><h3>النشاط والإنجاز</h3><span class="sp"></span><span style="font-size:10px;color:var(--muted)">من نظام العملاء — نفس الفلتر</span></div>
+    <div class="kwrap">
+      <div class="kpi c-blue"><div class="kv num">٩٤</div><div class="kl">متابعة</div></div>
+      <div class="kpi c-blue"><div class="kv num">٣٨</div><div class="kl">عميل نشط</div></div>
+      <div class="kpi c-purple"><div class="kv num">٧</div><div class="kl">زيارات</div></div>
+      <div class="kpi c-gold"><div class="kv num">٢</div><div class="kl">حجوزات</div></div>
+      <div class="kpi c-green"><div class="kv num">٩١٪</div><div class="kl">التزام المواعيد</div></div>
+      <div class="kpi c-teal"><div class="kv num">١:٤٠</div><div class="kl">سرعة أول رد (س)</div></div>
+    </div>
+    <div class="panelrow">
+      <div class="card an">
+        <h4>متابعاتها — آخر ١٤ يوم (الرمادي = غيابها)</h4>
+        <div class="hist">
+          <div class="hb b" style="height:44%"></div><div class="hb b" style="height:60%"></div>
+          <div class="hb" style="height:8%"></div><div class="hb" style="height:6%"></div>
+          <div class="hb b" style="height:72%"></div><div class="hb b" style="height:88%"></div>
+          <div class="hb b" style="height:52%"></div><div class="hb" style="height:10%"></div>
+          <div class="hb b" style="height:64%"></div><div class="hb b" style="height:100%"></div>
+          <div class="hb b" style="height:40%"></div><div class="hb" style="height:8%"></div>
+          <div class="hb b" style="height:56%"></div><div class="hb b" style="height:46%"></div>
+        </div>
+        <div class="histlbl"><span>٤</span><span>٥</span><span>٦</span><span>٧</span><span>٨</span><span>٩</span><span>١٠</span><span>١١</span><span>١٢</span><span>١٣</span><span>١٤</span><span>١٥</span><span>١٦</span><span>١٧</span></div>
+      </div>
+      <div class="card an">
+        <h4>مراحل عملائها الآن</h4>
+        <div class="cmp">
+          <div class="cr"><span class="cl">مهتم</span><div class="cb"><i style="width:78%;background:linear-gradient(90deg,var(--green),var(--green-l))">١٨</i></div></div>
+          <div class="cr"><span class="cl">موعد لاحق</span><div class="cb"><i style="width:48%;background:linear-gradient(90deg,#3f8fa3,#5bbccb)">١١</i></div></div>
+          <div class="cr"><span class="cl">زيارة</span><div class="cb"><i style="width:26%;background:linear-gradient(90deg,#4a6fa8,var(--blue))">٦</i></div></div>
+          <div class="cr"><span class="cl">تفاوض</span><div class="cb"><i style="width:13%;background:linear-gradient(90deg,#7a63a8,var(--purple))">٣</i></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- الدمج -->
+    <div class="sechead b-purple"><span class="bar"></span><h3>الدوام × الإنجاز</h3></div>
+    <div class="merge">
+      <div class="mgrid">
+        <div class="mhero">
+          <div class="mv num">٢٫٤</div>
+          <div class="ml"><b>متابعة لكل ساعة مؤكّدة</b><br>فوق معدل الفريق (١٫٩) — لما تحضر تنتج فوق المعدل.</div>
+        </div>
+        <div class="cmp">
+          <div class="cr"><span class="cl">يوم كامل</span><div class="cb"><i style="width:100%;background:linear-gradient(90deg,var(--green),var(--green-l))">~١٤ متابعة/يوم</i></div></div>
+          <div class="cr"><span class="cl">يوم جزئي</span><div class="cb"><i style="width:44%;background:linear-gradient(90deg,var(--amber),var(--amber-l))">~٦</i></div></div>
+          <div class="cr"><span class="cl">يوم غياب</span><div class="cb"><i style="width:9%;background:linear-gradient(90deg,var(--red),#ff8b8e)">~١</i></div></div>
+        </div>
+      </div>
+      <div class="insights">
+        <div class="ins"><span class="tag g">قوة</span><div class="it">إنتاجيتها فوق معدل الفريق ٢٦٪</div><div class="is">المشكلة بعدد ساعات حضورها — مو بجودة شغلها.</div></div>
+        <div class="ins"><span class="tag a">فرصة</span><div class="it">١٠ أيام غياب ≈ ١٤٠ متابعة ضائعة</div><div class="is">نصف حضور بمعدلها = ~٧٠ متابعة إضافية شهريًا.</div></div>
+        <div class="ins"><span class="tag b">نمط</span><div class="it">أفضل إنتاجها ١٢م–٣م بعد وصولها</div><div class="is">جدولة متابعاتها المهمة بهالفترة = أعلى مردود.</div></div>
+      </div>
+    </div>
+
+    <!-- السجل -->
+    <div class="sechead"><span class="bar"></span><h3>السجل</h3></div>
+    <div class="card">
+      <div class="logbar">
+        <div class="vseg" id="viewSeg">
+          <button data-v="week">الأسبوع</button>
+          <button class="on" data-v="month">الشهر</button>
+        </div>
+        <div class="msel" id="monthSel">
+          <div class="cur">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            <span id="curMonth">أغسطس ٢٠٢٦</span>
+          </div>
+          <div class="list" id="monthList"></div>
+        </div>
+        <div style="position:relative">
+          <button class="rangebtn" id="rangeBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+            <span id="rangeLbl">بحث بمدى: من — إلى</span>
+          </button>
+          <div class="calpop" id="calPop">
+            <div class="ch"><div class="nav"><span id="calPrev">‹</span></div><b id="calTitle"></b><div class="nav"><span id="calNext">›</span></div></div>
+            <div class="calgrid" id="calGrid"></div>
+            <div class="hint" id="calHint">اختر تاريخ البداية</div>
+            <div class="cf"><button class="btn gold" id="calApply">تطبيق</button><button class="btn ghost" id="calClear">مسح</button></div>
+          </div>
+        </div>
+        <span class="sp"></span>
+        <span class="logsum" id="logSum"></span>
+      </div>
+      <div id="logBody"></div>
+    </div>
+
+  </div>
+
+  <!-- ═════════ العمود الجانبي اللاصق ═════════ -->
+  <div class="rail">
+    <div class="card">
+      <div class="idmini">
+        <div class="av">أ</div>
+        <div style="flex:1"><h2>أسماء الشهري</h2><p><span class="pulse"></span> متصلة · بالموقع — المقر · ملزمة بالبصمة</p></div>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:13px">
+        <button class="btn gold mini" style="flex:1;justify-content:center">نداء تحقق</button>
+        <button class="btn ghost mini">تصدير</button>
+      </div>
+    </div>
+
+    <div class="card" style="background:linear-gradient(155deg,#1a1408,#111214);border-color:rgba(203,164,94,.25)">
+      <h4 style="color:var(--gold)">أدوات المالك <span class="hc">برسالة أو بصمت — أنت المتحكم</span></h4>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <button class="btn red mini" id="openCheckout" style="justify-content:flex-start">سجّل لها انصراف الآن</button>
+        <button class="btn ghost mini" style="justify-content:flex-start">سجّل لها حضورًا</button>
+        <button class="btn ghost mini" style="justify-content:flex-start">صحّح جلسة سابقة</button>
+        <button class="btn ghost mini" style="justify-content:flex-start">قفل اليوم يدويًا</button>
+      </div>
+    </div>
+
+    <div class="leave-wrap" id="lvWrap">
+      <div class="leave-chip" onclick="document.getElementById('lvWrap').classList.toggle('open')">
+        <span class="n">١</span>
+        <div class="tt2">طلب إجازة ينتظرك<span>سنوية · ٣ أيام · ٢٣–٢٥ أغسطس · قدّمته ٩:١٤ ص</span></div>
+        <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+      </div>
+      <div class="leave-exp">
+        <div class="lq">«ظرف عائلي بجدة، برجع الأربعاء — رتّبت مع عبير تغطي متابعاتي.»</div>
+        <div class="lvctl"><div>استثناء تلقائي من الغياب<div class="d">أول ما تعتمد — ما تُحسب غيابًا ولا تُنادى</div></div><div class="tog on"></div></div>
+        <div class="lvctl"><div>خصم من رصيدها<div class="d">رصيدها بعده ١٢ من ٢١</div></div><div class="tog on"></div></div>
+        <div class="lvctl"><div>إشعارها بالقرار</div><div class="tog on"></div></div>
+        <div style="display:flex;gap:7px;margin-top:10px">
+          <button class="btn green mini" id="approveLv">✓ اعتماد</button>
+          <button class="btn red mini">رفض</button>
+          <button class="btn ghost mini">تعديل</button>
+        </div>
+      </div>
+      <div class="leave-done">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+        اعتُمدت ٢٣–٢٥ · استُثنيت تلقائيًا · وصلها الإشعار
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>الإعدادات <span class="hc">عدّل مباشرة — يُقيَّد بالتدقيق</span></h4>
+      <div class="srow"><div>وضع الدوام<div class="sd">اضغط للتبديل بين الأوضاع</div></div><span class="sv2 cycle" id="qMode">ملزمة — كامل</span></div>
+      <div class="srow"><div>نافذة البداية<div class="sd">اضغط الوقت لتغييره</div></div><span style="display:flex;gap:5px;align-items:center"><span class="chipq" id="qWinA">٩ ص</span><span style="font-size:10px;color:var(--muted)">إلى</span><span class="chipq" id="qWinB">١١ ص</span></span></div>
+      <div class="srow"><div>هدف اليوم — ساعات</div><div class="mini-step"><button data-k="goal" data-d="-1">−</button><span class="v num" id="qGoal">٨</span><button data-k="goal" data-d="1">+</button></div></div>
+      <div class="srow"><div>نداءات عشوائية/يوم</div><div class="mini-step"><button data-k="calls" data-d="-1">−</button><span class="v num" id="qCalls">٢</span><button data-k="calls" data-d="1">+</button></div></div>
+      <div class="srow"><div>قفل اليوم نهائيًا<div class="sd">بصمة جديدة = يوم جديد</div></div><div class="tog on"></div></div>
+      <div class="srow"><div>نداء خروج النطاق<div class="sd">مهلة ٦٠ د</div></div><div class="tog on"></div></div>
+      <button class="btn gold mini" id="qSave" style="width:100%;justify-content:center;margin-top:11px">حفظ التعديلات</button>
+    </div>
+
+    <div class="card">
+      <h4>الدوائر المسموحة <span class="hc">إدارة</span></h4>
+      <div class="zones">
+        <span class="zone">✓ المقر الرئيسي</span><span class="zone">✓ النرجس</span><span class="zone off">الياسمين</span>
+      </div>
+      <div style="font-size:9.5px;color:var(--muted);margin-top:9px">الجهاز: تطبيق آيفون · نبض كل ٦٠ ث · push ✓</div>
+    </div>
+
+  </div>
+
+</div>
+</div>
+
+<!-- مودال الانصراف -->
+<div class="overlay" id="ov">
+  <div class="modal">
+    <h3>تسجيل انصراف — أسماء الشهري</h3>
+    <div class="ms">مشت بدون ما تبصم والنظام ما التقطها؟ سجّله أنت — وأنت تقرر توصلها رسالة أو لا.</div>
+    <div class="mrow">
+      <label>وقت الانصراف</label>
+      <div class="timebox">
+        <span class="tchip on">آخر إثبات موقع — ١:١٠ م</span>
+        <span class="tchip">الآن</span>
+        <span class="tchip">وقت مخصص…</span>
+      </div>
+    </div>
+    <div class="mrow">
+      <label>الإشعار — أنت المتحكم</label>
+      <div class="notify-opt on" data-n="1">
+        <span class="radio2"></span>
+        <div style="flex:1">
+          <div class="nt">أرسل لها إشعارًا</div>
+          <div class="ns">توصلها رسالة push فورية:</div>
+          <div class="msg-preview">«تم تسجيل انصراف لك الساعة ١:١٠ م — غادرتِ موقع العمل بدون تسجيل. لو فيه خطأ كلّم الإدارة.»</div>
+        </div>
+      </div>
+      <div class="notify-opt" data-n="0">
+        <span class="radio2"></span>
+        <div><div class="nt">بدون رسالة — تسجيل صامت</div><div class="ns">يُقيَّد بملفها وسجل التدقيق فقط.</div></div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn red" id="confirmCo">تأكيد الانصراف</button>
+      <button class="btn ghost" id="closeOv">إلغاء</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const ar=n=>n.toLocaleString('ar-EG');
+const AR_M=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const DAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const lock='<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-1px"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>';
+const TODAY=new Date(2026,7,17);
+let approvedLeave=false;
+
+document.querySelectorAll('.tog').forEach(t=>{t.onclick=e=>{e.stopPropagation();t.classList.toggle('on')}});
+document.querySelectorAll('.chip').forEach(c=>{c.onclick=()=>c.classList.toggle('on')});
+function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),4600)}
+
+/* تعديل مباشر بالعمود الجانبي */
+const AR_D=['٠','١','٢','٣','٤','٥','٦','٧','٨','٩','١٠','١١','١٢'];
+const qVals={goal:8,calls:2};
+const qLim={goal:[4,12],calls:[0,4]};
+document.querySelectorAll('.mini-step button').forEach(b=>{
+  b.onclick=()=>{
+    const k=b.dataset.k,d=+b.dataset.d;
+    qVals[k]=Math.min(qLim[k][1],Math.max(qLim[k][0],qVals[k]+d));
+    document.getElementById(k==='goal'?'qGoal':'qCalls').textContent=AR_D[qVals[k]];
+  };
+});
+const WIN_A=['٨ ص','٩ ص','١٠ ص'],WIN_B=['١٠ ص','١١ ص','١٢ م'];
+let wa=1,wb=1;
+document.getElementById('qWinA').onclick=()=>{wa=(wa+1)%WIN_A.length;document.getElementById('qWinA').textContent=WIN_A[wa]};
+document.getElementById('qWinB').onclick=()=>{wb=(wb+1)%WIN_B.length;document.getElementById('qWinB').textContent=WIN_B[wb]};
+const MODES=[{t:'ملزمة — كامل',m:'strict'},{t:'مراقبة فقط',m:'watch'},{t:'معفاة مؤقتًا',m:'off'}];
+let mi=0;
+document.getElementById('qMode').onclick=()=>{
+  mi=(mi+1)%MODES.length;
+  document.getElementById('qMode').textContent=MODES[mi].t;
+  document.querySelector(`.mode[data-m="${MODES[mi].m}"]`).click(); // يزامن اللوحة الكاملة تحت
+};
+document.querySelectorAll('.zones .zone').forEach(z=>{z.onclick=()=>z.classList.toggle('off')});
+document.getElementById('qSave').onclick=()=>showToast('✓ حُفظت الإعدادات · قُيّدت بسجل التدقيق باسمك ووقتها');
+
+/* أوضاع الإلزام */
+document.querySelectorAll('.mode').forEach(m=>{
+  m.onclick=()=>{
+    document.querySelectorAll('.mode').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.subpanel').forEach(x=>x.classList.remove('on'));
+    m.classList.add('on');document.getElementById('sp-'+m.dataset.m).classList.add('on');
+  };
+});
+
+/* رادار اليوم — اليوم/أمس */
+const EV_TODAY=[
+ {t:'٤:٢٥ م',c:'var(--muted)',b:'توقف العدّاد وقُفل اليوم — نداءان بلا رد',s:'آخر إثبات ١:١٠ م · ما بعده غير مؤكّد'},
+ {t:'٣:٢٠ م',c:'var(--amber-l)',b:'نداء عشوائي — فات',s:'أُرسل إشعار ولم يصل رد'},
+ {t:'١:١٠ م',c:'var(--green-l)',b:'آخر إثبات موقع — المقر الرئيسي',s:'فحص صامت داخل النطاق'},
+ {t:'١٢:١١ م',c:'var(--gold)',b:'حضور — تأخر ٦٩ د',s:'بعد نهاية النافذة · تطبيق آيفون'}
+];
+const EV_YDAY=[
+ {t:'٨:٤٣ م',c:'var(--green-l)',b:'انصراف — أكملت هدفها ٨:٠٠',s:'انصراف ذاتي من التطبيق'},
+ {t:'٥:٣٠ م',c:'var(--green-l)',b:'نداء تحقق — أكّدت موقعها',s:'ردّت خلال دقيقة'},
+ {t:'٢:٣٢ م',c:'var(--teal)',b:'رجوع للمقر — تأكيد صامت',s:'نبضتان داخل النطاق'},
+ {t:'١٢:٤٠ م',c:'var(--blue-l)',b:'زيارة عميل — مشروع النرجس',s:'موثّقة بالنظام'},
+ {t:'١٢:٠٣ م',c:'var(--gold)',b:'حضور — تأخر ٦٣ د',s:'تطبيق آيفون'}
+];
+const pct=h=>((h-8)/14*100).toFixed(2); // المقياس ٨ص → ١٠م
+const STRIP_TODAY={
+  win:[9,11],
+  segs:[{a:12.183,b:13.167,cls:'conf'},{a:13.167,b:16.417,cls:'unc'}],
+  marks:[{h:12.183,c:'var(--gold)',t:'١٢:١١'},{h:13.167,c:'var(--green-l)',t:'١:١٠'},{h:15.333,c:'var(--amber-l)',t:'٣:٢٠'},{h:16.417,c:'#82848c',t:'٤:٢٥'}]
+};
+const STRIP_YDAY={
+  win:[9,11],
+  segs:[{a:12.05,b:19.25,cls:'conf'},{a:19.25,b:20.72,cls:'unc'}],
+  marks:[{h:12.05,c:'var(--gold)',t:'١٢:٠٣'},{h:12.667,c:'var(--blue-l)',t:'١٢:٤٠'},{h:14.533,c:'var(--teal)',t:'٢:٣٢'},{h:17.5,c:'var(--green-l)',t:'٥:٣٠'},{h:20.717,c:'var(--green-l)',t:'٨:٤٣'}]
+};
+function drawStrip(d){
+  const s=document.getElementById('stripBox');
+  let h=`<div class="seg win" style="right:${pct(d.win[0])}%;width:${(pct(d.win[1])-pct(d.win[0])).toFixed(2)}%"></div>`;
+  d.segs.forEach(g=>{h+=`<div class="seg ${g.cls}" style="right:${pct(g.a)}%;width:${(pct(g.b)-pct(g.a)).toFixed(2)}%"></div>`});
+  d.marks.forEach(m=>{h+=`<div class="mark" style="right:${pct(m.h)}%;background:${m.c}"><span class="num">${m.t}</span></div>`});
+  s.innerHTML=h;
+}
+function renderDay(which){
+  const l=document.getElementById('evList');l.innerHTML='';
+  (which==='today'?EV_TODAY:EV_YDAY).forEach(e=>{
+    l.insertAdjacentHTML('beforeend',`<div class="ev"><span class="tm num">${e.t}</span><span class="dot" style="background:${e.c}"></span><div class="b2">${e.b}<div class="s2">${e.s}</div></div></div>`);
+  });
+  const st=document.getElementById('dayState');
+  if(which==='today'){
+    st.className='state';st.innerHTML=lock+' مقفول نهائيًا · ٤:٢٥ م — بصمة جديدة = يوم جديد';
+    document.getElementById('dialBig').textContent='٤:١٣';
+    document.getElementById('dialSub').innerHTML='من ٨:٠٠ س · مقفول ٤:٢٥ م<br><span style="color:var(--green-l)">■</span> مؤكّد بالموقع <span style="color:var(--amber-l);margin-inline-start:7px">■</span> غير مؤكّد <span style="color:var(--gold);margin-inline-start:7px">┄</span> نافذة الحضور';
+    drawStrip(STRIP_TODAY);
+  }else{
+    st.className='state ok';st.innerHTML='✓ أكملت دوامها — ٨:٠٠ من ٨:٠٠ · مقفول';
+    document.getElementById('dialBig').textContent='٨:٠٠';
+    document.getElementById('dialSub').innerHTML='يوم مكتمل · انصرفت ٨:٤٣ م<br><span style="color:var(--green-l)">■</span> مؤكّد بالموقع <span style="color:var(--amber-l);margin-inline-start:7px">■</span> غير مؤكّد';
+    drawStrip(STRIP_YDAY);
+  }
+}
+document.querySelectorAll('#daySeg button').forEach(b=>{
+  b.onclick=()=>{document.querySelectorAll('#daySeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');renderDay(b.dataset.d)};
+});
+renderDay('today');
+
+/* فلتر المؤشرات */
+const P={w:{k0:'١',k1:'٤:١٣',k2:'٤:٠٠',k4:'٣',k5:'٢٠٪'},m:{k0:'٢',k1:'٨:١٣',k2:'٤:٠٠',k4:'١٠',k5:'١٧٪'},q:{k0:'٣١',k1:'٢٠٤:٤٠',k2:'٣١:٢٠',k4:'٢٢',k5:'٥٨٪'}};
+document.querySelectorAll('#attFilter button').forEach(b=>{
+  b.onclick=()=>{document.querySelectorAll('#attFilter button').forEach(x=>x.classList.remove('on'));b.classList.add('on');const d=P[b.dataset.p];for(const k in d)document.getElementById(k).textContent=d[k]};
+});
+
+/* اعتماد الإجازة */
+document.getElementById('approveLv').onclick=()=>{
+  approvedLeave=true;
+  document.getElementById('lvWrap').classList.add('approved');
+  document.getElementById('kLeave').textContent='٣';
+  showToast('✓ اعتُمدت الإجازة ٢٣–٢٥ أغسطس · استُثنيت من الغياب تلقائيًا · خُصمت من رصيدها · وأُشعرت أسماء');
+  if(view==='month')render();
+};
+
+/* مودال الانصراف */
+const ov=document.getElementById('ov');
+document.getElementById('openCheckout').onclick=()=>ov.classList.add('on');
+document.getElementById('closeOv').onclick=()=>ov.classList.remove('on');
+ov.onclick=e=>{if(e.target===ov)ov.classList.remove('on')};
+document.querySelectorAll('.notify-opt').forEach(o=>{o.onclick=()=>{document.querySelectorAll('.notify-opt').forEach(x=>x.classList.remove('on'));o.classList.add('on')}});
+document.querySelectorAll('.tchip').forEach(c=>{c.onclick=()=>{document.querySelectorAll('.tchip').forEach(x=>x.classList.remove('on'));c.classList.add('on')}});
+document.getElementById('confirmCo').onclick=()=>{
+  const silent=document.querySelector('.notify-opt.on').dataset.n==='0';
+  ov.classList.remove('on');
+  showToast(silent?'✓ سُجّل الانصراف ١:١٠ م · صامت — ما وصلها شيء · قُيّد بالتدقيق':'✓ سُجّل الانصراف ١:١٠ م · أُرسل الإشعار · قُيّد بالتدقيق');
+};
+
+/* السجل */
+function dayState2(y,m,d){
+  const dow=new Date(y,m,d).getDay();
+  if(dow===5||dow===6)return{st:'wk'};
+  const dt=new Date(y,m,d);
+  if(approvedLeave&&y===2026&&m===7&&d>=23&&d<=25)return{st:'leave'};
+  if(dt>TODAY)return{st:'fut'};
+  if(y===2026&&m===7){
+    if(d===16)return{st:'full',io:'١٢:٠٣ م → ٨:٤٣ م',h:'٨:٠٠',c:70,u:30};
+    if(d===17)return{st:'part',io:'١٢:١١ م → ٤:٢٥ م',h:'٤:١٣',c:33,u:19};
+    return{st:'abs'};
+  }
+  const hsh=(d*7+m*5+y)%10;
+  if(hsh<5)return{st:'full',io:'٩:٤٠ ص → ٥:٥٥ م',h:'٨:٠٠',c:80,u:20};
+  if(hsh<7)return{st:'part',io:'١١:٢٠ ص → ٣:٠٥ م',h:'٣:٤٥',c:38,u:14};
+  return{st:'abs'};
+}
+const stPill=s=>s==='full'?'<span class="pill p-ok">أكمل دوامه</span>':s==='part'?'<span class="pill p-warn">داوم جزئيًا</span>':s==='wk'?'<span class="pill p-mute">عطلة</span>':s==='fut'?'<span class="pill p-mute">قادم</span>':s==='leave'?'<span class="pill p-leave">إجازة معتمدة</span>':'<span class="pill p-bad">غياب</span>';
+function rowsHTML(list){
+  let h='<table><thead><tr><th>اليوم</th><th>الحالة</th><th>الحضور → الانصراف</th><th>مؤكّد/غير مؤكّد</th><th>الساعات</th><th></th></tr></thead><tbody>';
+  list.forEach(x=>{
+    const s=x.s;
+    const bar=(s.st==='full'||s.st==='part')?`<div class="bar2"><i style="width:${s.c}%;background:#46A758"></i><i style="width:${s.u}%;background:#E5A54D"></i></div>`:'<div class="bar2"></div>';
+    const tag=s.st==='leave'?'<span class="locktag" style="color:var(--teal)">مستثنى تلقائيًا</span>':(s.st==='wk'||s.st==='fut')?'':`<span class="locktag">${lock} مقفول</span>`;
+    h+=`<tr class="${(s.st==='wk'||s.st==='fut')?'dim':''}"><td class="dn">${ar(x.d)} ${AR_M[x.m]}<div class="dw">${DAYS[new Date(x.y,x.m,x.d).getDay()]}</div></td><td>${stPill(s.st)}</td><td style="color:var(--muted)">${s.io||'—'}</td><td>${bar}</td><td class="hrs" style="color:${s.h?'var(--text)':'var(--muted)'}">${s.h||'—'}</td><td>${tag}</td></tr>`;
+  });
+  return h+'</tbody></table>';
+}
+let view='month',selY=2026,selM=7,range=null;
+function render(){
+  const body=document.getElementById('logBody'),sum=document.getElementById('logSum');
+  if(range){
+    const list=[];let cur=new Date(range[0]);
+    while(cur<=range[1]){list.push({y:cur.getFullYear(),m:cur.getMonth(),d:cur.getDate(),s:dayState2(cur.getFullYear(),cur.getMonth(),cur.getDate())});cur.setDate(cur.getDate()+1)}
+    body.innerHTML=rowsHTML(list.reverse());
+    const w=list.filter(x=>x.s.st==='full'||x.s.st==='part').length,a=list.filter(x=>x.s.st==='abs').length;
+    sum.textContent=`مدى مخصص · ${ar(list.length)} يوم — دوام ${ar(w)} · غياب ${ar(a)}`;return;
+  }
+  if(view==='week'){
+    const wk=[20,19,18,17,16].map(d=>({y:2026,m:7,d,s:dayState2(2026,7,d)}));
+    body.innerHTML=rowsHTML(wk);sum.textContent='الأسبوع الحالي — ١٦ إلى ٢٠ أغسطس';
+  }
+  if(view==='month'){
+    const dim=new Date(selY,selM+1,0).getDate(),list=[];
+    for(let d=dim;d>=1;d--)list.push({y:selY,m:selM,d,s:dayState2(selY,selM,d)});
+    body.innerHTML=rowsHTML(list);
+    const w=list.filter(x=>x.s.st==='full'||x.s.st==='part').length,a=list.filter(x=>x.s.st==='abs').length,lv=list.filter(x=>x.s.st==='leave').length;
+    sum.textContent=`${AR_M[selM]} ${ar(selY)} — دوام ${ar(w)} · غياب ${ar(a)}${lv?` · إجازة ${ar(lv)}`:''}`;
+  }
+}
+document.querySelectorAll('#viewSeg button').forEach(b=>{
+  b.onclick=()=>{document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');view=b.dataset.v;range=null;document.getElementById('rangeLbl').textContent='بحث بمدى: من — إلى';render()};
+});
+const ms=document.getElementById('monthSel'),ml=document.getElementById('monthList');
+let yy=2026,mm=7;
+for(let i=0;i<12;i++){
+  const div=document.createElement('div');
+  div.innerHTML=`${AR_M[mm]} ${ar(yy)} ${i===0?'<span>الحالي</span>':''}`;
+  if(i===0)div.classList.add('on');
+  const yv=yy,mv=mm;
+  div.onclick=()=>{selY=yv;selM=mv;range=null;view='month';
+    document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.toggle('on',x.dataset.v==='month'));
+    document.getElementById('curMonth').textContent=`${AR_M[mv]} ${ar(yv)}`;
+    ml.querySelectorAll('div').forEach(x=>x.classList.remove('on'));div.classList.add('on');
+    ms.classList.remove('open');render()};
+  ml.appendChild(div);mm--;if(mm<0){mm=11;yy--}
+}
+ms.querySelector('.cur').onclick=()=>ms.classList.toggle('open');
+document.addEventListener('click',e=>{if(!ms.contains(e.target))ms.classList.remove('open')});
+const pop=document.getElementById('calPop'),grid=document.getElementById('calGrid'),title=document.getElementById('calTitle'),hint=document.getElementById('calHint');
+let calY=2026,calM=7,selA=null,selB=null;
+document.getElementById('rangeBtn').onclick=e=>{e.stopPropagation();pop.classList.toggle('on');drawCal()};
+document.addEventListener('click',e=>{if(!pop.contains(e.target)&&!document.getElementById('rangeBtn').contains(e.target))pop.classList.remove('on')});
+document.getElementById('calPrev').onclick=()=>{calM--;if(calM<0){calM=11;calY--}drawCal()};
+document.getElementById('calNext').onclick=()=>{calM++;if(calM>11){calM=0;calY++}drawCal()};
+function drawCal(){
+  title.textContent=`${AR_M[calM]} ${ar(calY)}`;grid.innerHTML='';
+  ['ح','ن','ث','ر','خ','ج','س'].forEach(h=>grid.insertAdjacentHTML('beforeend',`<div class="h">${h}</div>`));
+  const first=new Date(calY,calM,1).getDay(),dim=new Date(calY,calM+1,0).getDate();
+  for(let i=0;i<first;i++)grid.insertAdjacentHTML('beforeend','<div></div>');
+  for(let d=1;d<=dim;d++){
+    const dt=new Date(calY,calM,d),el=document.createElement('div');
+    el.className='d';el.textContent=ar(d);
+    if(dt>TODAY)el.classList.add('dis');
+    if(selA&&dt.getTime()===selA.getTime())el.classList.add('sel');
+    if(selB&&dt.getTime()===selB.getTime())el.classList.add('sel');
+    if(selA&&selB&&dt>selA&&dt<selB)el.classList.add('inrange');
+    el.onclick=()=>{
+      if(!selA||(selA&&selB)){selA=dt;selB=null;hint.textContent='اختر تاريخ النهاية'}
+      else{if(dt<selA){selB=selA;selA=dt}else selB=dt;hint.textContent='اضغط «تطبيق»'}
+      drawCal()};
+    grid.appendChild(el);
+  }
+}
+document.getElementById('calApply').onclick=()=>{
+  if(!selA||!selB)return;
+  range=[selA,selB];pop.classList.remove('on');
+  document.getElementById('rangeLbl').textContent=`${ar(selA.getDate())} ${AR_M[selA.getMonth()]} — ${ar(selB.getDate())} ${AR_M[selB.getMonth()]} ${ar(selB.getFullYear())}`;
+  render()};
+document.getElementById('calClear').onclick=()=>{selA=null;selB=null;range=null;hint.textContent='اختر تاريخ البداية';document.getElementById('rangeLbl').textContent='بحث بمدى: من — إلى';drawCal();render()};
+render();
+</script>
+</body>
+</html>
