@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UserPlus, Upload, Shuffle, X } from "lucide-react";
+import { UserPlus, Upload, Shuffle, X, ContactRound } from "lucide-react";
 import type { Role } from "@prisma/client";
 import { roleLabel } from "@/lib/labels";
 import { toArabicDigits, lastSeenAgo } from "@/lib/format";
@@ -24,7 +25,7 @@ const roleBadge: Record<Role, string> = {
   EMPLOYEE: "bg-secondary text-muted-foreground",
 };
 
-export function TeamView({ data, employees }: { data: TeamData; employees: Employee[] }) {
+export function TeamView({ data, employees, isOwner = false }: { data: TeamData; employees: Employee[]; isOwner?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
@@ -75,7 +76,19 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-medium text-foreground">{m.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">{m.name}</span>
+                    {isOwner && m.role !== "OWNER" && (
+                      <span
+                        onClick={(e) => { e.stopPropagation(); router.push(`/employees/${m.id}`); }}
+                        title="ملف الموظف الكامل"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md bg-gold/10 px-1.5 py-0.5 text-[11px] font-semibold text-gold"
+                      >
+                        <ContactRound className="size-3.5" aria-hidden />
+                        الملف
+                      </span>
+                    )}
+                  </div>
                   {m.phone && <div className="mt-0.5 text-sm text-muted-foreground" dir="ltr">{m.phone}</div>}
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${roleBadge[m.role]}`}>{roleLabel(m.role)}</span>
@@ -145,7 +158,23 @@ export function TeamView({ data, employees }: { data: TeamData; employees: Emplo
           <tbody>
             {data.members.map((m) => (
               <tr key={m.id} onClick={() => setEditEmp(m.id)} className={`cursor-pointer border-t border-border transition-colors hover:bg-secondary/40 ${m.active ? "" : "opacity-50"}`}>
-                <td className="px-4 py-3 font-medium text-foreground"><Clip title={m.name}>{m.name}</Clip></td>
+                <td className="px-4 py-3 font-medium text-foreground">
+                  <div className="flex items-center gap-2">
+                    <Clip title={m.name}>{m.name}</Clip>
+                    {/* ملف الموظف الكامل — للمالك فقط (الصفحة محروسة OWNER خادميًا أيضًا) */}
+                    {isOwner && m.role !== "OWNER" && (
+                      <Link
+                        href={`/employees/${m.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        title="ملف الموظف الكامل"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md bg-gold/10 px-1.5 py-0.5 text-[11px] font-semibold text-gold hover:bg-gold/20"
+                      >
+                        <ContactRound className="size-3.5" aria-hidden />
+                        الملف
+                      </Link>
+                    )}
+                  </div>
+                </td>
                 <td className="cell-keep px-4 py-3 text-muted-foreground" dir="ltr">{m.phone ?? "—"}</td>
                 <td className="cell-keep px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${roleBadge[m.role]}`}>{roleLabel(m.role)}</span></td>
                 <td className="cell-keep px-4 py-3 text-muted-foreground">{toArabicDigits(m.total)}</td>

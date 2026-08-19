@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ContactRound } from "lucide-react";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import { MobileEmployeeSheet } from "@/components/mobile/employee-sheet";
@@ -29,7 +30,8 @@ export type RosterRow = {
   activityRate: number;
 };
 
-export function MobileTeamRoster({ rows }: { rows: RosterRow[] }) {
+export function MobileTeamRoster({ rows, fileLinks = false }: { rows: RosterRow[]; fileLinks?: boolean }) {
+  const router = useRouter();
   const [open, setOpen] = useState<{ id: string; name: string } | null>(null);
 
   return (
@@ -58,8 +60,22 @@ export function MobileTeamRoster({ rows }: { rows: RosterRow[] }) {
                   aria-hidden
                 />
                 <span className="min-w-0">
-                  <span className="block truncate" style={{ fontSize: "14.5px", fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
-                    {m.name}
+                  <span className="flex items-center truncate" style={{ gap: 6 }}>
+                    <span className="truncate" style={{ fontSize: "14.5px", fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
+                      {m.name}
+                    </span>
+                    {/* ملف الموظف الكامل — للمالك فقط، هدف لمس ≥٤٤px */}
+                    {fileLinks && !m.isOwnerRole && (
+                      <span
+                        onClick={(e) => { e.stopPropagation(); router.push(`/m/employees/${m.id}`); }}
+                        title="ملف الموظف الكامل"
+                        className="inline-flex flex-none items-center"
+                        style={{ gap: 4, minHeight: 44, padding: "0 9px", borderRadius: 9, background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, fontSize: "10.5px", fontWeight: 700 }}
+                      >
+                        <ContactRound size={13} strokeWidth={2.2} aria-hidden />
+                        الملف
+                      </span>
+                    )}
                   </span>
                   {m.phone && (
                     <span className="block truncate" dir="ltr" style={{ fontSize: 11, color: MOBILE_COLORS.textMuted, marginTop: 2 }}>

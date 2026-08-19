@@ -5,6 +5,9 @@ import { ksaDayKey, parseRiyadhLocal } from "@/lib/ksa-time";
 import { activeWorkedMinutes } from "@/lib/attendance-logic";
 import { ensureAttendanceDay } from "@/lib/data/attendance";
 import { recordAuditEvent } from "@/lib/audit-event";
+import { ownerCheckoutEmployeeText } from "@/lib/attendance-notify";
+import { formatTime } from "@/lib/format";
+import { notify } from "@/lib/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +52,7 @@ export async function POST(req: Request) {
     startIso?: unknown;
     endIso?: unknown;
     reason?: unknown;
+    notify?: unknown; // CLOSE فقط: إشعار الموظف بالانصراف المسجَّل (اختياري — الافتراضي صامت)
   };
   try {
     raw = (await req.json()) as typeof raw;
@@ -136,11 +140,23 @@ export async function POST(req: Request) {
           endedAt: closeMoment.toISOString(),
           workedMinutes,
           closedBy: "OWNER",
+          notified: raw.notify === true,
         },
         reason,
         ipAddress: ip,
       });
     });
+    // إشعار الموظف اختياري (مودال ملف الموظف) — الافتراضي صامت: يُقيَّد بالتدقيق فقط.
+    if (raw.notify === true) {
+      await notify(
+        prisma,
+        [session.userId],
+        "attendance.owner_checkout",
+        "تسجيل انصراف",
+        ownerCheckoutEmployeeText(formatTime(closeMoment)),
+        "/m",
+      );
+    }
     return NextResponse.json({ ok: true, endedAtIso: closeMoment.toISOString(), workedMinutes });
   }
 
