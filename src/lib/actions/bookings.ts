@@ -81,7 +81,7 @@ async function assertBookingAccess(bookingId: string) {
     },
   });
   if (!booking) throw new Error("الحجز غير موجود");
-  if (!isManager(user.role) && booking.sellerId !== user.id) {
+  if (!isManager(user.role) && user.role !== "FINANCE" && booking.sellerId !== user.id) {
     throw new Error("ما عندك صلاحية على هذا الحجز");
   }
   return { user, booking };

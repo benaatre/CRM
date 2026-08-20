@@ -20,7 +20,7 @@ export default async function EmployeeFilePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<BundleQuery>;
 }) {
-  await requireRole(Role.OWNER);
+  const viewer = await requireRole(Role.OWNER, Role.HR, Role.FINANCE);
   const { id } = await params;
   const sp = await searchParams;
 
@@ -29,7 +29,7 @@ export default async function EmployeeFilePage({
 
   return (
     <div className={zain.variable}>
-      <EmployeeFileView bundle={bundle} basePath={`/employees/${id}`} />
+      <EmployeeFileView bundle={bundle} viewerRole={viewer.role as "OWNER" | "HR" | "FINANCE"} basePath={`/employees/${id}`} />
     </div>
   );
 }

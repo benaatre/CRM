@@ -4,6 +4,7 @@ import type { AttendanceException, AttendanceSession, Prisma, PrismaClient } fro
 import { prisma } from "@/lib/prisma";
 import { dayStartKSA, ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatDate, formatDateTime, formatTime } from "@/lib/format";
+import { TRACKED_ROLES } from "@/lib/auth-guards";
 import {
   DEFAULT_SHIFT_MINUTES,
   DEFAULT_START_MINUTES,
@@ -287,7 +288,7 @@ export async function getAttendanceBoard() {
 
   const [users, sessions, events] = await Promise.all([
     prisma.user.findMany({
-      where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
+      where: { role: { in: TRACKED_ROLES }, active: true },
       select: { id: true, name: true, role: true },
       orderBy: { name: "asc" },
     }),
@@ -507,7 +508,7 @@ export async function getLiveBoard(range?: { fromKey: string; toKey: string } | 
 
   const [users, sessions, events, schedules, settings, exceptions, verifications, pauses, dayRows] = await Promise.all([
     prisma.user.findMany({
-      where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
+      where: { role: { in: TRACKED_ROLES }, active: true },
       select: { id: true, name: true, role: true },
       orderBy: { name: "asc" },
     }),
@@ -859,7 +860,7 @@ async function getRangeBoard(fromKey: string, toKey: string) {
 
   const [users, sessions, exceptions, schedules, settings, pausesBySession] = await Promise.all([
     prisma.user.findMany({
-      where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
+      where: { role: { in: TRACKED_ROLES }, active: true },
       select: { id: true, name: true, role: true },
       orderBy: { name: "asc" },
     }),
@@ -1508,7 +1509,7 @@ export async function getTeamSummary(month: string) {
   const [users, sessions, exceptions, schedules, settings, pausesBySession, monthModes, unconfirmedAgg] =
     await Promise.all([
       prisma.user.findMany({
-        where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
+        where: { role: { in: TRACKED_ROLES }, active: true },
         select: { id: true, name: true, role: true },
         orderBy: { name: "asc" },
       }),

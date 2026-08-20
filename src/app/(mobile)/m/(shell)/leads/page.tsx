@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import {
   getLeads, getLeadCounts, getNotContactedCount, getWaitingCount,
   getBankCheckCount, getVisitStagesCount,
@@ -71,7 +71,7 @@ export default async function MobileLeadsPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const user = await requireUser();
+  const user = await requireClientAccess(true);
   const manager = isManager(user.role);
   const sp = await searchParams;
   const now = new Date();
@@ -108,7 +108,7 @@ export default async function MobileLeadsPage({
 
   // الموظفون: النشطون فقط، مرتّبون بالأكثر عملاءً (أول أربعة يظهرون بالشريط).
   const empChips: EmpChip[] = (team?.members ?? [])
-    .filter((m) => m.role === "EMPLOYEE" && m.active)
+    .filter((m) => (m.role === "EMPLOYEE" || m.role === "HR") && m.active)
     .map((m) => ({ id: m.id, name: m.name, total: m.total, closed: m.closed, activityRate: m.activityRate }))
     .sort((a, b) => b.total - a.total);
   const employees = empChips.map((e) => ({ id: e.id, name: e.name }));

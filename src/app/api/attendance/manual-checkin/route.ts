@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   const userId = typeof raw.userId === "string" ? raw.userId : "";
   const reason = typeof raw.reason === "string" ? raw.reason.trim().slice(0, 500) : "";
   if (!userId) return NextResponse.json({ ok: false, error: "حدّد الموظف" }, { status: 400 });
-  if (!reason) return NextResponse.json({ ok: false, error: "اكتب سبب التسجيل" }, { status: 400 });
+  // السبب اختياري (قرار 2026-08-20) — التدقيق يسجّل المنفذ دائمًا والسبب إن كُتب.
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, name: true, active: true } });
   if (!user || user.role === "OWNER") return NextResponse.json({ ok: false, error: "الموظف غير موجود" }, { status: 404 });
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       resourceType: "attendance_session",
       resourceId: userId,
       after: { sessionId: session.id, at: at.toISOString(), isLate, notified: raw.notify === true },
-      reason,
+      reason: reason || null,
       ipAddress: ip,
     });
     return session.id;

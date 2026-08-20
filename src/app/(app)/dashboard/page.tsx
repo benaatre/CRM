@@ -13,6 +13,8 @@ import type { RiverLead } from "@/components/dashboard/interested-river";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
 import { OwnerDashboard } from "@/components/owner/owner-dashboard";
+import { FinanceDashboard, HrExtras } from "@/components/dashboard/finance-dashboard";
+import { getFinanceDashboard, getHrExtras } from "@/lib/data/finance-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +31,13 @@ export default async function DashboardPage({
    * المالك/المدير: الأرقام النطاقية والدلتا وبقية الأقسام داخل OwnerDashboard.
    * مسار الموظف أدناه باقٍ حرفيًا بلا لمسة.
    */
-  if (user.role !== Role.EMPLOYEE) {
+  if (user.role === Role.OWNER || user.role === Role.ADMIN) {
     return <OwnerDashboard userRole={user.role} sp={{ dp: sp.dp, df: sp.df, dt: sp.dt }} />;
+  }
+
+  // المدير المالي — داشبورد مالية مخصصة (قرار 2026-08-20): لا محتوى عملاء يصل له.
+  if (user.role === Role.FINANCE) {
+    return <FinanceDashboard data={await getFinanceDashboard()} />;
   }
 
   const period = normalizePeriod(sp.period);
@@ -44,7 +51,7 @@ export default async function DashboardPage({
    * داشبورد الموظف ٢٠٢٦ — شاشة مستقلة بلغة دليل التصميم الجديد. مسار المالك/المدير
    * (DashboardView وبطاقة أعلى الثلاثة والبانر القديم) يبقى كما هو حرفيًا بلا لمسة.
    */
-  if (user.role === Role.EMPLOYEE) {
+  if (user.role === Role.EMPLOYEE || user.role === Role.HR) {
     const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
     const bucket = normalizeBucket(sp.late);
     const [overdue, recent, interestedRaw] = await Promise.all([
@@ -100,6 +107,8 @@ export default async function DashboardPage({
           interested={interested}
           period={sp.period}
         />
+        {/* HR: قسم الموارد البشرية — دوام الفريق اليوم (قرائي) + طلبات الإجازة بانتظاره. */}
+        {user.role === Role.HR && <HrExtras data={await getHrExtras()} />}
       </div>
     );
   }

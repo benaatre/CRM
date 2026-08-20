@@ -20,7 +20,7 @@ import type {
   FollowUpType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireUser, isManager, SELLER_ROLES } from "@/lib/auth-guards";
 import { daysWaiting } from "@/lib/assignment";
 import { hiddenHistoryIds, isFreshDistributed, latestRevealAction, REVEAL_HISTORY_ACTION } from "@/lib/visibility";
 import { MANUAL_TRANSFER_FULL, isInitialReason } from "@/lib/transfer-mode";
@@ -830,7 +830,7 @@ export async function getWaitingCount(): Promise<number> {
 /** قائمة الموظفين (لفلتر المدير وإعادة الإسناد). */
 export async function getEmployees() {
   return prisma.user.findMany({
-    where: { role: "EMPLOYEE", active: true },
+    where: { role: { in: SELLER_ROLES }, active: true },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { DateTime12 } from "@/components/ui/time12";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage } from "@prisma/client";
 import { stageLabels } from "@/lib/labels";
 import { formButtonClass } from "@/lib/stage-colors";
@@ -225,14 +226,14 @@ export function FollowUpsForm({
             {fcSel === "interested" && (
               <label className="block space-y-1">
                 <span className="text-xs text-muted-foreground">متى تحب تتابع معه؟ (اختياري)</span>
-                <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                <DateTime12 value={date} onChange={setDate} />
               </label>
             )}
             {/* «اتصال في وقت آخر»: تاريخ اختياري للمعاودة */}
             {fcSel === "calllater" && (
               <label className="block space-y-1">
                 <span className="text-xs text-muted-foreground">متى قال أتصل فيه؟ (اختياري)</span>
-                <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                <DateTime12 value={date} onChange={setDate} />
               </label>
             )}
             {/* «غير مهتم» في أول تواصل: نفس شرائح الأسباب المنظّمة + «نحاول لاحقًا» */}
@@ -329,13 +330,13 @@ export function FollowUpsForm({
               {!step && (
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">متى تحب تتابع معه؟ (اختياري)</span>
-                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                  <DateTime12 value={date} onChange={setDate} />
                 </label>
               )}
               {(step === "visit" || step === "call") && (
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">{step === "visit" ? "تاريخ ووقت الزيارة" : "تاريخ ووقت الاتصال"}</span>
-                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                  <DateTime12 value={date} onChange={setDate} />
                 </label>
               )}
               {step === "notsuitable" && (
@@ -362,7 +363,7 @@ export function FollowUpsForm({
               {noShowChoice === "resched" && (
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">موعد الزيارة الجديد (تاريخ ووقت)</span>
-                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                  <DateTime12 value={date} onChange={setDate} />
                 </label>
               )}
               {noShowChoice === "declined" && (
@@ -383,7 +384,7 @@ export function FollowUpsForm({
                       {niRetry === "yes" && (
                         <label className="block space-y-1">
                           <span className="text-xs text-muted-foreground">تاريخ المحاولة القادمة</span>
-                          <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                          <DateTime12 value={date} onChange={setDate} />
                         </label>
                       )}
                     </>
@@ -397,7 +398,7 @@ export function FollowUpsForm({
           {sel === "appointment" && (
             <label className="block space-y-1">
               <span className="text-xs text-muted-foreground">تاريخ ووقت المتابعة القادمة</span>
-              <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+              <DateTime12 value={date} onChange={setDate} />
             </label>
           )}
 
@@ -433,7 +434,7 @@ export function FollowUpsForm({
               {visitNeedsDate && (
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">{stage === "VISIT_SCHEDULED" && visitAction === "reschedule" ? "موعد الزيارة الجديد (تاريخ ووقت)" : "تاريخ ووقت الزيارة"}</span>
-                  <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+                  <DateTime12 value={date} onChange={setDate} />
                 </label>
               )}
             </div>
@@ -443,7 +444,7 @@ export function FollowUpsForm({
           {sel === "onhold" && (
             <label className="block space-y-1">
               <span className="text-xs text-muted-foreground">متى ترجع له؟ (اختياري — يضبط تذكير المتابعة)</span>
-              <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+              <DateTime12 value={date} onChange={setDate} />
             </label>
           )}
 

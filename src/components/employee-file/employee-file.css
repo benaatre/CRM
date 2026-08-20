@@ -261,6 +261,10 @@
 @keyframes ef-tup{from{opacity:0;transform:translateX(50%) translateY(14px)}}
 .ef-toast.err{background:#2a1214;border-color:rgba(229,72,77,.4);color:#ff8b8e}
 
+/* شريط التنقّل بين الملفات (الجزء ٣) */
+.ef .filenav{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px}
+.ef .filenav .msel .cur{font-size:14px}
+
 /* ═ تدرّج الإعدادات (UX 2026-08-19) — وسم المصدر + المقطع المتقدم ═ */
 .ef .srcbadge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:700;margin-inline-start:6px}
 .ef .srcbadge.g{background:rgba(255,255,255,.05);color:var(--muted)}

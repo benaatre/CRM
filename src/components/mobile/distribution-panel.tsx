@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { DateTime12 } from "@/components/ui/time12";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import {
@@ -567,12 +568,7 @@ export function MobileDistributionPanel({
             {/* الحاجز التاريخي: العدّاد لا يبدأ قبل هذي اللحظة — updateSweepCutoff (مالك). */}
             <Row label="الحاجز التاريخي للسحب (لا يُحتسب ما قبله)">
               <div className="flex" style={{ gap: 8 }}>
-                <input
-                  type="datetime-local"
-                  style={{ ...fieldStyle, flex: 1 }}
-                  value={cutoff}
-                  onChange={(e) => setCutoff(e.target.value)}
-                />
+                <DateTime12 value={cutoff} onChange={setCutoff} className="flex-1" />
                 <button
                   type="button"
                   disabled={pending}

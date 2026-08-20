@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
-import { requireManager } from "@/lib/auth-guards";
+import { requireManager, SELLER_ROLES } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { countToday } from "@/lib/dist-limits";
 import { assignLeadsToEmployee, FRESH_RESET_DATA } from "@/lib/assignment";
@@ -84,7 +84,11 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
     const email = String(formData.get("email") ?? "").trim().toLowerCase() || null;
     // الأدوار المسموح إسنادها من الفورم: موظف/أدمن فقط — OWNER لا يُمنح من الواجهة.
     const roleRaw = String(formData.get("role") ?? "EMPLOYEE");
-    if (!["EMPLOYEE", "ADMIN"].includes(roleRaw)) return { ok: false, error: "دور غير مسموح" };
+    if (!["EMPLOYEE", "ADMIN", "HR", "FINANCE"].includes(roleRaw)) return { ok: false, error: "دور غير مسموح" };
+    // تعيين الدورين الجديدين (موارد بشرية/مدير مالي) للمالك حصريًا (قرار 2026-08-20).
+    if (["HR", "FINANCE"].includes(roleRaw) && actor.role !== "OWNER") {
+      return { ok: false, error: "تعيين الموارد البشرية والمدير المالي للمالك فقط" };
+    }
     // حساب المالك لا يعدّله إلا مالك (الاسم/الإيميل/الـPIN/الدور/التعطيل).
     const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     if (!target) return { ok: false, error: "الموظف غير موجود" };
@@ -186,7 +190,7 @@ async function loadEmployees(): Promise<LoadedEmployee[]> {
   const now = new Date();
   const emps = await prisma.user.findMany({
     where: {
-      role: "EMPLOYEE", active: true,
+      role: { in: SELLER_ROLES }, active: true,
       // استثناء الموقوفين عن الاستقبال (إلا من انتهت مدة إيقافه) — #42.
       OR: [
         { availabilityPaused: false },

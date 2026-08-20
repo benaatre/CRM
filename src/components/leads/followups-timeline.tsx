@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { DateTime12 } from "@/components/ui/time12";
 import { Pencil } from "lucide-react";
 import type { FollowUpResult } from "@prisma/client";
 import { followUpSectionLabels, followUpSectionColor, followUpResultLabels, stageLabels } from "@/lib/labels";
@@ -215,7 +216,7 @@ function EditFollowUpDialog({ item, leadId, onClose, onSaved }: {
 
           <label className="block space-y-1">
             <span className="text-xs text-muted-foreground">موعد المتابعة القادم</span>
-            <input type="datetime-local" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+            <DateTime12 value={nextDate} onChange={setNextDate} />
           </label>
 
           {err && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{err}</p>}

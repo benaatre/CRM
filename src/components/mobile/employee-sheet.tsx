@@ -117,6 +117,8 @@ export function MobileEmployeeSheet({
             <select name="role" defaultValue={detail.role} style={fieldStyle}>
               <option value="EMPLOYEE">موظف مبيعات</option>
               <option value="ADMIN">مدير</option>
+            <option value="HR">موارد بشرية</option>
+            <option value="FINANCE">مدير مالي</option>
               <option value="OWNER">مالك</option>
             </select>
           </Field>

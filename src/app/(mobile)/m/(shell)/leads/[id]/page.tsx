@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadDetail, getLeadTransferHistory } from "@/lib/data/leads";
 import { getSettings } from "@/lib/data/settings";
 import { prisma } from "@/lib/prisma";
@@ -22,7 +22,7 @@ export default async function MobileLeadProfile({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ log?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireClientAccess(true);
   const [{ id }, sp] = await Promise.all([params, searchParams]);
 
   const lead = await getLeadDetail(id);
@@ -64,7 +64,7 @@ export default async function MobileLeadProfile({
     const [history, employees] = await Promise.all([
       getLeadTransferHistory(id),
       prisma.user.findMany({
-        where: { role: "EMPLOYEE", active: true },
+        where: { role: { in: ["EMPLOYEE", "HR"] }, active: true },
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       }),

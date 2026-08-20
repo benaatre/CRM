@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function LeavesPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
   const user = await requireUser();
 
-  if (user.role === "OWNER") {
+  if (user.role === "OWNER" || user.role === "HR" || user.role === "FINANCE") {
     const requests = await listLeaves();
     const userIds = [...new Set(requests.map((r) => r.userId))];
     const balEntries = await Promise.all(userIds.map(async (id) => [id, await getLeaveBalance(id)] as const));

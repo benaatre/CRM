@@ -17,7 +17,7 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireUser();
-  const canManage = isManager(user.role);
+  const canManage = (isManager(user.role) || user.role === "FINANCE");
   const { id } = await params;
   const p = await getProject(id);
   if (!p) notFound();

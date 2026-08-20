@@ -27,9 +27,12 @@ export default async function MobileShellLayout({ children }: { children: React.
    * معتمدة: الفائت فقط، لا كل اليوم). الإدارة: «غير موزّعين» (getLeadCounts) كما كان.
    */
   const manager = isManager(user.role);
+  const finance = user.role === "FINANCE"; // بلا عملاء — لا شارة مواعيد ولا جلب leads
   let badgeCount = 0;
   if (manager) {
     badgeCount = (await getLeadCounts()).unassigned;
+  } else if (finance) {
+    badgeCount = 0;
   } else {
     const agenda = buildAgenda(await getLeads({ tab: "working", sort: "activity" }));
     const nowMs = Date.now();
@@ -66,7 +69,13 @@ export default async function MobileShellLayout({ children }: { children: React.
         {children}
       </div>
       {/* الإدارة على شريط الزئبق القائم بلا مساس؛ الموظف على كبسولة «الديوان» بزر الدوام. */}
-      {manager ? <MercuryNav manager badgeCount={badgeCount} /> : <DiwanNav badgeCount={badgeCount} />}
+      {manager ? (
+        <MercuryNav manager badgeCount={badgeCount} />
+      ) : finance ? (
+        <MercuryNav manager={false} finance badgeCount={0} />
+      ) : (
+        <DiwanNav badgeCount={badgeCount} />
+      )}
     </AttendanceShellProvider>
   );
 }

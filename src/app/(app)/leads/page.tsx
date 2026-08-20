@@ -1,5 +1,5 @@
 import { Zain } from "next/font/google";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadCounts, getEmployees, getNotContactedCount, getWaitingCount, getBankCheckCount, getVisitStagesCount } from "@/lib/data/leads";
 import { getEmployeeLoads } from "@/lib/actions/team";
 import { parseLeadFilters, buildLeadsQuery } from "@/lib/lead-filters";
@@ -15,7 +15,7 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<{ tab?: string; q?: string; stages?: string; emps?: string; sort?: string; wait?: string; nr?: string; tr?: string; bank?: string; ar?: string; range?: string; from?: string; to?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireClientAccess();
   const manager = isManager(user.role);
 
   const sp = await searchParams;

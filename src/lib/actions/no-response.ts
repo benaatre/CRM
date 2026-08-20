@@ -6,7 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { ActivityType, LeadStage, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
-import { requireUser } from "@/lib/auth-guards";
+import { requireUser, SELLER_ROLES } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notify";
 import { emitNotification, emitTransferredLeadsBatch, type LeadAssignedBucket } from "@/lib/notifications/emit";
@@ -117,7 +117,7 @@ async function eligibleQueueLeads(ids: string[], allowExhausted = false) {
 async function activeEmployees(now: Date) {
   const emps = await prisma.user.findMany({
     where: {
-      role: Role.EMPLOYEE, active: true,
+      role: { in: SELLER_ROLES }, active: true,
       OR: [{ availabilityPaused: false }, { availabilityPaused: true, pauseUntil: { not: null, lte: now } }],
     },
     select: { id: true, name: true, maxClients: true, _count: { select: { assignedLeads: { where: { isArchived: false } } } } },
@@ -372,7 +372,7 @@ export async function manualPullBatch(leadIds: string[], ctx?: { note?: string }
       where: { id: { in: ids }, assignedToId: { not: null }, isArchived: false },
       select: { id: true, name: true, assignedToId: true, assignedTo: { select: { role: true } } },
     });
-    const targets = leads.filter((l) => l.assignedTo?.role === "EMPLOYEE");
+    const targets = leads.filter((l) => l.assignedTo != null && SELLER_ROLES.includes(l.assignedTo.role));
     if (targets.length === 0) return { ok: false, error: "ما فيه عملاء صالحون للسحب (غير مُسندين لموظف)" };
 
     const batchId = randomUUID();
@@ -388,7 +388,7 @@ export async function manualPullBatch(leadIds: string[], ctx?: { note?: string }
       const rows = await prisma.$transaction(async (tx) => {
         // حارس ذري: نقرأ الحالة الحالية داخل المعاملة (لا يزال مُسندًا لموظف فعلي) قبل التحديث.
         const confirmed = await tx.lead.findMany({
-          where: { id: { in: chunkIds }, assignedToId: { not: null }, isArchived: false, assignedTo: { role: Role.EMPLOYEE } },
+          where: { id: { in: chunkIds }, assignedToId: { not: null }, isArchived: false, assignedTo: { role: { in: SELLER_ROLES } } },
           select: { id: true, name: true, assignedToId: true },
         });
         if (confirmed.length === 0) return [] as { id: string; name: string; from: string }[];
@@ -526,7 +526,7 @@ export async function pullGroup(employeeId: string, category: PullGroupCategory)
     const leads = await prisma.lead.findMany({
       where: {
         assignedToId: employeeId, isArchived: false, stage: { in: [...NO_RESPONSE_STAGES] },
-        reassignCount: { lt: MAX_REASSIGNS }, manualAssignedAt: null, assignedTo: { role: "EMPLOYEE" },
+        reassignCount: { lt: MAX_REASSIGNS }, manualAssignedAt: null, assignedTo: { role: { in: SELLER_ROLES } },
       },
       select: { id: true, assignedAt: true },
     });

@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import type { Prisma, LeadStage, Channel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -37,7 +38,7 @@ export type EmployeeLoad = {
 export async function getActiveEmployeeLoads(now: Date = new Date()): Promise<EmployeeLoad[]> {
   const emps = await prisma.user.findMany({
     where: {
-      role: "EMPLOYEE", active: true,
+      role: { in: SELLER_ROLES }, active: true,
       OR: [{ availabilityPaused: false }, { availabilityPaused: true, pauseUntil: { not: null, lte: now } }],
     },
     select: { id: true, name: true, maxClients: true, _count: { select: { assignedLeads: { where: { isArchived: false } } } } },
@@ -129,7 +130,7 @@ export async function getPendingPullByEmployee(now: Date = new Date()): Promise<
       reassignCount: { lt: MAX_REASSIGNS },
       // م-٣: active:true — يطابق المحرّك (runNoResponsePullback)؛ عملاء الموظف المعطَّل
       // كانوا يُعدّون «يُسحب الآن» في اللوحة والمحرك لا يسحبهم — رقم لا ينزل أبدًا.
-      assignedTo: { role: "EMPLOYEE", active: true },
+      assignedTo: { role: { in: SELLER_ROLES }, active: true },
       manualAssignedAt: null,
     },
     select: { id: true, assignedToId: true, assignedAt: true, assignedTo: { select: { name: true } } },
@@ -213,7 +214,7 @@ export async function getPullbackPreview(filters: NoResponseFilters = {}, now: D
       stage: { in: [...NO_RESPONSE_STAGES] },
       reassignCount: { lt: MAX_REASSIGNS },
       // م-٣: active:true — يطابق المحرّك (انظر getPendingPullByEmployee).
-      assignedTo: { role: "EMPLOYEE", active: true },
+      assignedTo: { role: { in: SELLER_ROLES }, active: true },
       manualAssignedAt: null,
       ...(q ? { OR: [{ name: { contains: q } }, { phone: { contains: q } }] } : {}),
     },
@@ -488,7 +489,7 @@ export async function getNeedsReview(now: Date = new Date()): Promise<NeedsRevie
     stage: { in: [...NO_RESPONSE_STAGES] },
     manualAssignedAt: null,
     reassignCount: { lt: MAX_REASSIGNS },
-    assignedTo: { role: "EMPLOYEE" as const, active: true },
+    assignedTo: { role: { in: SELLER_ROLES }, active: true },
   };
   const [noAssign, never] = await Promise.all([
     prisma.lead.findMany({
@@ -537,7 +538,7 @@ export async function getNeverContactedLeads(now: Date = new Date()): Promise<Ne
       stage: { in: [...NO_RESPONSE_STAGES] },
       assignedToId: { not: null },
       assignedAt: { not: null, lt: cutoff },
-      assignedTo: { role: "EMPLOYEE", active: true },
+      assignedTo: { role: { in: SELLER_ROLES }, active: true },
     },
     select: {
       id: true, name: true, phone: true, assignedToId: true, assignedAt: true,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DateTime12 } from "@/components/ui/time12";
 import { toArabicDigits } from "@/lib/format";
 import type { EFBundle } from "./types";
 import type { ToastFn, EFCfgState } from "./employee-file-view";
@@ -20,6 +21,8 @@ const MODE_LABEL: Record<EFCfgState["mode"], string> = {
 
 export function EmployeeFileRail(props: {
   bundle: EFBundle;
+  /** HR/FINANCE: قرائي — أدوات المالك والإعدادات مخفية، وقرار الإجازة يبقى حيًا لهم. */
+  readOnly?: boolean;
   showToast: ToastFn;
   onOpenCheckout: () => void;
   onExport: () => void;
@@ -31,7 +34,7 @@ export function EmployeeFileRail(props: {
   onEditSettings: () => void;
   refresh: () => void;
 }) {
-  const { bundle, showToast, refresh, cfg } = props;
+  const { bundle, showToast, refresh, cfg, readOnly = false } = props;
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveDone, setLeaveDone] = useState<string | null>(null);
   const [deduct, setDeduct] = useState(true);
@@ -160,14 +163,17 @@ export function EmployeeFileRail(props: {
           </div>
         </div>
         <div style={{ display: "flex", gap: 7, marginTop: 13 }}>
-          <button type="button" className="btn gold mini" style={{ flex: 1, justifyContent: "center" }} onClick={() => void triggerCall()} disabled={callBusy}>
-            {callBusy ? "جاري…" : "نداء تحقق"}
-          </button>
-          <button type="button" className="btn ghost mini" onClick={props.onExport}>تصدير</button>
+          {!readOnly && (
+            <button type="button" className="btn gold mini" style={{ flex: 1, justifyContent: "center" }} onClick={() => void triggerCall()} disabled={callBusy}>
+              {callBusy ? "جاري…" : "نداء تحقق"}
+            </button>
+          )}
+          <button type="button" className="btn ghost mini" style={readOnly ? { flex: 1, justifyContent: "center" } : undefined} onClick={props.onExport}>تصدير</button>
         </div>
       </div>
 
-      {/* أدوات المالك */}
+      {/* أدوات المالك — OWNER فقط (النسخة القرائية بلا أي أداة) */}
+      {!readOnly && (
       <div className="card" style={{ background: "linear-gradient(155deg,#1a1408,#111214)", borderColor: "rgba(203,164,94,.25)" }}>
         <h4 style={{ color: "var(--gold)" }}>
           أدوات المالك <span className="hc">برسالة أو بصمت — أنت المتحكم</span>
@@ -225,6 +231,7 @@ export function EmployeeFileRail(props: {
         )}
         {repairOpen && <RepairPanel bundle={bundle} showToast={showToast} refresh={refresh} />}
       </div>
+      )}
 
       {/* بند الإجازة */}
       {leaveDone ? (
@@ -330,9 +337,11 @@ export function EmployeeFileRail(props: {
             <span className="sv gold">{cfg.exemptUntilKey ? cfg.exemptUntilKey.split("-").reverse().map((x) => toArabicDigits(Number(x))).join("/") : "بلا نهاية"}{cfg.exemptReason ? ` · ${cfg.exemptReason}` : ""}</span>
           </div>
         )}
-        <button type="button" className="btn ghost mini" style={{ width: "100%", justifyContent: "center", marginTop: 11 }} onClick={props.onEditSettings}>
-          تعديل الإعدادات
-        </button>
+        {!readOnly && (
+          <button type="button" className="btn ghost mini" style={{ width: "100%", justifyContent: "center", marginTop: 11 }} onClick={props.onEditSettings}>
+            تعديل الإعدادات
+          </button>
+        )}
       </div>
 
       {/* الدوائر المسموحة */}
@@ -364,7 +373,6 @@ function ManualCheckinModal({ bundle, onClose, showToast, refresh }: { bundle: E
   const [busy, setBusy] = useState(false);
 
   const confirm = async () => {
-    if (!reason.trim()) { showToast("اكتب سبب التسجيل", true); return; }
     if (timeMode === "custom" && !customLocal) { showToast("حدّد الوقت", true); return; }
     setBusy(true);
     try {
@@ -402,15 +410,15 @@ function ManualCheckinModal({ bundle, onClose, showToast, refresh }: { bundle: E
             <button type="button" className={`tchip ${timeMode === "custom" ? "on" : ""}`} onClick={() => setTimeMode("custom")}>وقت مخصص…</button>
           </div>
           {timeMode === "custom" && (
-            <input type="datetime-local" value={customLocal} onChange={(e) => setCustomLocal(e.target.value)} style={{ marginTop: 8 }} dir="ltr" />
+            <DateTime12 value={customLocal} onChange={setCustomLocal} />
           )}
         </div>
         <div className="mrow">
-          <label>السبب — إلزامي، يظهر بالتدقيق</label>
+          <label>السبب — اختياري، يظهر بالتدقيق</label>
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="مثال: جواله خرب وحضر بالمقر"
+            placeholder="اختياري — يظهر بالتدقيق"
             style={{ width: "100%", borderRadius: 10, border: "1px solid #1c1e22", background: "#0c0d0f", color: "#EDEDEF", padding: "9px 12px", fontSize: 12, fontFamily: "inherit" }}
           />
         </div>
@@ -488,8 +496,8 @@ function RepairPanel({ bundle, showToast, refresh }: { bundle: EFBundle; showToa
       </select>
       {sel && (
         <>
-          <label style={{ fontSize: 9.5, color: "var(--muted)" }}>البداية<input type="datetime-local" value={startLocal} onChange={(e) => setStartLocal(e.target.value)} style={{ ...inputStyle, marginTop: 4 }} dir="ltr" /></label>
-          <label style={{ fontSize: 9.5, color: "var(--muted)" }}>النهاية<input type="datetime-local" value={endLocal} onChange={(e) => setEndLocal(e.target.value)} style={{ ...inputStyle, marginTop: 4 }} dir="ltr" /></label>
+          <label style={{ fontSize: 9.5, color: "var(--muted)" }}>البداية<DateTime12 value={startLocal} onChange={setStartLocal} /></label>
+          <label style={{ fontSize: 9.5, color: "var(--muted)" }}>النهاية<DateTime12 value={endLocal} onChange={setEndLocal} /></label>
           <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="سبب التصحيح (إلزامي — يظهر بالتدقيق)" style={inputStyle} />
           <button type="button" className="btn gold mini" style={{ justifyContent: "center" }} disabled={busy || !reason.trim()} onClick={() => void submit()}>
             {busy ? "جاري…" : "تصحيح الجلسة"}

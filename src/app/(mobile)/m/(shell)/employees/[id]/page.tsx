@@ -18,12 +18,12 @@ export default async function MobileEmployeeFilePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<BundleQuery>;
 }) {
-  await requireRole(Role.OWNER);
+  const viewer = await requireRole(Role.OWNER, Role.HR, Role.FINANCE);
   const { id } = await params;
   const sp = await searchParams;
 
   const bundle = await buildEmployeeFileBundle(id, sp);
   if (!bundle) notFound();
 
-  return <EmployeeFileView bundle={bundle} basePath={`/m/employees/${id}`} />;
+  return <EmployeeFileView bundle={bundle} viewerRole={viewer.role as "OWNER" | "HR" | "FINANCE"} basePath={`/m/employees/${id}`} />;
 }

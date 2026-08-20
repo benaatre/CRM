@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import type {
   Channel, LeadStage, PurchaseGoal, Prisma,
@@ -113,7 +114,7 @@ export async function getAnalytics(): Promise<AnalyticsData> {
         where: { OR: [{ isArchived: false }, { stage: { in: ["RESERVED", "CLOSED_WON"] } }] },
         _count: { _all: true },
       }),
-      prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true, targetDeals: true } }),
+      prisma.user.findMany({ where: { role: { in: SELLER_ROLES }, active: true }, select: { id: true, name: true, targetDeals: true } }),
       prisma.lead.groupBy({ by: ["assignedToId"], where: { stage: "CLOSED_WON" }, _count: { _all: true } }),
       prisma.booking.groupBy({ by: ["sellerId"], _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["purchaseMethod"], where: { purchaseMethod: { not: null } }, _count: { _all: true } }),
@@ -392,7 +393,7 @@ export async function getProjectsForFinance(): Promise<{ id: string; name: strin
 
 /** قائمة الموظفين المفعّلين لاختيارهم في تحليل الأداء. */
 export async function getEmployeesList(): Promise<{ id: string; name: string }[]> {
-  return prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  return prisma.user.findMany({ where: { role: { in: SELLER_ROLES }, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
 }
 
 /** تحليل مالي مفصّل لمشروع — وحدات (الطرح/الإنجاز) + حجوزات (مبيعات فعلية). */
@@ -545,7 +546,7 @@ export async function getEmployeeDeepAnalysis(userId: string, nowMs: number): Pr
       select: { stage: true, isArchived: true, purchaseGoal: true, purchaseMethod: true, createdAt: true, firstContactAt: true, nextFollowup: true, lastContact: true, name: true, phone: true },
     }),
     prisma.followUp.groupBy({ by: ["createdBy", "type"], _count: { _all: true } }),
-    prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true } }),
+    prisma.user.findMany({ where: { role: { in: SELLER_ROLES }, active: true }, select: { id: true } }),
     prisma.booking.findMany({ where: { sellerId: userId }, select: { stage: true } }),
   ]);
   const total = myLeads.length;

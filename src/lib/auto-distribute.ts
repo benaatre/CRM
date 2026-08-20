@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import { randomUUID } from "crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
@@ -868,7 +869,7 @@ export async function runNoResponsePullback(now: Date = new Date()): Promise<Pul
       assignedToId: { not: null },
       // §١د: وحّد شرط الموظف مع اللوحة (getPendingPullByEmployee) — موظف مبيعات فعّال غير معطّل.
       // يُضيّق نطاق السحب (يستثني المُسندين لمالك/مدير أو موظف معطّل) — لا يوسّعه.
-      assignedTo: { role: "EMPLOYEE" as const, active: true },
+      assignedTo: { role: { in: SELLER_ROLES }, active: true },
       isArchived: false,
       stage: { in: [...NO_RESPONSE_STAGES] },
       reassignCount: { lt: MAX_REASSIGNS },

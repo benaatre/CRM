@@ -28,6 +28,7 @@ export function Topbar({
   falLicense,
   isManager,
   isOwner = false,
+  userRole,
   employees,
   availability,
   dupCount = 0,
@@ -38,6 +39,7 @@ export function Topbar({
   logoUrl?: string | null;
   falLicense: string | null;
   isManager: boolean;
+  userRole?: string;
   isOwner?: boolean;
   employees: Employee[];
   availability: MyAvailability | null;
@@ -181,7 +183,7 @@ export function Topbar({
         >
           {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
         </button>
-        <MobileNav isManager={isManager} isOwner={isOwner} companyName={companyName} logoUrl={logoUrl} falLicense={falLicense} dupCount={dupCount} />
+        <MobileNav isManager={isManager} isOwner={isOwner} userRole={userRole} companyName={companyName} logoUrl={logoUrl} falLicense={falLicense} dupCount={dupCount} />
       </div>
 
       <NewLeadDialog

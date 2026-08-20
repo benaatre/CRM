@@ -23,7 +23,7 @@ export default async function MobileProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireUser();
-  const manager = isManager(user.role);
+  const manager = (isManager(user.role) || user.role === "FINANCE");
   const { id } = await params;
   const p = await getProject(id);
   if (!p) notFound();

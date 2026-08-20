@@ -10,6 +10,10 @@ export const runtime = "nodejs";
 function isManager(role: string) {
   return role === "OWNER" || role === "ADMIN";
 }
+// FINANCE بلا عملاء نهائيًا (قرار 2026-08-20) — يُصدّ قبل أي فحص ملكية.
+function isFinanceBlocked(role: string) {
+  return role === "FINANCE";
+}
 
 // POST /api/leads/[id]/whatsapp — يُسجّل ضغط زر «إرسال واتساب» كمتابعة WHATSAPP
 // ويوقف عدّاد إعادة التوجيه التلقائي.
@@ -19,6 +23,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  if (isFinanceBlocked(session.user.role)) return NextResponse.json({ ok: false, error: "المدير المالي بلا صلاحية عملاء" }, { status: 403 });
 
   const lead = await prisma.lead.findUnique({
     where: { id },

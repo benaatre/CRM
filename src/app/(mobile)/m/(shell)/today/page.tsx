@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth-guards";
+import { requireClientAccess, requireUser } from "@/lib/auth-guards";
 import { getLeads, type LeadRow } from "@/lib/data/leads";
 import { getMyRecentFollowups } from "@/lib/data/my-log";
 import { getNotifications } from "@/lib/actions/notifications";
@@ -41,7 +41,7 @@ export default async function MobileTodayPage({
 }: {
   searchParams: Promise<{ t?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireClientAccess(true);
   const sp = await searchParams;
 
   const [leads, log, notif, projects] = await Promise.all([

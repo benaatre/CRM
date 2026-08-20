@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import type { Prisma } from "@prisma/client";
 import { FollowUpType } from "@prisma/client";
@@ -193,7 +194,7 @@ export async function getAuditEmployeeStats(from?: Date, to?: Date): Promise<Aud
   const created = range ? { createdAt: range } : {};
 
   const [employees, fuByType, bookings, received, pulled] = await Promise.all([
-    prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true } }),
+    prisma.user.findMany({ where: { role: { in: SELLER_ROLES }, active: true }, select: { id: true, name: true } }),
     prisma.followUp.groupBy({ by: ["createdBy", "type"], where: { ...created }, _count: { _all: true } }),
     prisma.booking.groupBy({ by: ["sellerId"], where: { ...created }, _count: { _all: true } }),
     prisma.reassignment.groupBy({ by: ["toUserId"], where: { ...created, toUserId: { not: null } }, _count: { _all: true } }),

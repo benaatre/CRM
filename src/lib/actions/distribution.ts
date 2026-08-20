@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
-import { requireManager, requireRole } from "@/lib/auth-guards";
+import { requireManager, requireRole, SELLER_ROLES } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { runDistributionPasses, executeSweepPull } from "@/lib/auto-distribute";
 
@@ -61,7 +61,7 @@ export async function getDistributionConfig(): Promise<{ config: DistConfig; emp
     },
   });
   const emps = await prisma.user.findMany({
-    where: { role: "EMPLOYEE" },
+    where: { role: { in: SELLER_ROLES } },
     select: { id: true, name: true, active: true, lastSeenAt: true, availabilityPaused: true, pauseReason: true, pauseUntil: true, dailyAssignCap: true },
     orderBy: { name: "asc" },
   });
@@ -144,7 +144,7 @@ export async function updateDistributionConfig(input: DistConfig): Promise<Actio
     const order = [...new Set((input.order ?? []).filter(Boolean))];
     // تحقّق أن المعرّفات تخص موظفين فعليين.
     if (order.length > 0) {
-      const valid = await prisma.user.findMany({ where: { id: { in: order }, role: "EMPLOYEE" }, select: { id: true } });
+      const valid = await prisma.user.findMany({ where: { id: { in: order }, role: { in: SELLER_ROLES } }, select: { id: true } });
       const validSet = new Set(valid.map((v) => v.id));
       if (order.some((id) => !validSet.has(id))) return { ok: false, error: "في موظف غير صالح بالقائمة" };
     }

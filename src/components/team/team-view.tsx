@@ -23,6 +23,8 @@ const roleBadge: Record<Role, string> = {
   OWNER: "bg-gold/15 text-gold",
   ADMIN: "bg-info/15 text-info",
   EMPLOYEE: "bg-secondary text-muted-foreground",
+  HR: "bg-[var(--purple,#a98edb)]/15 text-[var(--purple,#a98edb)]",
+  FINANCE: "bg-info/15 text-info",
 };
 
 export function TeamView({ data, employees, isOwner = false }: { data: TeamData; employees: Employee[]; isOwner?: boolean }) {

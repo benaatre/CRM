@@ -2,7 +2,7 @@ import "server-only";
 
 import { Channel, FollowUpType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireUser, isManager, SELLER_ROLES } from "@/lib/auth-guards";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { dayStartKSA, weekStartKSA, KSA_OFFSET_MS, DAY_MS, parseRiyadhLocal } from "@/lib/ksa-time";
 import { formatTime, formatDate, lastSeenAgo, ONLINE_THRESHOLD_MS } from "@/lib/format";
@@ -177,7 +177,7 @@ export type OwnerFollowupRow = {
  */
 export async function getOwnerFollowups(p: OwnerPeriod, fromKey?: string, toKey?: string) {
   const user = await requireUser();
-  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+  if (!isManager(user.role) && user.role !== "FINANCE") throw new Error("لوحة المالك للمالك/المدير والمدير المالي فقط");
 
   const range = resolveOwnerRange(p, fromKey, toKey);
   const { gte, lt } = range;
@@ -249,7 +249,7 @@ export type OwnerChannelRow = { channel: Channel; label: string; count: number }
 /** أداء المنصّات — عملاء الفترة مجمّعين بالقناة (نفس groupBy التحليلات لكن بفترة). */
 export async function getOwnerChannels(p: OwnerPeriod, fromKey?: string, toKey?: string) {
   const user = await requireUser();
-  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+  if (!isManager(user.role) && user.role !== "FINANCE") throw new Error("لوحة المالك للمالك/المدير والمدير المالي فقط");
 
   const range = resolveOwnerRange(p, fromKey, toKey);
   const grouped = await prisma.lead.groupBy({
@@ -275,7 +275,7 @@ export type OwnerTrendPoint = {
 /** اتجاه الأسبوع — سلسلة يومية (٧ أيام رياض تنتهي اليوم): عملاء جدد + حجوزات. */
 export async function getOwnerWeekTrend(): Promise<OwnerTrendPoint[]> {
   const user = await requireUser();
-  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+  if (!isManager(user.role) && user.role !== "FINANCE") throw new Error("لوحة المالك للمالك/المدير والمدير المالي فقط");
 
   const today = dayStartKSA();
   const start = new Date(today.getTime() - 6 * DAY_MS);
@@ -307,7 +307,7 @@ export type OwnerTeamFuRow = { id: string; name: string; total: number; done: nu
  */
 export async function getOwnerTeamFollowups(p: OwnerPeriod, fromKey?: string, toKey?: string) {
   const user = await requireUser();
-  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+  if (!isManager(user.role) && user.role !== "FINANCE") throw new Error("لوحة المالك للمالك/المدير والمدير المالي فقط");
 
   const range = resolveOwnerRange(p, fromKey, toKey);
   const { gte, lt } = range;
@@ -316,7 +316,7 @@ export async function getOwnerTeamFollowups(p: OwnerPeriod, fromKey?: string, to
       nextFollowup: { gte, lt },
       isArchived: false,
       stage: { notIn: ["CLOSED_WON", "CLOSED_LOST"] },
-      assignedTo: { role: "EMPLOYEE", active: true },
+      assignedTo: { role: { in: SELLER_ROLES }, active: true },
     },
     select: { id: true, assignedToId: true, nextFollowup: true, assignedTo: { select: { name: true } } },
   });
@@ -363,10 +363,10 @@ export type OwnerActivityRow = {
  */
 export async function getOwnerActivity(): Promise<OwnerActivityRow[]> {
   const user = await requireUser();
-  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+  if (!isManager(user.role) && user.role !== "FINANCE") throw new Error("لوحة المالك للمالك/المدير والمدير المالي فقط");
 
   const users = await prisma.user.findMany({
-    where: { role: { in: ["EMPLOYEE", "ADMIN"] }, active: true },
+    where: { role: { in: [...SELLER_ROLES, "ADMIN"] }, active: true },
     select: { id: true, name: true, lastSeenAt: true },
   });
   const now = Date.now();
@@ -444,7 +444,7 @@ function ownerAuditBadge(action: string, summary: string): { badge: string; kind
 /** آخر عمليات السجل بأسماء وجوالات محلولة — نفس مسار v3 (استدلال + حلّ) + الجوال. */
 export async function getOwnerAudit(limit = 30): Promise<OwnerAuditRow[]> {
   const user = await requireUser();
-  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+  if (!isManager(user.role) && user.role !== "FINANCE") throw new Error("لوحة المالك للمالك/المدير والمدير المالي فقط");
 
   const entries = await getAuditLog({ limit });
   const inferred = await inferFollowupLeads(entries);
@@ -480,7 +480,7 @@ export async function getOwnerAudit(limit = 30): Promise<OwnerAuditRow[]> {
 
 export async function getOwnerKpis(p: OwnerPeriod, fromKey?: string, toKey?: string): Promise<OwnerKpis> {
   const user = await requireUser();
-  if (!isManager(user.role)) throw new Error("لوحة المالك للمالك/المدير فقط");
+  if (!isManager(user.role) && user.role !== "FINANCE") throw new Error("لوحة المالك للمالك/المدير والمدير المالي فقط");
 
   const range = resolveOwnerRange(p, fromKey, toKey);
   const dupIds = await duplicateLeadIds();

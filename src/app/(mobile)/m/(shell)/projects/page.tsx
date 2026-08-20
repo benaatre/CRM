@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 /** المشاريع — غلاف getProjectsOverview() (الإجماليات المالية null للموظف — تُخفى). */
 export default async function MobileProjectsPage() {
   const user = await requireUser();
-  const manager = isManager(user.role);
+  const manager = (isManager(user.role) || user.role === "FINANCE");
   const data = await getProjectsOverview();
 
   return (

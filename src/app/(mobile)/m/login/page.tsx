@@ -22,7 +22,7 @@ export default async function MobileLoginPage() {
       }),
       getSettings(),
     ]);
-    employees = users.filter((u) => u.role === Role.EMPLOYEE);
+    employees = users.filter((u) => ([Role.EMPLOYEE, Role.HR, Role.FINANCE] as Role[]).includes(u.role));
     managers = users.filter((u) => u.role === Role.OWNER || u.role === Role.ADMIN);
     falLicense = settings.falLicense;
   } catch {

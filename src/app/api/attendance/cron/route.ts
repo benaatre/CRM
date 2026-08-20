@@ -25,6 +25,7 @@ import {
 import { dayDateOf, ensureAttendanceDay } from "@/lib/data/attendance";
 import { createConditionalCall } from "@/lib/attendance-conditional";
 import { notify, ownerIds } from "@/lib/notify";
+import { TRACKED_ROLES } from "@/lib/auth-guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -365,7 +366,7 @@ async function checkNoShows(now: Date, settings: Settings): Promise<number> {
 
   const [users, schedules, exceptions, sessions] = await Promise.all([
     prisma.user.findMany({
-      where: { role: { in: [Role.EMPLOYEE, Role.ADMIN] }, active: true },
+      where: { role: { in: TRACKED_ROLES }, active: true },
       select: { id: true, name: true },
     }),
     prisma.attendanceSchedule.findMany(),

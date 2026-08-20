@@ -23,11 +23,16 @@ export const runtime = "nodejs";
 function isManager(role: string) {
   return role === "OWNER" || role === "ADMIN";
 }
+// FINANCE بلا عملاء نهائيًا (قرار 2026-08-20) — يُصدّ قبل أي فحص ملكية.
+function isFinanceBlocked(role: string) {
+  return role === "FINANCE";
+}
 
 /** يتحقق من جلسة + صلاحية الوصول للعميل (الموظف لعملائه فقط). */
 async function authorize(leadId: string) {
   const session = await auth();
   if (!session?.user) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
+  if (isFinanceBlocked(session.user.role)) return { error: NextResponse.json({ error: "المدير المالي بلا صلاحية عملاء" }, { status: 403 }) };
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, assignedAt: true, stage: true, visitAt: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
   if (!lead) return { error: NextResponse.json({ error: "العميل غير موجود" }, { status: 404 }) };
   if (!isManager(session.user.role) && lead.assignedToId !== session.user.id) {

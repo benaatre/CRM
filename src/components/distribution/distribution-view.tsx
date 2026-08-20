@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { DateTime12 } from "@/components/ui/time12";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -271,11 +272,7 @@ function SweepCutoffPanel({ sweepCutoffAt }: { sweepCutoffAt: Date }) {
       <div className="flex flex-wrap items-end gap-3">
         <label className="block space-y-1.5">
           <span className="text-xs text-muted-foreground">التوزيع التلقائي يبدأ من تاريخ</span>
-          <input
-            type="datetime-local" dir="ltr" value={local}
-            onChange={(e) => setLocal(e.target.value)}
-            className="select-base"
-          />
+          <DateTime12 value={local} onChange={setLocal} />
         </label>
         <button
           onClick={() => run(() => updateSweepCutoff(parseRiyadhLocal(local).toISOString()))}

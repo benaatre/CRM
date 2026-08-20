@@ -24,7 +24,7 @@ const zain = Zain({ subsets: ["arabic"], weight: ["700", "800", "900"], variable
  * توكنات المرجع تُعرَّف مرة واحدة هنا كمتغيّرات CSS بنطاق اللوحة (--od-*)
  * فتقرأها كل الأقسام — لا نلمس globals.css ولا ثيم بقية التطبيق.
  */
-const OD_TOKENS = {
+export const OD_TOKENS = {
   "--od-raised": "#15171b",
   "--od-raised2": "#1a1d22",
   "--od-hair": "rgba(255,255,255,.06)",

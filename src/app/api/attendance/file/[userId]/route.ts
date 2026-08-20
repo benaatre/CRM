@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwnerApi } from "@/lib/attendance-guard";
+import { requireGovernanceApi } from "@/lib/attendance-guard";
 import { getEmployeeFile } from "@/lib/data/attendance";
 import { currentMonthKSA } from "@/lib/attendance-logic";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** ملف الموظف لشهر: الإحصاءات + سجل الأيام + الاستثناءات + نداءات التحقق. */
 export async function GET(req: Request, { params }: { params: Promise<{ userId: string }> }) {
-  const guard = await requireOwnerApi();
+  const guard = await requireGovernanceApi();
   if (!guard.ok) return guard.res;
 
   const { userId } = await params;

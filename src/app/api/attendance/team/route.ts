@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwnerApi } from "@/lib/attendance-guard";
+import { requireGovernanceApi } from "@/lib/attendance-guard";
 import { getTeamSummary } from "@/lib/data/attendance";
 import { currentMonthKSA } from "@/lib/attendance-logic";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** ملخص الفريق الشهري (صفوف EMPLOYEE+ADMIN): أيام/ساعات/تأخير/غياب + بداية دوامه. */
 export async function GET(req: Request) {
-  const guard = await requireOwnerApi();
+  const guard = await requireGovernanceApi();
   if (!guard.ok) return guard.res;
 
   const month = new URL(req.url).searchParams.get("month") ?? currentMonthKSA();

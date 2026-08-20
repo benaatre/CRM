@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DateTime12 } from "@/components/ui/time12";
 import type { EFBundle } from "./types";
 import type { ToastFn } from "./employee-file-view";
 
@@ -77,7 +78,7 @@ export function CheckoutModal({
             <button type="button" className={`tchip ${timeMode === "custom" ? "on" : ""}`} onClick={() => setTimeMode("custom")}>وقت مخصص…</button>
           </div>
           {timeMode === "custom" && (
-            <input type="datetime-local" value={customLocal} onChange={(e) => setCustomLocal(e.target.value)} style={{ marginTop: 8 }} dir="ltr" />
+            <DateTime12 value={customLocal} onChange={setCustomLocal} />
           )}
         </div>
         <div className="mrow">

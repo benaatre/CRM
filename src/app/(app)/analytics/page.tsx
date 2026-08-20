@@ -13,7 +13,7 @@ export default async function AnalyticsPage() {
   const user = await requireUser();
 
   // الموظف العادي: يرى تحليله العميق لنفسه فقط (نطاقه) — لا بيانات بقية الفريق.
-  if (!isManager(user.role)) {
+  if (!isManager(user.role) && user.role !== "FINANCE") {
     const me = await getEmployeeDeepAnalysis(user.id, Date.now());
     return (
       <div className="mx-auto max-w-4xl space-y-6">

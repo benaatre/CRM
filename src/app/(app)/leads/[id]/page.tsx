@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadDetail, getLeadTransferHistory } from "@/lib/data/leads";
 import { prisma } from "@/lib/prisma";
 import { LeadProfile } from "@/components/leads/lead-profile";
@@ -7,7 +7,7 @@ import { LeadProfile } from "@/components/leads/lead-profile";
 export const dynamic = "force-dynamic";
 
 export default async function LeadProfilePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ fu?: string }> }) {
-  const user = await requireUser();
+  const user = await requireClientAccess();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const detail = await getLeadDetail(id);
   if (!detail) notFound();

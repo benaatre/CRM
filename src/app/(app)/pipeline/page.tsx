@@ -1,4 +1,4 @@
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getEmployees } from "@/lib/data/leads";
 import { parseLeadFilters, buildLeadsQuery } from "@/lib/lead-filters";
 import { KanbanBoard } from "@/components/leads/kanban-board";
@@ -10,7 +10,7 @@ export default async function PipelinePage({
 }: {
   searchParams: Promise<{ q?: string; stages?: string; emps?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireClientAccess();
   const manager = isManager(user.role);
 
   const sp = await searchParams;

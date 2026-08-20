@@ -14,6 +14,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  // FINANCE بلا عملاء نهائيًا (قرار 2026-08-20).
+  if (session.user.role === "FINANCE") return NextResponse.json({ ok: false, error: "المدير المالي بلا صلاحية عملاء" }, { status: 403 });
 
   const url = new URL(req.url);
   const tabParam = url.searchParams.get("tab");
