@@ -1,7 +1,7 @@
 "use client";
 
 import "./employee-file.css";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toArabicDigits } from "@/lib/format";
 import type { EFBundle, EFDayCard } from "./types";
@@ -129,6 +129,33 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
     setCfg((c) => ({ ...c, [k]: v }));
   }, []);
 
+  // وسم مصدر القيمة (عام/مخصص) — التعديل يوسم «مخصص»، و«إرجاع للعام» يرسل null بالحفظ.
+  const [overrides, setOverrides] = useState({ ...bundle.config.custom });
+  const anyCustom = Object.values(overrides).some(Boolean);
+  const [advOpen, setAdvOpen] = useState(anyCustom || bundle.config.mode !== "STRICT");
+  type OvKey = keyof typeof overrides;
+  const markCustom = useCallback((k: OvKey) => setOverrides((o) => ({ ...o, [k]: true })), []);
+  const resetToGlobal = useCallback((k: OvKey) => {
+    setOverrides((o) => ({ ...o, [k]: false }));
+    setCfg((c) => ({
+      ...c,
+      ...(k === "verificationPerDay" ? { verificationPerDay: bundle.globalView.verificationPerDay } : {}),
+      ...(k === "weekendDays" ? { weekendDays: bundle.globalView.weekendDays.split(",").map((x) => x.trim()).filter(Boolean) } : {}),
+      ...(k === "outZoneCallEnabled" ? { outZoneCallEnabled: true } : {}),
+      ...(k === "dayLockEnabled" ? { dayLockEnabled: false } : {}),
+      ...(k === "notifyMissedCall" ? { notifyMissedCall: true } : {}),
+    }));
+  }, [bundle.globalView]);
+  const setMode = useCallback((m: EFCfgState["mode"]) => {
+    patchCfg("mode", m);
+    if (m !== "STRICT") setAdvOpen(true); // إعدادات المراقبة/الإعفاء تحت «متقدمة» — نفتحها له
+  }, [patchCfg]);
+
+  const panelRef = useRef<HTMLDivElement>(null);
+  const scrollToSettings = useCallback(() => {
+    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   const showToast: ToastFn = useCallback((msg, err = false) => {
     setToast({ msg, err });
     setTimeout(() => setToast(null), 4600);
@@ -160,11 +187,12 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
           enforcementMode: cfg.mode,
           exemptUntil: cfg.mode === "EXEMPT" ? cfg.exemptUntilKey : null,
           exemptReason: cfg.mode === "EXEMPT" ? cfg.exemptReason || null : null,
-          verificationPerDay: cfg.verificationPerDay,
-          weekendDays: cfg.weekendDays.join(","),
-          outZoneCallEnabled: cfg.outZoneCallEnabled,
-          dayLockEnabled: cfg.dayLockEnabled,
-          notifyMissedCall: cfg.notifyMissedCall,
+          // «إرجاع للعام» = null بالحفظ — الخادم يفسّرها «اتبع إعداد الفريق».
+          verificationPerDay: overrides.verificationPerDay ? cfg.verificationPerDay : null,
+          weekendDays: overrides.weekendDays ? cfg.weekendDays.join(",") : null,
+          outZoneCallEnabled: overrides.outZoneCallEnabled ? cfg.outZoneCallEnabled : null,
+          dayLockEnabled: overrides.dayLockEnabled ? cfg.dayLockEnabled : null,
+          notifyMissedCall: overrides.notifyMissedCall ? cfg.notifyMissedCall : null,
           watchFromMinutes: cfg.watchFromMinutes,
           watchToMinutes: cfg.watchToMinutes,
           watchAlertFirstSeen: cfg.watchAlertFirstSeen,
@@ -246,31 +274,31 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
               <DayCardView card={card} />
             </div>
 
-            {/* لوحة الإلزام */}
-            <div className="card">
+            {/* لوحة الإلزام — متدرّجة: الأوضاع ← الأساسيات ← «إعدادات متقدمة» (UX 2026-08-19) */}
+            <div className="card" ref={panelRef} id="ef-settings">
               <h4>
-                إلزام البصمة <span className="hc">اختر الوضع — وكل وضع بإعداداته تحته · الحفظ يُقيَّد بالتدقيق باسمك</span>
+                إلزام البصمة <span className="hc">اختر الوضع — الأساسيات تحته، والتفاصيل تحت «إعدادات متقدمة» · الحفظ يُقيَّد بالتدقيق باسمك</span>
               </h4>
               <div className="modes">
-                <div className={`mode ${cfg.mode === "STRICT" ? "on" : ""}`} onClick={() => patchCfg("mode", "STRICT")} role="button" tabIndex={0}>
+                <div className={`mode ${cfg.mode === "STRICT" ? "on" : ""}`} onClick={() => setMode("STRICT")} role="button" tabIndex={0}>
                   <span className="radio" />
                   <div className="mt">ملزم بالبصمة</div>
                   <div className="md">النظام الكامل: بصمة ونداءات وتأخر وغياب.</div>
                 </div>
-                <div className={`mode m-watch ${cfg.mode === "WATCH_ONLY" ? "on" : ""}`} onClick={() => patchCfg("mode", "WATCH_ONLY")} role="button" tabIndex={0}>
+                <div className={`mode m-watch ${cfg.mode === "WATCH_ONLY" ? "on" : ""}`} onClick={() => setMode("WATCH_ONLY")} role="button" tabIndex={0}>
                   <span className="radio" />
                   <div className="mt">مراقبة فقط</div>
                   <div className="md">بلا إلزام — يُسجَّل الاتصال والتواجد فقط.</div>
                 </div>
-                <div className={`mode m-off ${cfg.mode === "EXEMPT" ? "on" : ""}`} onClick={() => patchCfg("mode", "EXEMPT")} role="button" tabIndex={0}>
+                <div className={`mode m-off ${cfg.mode === "EXEMPT" ? "on" : ""}`} onClick={() => setMode("EXEMPT")} role="button" tabIndex={0}>
                   <span className="radio" />
                   <div className="mt">معفى مؤقتًا</div>
                   <div className="md">إيقاف كامل حتى تاريخ تحدده.</div>
                 </div>
               </div>
 
-              {/* ===== إعدادات «ملزم بالبصمة» ===== */}
-              <div className={`subpanel ${cfg.mode === "STRICT" ? "on" : ""}`}>
+              {/* ===== الأساسيات — ظاهرة دائمًا: النافذة + الهدف فقط ===== */}
+              <div className="subpanel on">
                 <div className="subgrid">
                   <div className="fld sub2">
                     <div className="fl">نافذة البداية المرنة</div>
@@ -288,7 +316,7 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
                       ))}
                     </div>
                   </div>
-                  <div className="fld">
+                  <div className="fld sub2">
                     <div className="fl">هدف اليوم — ساعات</div>
                     <div className="stepper">
                       <button type="button" onClick={() => setGoalHours((g) => Math.max(4, g - 1))}>−</button>
@@ -296,123 +324,165 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
                       <button type="button" onClick={() => setGoalHours((g) => Math.min(12, g + 1))}>+</button>
                     </div>
                   </div>
-                  <div className="fld">
-                    <div className="fl">نداءات عشوائية/يوم{bundle.config.custom.verificationPerDay ? " — مخصص" : ` — افتراضي العام ${toArabicDigits(gv.verificationPerDay)}`}</div>
-                    <div className="stepper">
-                      <button type="button" onClick={() => patchCfg("verificationPerDay", Math.max(0, cfg.verificationPerDay - 1))}>−</button>
-                      <span className="sv num">{toArabicDigits(cfg.verificationPerDay)}</span>
-                      <button type="button" onClick={() => patchCfg("verificationPerDay", Math.min(4, cfg.verificationPerDay + 1))}>+</button>
+                </div>
+              </div>
+
+              {/* ===== إعدادات متقدمة — منطوية افتراضيًا، تنفتح تلقائيًا لو فيها مخصص ===== */}
+              <button type="button" className={`advhead ${advOpen ? "open" : ""}`} onClick={() => setAdvOpen((v) => !v)}>
+                <span className="chev2" aria-hidden>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg>
+                </span>
+                إعدادات متقدمة
+                {Object.values(overrides).filter(Boolean).length > 0 && (
+                  <span className="cnt">{toArabicDigits(Object.values(overrides).filter(Boolean).length)} مخصصة</span>
+                )}
+                <span className="sp" />
+              </button>
+              <div className={`advbody ${advOpen ? "open" : ""}`}>
+                {cfg.mode === "STRICT" && (
+                  <div className="subgrid">
+                    <div className="fld sub2">
+                      <div className="fl">
+                        نداءات عشوائية/يوم
+                        <span className={`srcbadge ${overrides.verificationPerDay ? "c" : "g"}`}>{overrides.verificationPerDay ? "مخصص" : "عام"}</span>
+                        {overrides.verificationPerDay && (
+                          <button type="button" className="resetbtn" onClick={() => resetToGlobal("verificationPerDay")}>إرجاع للعام</button>
+                        )}
+                      </div>
+                      <div className="stepper">
+                        <button type="button" onClick={() => { markCustom("verificationPerDay"); patchCfg("verificationPerDay", Math.max(0, cfg.verificationPerDay - 1)); }}>−</button>
+                        <span className="sv num">{toArabicDigits(cfg.verificationPerDay)}</span>
+                        <button type="button" onClick={() => { markCustom("verificationPerDay"); patchCfg("verificationPerDay", Math.min(4, cfg.verificationPerDay + 1)); }}>+</button>
+                      </div>
+                    </div>
+                    <div className="fld sub2">
+                      <div className="fl">
+                        أيام العمل
+                        <span className={`srcbadge ${overrides.weekendDays ? "c" : "g"}`}>{overrides.weekendDays ? "مخصصة" : "عام"}</span>
+                        {overrides.weekendDays && (
+                          <button type="button" className="resetbtn" onClick={() => resetToGlobal("weekendDays")}>إرجاع للعام</button>
+                        )}
+                      </div>
+                      <div className="chips">
+                        {DAY_CHIPS.map(([code, label]) => {
+                          const isWork = !cfg.weekendDays.includes(code);
+                          return (
+                            <button
+                              key={code}
+                              type="button"
+                              className={`chip ${isWork ? "on" : ""}`}
+                              onClick={() => {
+                                markCustom("weekendDays");
+                                patchCfg(
+                                  "weekendDays",
+                                  isWork ? [...cfg.weekendDays, code].slice(0, 6) : cfg.weekendDays.filter((c) => c !== code),
+                                );
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="fld sub2">
+                      <div className="fl">سلوك النظام</div>
+                      <div className="frow">
+                        <div>
+                          نداء خروج النطاق
+                          <span className={`srcbadge ${overrides.outZoneCallEnabled ? "c" : "g"}`}>{overrides.outZoneCallEnabled ? "مخصص" : "عام"}</span>
+                          {overrides.outZoneCallEnabled && <button type="button" className="resetbtn" onClick={() => resetToGlobal("outZoneCallEnabled")}>إرجاع للعام</button>}
+                          <div className="d">مهلة {toArabicDigits(gv.maxOutOfZoneMinutes)} د</div>
+                        </div>
+                        <button type="button" className={`tog ${cfg.outZoneCallEnabled ? "on" : ""}`} onClick={() => { markCustom("outZoneCallEnabled"); patchCfg("outZoneCallEnabled", !cfg.outZoneCallEnabled); }} aria-label="نداء خروج النطاق" />
+                      </div>
+                      <div className="frow">
+                        <div>
+                          قفل اليوم نهائيًا
+                          <span className={`srcbadge ${overrides.dayLockEnabled ? "c" : "g"}`}>{overrides.dayLockEnabled ? "مخصص" : "عام"}</span>
+                          {overrides.dayLockEnabled && <button type="button" className="resetbtn" onClick={() => resetToGlobal("dayLockEnabled")}>إرجاع للعام</button>}
+                          <div className="d">يوم انقفل انقفل — بصمة جديدة = يوم جديد</div>
+                        </div>
+                        <button type="button" className={`tog ${cfg.dayLockEnabled ? "on" : ""}`} onClick={() => { markCustom("dayLockEnabled"); patchCfg("dayLockEnabled", !cfg.dayLockEnabled); }} aria-label="قفل اليوم نهائيًا" />
+                      </div>
+                      <div className="frow">
+                        <div>
+                          إشعارك عند فوات النداء
+                          <span className={`srcbadge ${overrides.notifyMissedCall ? "c" : "g"}`}>{overrides.notifyMissedCall ? "مخصص" : "عام"}</span>
+                          {overrides.notifyMissedCall && <button type="button" className="resetbtn" onClick={() => resetToGlobal("notifyMissedCall")}>إرجاع للعام</button>}
+                        </div>
+                        <button type="button" className={`tog ${cfg.notifyMissedCall ? "on" : ""}`} onClick={() => { markCustom("notifyMissedCall"); patchCfg("notifyMissedCall", !cfg.notifyMissedCall); }} aria-label="إشعار فوات النداء" />
+                      </div>
                     </div>
                   </div>
-                  <div className="fld sub2">
-                    <div className="fl">أيام العمل{bundle.config.custom.weekendDays ? " — مخصصة" : ""}</div>
-                    <div className="chips">
-                      {DAY_CHIPS.map(([code, label]) => {
-                        const isWork = !cfg.weekendDays.includes(code);
-                        return (
-                          <button
-                            key={code}
-                            type="button"
-                            className={`chip ${isWork ? "on" : ""}`}
-                            onClick={() =>
-                              patchCfg(
-                                "weekendDays",
-                                isWork
-                                  ? [...cfg.weekendDays, code].slice(0, 6)
-                                  : cfg.weekendDays.filter((c) => c !== code),
-                              )
-                            }
-                          >
-                            {label}
+                )}
+
+                {cfg.mode === "WATCH_ONLY" && (
+                  <div className="subgrid">
+                    <div className="fld sub2">
+                      <div className="fl">نطاق الرصد — خارجه ما يُسجَّل شيء</div>
+                      <div className="chips">
+                        {[420, 480, 540, 600].map((v) => (
+                          <button key={v} type="button" className="chip on t" style={cfg.watchFromMinutes === v ? undefined : { opacity: 0.45 }} onClick={() => patchCfg("watchFromMinutes", v)}>
+                            {winLabel(v)}
                           </button>
-                        );
-                      })}
+                        ))}
+                        <span style={{ color: "var(--muted)", fontSize: 11, padding: "6px 2px" }}>إلى</span>
+                        {[1080, 1200, 1320].map((v) => (
+                          <button key={v} type="button" className="chip on t" style={cfg.watchToMinutes === v ? undefined : { opacity: 0.45 }} onClick={() => patchCfg("watchToMinutes", v)}>
+                            {winLabel(v)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="fld sub2">
+                      <div className="fl">وش يُسجَّل</div>
+                      <div className="frow"><div>التواجد داخل الدوائر<div className="d">نبض جغرافي داخل نطاق الرصد</div></div><button type="button" className="tog on" disabled aria-label="يُسجَّل دائمًا بوضع المراقبة" /></div>
+                      <div className="frow">
+                        <div>تنبيهك عند أول ظهور</div>
+                        <button type="button" className={`tog ${cfg.watchAlertFirstSeen ? "on" : ""}`} onClick={() => patchCfg("watchAlertFirstSeen", !cfg.watchAlertFirstSeen)} aria-label="تنبيه أول ظهور" />
+                      </div>
                     </div>
                   </div>
-                  <div className="fld sub2">
-                    <div className="fl">سلوك النظام</div>
-                    <div className="frow">
-                      <div>نداء خروج النطاق<div className="d">مهلة {toArabicDigits(gv.maxOutOfZoneMinutes)} د</div></div>
-                      <button type="button" className={`tog ${cfg.outZoneCallEnabled ? "on" : ""}`} onClick={() => patchCfg("outZoneCallEnabled", !cfg.outZoneCallEnabled)} aria-label="نداء خروج النطاق" />
+                )}
+
+                {cfg.mode === "EXEMPT" && (
+                  <div className="subgrid">
+                    <div className="fld sub2">
+                      <div className="fl">معفى حتى</div>
+                      <div className="chips" style={{ alignItems: "center" }}>
+                        <input
+                          type="date"
+                          value={cfg.exemptUntilKey ?? ""}
+                          onChange={(e) => patchCfg("exemptUntilKey", e.target.value || null)}
+                          dir="ltr"
+                          style={{ background: "#0c0d0f", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", padding: "6px 10px", fontSize: 11 }}
+                        />
+                        <button type="button" className={`chip ${cfg.exemptUntilKey === null ? "on" : ""}`} onClick={() => patchCfg("exemptUntilKey", null)}>
+                          بلا نهاية
+                        </button>
+                      </div>
                     </div>
-                    <div className="frow">
-                      <div>قفل اليوم نهائيًا<div className="d">يوم انقفل انقفل — بصمة جديدة = يوم جديد</div></div>
-                      <button type="button" className={`tog ${cfg.dayLockEnabled ? "on" : ""}`} onClick={() => patchCfg("dayLockEnabled", !cfg.dayLockEnabled)} aria-label="قفل اليوم نهائيًا" />
-                    </div>
-                    <div className="frow">
-                      <div>إشعارك عند فوات النداء</div>
-                      <button type="button" className={`tog ${cfg.notifyMissedCall ? "on" : ""}`} onClick={() => patchCfg("notifyMissedCall", !cfg.notifyMissedCall)} aria-label="إشعار فوات النداء" />
+                    <div className="fld sub2">
+                      <div className="fl">السبب — يظهر بالتدقيق</div>
+                      <div className="chips">
+                        {["إجازة سنوية", "انتداب", "ظرف خاص"].map((r) => (
+                          <button key={r} type="button" className={`chip ${cfg.exemptReason === r ? "on" : ""}`} onClick={() => patchCfg("exemptReason", r)}>
+                            {r}
+                          </button>
+                        ))}
+                        <input
+                          value={["إجازة سنوية", "انتداب", "ظرف خاص"].includes(cfg.exemptReason) ? "" : cfg.exemptReason}
+                          onChange={(e) => patchCfg("exemptReason", e.target.value)}
+                          placeholder="سبب مخصص…"
+                          style={{ background: "#0c0d0f", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", padding: "6px 10px", fontSize: 11, minWidth: 120 }}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* ===== إعدادات «مراقبة فقط» ===== */}
-              <div className={`subpanel ${cfg.mode === "WATCH_ONLY" ? "on" : ""}`}>
-                <div className="subgrid">
-                  <div className="fld sub2">
-                    <div className="fl">نطاق الرصد — خارجه ما يُسجَّل شيء</div>
-                    <div className="chips">
-                      {[420, 480, 540, 600].map((v) => (
-                        <button key={v} type="button" className={`chip on t ${cfg.watchFromMinutes === v ? "" : "off"}`} style={cfg.watchFromMinutes === v ? undefined : { opacity: 0.45 }} onClick={() => patchCfg("watchFromMinutes", v)}>
-                          {winLabel(v)}
-                        </button>
-                      ))}
-                      <span style={{ color: "var(--muted)", fontSize: 11, padding: "6px 2px" }}>إلى</span>
-                      {[1080, 1200, 1320].map((v) => (
-                        <button key={v} type="button" className={`chip on t ${cfg.watchToMinutes === v ? "" : "off"}`} style={cfg.watchToMinutes === v ? undefined : { opacity: 0.45 }} onClick={() => patchCfg("watchToMinutes", v)}>
-                          {winLabel(v)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="fld sub2">
-                    <div className="fl">وش يُسجَّل</div>
-                    <div className="frow"><div>التواجد داخل الدوائر<div className="d">نبض جغرافي داخل نطاق الرصد</div></div><button type="button" className="tog on" disabled aria-label="يُسجَّل دائمًا بوضع المراقبة" /></div>
-                    <div className="frow">
-                      <div>تنبيهك عند أول ظهور</div>
-                      <button type="button" className={`tog ${cfg.watchAlertFirstSeen ? "on" : ""}`} onClick={() => patchCfg("watchAlertFirstSeen", !cfg.watchAlertFirstSeen)} aria-label="تنبيه أول ظهور" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ===== إعدادات «معفى مؤقتًا» ===== */}
-              <div className={`subpanel ${cfg.mode === "EXEMPT" ? "on" : ""}`}>
-                <div className="subgrid">
-                  <div className="fld sub2">
-                    <div className="fl">معفى حتى</div>
-                    <div className="chips" style={{ alignItems: "center" }}>
-                      <input
-                        type="date"
-                        value={cfg.exemptUntilKey ?? ""}
-                        onChange={(e) => patchCfg("exemptUntilKey", e.target.value || null)}
-                        dir="ltr"
-                        style={{ background: "#0c0d0f", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", padding: "6px 10px", fontSize: 11 }}
-                      />
-                      <button type="button" className={`chip ${cfg.exemptUntilKey === null ? "on" : ""}`} onClick={() => patchCfg("exemptUntilKey", null)}>
-                        بلا نهاية
-                      </button>
-                    </div>
-                  </div>
-                  <div className="fld sub2">
-                    <div className="fl">السبب — يظهر بالتدقيق</div>
-                    <div className="chips">
-                      {["إجازة سنوية", "انتداب", "ظرف خاص"].map((r) => (
-                        <button key={r} type="button" className={`chip ${cfg.exemptReason === r ? "on" : ""}`} onClick={() => patchCfg("exemptReason", r)}>
-                          {r}
-                        </button>
-                      ))}
-                      <input
-                        value={["إجازة سنوية", "انتداب", "ظرف خاص"].includes(cfg.exemptReason) ? "" : cfg.exemptReason}
-                        onChange={(e) => patchCfg("exemptReason", e.target.value)}
-                        placeholder="سبب مخصص…"
-                        style={{ background: "#0c0d0f", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", padding: "6px 10px", fontSize: 11, minWidth: 120 }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 14 }}>
                 <button type="button" className="btn gold mini" onClick={() => void saveSchedule()} disabled={savingSched}>
                   {savingSched ? "جاري الحفظ…" : "حفظ الإعدادات"}
@@ -679,13 +749,8 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
             winStart={winStart}
             winEnd={winEnd}
             goalHours={goalHours}
-            setWinStart={setWinStart}
-            setWinEnd={setWinEnd}
-            setGoalHours={setGoalHours}
             cfg={cfg}
-            patchCfg={patchCfg}
-            onSaveSchedule={() => void saveSchedule()}
-            savingSched={savingSched}
+            onEditSettings={scrollToSettings}
             refresh={() => startTransition(() => router.refresh())}
           />
         </div>

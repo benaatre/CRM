@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toArabicDigits } from "@/lib/format";
 import type { EFBundle } from "./types";
-import type { ToastFn, EFCfgState, PatchCfgFn } from "./employee-file-view";
+import type { ToastFn, EFCfgState } from "./employee-file-view";
 
 /**
  * العمود الجانبي اللاصق — كل عنصر حي (ملف الموظف الحي): هوية بنبض + أدوات المالك
@@ -17,7 +17,6 @@ const RADAR_LABEL: Record<string, string> = {
 const MODE_LABEL: Record<EFCfgState["mode"], string> = {
   STRICT: "ملزم — كامل", WATCH_ONLY: "مراقبة فقط", EXEMPT: "معفى مؤقتًا",
 };
-const MODE_ORDER: EFCfgState["mode"][] = ["STRICT", "WATCH_ONLY", "EXEMPT"];
 
 export function EmployeeFileRail(props: {
   bundle: EFBundle;
@@ -27,16 +26,12 @@ export function EmployeeFileRail(props: {
   winStart: number;
   winEnd: number;
   goalHours: number;
-  setWinStart: (v: number) => void;
-  setWinEnd: (v: number) => void;
-  setGoalHours: (f: (g: number) => number) => void;
   cfg: EFCfgState;
-  patchCfg: PatchCfgFn;
-  onSaveSchedule: () => void;
-  savingSched: boolean;
+  /** يمرّر للوحة «إلزام البصمة» — التعديل في مكان واحد فقط (UX 2026-08-19). */
+  onEditSettings: () => void;
   refresh: () => void;
 }) {
-  const { bundle, showToast, refresh, cfg, patchCfg } = props;
+  const { bundle, showToast, refresh, cfg } = props;
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveDone, setLeaveDone] = useState<string | null>(null);
   const [deduct, setDeduct] = useState(true);
@@ -310,70 +305,33 @@ export function EmployeeFileRail(props: {
         </div>
       )}
 
-      {/* الإعدادات السريعة — متزامنة مع اللوحة الكاملة (نفس الحالة) */}
+      {/* ملخص الإعدادات — قراءة فقط: التعديل حصريًا في لوحة «إلزام البصمة» (UX 2026-08-19) */}
       <div className="card">
-        <h4>الإعدادات <span className="hc">عدّل مباشرة — يُقيَّد بالتدقيق</span></h4>
-        <div className="srow">
-          <div>وضع الدوام<div className="sd">اضغط للتبديل بين الأوضاع</div></div>
-          <span
-            className="sv2 chipq"
-            style={{ fontFamily: "inherit" }}
-            onClick={() => patchCfg("mode", MODE_ORDER[(MODE_ORDER.indexOf(cfg.mode) + 1) % 3])}
-          >
-            {MODE_LABEL[cfg.mode]}
+        <h4>الإعدادات <span className="hc">ملخص — التعديل من اللوحة الرئيسية</span></h4>
+        <div className="sumline">
+          <span className="sl">الوضع</span>
+          <span className={`sv ${cfg.mode !== "STRICT" ? "gold" : ""}`}>{MODE_LABEL[cfg.mode]}</span>
+        </div>
+        <div className="sumline">
+          <span className="sl">نافذة البداية</span>
+          <span className="sv num">
+            {toArabicDigits(props.winStart / 60 > 12 ? props.winStart / 60 - 12 : props.winStart / 60)} {props.winStart < 720 ? "ص" : "م"}
+            {" — "}
+            {toArabicDigits(props.winEnd / 60 > 12 ? props.winEnd / 60 - 12 : props.winEnd / 60)} {props.winEnd < 720 ? "ص" : "م"}
           </span>
         </div>
-        <div className="srow">
-          <div>نافذة البداية<div className="sd">اضغط الوقت لتغييره</div></div>
-          <span style={{ display: "flex", gap: 5, alignItems: "center" }}>
-            <span
-              className="chipq"
-              onClick={() => {
-                const order = [480, 540, 600];
-                props.setWinStart(order[(order.indexOf(props.winStart) + 1) % order.length] ?? 540);
-              }}
-            >
-              {toArabicDigits(props.winStart / 60 > 12 ? props.winStart / 60 - 12 : props.winStart / 60)} {props.winStart < 720 ? "ص" : "م"}
-            </span>
-            <span style={{ fontSize: 10, color: "var(--muted)" }}>إلى</span>
-            <span
-              className="chipq"
-              onClick={() => {
-                const order = [600, 660, 720].filter((v) => v > props.winStart);
-                const cur = order.indexOf(props.winEnd);
-                props.setWinEnd(order[(cur + 1) % order.length] ?? 660);
-              }}
-            >
-              {toArabicDigits(props.winEnd / 60 > 12 ? props.winEnd / 60 - 12 : props.winEnd / 60)} {props.winEnd < 720 ? "ص" : "م"}
-            </span>
-          </span>
+        <div className="sumline">
+          <span className="sl">هدف اليوم</span>
+          <span className="sv num">{toArabicDigits(props.goalHours)} ساعات</span>
         </div>
-        <div className="srow">
-          <div>هدف اليوم — ساعات</div>
-          <div className="mini-step">
-            <button type="button" onClick={() => props.setGoalHours((g) => Math.max(4, g - 1))}>−</button>
-            <span className="v num">{toArabicDigits(props.goalHours)}</span>
-            <button type="button" onClick={() => props.setGoalHours((g) => Math.min(12, g + 1))}>+</button>
+        {cfg.mode === "EXEMPT" && (
+          <div className="sumline">
+            <span className="sl">معفى حتى</span>
+            <span className="sv gold">{cfg.exemptUntilKey ? cfg.exemptUntilKey.split("-").reverse().map((x) => toArabicDigits(Number(x))).join("/") : "بلا نهاية"}{cfg.exemptReason ? ` · ${cfg.exemptReason}` : ""}</span>
           </div>
-        </div>
-        <div className="srow">
-          <div>نداءات عشوائية/يوم</div>
-          <div className="mini-step">
-            <button type="button" onClick={() => patchCfg("verificationPerDay", Math.max(0, cfg.verificationPerDay - 1))}>−</button>
-            <span className="v num">{toArabicDigits(cfg.verificationPerDay)}</span>
-            <button type="button" onClick={() => patchCfg("verificationPerDay", Math.min(4, cfg.verificationPerDay + 1))}>+</button>
-          </div>
-        </div>
-        <div className="srow">
-          <div>قفل اليوم نهائيًا<div className="sd">بصمة جديدة = يوم جديد</div></div>
-          <button type="button" className={`tog ${cfg.dayLockEnabled ? "on" : ""}`} onClick={() => patchCfg("dayLockEnabled", !cfg.dayLockEnabled)} aria-label="قفل اليوم نهائيًا" />
-        </div>
-        <div className="srow">
-          <div>نداء خروج النطاق<div className="sd">مهلة {toArabicDigits(bundle.globalView.maxOutOfZoneMinutes)} د</div></div>
-          <button type="button" className={`tog ${cfg.outZoneCallEnabled ? "on" : ""}`} onClick={() => patchCfg("outZoneCallEnabled", !cfg.outZoneCallEnabled)} aria-label="نداء خروج النطاق" />
-        </div>
-        <button type="button" className="btn gold mini" style={{ width: "100%", justifyContent: "center", marginTop: 11 }} onClick={props.onSaveSchedule} disabled={props.savingSched}>
-          {props.savingSched ? "جاري الحفظ…" : "حفظ التعديلات"}
+        )}
+        <button type="button" className="btn ghost mini" style={{ width: "100%", justifyContent: "center", marginTop: 11 }} onClick={props.onEditSettings}>
+          تعديل الإعدادات
         </button>
       </div>
 
