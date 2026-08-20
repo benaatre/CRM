@@ -7,6 +7,10 @@ import { getSettings } from "@/lib/data/settings";
 import { buildAgenda, buildDayAppointments } from "@/lib/mobile-agenda";
 import { MobileOwnerHome } from "@/components/mobile/owner-home";
 import { EmployeeHome, type WaitingLead } from "@/components/mobile/employee-home";
+import { MobileFinanceHome } from "@/components/mobile/finance-home";
+import { MobileHrExtras } from "@/components/mobile/hr-extras";
+import { getFinanceDashboard, getHrExtras } from "@/lib/data/finance-dashboard";
+import { getLiveBoard } from "@/lib/data/attendance";
 
 // البيانات تتغيّر مع كل متابعة — لا تُخزَّن الصفحة.
 export const dynamic = "force-dynamic";
@@ -17,9 +21,15 @@ export default async function MobileHomePage({
   searchParams: Promise<{ p?: string; fu?: string }>;
 }) {
   const user = await requireUser();
-  if (isManager(user.role) || user.role === "FINANCE") {
+  if (isManager(user.role)) {
     const sp = await searchParams;
     return <MobileOwnerHome user={user} period={sp.p} fuWindow={sp.fu} />;
+  }
+
+  // المدير المالي — داشبورد مالية مخصصة (قرار 2026-08-20): لا محتوى عملاء يصل له.
+  if (user.role === "FINANCE") {
+    const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
+    return <MobileFinanceHome data={await getFinanceDashboard()} firstName={firstName} />;
   }
 
   /*
@@ -71,7 +81,7 @@ export default async function MobileHomePage({
   const notes: Record<string, string | null> = {};
   for (const a of appointments) notes[a.leadId] = noteById.get(a.leadId) ?? null;
 
-  return (
+  const employeeHome = (
     <EmployeeHome
       firstName={firstName}
       companyName={settings.companyName}
@@ -89,4 +99,16 @@ export default async function MobileHomePage({
       falLicense={settings.falLicense}
     />
   );
+
+  // HR: نفس رئيسية الموظف + قسم الموارد البشرية (قرار 2026-08-20).
+  if (user.role === "HR") {
+    const [hr, live] = await Promise.all([getHrExtras(), getLiveBoard(null)]);
+    return (
+      <div>
+        {employeeHome}
+        <MobileHrExtras data={hr} live={live} />
+      </div>
+    );
+  }
+  return employeeHome;
 }
