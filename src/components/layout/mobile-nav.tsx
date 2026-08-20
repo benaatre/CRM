@@ -14,12 +14,14 @@ import { Brand } from "./brand";
 export function MobileNav({
   isManager,
   isOwner = false,
+  userRole,
   companyName,
   logoUrl,
   falLicense,
   dupCount = 0,
 }: {
   isManager: boolean;
+  userRole?: string;
   isOwner?: boolean;
   companyName: string;
   logoUrl?: string | null;
@@ -29,7 +31,7 @@ export function MobileNav({
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
-  const nav = navForRole(isManager, isOwner);
+  const nav = navForRole(isManager, isOwner, userRole);
 
   // الدرج يُحقن في <body> عبر portal حتى لا يتأثر بـ backdrop-filter في الهيدر
   // (الذي يكسر fixed ويجعل محتوى الدرج يتسرّب فوق الصفحة).

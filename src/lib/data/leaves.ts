@@ -132,6 +132,10 @@ export async function decideLeave(
   const req = await prisma.leaveRequest.findUnique({ where: { id } });
   if (!req) return { ok: false, message: "الطلب غير موجود", status: 404 };
   if (req.status !== "PENDING") return { ok: false, message: "الطلب مو معلّق — تم البتّ فيه", status: 409 };
+  // منع القرار الذاتي (قرار 2026-08-20): HR/FINANCE لا يعتمدان طلبيهما — يبتّ فيهما غيرهما.
+  if (req.userId === ownerId) {
+    return { ok: false, message: "ما تقدر تبتّ في طلب إجازتك — يعتمده المالك أو مفوَّض آخر", status: 403 };
+  }
 
   const now = new Date();
   const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : null;
@@ -249,6 +253,9 @@ export async function editLeaveRequest(
   const req = await prisma.leaveRequest.findUnique({ where: { id } });
   if (!req) return { ok: false, message: "الطلب غير موجود", status: 404 };
   if (req.status !== "PENDING") return { ok: false, message: "الطلب مو معلّق — ما يُعدَّل بعد البتّ", status: 409 };
+  if (req.userId === ownerId) {
+    return { ok: false, message: "ما تقدر تعدّل طلب إجازتك من هنا — يبتّ فيه غيرك", status: 403 };
+  }
 
   const type = input.type === undefined ? req.type : typeof input.type === "string" && LEAVE_TYPES.has(input.type) ? input.type : null;
   const fromKey = input.fromKey === undefined ? ymd(req.dateFrom) : typeof input.fromKey === "string" && DAY_KEY.test(input.fromKey) ? input.fromKey : null;

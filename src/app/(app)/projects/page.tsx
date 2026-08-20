@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage() {
   const user = await requireUser();
   const data = await getProjectsOverview();
-  return <ProjectsView data={data} canManage={isManager(user.role)} />;
+  return <ProjectsView data={data} canManage={(isManager(user.role) || user.role === "FINANCE")} />;
 }

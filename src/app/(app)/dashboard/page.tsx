@@ -29,7 +29,7 @@ export default async function DashboardPage({
    * المالك/المدير: الأرقام النطاقية والدلتا وبقية الأقسام داخل OwnerDashboard.
    * مسار الموظف أدناه باقٍ حرفيًا بلا لمسة.
    */
-  if (user.role !== Role.EMPLOYEE) {
+  if (user.role === Role.OWNER || user.role === Role.ADMIN || user.role === Role.FINANCE) {
     return <OwnerDashboard userRole={user.role} sp={{ dp: sp.dp, df: sp.df, dt: sp.dt }} />;
   }
 
@@ -44,7 +44,7 @@ export default async function DashboardPage({
    * داشبورد الموظف ٢٠٢٦ — شاشة مستقلة بلغة دليل التصميم الجديد. مسار المالك/المدير
    * (DashboardView وبطاقة أعلى الثلاثة والبانر القديم) يبقى كما هو حرفيًا بلا لمسة.
    */
-  if (user.role === Role.EMPLOYEE) {
+  if (user.role === Role.EMPLOYEE || user.role === Role.HR) {
     const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
     const bucket = normalizeBucket(sp.late);
     const [overdue, recent, interestedRaw] = await Promise.all([

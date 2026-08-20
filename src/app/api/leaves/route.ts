@@ -35,7 +35,7 @@ export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
 
-  if (session.user.role === Role.OWNER) {
+  if (([Role.OWNER, Role.HR, Role.FINANCE] as Role[]).includes(session.user.role)) {
     const status = new URL(req.url).searchParams.get("status");
     return NextResponse.json({ ok: true, requests: await listLeaves({ status }) });
   }

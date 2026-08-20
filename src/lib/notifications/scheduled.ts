@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import { ActivityType, FollowUpType, LeadStage } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -198,7 +199,7 @@ export async function runNeverContactedAlert(now: Date = new Date()): Promise<nu
       stage: { in: [LeadStage.NEW, LeadStage.ATTEMPTED] },
       assignedToId: { not: null },
       assignedAt: { not: null, lt: cutoff },
-      assignedTo: { role: "EMPLOYEE", active: true },
+      assignedTo: { role: { in: SELLER_ROLES }, active: true },
     },
     select: {
       id: true, name: true, assignedToId: true, assignedAt: true,
@@ -301,7 +302,7 @@ export async function runIdleEmployeeCheck(now: Date = new Date()): Promise<numb
   const { staleHours } = await notifyTimings();
   const cutoff = new Date(now.getTime() - staleHours * 3_600_000);
 
-  const emps = await prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true, name: true } });
+  const emps = await prisma.user.findMany({ where: { role: { in: SELLER_ROLES }, active: true }, select: { id: true, name: true } });
   let emitted = 0;
   for (const e of emps) {
     // عنده شغل مفتوح؟ (بدون عملاء مفتوحين لا يُعتبر راكدًا)

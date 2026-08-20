@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 import { Channel, LeadStage, Priority, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
-import { requireManager } from "@/lib/auth-guards";
+import { requireManager, SELLER_ROLES } from "@/lib/auth-guards";
 import type { ImportRow } from "@/lib/import-meta";
 import {
   channelLabels,
@@ -295,7 +295,7 @@ export async function commitImport(rows: ImportRow[], assignMode: string, update
 
     const employees =
       assignMode === "roundrobin"
-        ? await prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, select: { id: true } })
+        ? await prisma.user.findMany({ where: { role: { in: SELLER_ROLES }, active: true }, select: { id: true } })
         : [];
     const projects = await prisma.project.findMany({ select: { id: true, name: true } });
     const projectByName = new Map(projects.map((p) => [p.name.trim(), p.id]));

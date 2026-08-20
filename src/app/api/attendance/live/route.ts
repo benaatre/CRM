@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwnerApi } from "@/lib/attendance-guard";
+import { requireGovernanceApi } from "@/lib/attendance-guard";
 import { getLiveBoard } from "@/lib/data/attendance";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
  * كل حساب على الخادم؛ العميل يحرّك العدادات فقط.
  */
 export async function GET(req: Request) {
-  const guard = await requireOwnerApi();
+  const guard = await requireGovernanceApi();
   if (!guard.ok) return guard.res;
 
   const url = new URL(req.url);

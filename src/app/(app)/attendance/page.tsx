@@ -27,7 +27,7 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  await requireRole(Role.OWNER);
+  const viewer = await requireRole(Role.OWNER, Role.HR, Role.FINANCE);
 
   // فلتر الفترة في الـURL (?from=&to=) — نفس تحقق مسار live حرفيًا.
   const sp = await searchParams;
@@ -62,6 +62,7 @@ export default async function AttendancePage({
         radar={radar}
         teamMonth={month}
         teamRows={teamRows}
+        readOnly={viewer.role !== "OWNER"}
       />
 
       {appSettings.falLicense && (

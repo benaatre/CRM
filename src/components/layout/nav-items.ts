@@ -47,5 +47,12 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "الإعدادات", icon: SettingsIcon, managerOnly: true },
 ];
 
-export const navForRole = (isManager: boolean, isOwner = false): NavItem[] =>
-  NAV_ITEMS.filter((n) => (!n.managerOnly || isManager) && (!n.ownerOnly || isOwner) && (!n.employeeOnly || !isManager));
+export const navForRole = (isManager: boolean, isOwner = false, role?: string): NavItem[] =>
+  NAV_ITEMS.filter(
+    (n) =>
+      (!n.managerOnly || isManager || (n.href === "/attendance" && (role === "HR" || role === "FINANCE"))) &&
+      (!n.ownerOnly || isOwner || (n.href === "/attendance" && (role === "HR" || role === "FINANCE"))) &&
+      (!n.employeeOnly || !isManager),
+  )
+    // المدير المالي بلا عملاء نهائيًا (قرار 2026-08-20) — شاشات العملاء تُحذف من قوائمه.
+    .filter((n) => role !== "FINANCE" || !["/leads", "/pipeline", "/my-log", "/leads/duplicates", "/no-response"].includes(n.href));

@@ -28,6 +28,14 @@ const EMPLOYEE_TABS: Tab[] = [
   { href: "/m/more", label: "حسابي", icon: User },
 ];
 
+/** المدير المالي (2026-08-20): بلا عملاء — الرئيسية · خط المبيعات · المشاريع · حسابي. */
+const FINANCE_TABS: Tab[] = [
+  { href: "/m", label: "الرئيسية", icon: Home },
+  { href: "/m/bookings", label: "المبيعات", icon: Inbox },
+  { href: "/m/projects", label: "المشاريع", icon: ScrollText },
+  { href: "/m/more", label: "حسابي", icon: User },
+];
+
 /** الإدارة: خمس خلايا (v3) — التدقيق صار خلية مباشرة، وبلاطته في «حسابي» باقية. */
 const MANAGER_TABS: Tab[] = [
   { href: "/m", label: "الرئيسية", icon: Home },
@@ -42,14 +50,17 @@ const RISE = 34; // ارتفاع الأيقونة النشطة داخل القط
 export function MercuryNav({
   manager = false,
   badgeCount = 0,
+  finance = false,
 }: {
   /** الدور من تخطيط (shell) الخادمي — يختار الطقم فقط. */
   manager?: boolean;
   /** شارة الخلية الثالثة: للموظف = مواعيد اليوم الفايتة؛ للإدارة = غير الموزّعين. */
   badgeCount?: number;
+  /** المدير المالي — طقم بلا عملاء (قرار 2026-08-20). */
+  finance?: boolean;
 }) {
   const pathname = usePathname();
-  const tabs = manager ? MANAGER_TABS : EMPLOYEE_TABS;
+  const tabs = finance ? FINANCE_TABS : manager ? MANAGER_TABS : EMPLOYEE_TABS;
   // خمس خلايا (الإدارة): قطرة 56 وخط أصغر لتستوعب الأسماء بلا التفاف — الموظف كما هو.
   const five = tabs.length >= 5;
   const DROP = five ? 56 : 58;

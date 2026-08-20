@@ -16,7 +16,7 @@ export default async function EmployeeAttendancePage({
   params: Promise<{ userId: string }>;
   searchParams: Promise<{ month?: string }>;
 }) {
-  await requireRole(Role.OWNER);
+  await requireRole(Role.OWNER, Role.HR, Role.FINANCE);
 
   const { userId } = await params;
   const sp = await searchParams;

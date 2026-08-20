@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { Time12 } from "@/components/ui/time12";
 import { useRouter } from "next/navigation";
 import { Building2, CalendarDays, Crosshair, MapPin, Power, SlidersHorizontal, Users } from "lucide-react";
 import type { AttendanceLocation, AttendanceSettings } from "@prisma/client";
@@ -48,6 +49,7 @@ export function AttendanceAdmin({
   radar,
   teamMonth,
   teamRows,
+  readOnly = false,
 }: {
   locations: AttendanceLocation[];
   settings: AttendanceSettings;
@@ -55,14 +57,17 @@ export function AttendanceAdmin({
   radar: LocationRadar;
   teamMonth: string;
   teamRows: TeamSummaryRow[];
+  /** HR/FINANCE: مشاهدة فقط — تبويبا المواقع والإعدادات (كتابة) يُخفيان، والخادم يصدهما أصلًا. */
+  readOnly?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("live");
+  const visibleTabs = readOnly ? TABS.filter((t) => t.key === "live" || t.key === "team") : TABS;
 
   return (
     <div className="space-y-5">
       {/* ===== التبويبات ===== */}
       <div role="tablist" aria-label="أقسام حوكمة الدوام" className="flex gap-1 overflow-x-auto border-b border-border">
-        {TABS.map((t) => {
+        {visibleTabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.key;
           return (
@@ -87,8 +92,8 @@ export function AttendanceAdmin({
 
       {tab === "live" && <LiveTab initial={live} radar={radar} />}
       {tab === "team" && <TeamTab initialMonth={teamMonth} initialRows={teamRows} />}
-      {tab === "locations" && <LocationsTab locations={locations} />}
-      {tab === "settings" && <SettingsTab settings={settings} />}
+      {tab === "locations" && !readOnly && <LocationsTab locations={locations} />}
+      {tab === "settings" && !readOnly && <SettingsTab settings={settings} />}
     </div>
   );
 }
@@ -379,24 +384,12 @@ function SettingsTab({ settings }: { settings: AttendanceSettings }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">بداية الدوام</span>
-          <input
-            type="time"
-            value={start_}
-            onChange={(e) => setStart(e.target.value)}
-            dir="ltr"
-            className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-          />
+          <Time12 value={start_} onChange={setStart} />
         </label>
 
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">نهاية الدوام</span>
-          <input
-            type="time"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-            dir="ltr"
-            className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-          />
+          <Time12 value={end} onChange={setEnd} />
         </label>
 
         <label className="flex flex-col gap-1.5">

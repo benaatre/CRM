@@ -98,12 +98,23 @@ function DayCardView({ card }: { card: EFDayCard | null }) {
   );
 }
 
-export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; basePath: string }) {
+export function EmployeeFileView({
+  bundle,
+  basePath,
+  viewerRole = "OWNER",
+}: {
+  bundle: EFBundle;
+  basePath: string;
+  /** HR/FINANCE: نسخة قرائية — أدوات المالك وتعديل الإعدادات مخفية (والخادم يصدها). */
+  viewerRole?: "OWNER" | "HR" | "FINANCE";
+}) {
+  const readOnly = viewerRole !== "OWNER";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [day, setDay] = useState<"today" | "yday">("today");
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [fileNavOpen, setFileNavOpen] = useState(false);
 
   // الإعدادات القابلة للتعديل فعليًا (schedule PATCH) — تتزامن بين اللوحة والعمود الجانبي.
   const [winStart, setWinStart] = useState(bundle.schedule.startMinutes);
@@ -252,6 +263,38 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
   return (
     <div className="ef" dir="rtl">
       <div className="wrap">
+        {/* ===== تنقّل جانبي بين ملفات الفريق (الجزء ٣) ===== */}
+        <div className="filenav">
+          {(() => {
+            const prefix = basePath.slice(0, basePath.lastIndexOf("/"));
+            const idx = bundle.teamNav.findIndex((t) => t.id === bundle.user.id);
+            const prev = idx > 0 ? bundle.teamNav[idx - 1] : null;
+            const next = idx >= 0 && idx < bundle.teamNav.length - 1 ? bundle.teamNav[idx + 1] : null;
+            return (
+              <>
+                <button type="button" className="btn ghost mini" disabled={!prev} onClick={() => prev && router.push(`${prefix}/${prev.id}`)}>
+                  → السابق
+                </button>
+                <div className={`msel ${fileNavOpen ? "open" : ""}`} style={{ flex: 1, maxWidth: 320 }}>
+                  <div className="cur" style={{ justifyContent: "center", fontWeight: 800 }} onClick={() => setFileNavOpen((v) => !v)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+                    {bundle.user.name}
+                  </div>
+                  <div className="list" style={{ width: "100%" }}>
+                    {bundle.teamNav.map((t) => (
+                      <div key={t.id} className={t.id === bundle.user.id ? "on" : ""} onClick={() => { setFileNavOpen(false); if (t.id !== bundle.user.id) router.push(`${prefix}/${t.id}`); }}>
+                        {t.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <button type="button" className="btn ghost mini" disabled={!next} onClick={() => next && router.push(`${prefix}/${next.id}`)}>
+                  التالي ←
+                </button>
+              </>
+            );
+          })()}
+        </div>
         <div className="cockpit" style={pending ? { opacity: 0.65, transition: "opacity .2s" } : undefined}>
           {/* ═════ العمود الرئيسي ═════ */}
           <div className="main">
@@ -274,7 +317,8 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
               <DayCardView card={card} />
             </div>
 
-            {/* لوحة الإلزام — متدرّجة: الأوضاع ← الأساسيات ← «إعدادات متقدمة» (UX 2026-08-19) */}
+            {/* لوحة الإلزام — مخفية كليًا عن HR/FINANCE (نسخة قرائية، الخادم يصدها أصلًا) */}
+            {!readOnly && (
             <div className="card" ref={panelRef} id="ef-settings">
               <h4>
                 إلزام البصمة <span className="hc">اختر الوضع — الأساسيات تحته، والتفاصيل تحت «إعدادات متقدمة» · الحفظ يُقيَّد بالتدقيق باسمك</span>
@@ -490,6 +534,7 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
                 <span style={{ fontSize: 10, color: "var(--muted)" }}>أي تغيير يُقيَّد بسجل التدقيق باسمك ووقته</span>
               </div>
             </div>
+            )}
 
             {/* مؤشرات الدوام */}
             <div className="sechead">
@@ -743,6 +788,7 @@ export function EmployeeFileView({ bundle, basePath }: { bundle: EFBundle; baseP
           {/* ═════ العمود الجانبي ═════ */}
           <EmployeeFileRail
             bundle={bundle}
+            readOnly={readOnly}
             showToast={showToast}
             onOpenCheckout={() => setCheckoutOpen(true)}
             onExport={exportCsv}

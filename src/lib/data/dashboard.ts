@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import type { LeadStage } from "@prisma/client";
 import { FollowUpType, Prisma } from "@prisma/client";
@@ -377,7 +378,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     const [emps, byTotal, byClosed, byFollowUps, byVisits, byBookings] =
       await Promise.all([
         prisma.user.findMany({
-          where: { role: "EMPLOYEE", active: true },
+          where: { role: { in: SELLER_ROLES }, active: true },
           select: { id: true, name: true, targetDeals: true },
           orderBy: { name: "asc" },
         }),
@@ -491,7 +492,7 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     const apptLeads = await prisma.lead.findMany({
       where: {
         nextFollowup: { gte: dayStart, lt: dayEnd }, isArchived: false, stage: { notIn: CLOSED },
-        assignedTo: { role: "EMPLOYEE", active: true },
+        assignedTo: { role: { in: SELLER_ROLES }, active: true },
       },
       select: { id: true, assignedToId: true, nextFollowup: true, assignedTo: { select: { name: true } } },
     });

@@ -65,6 +65,8 @@ export function EmployeeSettingsDialog({ userId, onClose }: { userId: string; on
                 <select name="role" defaultValue={detail.role} className="select-base">
                   <option value="EMPLOYEE">موظف مبيعات</option>
                   <option value="ADMIN">مدير</option>
+            <option value="HR">موارد بشرية</option>
+            <option value="FINANCE">مدير مالي</option>
                   <option value="OWNER">مالك</option>
                 </select>
               </Field>

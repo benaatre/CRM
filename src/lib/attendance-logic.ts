@@ -475,8 +475,11 @@ export function minutesAwayFromHQ(stations: Station[], now: Date): number {
 
 /** «٤:٣٥» — دقائق ⟵ نص ساعات:دقائق (بأرقام لاتينية؛ التعريب عند العرض). */
 export function minutesToHM(minutes: number): string {
+  // نظام ١٢ ساعة بـ«ص/م» (قرار 2026-08-20) — يُمنع ظهور 17:00 وأمثالها.
   const m = Math.max(0, Math.round(minutes));
-  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+  const h24 = Math.floor(m / 60) % 24;
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m % 60).padStart(2, "0")} ${h24 < 12 ? "ص" : "م"}`;
 }
 
 /** دقائق من منتصف الليل ⟵ لحظة UTC لذلك الوقت في يوم رياضي معيّن. */

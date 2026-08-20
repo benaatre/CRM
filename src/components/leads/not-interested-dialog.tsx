@@ -3,6 +3,7 @@
 // مكوّن «غير مهتم» المشترك — مصدر واحد لأسباب الانسحاب المنظّمة، يُستخدم في:
 // النموذج (followups-form)، السحب في الكانبان، وقائمة مرحلة الدرج (توحيد كامل).
 import { useState, useTransition } from "react";
+import { DateTime12 } from "@/components/ui/time12";
 import type { FollowUpType, FollowUpResult, FollowUpSection, LeadStage } from "@prisma/client";
 
 // أسباب «غير مهتم» المعروضة (بترتيب العرض — الترتيب يحدّد السبب الرئيسي المنظّم).
@@ -112,7 +113,7 @@ export function NotInterestedReasons({
       {retry === "yes" && (
         <label className="block space-y-1">
           <span className="text-xs text-muted-foreground">تاريخ المحاولة القادمة</span>
-          <input type="datetime-local" value={date} onChange={(e) => onDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold" />
+          <DateTime12 value={date} onChange={onDate} />
         </label>
       )}
     </div>

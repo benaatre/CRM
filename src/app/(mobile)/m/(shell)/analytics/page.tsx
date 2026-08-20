@@ -68,7 +68,7 @@ export default async function MobileAnalyticsPage() {
   const user = await requireUser();
 
   // ===== الموظف: أداؤه الشخصي فقط — نفس فرع الديسكتوب =====
-  if (!isManager(user.role)) {
+  if (!isManager(user.role) && user.role !== "FINANCE") {
     const me = await getEmployeeDeepAnalysis(user.id, Date.now());
     return (
       <div className="m-screen flex flex-col" style={{ gap: 13 }}>

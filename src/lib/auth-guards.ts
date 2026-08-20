@@ -86,3 +86,30 @@ export async function requireManagerAction() {
 export function isManager(role: Role) {
   return role === Role.OWNER || role === Role.ADMIN;
 }
+
+/* ═════════ الأدوار الجديدة (HR + FINANCE — قرار 2026-08-20) ═════════ */
+
+/** من يستقبل عملاء ويُحسب في نطاقات البيع (توزيع/ليدربورد/إحصاءات) — FINANCE مستحيل بنيويًا. */
+export const SELLER_ROLES: Role[] = [Role.EMPLOYEE, Role.HR];
+/** من يشاهد حوكمة الدوام وملفات الموظفين (الكتابة تبقى OWNER حصريًا). */
+export const GOVERNANCE_VIEWERS: Role[] = [Role.OWNER, Role.HR, Role.FINANCE];
+/** من يعتمد/يرفض/يعدّل طلبات الإجازة — قرار نهائي، وغير المالك يُشعر المالك فورًا. */
+export const LEAVE_DECIDERS: Role[] = [Role.OWNER, Role.HR, Role.FINANCE];
+/** من يُرصد دوامه في اللوحات والكرون (المالك مراقب لا مرصود). */
+export const TRACKED_ROLES: Role[] = [Role.EMPLOYEE, Role.ADMIN, Role.HR, Role.FINANCE];
+
+export const isHR = (role: Role) => role === Role.HR;
+export const isFinance = (role: Role) => role === Role.FINANCE;
+export const isSeller = (role: Role) => SELLER_ROLES.includes(role);
+export const canViewGovernance = (role: Role) => GOVERNANCE_VIEWERS.includes(role);
+export const canDecideLeaves = (role: Role) => LEAVE_DECIDERS.includes(role);
+
+/**
+ * حارس شاشات العملاء: FINANCE «بلا عملاء نهائيًا» — يُصدّ خادميًا ويُحوَّل لخط
+ * المبيعات (وجهته الطبيعية). البقية يمرّون كما كانوا حرفيًا.
+ */
+export async function requireClientAccess(mobile = false) {
+  const user = await requireUser();
+  if (user.role === Role.FINANCE) redirect(mobile ? "/m/bookings" : "/bookings");
+  return user;
+}

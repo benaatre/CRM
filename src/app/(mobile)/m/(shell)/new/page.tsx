@@ -1,5 +1,5 @@
 import { UserPlus } from "lucide-react";
-import { requireUser, isManager } from "@/lib/auth-guards";
+import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getLeads } from "@/lib/data/leads";
 import { buildAgenda } from "@/lib/mobile-agenda";
 import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
@@ -9,7 +9,7 @@ import { MobileLeadCard } from "@/components/mobile/lead-card";
 export const dynamic = "force-dynamic";
 
 export default async function MobileNewPage() {
-  const user = await requireUser();
+  const user = await requireClientAccess(true);
   const manager = isManager(user.role);
 
   // محجَّم بالدور تلقائيًا (scopeForUser داخل getLeads).

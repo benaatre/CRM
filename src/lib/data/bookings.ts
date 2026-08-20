@@ -84,7 +84,7 @@ export type BookingsData = {
  */
 export async function getBookings(): Promise<BookingsData> {
   const user = await requireUser();
-  const manager = user.role === "OWNER" || user.role === "ADMIN";
+  const manager = user.role === "OWNER" || user.role === "ADMIN" || user.role === "FINANCE";
 
   const rows = await prisma.booking.findMany({
     where: {}, // الجميع يشوف كل الحجوزات — الحجب يتم في تكوين البطاقات أدناه

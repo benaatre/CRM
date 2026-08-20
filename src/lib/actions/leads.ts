@@ -11,7 +11,7 @@ import {
 import type { PurchaseMethod, PurchaseGoal, FirstContactStage } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toUserError } from "@/lib/action-error";
-import { requireUser, isManager, requireManagerAction } from "@/lib/auth-guards";
+import { requireUser, isManager, requireManagerAction, SELLER_ROLES } from "@/lib/auth-guards";
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
@@ -36,6 +36,7 @@ export async function fetchLeadDetail(id: string): Promise<LeadDetail | null> {
 /** يتحقق أن العميل ضمن صلاحية المستخدم (مالكه أو مدير). يرجّع المستخدم أو يرمي. */
 async function assertLeadAccess(leadId: string) {
   const user = await requireUser();
+  if (user.role === "FINANCE") throw new Error("المدير المالي بلا صلاحية عملاء");
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     select: { id: true, assignedToId: true, stage: true },
@@ -403,7 +404,7 @@ export async function distributeDuplicateLead(
     if (needsEmployee) {
       if (!toUserId) return { ok: false, error: "اختر الموظف" };
       const target = await prisma.user.findUnique({ where: { id: toUserId }, select: { role: true, active: true } });
-      if (!target || !target.active || target.role === "OWNER") return { ok: false, error: "الموظف غير صالح" };
+      if (!target || !target.active || !SELLER_ROLES.includes(target.role)) return { ok: false, error: "الموظف غير صالح" };
     }
     // «مسوّق» لا يُعاد إحياؤه — سُجّل أنه عقاري/منافس وليس عميلًا.
     const isMarketer = await prisma.followUp.findFirst({

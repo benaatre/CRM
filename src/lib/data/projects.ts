@@ -38,7 +38,7 @@ export type ProjectsOverview = {
 export async function getProjectsOverview(): Promise<ProjectsOverview> {
   // الصلاحية تُفرض هنا على الخادم: الإجماليات المالية لا تُحسب ولا تُرسل للموظف.
   const user = await requireUser();
-  const manager = isManager(user.role);
+  const manager = isManager(user.role) || user.role === "FINANCE";
 
   const [projects, unitsByStatus, soldAgg, depositAgg] = await Promise.all([
     prisma.project.findMany({
@@ -113,7 +113,7 @@ export type ProjectDetail = ProjectCard & { unitRows: UnitRow[] };
 export async function getProject(id: string): Promise<ProjectDetail | null> {
   // اسم المشتري ومعرّف الحجز بيانات عملاء زملاء — للمدير/المالك فقط.
   const user = await requireUser();
-  const manager = isManager(user.role);
+  const manager = isManager(user.role) || user.role === "FINANCE";
 
   const p = await prisma.project.findUnique({
     where: { id },

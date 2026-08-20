@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import type { Role } from "@prisma/client";
 import { FollowUpType } from "@prisma/client";
@@ -53,7 +54,7 @@ export async function getTeamPresence(): Promise<PresenceRow[]> {
   const dayStart = dayStartKSA(new Date());
   const [users, fuGrp, bookGrp] = await Promise.all([
     prisma.user.findMany({
-      where: { role: "EMPLOYEE", active: true },
+      where: { role: { in: SELLER_ROLES }, active: true },
       select: { id: true, name: true, lastSeenAt: true },
       orderBy: { name: "asc" },
     }),

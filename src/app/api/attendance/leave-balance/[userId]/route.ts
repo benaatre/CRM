@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwnerApi } from "@/lib/attendance-guard";
+import { requireOwnerApi, requireGovernanceApi } from "@/lib/attendance-guard";
 import { getLeaveBalance, setLeaveEntitlement } from "@/lib/data/leaves";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * PATCH — تعديل entitledDays.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ userId: string }> }) {
-  const guard = await requireOwnerApi();
+  const guard = await requireGovernanceApi();
   if (!guard.ok) return guard.res;
 
   const { userId } = await params;

@@ -144,7 +144,7 @@ export default async function MobileMorePage() {
       <MobileProfileCard
         name={user.name ?? "مستخدم"}
         roleText={roleLabel(user.role)}
-        canPause={user.role === "EMPLOYEE"}
+        canPause={user.role === "EMPLOYEE" || user.role === "HR"}
         paused={avail.paused}
         pauseText={
           avail.paused

@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 import { prisma } from "@/lib/prisma";
 import { ksaTodayStart } from "@/lib/auto-distribute";
@@ -55,7 +56,7 @@ export async function getTeamCommitment(w: FuWindow, now: Date = new Date()): Pr
     where: {
       isArchived: false,
       stage: { notIn: [...CLOSED] },
-      assignedTo: { role: "EMPLOYEE", active: true },
+      assignedTo: { role: { in: SELLER_ROLES }, active: true },
       OR: [
         { nextFollowup: winDue },
         { stage: "VISIT_SCHEDULED", visitAt: winDue },

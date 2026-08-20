@@ -468,7 +468,7 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
   if (!baseFile) return null;
 
   const [
-    user, timeline, settings, locations, config,
+    user, timeline, settings, locations, config, teamNav,
     kpiDays, days14, logDaysRaw,
     crm, fusByDay14, fuHours, stagesDist, teamPerHour,
     leaveRows, balance, histogram, todayRow,
@@ -478,6 +478,7 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
     getAttendanceSettings(),
     getAllLocations(),
     getConfigView(userId, now),
+    prisma.user.findMany({ where: { role: { in: ["EMPLOYEE", "ADMIN", "HR", "FINANCE"] }, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     daysOf(kpiRange),
     daysOf(range14),
     daysOf(logRange),
@@ -683,5 +684,6 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
       balance,
     },
     zones: locations.map((l) => ({ id: l.id, name: l.name, active: l.isActive })),
+    teamNav,
   };
 }

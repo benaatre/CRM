@@ -1,4 +1,5 @@
 import "server-only";
+import { SELLER_ROLES } from "@/lib/auth-guards";
 
 // لوحة الأسبوع — عمودان من القياس (عدالة لا حجمًا خامًا):
 //   «النقاط» (الحجم المطلق بأوزان معدلة): متابعة ×١ بسقف ١٥/يوم (يمنع التضخم الكمي —
@@ -153,7 +154,7 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
 
   const [emps, weekFus, prevFus, bookGrp, prevBookGrp, assignedActiveGrp, weekAssigned, pullRows, pending] = await Promise.all([
     prisma.user.findMany({
-      where: { role: "EMPLOYEE", active: true },
+      where: { role: { in: SELLER_ROLES }, active: true },
       select: { id: true, name: true, createdAt: true },
       orderBy: { name: "asc" },
     }),

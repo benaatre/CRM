@@ -29,6 +29,8 @@ export const roleLabels: Record<Role, string> = {
   OWNER: "المالك",
   ADMIN: "مدير",
   EMPLOYEE: "موظف مبيعات",
+  HR: "موارد بشرية",
+  FINANCE: "مدير مالي",
 };
 export const roleLabel = (role: Role) => roleLabels[role] ?? role;
 

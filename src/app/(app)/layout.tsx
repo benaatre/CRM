@@ -21,6 +21,8 @@ export default async function AppLayout({
   const user = await requireUser();
   const manager = isManager(user.role);
   const owner = user.role === "OWNER"; // ميزة المكررين للمالك فقط
+  const finance = user.role === "FINANCE"; // بلا عملاء نهائيًا (قرار 2026-08-20)
+  const governance = owner || user.role === "HR" || finance; // حوكمة الدوام قراءةً
   const [settings, employees, availability, dupCounts, noResponseCount] = await Promise.all([
     getSettings(),
     manager ? getEmployees() : Promise.resolve([]),
@@ -32,10 +34,10 @@ export default async function AppLayout({
   // نفس الروابط والصلاحيات حرفيًا — الأيقونة مفتاح نصّي (لا تُسلسَل المكوّنات للعميل).
   const nav: RailItem[] = ([
     { href: "/dashboard", label: "لوحة التحكم", icon: "dashboard", show: true, badge: 0 },
-    { href: "/leads", label: "كل العملاء", icon: "leads", show: true, badge: 0 },
+    { href: "/leads", label: "كل العملاء", icon: "leads", show: !finance, badge: 0 },
     { href: "/leads/duplicates", label: "العملاء المكررون", icon: "duplicates", show: owner, badge: dupCounts.total },
     { href: "/no-response", label: "لم يتم الرد", icon: "noResponse", show: owner, badge: noResponseCount },
-    { href: "/pipeline", label: "مراحل العملاء", icon: "pipeline", show: true, badge: 0 },
+    { href: "/pipeline", label: "مراحل العملاء", icon: "pipeline", show: !finance, badge: 0 },
     { href: "/projects", label: "المشاريع", icon: "projects", show: true, badge: 0 },
     { href: "/bookings", label: "خط المبيعات", icon: "bookings", show: true, badge: 0 },
     { href: "/chat", label: "الشات الداخلي", icon: "chat", show: true, badge: 0 },
@@ -44,7 +46,7 @@ export default async function AppLayout({
     { href: "/distribution", label: "التوزيع التلقائي", icon: "distribution", show: manager, badge: 0 },
     // المالك يدير الإجازات حصرًا من ملف الموظف — «إجازاتي» بلا معنى له (الحارس الخادمي باقٍ).
     { href: "/leaves", label: "الإجازات", icon: "leaves", show: !owner, badge: 0 },
-    { href: "/attendance", label: "حوكمة الدوام", icon: "attendance", show: owner, badge: 0 },
+    { href: "/attendance", label: "حوكمة الدوام", icon: "attendance", show: governance, badge: 0 },
     { href: "/audit", label: "سجل التدقيق", icon: "audit", show: manager, badge: 0 },
     { href: "/settings", label: "الإعدادات", icon: "settings", show: manager, badge: 0 },
   ] satisfies (RailItem & { show: boolean })[])
@@ -78,6 +80,7 @@ export default async function AppLayout({
           falLicense={settings.falLicense ?? null}
           isManager={manager}
           isOwner={owner}
+          userRole={user.role}
           employees={employees}
           availability={manager ? null : availability}
           dupCount={dupCounts.total}

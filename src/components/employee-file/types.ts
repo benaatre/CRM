@@ -143,4 +143,6 @@ export type EFBundle = {
     balance: { entitledDays: number; usedDays: number; remainingDays: number };
   };
   zones: { id: string; name: string; active: boolean }[];
+  /** تنقّل جانبي بين ملفات الفريق (الجزء ٣) — بالترتيب الأبجدي. */
+  teamNav: { id: string; name: string }[];
 };

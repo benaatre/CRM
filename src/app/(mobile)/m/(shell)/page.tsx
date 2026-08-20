@@ -17,7 +17,7 @@ export default async function MobileHomePage({
   searchParams: Promise<{ p?: string; fu?: string }>;
 }) {
   const user = await requireUser();
-  if (isManager(user.role)) {
+  if (isManager(user.role) || user.role === "FINANCE") {
     const sp = await searchParams;
     return <MobileOwnerHome user={user} period={sp.p} fuWindow={sp.fu} />;
   }
