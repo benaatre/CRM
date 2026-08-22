@@ -139,7 +139,7 @@ export function LeadProfileV3({
   /** إضافات المالك/الأدمن — غيابها = نسخة الموظف (المرحلة د) حرفيًا. */
   ownerExtras?: OwnerExtras | null;
 }) {
-  const [tab, setTab] = useState<"data" | "fu" | "transfers">("fu");
+  const [tab, setTab] = useState<"data" | "fu" | "transfers" | "deal">("fu");
   const [fuOpen, setFuOpen] = useState<null | { key: string | null }>(null);
   const [waOpen, setWaOpen] = useState(false);
   const [editFu, setEditFu] = useState<ProfileFu | null>(null);
@@ -166,7 +166,7 @@ export function LeadProfileV3({
   }, [lead.followUps, lead.activities]);
 
   return (
-    <div className="m-screen flex flex-col" style={{ gap: 14, paddingBottom: 88 }}>
+    <div className="m-screen flex flex-col" style={{ gap: 14, paddingBottom: 8 }}>
       {/* ===== الترويسة: رجوع + ⚙️ إدارة العميل (للمالك/الأدمن) ===== */}
       <div className="flex items-center justify-between">
         <Link href="/m/leads" className="flex items-center" style={{ minHeight: 40, gap: 5, color: MOBILE_COLORS.textSecondary, fontSize: 13 }}>
@@ -240,8 +240,8 @@ export function LeadProfileV3({
         <BookingCard booking={ownerExtras.booking} canAddPayment={ownerExtras.canAddPayment} />
       )}
 
-      {/* ===== التبويبات (٢ للموظف/الأدمن · ٣ للمالك بسجل التحويلات) ===== */}
-      <div className="grid" style={{ gap: 8, gridTemplateColumns: owner && ownerExtras?.transfers ? "1fr 1fr 1fr" : "1fr 1fr" }}>
+      {/* ===== التبويبات (٣ للموظف/الأدمن · ٤ للمالك بسجل التحويلات — شبكة ٢×٢) + «✦ إتمام» أخيرًا ===== */}
+      <div className="grid" style={{ gap: 8, gridTemplateColumns: owner && ownerExtras?.transfers ? "1fr 1fr" : "1fr 1fr 1fr" }}>
         <button type="button" onClick={() => setTab("fu")} className="m-press" style={{ ...chip(tab === "fu"), minHeight: 44, textAlign: "center" }}>
           المتابعة ({toArabicDigits(lead.followUpsCount)})
         </button>
@@ -253,12 +253,27 @@ export function LeadProfileV3({
             سجل التحويلات
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setTab("deal")}
+          className="m-press flex items-center justify-center"
+          style={{
+            ...chip(tab === "deal"), minHeight: 44, gap: 6,
+            // مميز بالذهبي حتى وهو غير مفعّل (قرار 2026-08-22) — التفعيل يزيد الخلفية الذهبية فقط.
+            color: MOBILE_COLORS.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}`,
+          }}
+        >
+          <DealIcon size={15} />
+          إتمام
+        </button>
       </div>
 
       {tab === "data" ? (
         <DataTab lead={lead} projects={projects} />
       ) : tab === "transfers" && owner && ownerExtras?.transfers ? (
         <TransfersTab extras={ownerExtras} />
+      ) : tab === "deal" ? (
+        <DealTab falLicense={falLicense} onBooked={() => setFuOpen({ key: "booked" })} />
       ) : (
         <FuTab
           lead={lead}
@@ -269,34 +284,6 @@ export function LeadProfileV3({
           onEdit={(f) => setEditFu(f)}
         />
       )}
-
-      {/* ===== الشريط السفلي الثابت: تم الحجز + شراء فوري + رخصة فال ===== */}
-      <div className="m-actionbar mx-auto w-full max-w-lg" style={{ padding: "0 18px" }}>
-        <div
-          style={{
-            boxSizing: "border-box", borderRadius: 16, padding: "10px 12px",
-            background: `linear-gradient(180deg, transparent, ${MOBILE_COLORS.bg} 26%)`,
-          }}
-        >
-          <div className="flex" style={{ gap: 8 }}>
-            <button type="button" onClick={() => setFuOpen({ key: "booked" })}
-              className="m-press flex flex-1 items-center justify-center"
-              style={{ boxSizing: "border-box", height: 46, borderRadius: 12, border: "none", background: MOBILE_COLORS.amber, color: MOBILE_COLORS.bg, fontSize: 13.5, fontWeight: 700 }}>
-              ✅ تم الحجز
-            </button>
-            <button type="button" onClick={() => setFuOpen({ key: "booked" })}
-              className="m-press flex flex-1 items-center justify-center"
-              style={{ boxSizing: "border-box", height: 46, borderRadius: 12, border: "none", background: MOBILE_COLORS.mint, color: MOBILE_COLORS.bg, fontSize: 13.5, fontWeight: 700 }}>
-              ⚡ شراء فوري
-            </button>
-          </div>
-          {falLicense && (
-            <div className="text-center" style={{ fontSize: 10, color: MOBILE_COLORS.textMuted, marginTop: 6 }}>
-              رخصة فال (REGA) <span dir="ltr">{falLicense}</span>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* الأوراق */}
       {fuOpen && (
@@ -335,6 +322,57 @@ export function LeadProfileV3({
         meName={meName}
         leadId={lead.id}
       />
+    </div>
+  );
+}
+
+/* ===================== ✦ إتمام (قرار 2026-08-22 — بدل الشريط السفلي الثابت) ===================== */
+
+/** أيقونة «✦ إتمام» — SVG (لا إيموجي) بلون النص الحالي. */
+function DealIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true" style={{ flex: "none" }}>
+      <path d="M12 3c.6 3.9 3.1 6.4 7 7-3.9.6-6.4 3.1-7 7-.6-3.9-3.1-6.4-7-7 3.9-.6 6.4-3.1 7-7Z" />
+      <path d="M19 15c.2 1.5 1.1 2.4 2.5 2.6-1.4.2-2.3 1.1-2.5 2.6-.2-1.5-1.1-2.4-2.5-2.6 1.4-.2 2.3-1.1 2.5-2.6Z" />
+    </svg>
+  );
+}
+
+/**
+ * تبويب «إتمام الصفقة»: الزران القديمان بسلوكهما الحالي حرفيًا (كلاهما يفتح ورقة
+ * المتابعة على «تم الحجز» — الإرشاد لنموذج الويب الكامل) + سطر رخصة فال الذي كان بالشريط.
+ */
+function DealTab({ falLicense, onBooked }: { falLicense: string | null; onBooked: () => void }) {
+  return (
+    <div className="m-rise" style={{ ...box, padding: 16 }}>
+      <div className="flex items-start" style={{ gap: 12 }}>
+        <div className="flex flex-none items-center justify-center" style={{ width: 40, height: 40, borderRadius: 12, background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }}>
+          <DealIcon size={20} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>إتمام الصفقة</div>
+          <div style={{ fontSize: 12.5, color: MOBILE_COLORS.textSecondary, lineHeight: 1.7, marginTop: 2 }}>
+            سجّل حجز العميل أو شراءه الفوري — تسجيل الحجز الكامل (الوحدة والأسعار والدفعات) من نموذج الويب.
+          </div>
+        </div>
+      </div>
+      <div className="flex" style={{ gap: 8, marginTop: 16 }}>
+        <button type="button" onClick={onBooked}
+          className="m-press flex flex-1 items-center justify-center"
+          style={{ boxSizing: "border-box", height: 46, borderRadius: 12, border: "none", background: MOBILE_COLORS.amber, color: MOBILE_COLORS.bg, fontSize: 13.5, fontWeight: 700 }}>
+          تم الحجز
+        </button>
+        <button type="button" onClick={onBooked}
+          className="m-press flex flex-1 items-center justify-center"
+          style={{ boxSizing: "border-box", height: 46, borderRadius: 12, border: "none", background: MOBILE_COLORS.mint, color: MOBILE_COLORS.bg, fontSize: 13.5, fontWeight: 700 }}>
+          شراء فوري
+        </button>
+      </div>
+      {falLicense && (
+        <div className="text-center" style={{ fontSize: 10, color: MOBILE_COLORS.textMuted, marginTop: 12 }}>
+          رخصة فال (REGA) <span dir="ltr">{falLicense}</span>
+        </div>
+      )}
     </div>
   );
 }
