@@ -329,3 +329,23 @@ export const deliveryStatusLabels: Record<DeliveryStatus, string> = {
   SCHEDULED: "مجدول",
   DELIVERED: "تم التسليم",
 };
+
+/**
+ * تعريب قيم method الخام في سجل تنقلات العملاء — المجهولة تُعرض كما هي.
+ * هنا (لا في مكوّن العميل) لأن صفحة /m/leads/[id] الخادمية تستدعيها —
+ * استدعاء دالة مُصدَّرة من موديول "use client" داخل مكوّن خادم يرمي وقت التشغيل.
+ */
+export const REASON_LABELS: Record<string, string> = {
+  initial: "توزيع تلقائي عند الدخول",
+  manual: "إسناد يدوي من المالك · محصّنة",
+  timeout: "سحب — تجاوز مهلة التواصل",
+  timeout_auto: "سحب تلقائي — تجاوز المهلة",
+  no_response_neglect: "سحب تلقائي — عدم استجابة",
+  no_response_exhausted: "سحب تلقائي — استنفاد المحاولات",
+  exhausted: "تعذّر الوصول — للمالك",
+  manual_transfer_full: "تحويل يدوي بالبيانات",
+  manual_transfer_fresh: "تحويل يدوي كجديد",
+  redistribute_full: "إعادة توزيع ببياناته",
+  redistribute_fresh: "إعادة توزيع كجديد",
+};
+export const reasonLabel = (r: string) => REASON_LABELS[r] ?? r;
