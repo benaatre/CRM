@@ -26,7 +26,7 @@ import { WAITING_TONE } from "@/lib/stage-colors";
 import { DistrictSelect } from "./district-select";
 import { useFollowUps } from "./use-followups";
 
-type Tab = "data" | "followups" | "ai" | "transfers";
+type Tab = "data" | "followups" | "ai" | "transfers" | "deal";
 type Analysis = { temperature: string; interest: number; nextStep: string; whatsapp: string; source?: string };
 
 const tempColor: Record<string, string> = {
@@ -45,6 +45,8 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
   // تبويب «سجل التحويلات» للمالك فقط (transferHistory != null يعني مالك — الصلاحية من الخادم).
   const tabs: [Tab, string][] = [["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]];
   if (transferHistory) tabs.push(["transfers", "سجل التحويلات"]);
+  // «✦ إتمام» (قرار 2026-08-22): بدل الشريط السفلي الثابت — نفس شرط ظهوره القديم (عميل غير مؤرشف).
+  if (!detail.isArchived) tabs.push(["deal", "إتمام"]);
   const [reserveMode, setReserveMode] = useState<"reserve" | "instant" | null>(null);
   const { items, systemEvents, loading, reload } = useFollowUps(detail.id);
 
@@ -130,48 +132,6 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
             </div>
           )
         )}
-        {/* باب البركة ٣ — للمالك/المدير: يسحب العميل من صاحبه ويضعه في بركة التوزيع التلقائي. */}
-        {isManager && !detail.isArchived && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-secondary/30 px-3 py-2">
-            <span className="text-xs text-muted-foreground">
-              {detail.inAutoPool
-                ? "هذا العميل داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه"
-                : "خارج بركة التوزيع التلقائي — المحرك لا يمسّه إطلاقًا"}
-            </span>
-            {detail.inAutoPool ? (
-              <button
-                onClick={() => {
-                  if (!window.confirm("تأكيد: إخراجه من بركة التوزيع التلقائي؟ المحرك ما راح يلمسه بعدها.")) return;
-                  startTransition(async () => {
-                    const r = await removeFromAutoPool([detail.id]);
-                    if (!r.ok && r.error) alert(r.error);
-                    router.refresh();
-                  });
-                }}
-                disabled={pending}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-50"
-              >أخرجه من البركة</button>
-            ) : (
-              <button
-                onClick={() => {
-                  const owner = detail.assignedTo?.name;
-                  if (!window.confirm(
-                    owner
-                      ? `تأكيد: سحب «${detail.name}» من ${owner} وتحويله لبركة التوزيع التلقائي؟ يُلغى إسناده الحالي ويوزّعه المحرك من جديد.`
-                      : `تأكيد: تحويل «${detail.name}» لبركة التوزيع التلقائي؟`,
-                  )) return;
-                  startTransition(async () => {
-                    const r = await transferToAutoPool([detail.id]);
-                    if (!r.ok && r.error) alert(r.error);
-                    router.refresh();
-                  });
-                }}
-                disabled={pending}
-                className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
-              >حوّله للتوزيع التلقائي</button>
-            )}
-          </div>
-        )}
 
         {/* الخطوة ٣ج: زر كشف السجل — للمالك فقط (transferHistory ≠ null يعني مالك)، ولعميل وُزّع «كجديد» فقط. */}
         {transferHistory && detail.freshDistributed && (
@@ -203,7 +163,26 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
       {/* التبويبات — قابلة للتمرير أفقيًا على الجوال */}
       <div className="scroll-x flex gap-1 rounded-xl border border-border bg-card p-1">
         {tabs.map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors sm:flex-1 sm:shrink ${tab === v ? "bg-secondary text-gold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+          <button
+            key={v}
+            onClick={() => setTab(v)}
+            className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors sm:flex-1 sm:shrink ${
+              v === "deal"
+                ? tab === v
+                  ? "bg-gold/15 text-gold ring-1 ring-gold/40"
+                  : "text-gold/80 hover:bg-gold/10 hover:text-gold"
+                : tab === v
+                  ? "bg-secondary text-gold"
+                  : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {v === "deal" ? (
+              <span className="inline-flex items-center gap-1.5">
+                <DealIcon className="size-4" />
+                {label}
+              </span>
+            ) : label}
+          </button>
         ))}
       </div>
 
@@ -264,13 +243,67 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
 
       {tab === "transfers" && transferHistory && <TransferHistorySection data={transferHistory} />}
 
-      {/* زرّان ثابتان دائمًا (إلا لو العميل محجوز/مشترٍ مسبقًا) */}
-      {!detail.isArchived && (
-        <div className="sticky bottom-3 z-30 flex gap-2 rounded-2xl border border-border bg-card/90 p-2 shadow-2xl backdrop-blur">
-          <button onClick={() => setReserveMode("reserve")} className="min-h-12 flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">تم الحجز</button>
-          <button onClick={() => setReserveMode("instant")} className="min-h-12 flex-1 rounded-xl bg-success/15 py-3 text-sm font-semibold text-success hover:bg-success/25">شراء فوري</button>
-        </div>
+      {/* ===== ✦ إتمام — الزران القديمان بنفس مساريهما حرفيًا (BookingForm) + صف البركة للمالك/المدير ===== */}
+      {tab === "deal" && !detail.isArchived && (
+        <section className="glass space-y-4 rounded-2xl p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+              <DealIcon className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">إتمام الصفقة</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">سجّل حجز العميل أو شراءه الفوري — يفتح نموذج الحجز الكامل (الوحدة والأسعار والدفعات).</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button onClick={() => setReserveMode("reserve")} className="min-h-12 flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">تم الحجز</button>
+            <button onClick={() => setReserveMode("instant")} className="min-h-12 flex-1 rounded-xl bg-success/15 py-3 text-sm font-semibold text-success hover:bg-success/25">شراء فوري</button>
+          </div>
+          {/* باب البركة ٣ — للمالك/المدير: يسحب العميل من صاحبه ويضعه في بركة التوزيع التلقائي. */}
+          {isManager && !detail.isArchived && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-secondary/30 px-3 py-2">
+              <span className="text-xs text-muted-foreground">
+                {detail.inAutoPool
+                  ? "هذا العميل داخل بركة التوزيع التلقائي — المحرك يوزّعه ويعيد توجيهه"
+                  : "خارج بركة التوزيع التلقائي — المحرك لا يمسّه إطلاقًا"}
+              </span>
+              {detail.inAutoPool ? (
+                <button
+                  onClick={() => {
+                    if (!window.confirm("تأكيد: إخراجه من بركة التوزيع التلقائي؟ المحرك ما راح يلمسه بعدها.")) return;
+                    startTransition(async () => {
+                      const r = await removeFromAutoPool([detail.id]);
+                      if (!r.ok && r.error) alert(r.error);
+                      router.refresh();
+                    });
+                  }}
+                  disabled={pending}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-50"
+                >أخرجه من البركة</button>
+              ) : (
+                <button
+                  onClick={() => {
+                    const owner = detail.assignedTo?.name;
+                    if (!window.confirm(
+                      owner
+                        ? `تأكيد: سحب «${detail.name}» من ${owner} وتحويله لبركة التوزيع التلقائي؟ يُلغى إسناده الحالي ويوزّعه المحرك من جديد.`
+                        : `تأكيد: تحويل «${detail.name}» لبركة التوزيع التلقائي؟`,
+                    )) return;
+                    startTransition(async () => {
+                      const r = await transferToAutoPool([detail.id]);
+                      if (!r.ok && r.error) alert(r.error);
+                      router.refresh();
+                    });
+                  }}
+                  disabled={pending}
+                  className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-50"
+                >حوّله للتوزيع التلقائي</button>
+              )}
+            </div>
+          )}
+        </section>
       )}
+
 
       {reserveMode && (
         <BookingForm
@@ -283,6 +316,16 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
         />
       )}
     </div>
+  );
+}
+
+/** أيقونة تبويب «✦ إتمام» — SVG (لا إيموجي) بلون النص الحالي. */
+function DealIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" className={className} aria-hidden="true">
+      <path d="M12 3c.6 3.9 3.1 6.4 7 7-3.9.6-6.4 3.1-7 7-.6-3.9-3.1-6.4-7-7 3.9-.6 6.4-3.1 7-7Z" />
+      <path d="M19 15c.2 1.5 1.1 2.4 2.5 2.6-1.4.2-2.3 1.1-2.5 2.6-.2-1.5-1.1-2.4-2.5-2.6 1.4-.2 2.3-1.1 2.5-2.6Z" />
+    </svg>
   );
 }
 
