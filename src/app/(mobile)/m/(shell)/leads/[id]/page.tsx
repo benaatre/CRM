@@ -3,9 +3,9 @@ import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadDetail, getLeadTransferHistory } from "@/lib/data/leads";
 import { getSettings } from "@/lib/data/settings";
 import { prisma } from "@/lib/prisma";
-import { channelLabel } from "@/lib/labels";
+import { channelLabel, reasonLabel } from "@/lib/labels";
 import { elapsedLabel } from "@/lib/mobile-format";
-import { LeadProfileV3, reasonLabel, type ProfileData, type OwnerExtras } from "@/components/mobile/lead-profile-v3";
+import { LeadProfileV3, type ProfileData, type OwnerExtras } from "@/components/mobile/lead-profile-v3";
 
 export const dynamic = "force-dynamic";
 

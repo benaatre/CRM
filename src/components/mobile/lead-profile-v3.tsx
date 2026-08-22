@@ -7,7 +7,7 @@ import type { LeadStage, Channel, FollowUpResult, FollowUpType, PurchaseGoal, Pu
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import {
   stageLabel, stageOrder, activityTypeLabels, followUpResultLabels,
-  purchaseGoalLabels, purchaseMethodOptions, purchaseMethodLabels,
+  purchaseGoalLabels, purchaseMethodOptions, purchaseMethodLabels, reasonLabel,
 } from "@/lib/labels";
 import { transferLeads, recoverLeads, updateLeadStage, bulkArchive } from "@/lib/actions/leads";
 import { addBookingPayment } from "@/lib/actions/bookings";
@@ -55,22 +55,6 @@ export type OwnerExtras = {
   canAddPayment: boolean;
   channelText: string;
 };
-
-/** تعريب قيم method الخام في سلسلة التنقلات — المجهولة تُعرض كما هي. */
-const REASON_LABELS: Record<string, string> = {
-  initial: "توزيع تلقائي عند الدخول",
-  manual: "إسناد يدوي من المالك · محصّنة",
-  timeout: "سحب — تجاوز مهلة التواصل",
-  timeout_auto: "سحب تلقائي — تجاوز المهلة",
-  no_response_neglect: "سحب تلقائي — عدم استجابة",
-  no_response_exhausted: "سحب تلقائي — استنفاد المحاولات",
-  exhausted: "تعذّر الوصول — للمالك",
-  manual_transfer_full: "تحويل يدوي بالبيانات",
-  manual_transfer_fresh: "تحويل يدوي كجديد",
-  redistribute_full: "إعادة توزيع ببياناته",
-  redistribute_fresh: "إعادة توزيع كجديد",
-};
-export const reasonLabel = (r: string) => REASON_LABELS[r] ?? r;
 
 export type ProfileData = {
   id: string;
