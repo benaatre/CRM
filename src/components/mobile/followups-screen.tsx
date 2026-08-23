@@ -117,15 +117,27 @@ const chipStyle = (on: boolean, color: string = SOP.gold, bg: string = MOBILE_CO
     : { background: SOP.plane, color: SOP.tx2 }),
 });
 
-/** زر فعل في الكروت — ٤٦px، ثلاث نغمات: ذهبي ممتلئ · أخضر خفيف · محاط ذهبي. */
+/**
+ * أزرار الفعل في الكروت — مطابقة followups-fixed2 حرفيًا (تُعمَّم لاحقًا على كرت العميل
+ * وكرت الموعد القادم): ٤٦px · radius 12 · 600/12.5 · gap 7 · أيقونة ١٧px stroke 2.
+ *  gold: «اتصال» الأساسي — تدرّج ذهبي، نص/أيقونة --sop-ongold.
+ *  wa:   «واتساب» — مزيج أخضر ١٦٪ فوق السطح، نص/أيقونة --sop-green.
+ *  file: «الملف» — سطح بارز نيومورفيزمي بحد ذهبي رفيع، نص/أيقونة --sop-gold2.
+ */
 const actionBtn = (tone: "gold" | "wa" | "file") => ({
-  boxSizing: "border-box" as const, height: BTN_H, borderRadius: 13, fontSize: 13, fontWeight: 700 as const, gap: 6,
+  boxSizing: "border-box" as const, height: BTN_H, borderRadius: 12, fontSize: 12.5, fontWeight: 600 as const, gap: 7, border: "none",
   ...(tone === "gold"
-    ? { background: SOP.gold, color: SOP.onGold, border: "none" }
+    ? { background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, color: SOP.onGold }
     : tone === "wa"
-      ? { background: MOBILE_COLORS.mintBg, color: SOP.green, border: `1px solid ${SOP.edge}` }
-      : { background: SOP.planeHi, color: SOP.gold, border: `1px solid ${SOP.gold}` }),
+      ? { background: `color-mix(in srgb, ${SOP.green} 16%, ${SOP.plane})`, color: SOP.green }
+      : {
+          background: SOP.plane, color: SOP.gold2,
+          boxShadow: `3px 3px 7px ${SOP.sd}, -3px -3px 7px ${SOP.sl}`,
+          border: `1px solid color-mix(in srgb, ${SOP.gold} 18%, transparent)`,
+        }),
 });
+/** أيقونة زر الفعل — ١٧px بسماكة ٢ (تحت سقف ٢٨px). */
+const BTN_ICON = { size: 17, strokeWidth: 2 } as const;
 
 export function FollowupsScreen({
   todayAppointments, doneToday, missedOld, upcoming, log, unread, projects, initialTab,
@@ -278,14 +290,14 @@ export function FollowupsScreen({
         </div>
         {/* أزرار الفعل — اتصال · واتساب · الملف (لا «سجّل النتيجة» — من ملف العميل) */}
         <div className="flex" style={{ gap: 8, marginTop: 10 }}>
-          <a href={`tel:${a.phone}`} onClick={() => markCall(a.leadId)} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("gold"), flex: 1.4 }}>
-            <Phone size={17} strokeWidth={2} aria-hidden /> اتصال
+          <a href={`tel:${a.phone}`} onClick={() => markCall(a.leadId)} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("gold"), flex: 1.3 }}>
+            <Phone {...BTN_ICON} aria-hidden /> اتصال
           </a>
           <a href={`https://wa.me/${waPhone(a.phone)}`} target="_blank" rel="noopener noreferrer" className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("wa"), flex: 1 }}>
-            <MessageCircle size={17} strokeWidth={2} aria-hidden /> واتساب
+            <MessageCircle {...BTN_ICON} aria-hidden /> واتساب
           </a>
           <Link href={`/m/leads/${a.leadId}`} aria-label={`ملف العميل ${a.name}`} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("file"), flex: 1 }}>
-            <UserRound size={17} strokeWidth={2} aria-hidden /> الملف
+            <UserRound {...BTN_ICON} aria-hidden /> الملف
           </Link>
         </div>
       </div>
@@ -320,15 +332,16 @@ export function FollowupsScreen({
           </div>
         </div>
         <div className="flex" style={{ gap: 8, marginTop: 10 }}>
-          <a href={`tel:${r.leadPhone}`} onClick={() => markCall(r.leadId)} className="m-press-sc flex flex-1 items-center justify-center" style={{ ...actionBtn("wa"), color: SOP.tx2, background: SOP.planeHi }}>
-            <Phone size={17} strokeWidth={2} aria-hidden /> اتصال
+          {/* المنجز: الاتصال ثانوي (سطح بارز بلون النص) — الأساسي الذهبي محجوز لغير المنجز. */}
+          <a href={`tel:${r.leadPhone}`} onClick={() => markCall(r.leadId)} className="m-press-sc flex flex-1 items-center justify-center" style={{ ...actionBtn("file"), color: SOP.tx2, border: `1px solid ${SOP.edge}` }}>
+            <Phone {...BTN_ICON} aria-hidden /> اتصال
           </a>
           <Link href={`/m/leads/${r.leadId}`} aria-label={`ملف العميل ${r.leadName}`} className="m-press-sc flex flex-1 items-center justify-center" style={actionBtn("file")}>
-            <UserRound size={17} strokeWidth={2} aria-hidden /> الملف
+            <UserRound {...BTN_ICON} aria-hidden /> الملف
           </Link>
           {left > 0 && (
-            <button type="button" onClick={() => setEditItem(r)} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("wa"), flex: 1.3, background: MOBILE_COLORS.goldBg, color: SOP.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }}>
-              <Pencil size={15} strokeWidth={2} aria-hidden /> تعديل · {toArabicDigits(left)} د
+            <button type="button" onClick={() => setEditItem(r)} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("wa"), flex: 1.3, background: `color-mix(in srgb, ${SOP.gold} 16%, ${SOP.plane})`, color: SOP.gold2 }}>
+              <Pencil {...BTN_ICON} aria-hidden /> تعديل · {toArabicDigits(left)} د
             </button>
           )}
         </div>
