@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpDown, CheckSquare, CalendarDays } from "lucide-react";
+import { ArrowUpDown, CheckSquare, X } from "lucide-react";
+import type { LeadStage } from "@prisma/client";
 import {
   buildLeadsQuery, INTEREST_UMBRELLA, VISIT_FILTER_STAGES, type LeadFilterValues,
 } from "@/lib/lead-filters";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
-import { toArabicDigits } from "@/lib/mobile-format";
+import { stageLabels, purchaseMethodLabels } from "@/lib/labels";
+import { SOP } from "@/lib/mobile-tokens";
 import { BottomSheet } from "@/components/mobile/bottom-sheet";
 import { MobileFilterSheet, type FilterSection, type FilterSelection } from "@/components/mobile/filter-sheet";
 
@@ -20,34 +21,34 @@ const SORTS = [
   { value: "name", label: "حسب الاسم" },
 ] as const;
 
-const DATE_PRESETS = [
-  { value: "", label: "الكل" },
-  { value: "today", label: "اليوم" },
-  { value: "week", label: "هذا الأسبوع" },
-  { value: "next", label: "الأسبوع الجاي" },
-] as const;
+/** مفتاح المحفوظات على هذا الجهاز (عميل فقط). */
+export const LEADS_SAVED_KEY = "m-leads-saved";
 
 const fieldStyle = {
   boxSizing: "border-box" as const,
   width: "100%", minHeight: 46,
-  background: MOBILE_COLORS.bg, border: `1px solid ${MOBILE_COLORS.border}`,
-  borderRadius: 11, padding: "0 12px", fontSize: 14, color: MOBILE_COLORS.textPrimary, outline: "none",
+  background: SOP.page, border: `1px solid ${SOP.edge}`,
+  borderRadius: 11, padding: "0 12px", fontSize: 14, color: SOP.tx, outline: "none",
 };
 
 /**
- * صف أدوات /m/leads: «فلاتر» عريض + ترتيب + تحديد، وتحته صف الموعد الذكي.
+ * صف أدوات /m/leads: ترتيب (باسم الترتيب الحالي) + «الفلاتر» المتقدمة + تحديد،
+ * وتحته رقائق المختارات القابلة للحذف (✕).
  *
- * كل شيء يمرّ عبر `buildLeadsQuery` نفسها — صفر باراميتر جديد وصفر منطق فلترة
- * هنا. الشاشة تمرّر القيم المحلّلة (parseLeadFilters) وتستقبل الرابط الجديد.
+ * كل ما يخصّ الخادم يمرّ عبر `buildLeadsQuery` نفسها — صفر باراميتر جديد وصفر
+ * منطق فلترة خادمي هنا. الشاشة تمرّر القيم المحلّلة (parseLeadFilters) وتستقبل الرابط.
  *
- * صف الموعد يظهر فقط مع مرحلة ذات بُعد زمني (زيارة/موعد لاحق) أو «في الانتظار» —
- * وهو نفس شرط سريان النطاق على الخادم (dateRangeApplies)، فما نعرض فلترًا لا يؤثّر.
+ * ⚠️ استثناءان **عميل فقط** (لا يمرّان بالرابط ولا بالعدّادات):
+ *   - «طريقة الشراء» (pm/onPm): getLeads لا يدعمها؛ تُطبَّق محليًا على الصفوف المحمّلة
+ *     في MobileLeadsList قبل التقسيم.
+ *   - «الفلاتر المحفوظة»: localStorage تحت LEADS_SAVED_KEY، تطبيقها = تنقّل بالرابط المحفوظ.
  *
  * ⚠️ «اليوم» ليس preset على الخادم (DATE_RANGE_PRESETS = week/next فقط) — نكتبه
  * كنطاق from=to=تاريخ اليوم عبر نفس حقلَي from/to، بلا أي إضافة خادمية.
  */
 export function MobileLeadsFilters({
   tab, values, sections, selection, dateApplies, todayISO, selectMode, onToggleSelect,
+  employees = [], pm, onPm,
 }: {
   tab: LeadTab;
   values: LeadFilterValues;
@@ -59,6 +60,11 @@ export function MobileLeadsFilters({
   todayISO: string;
   selectMode: boolean;
   onToggleSelect: () => void;
+  /** أسماء الموظفين — لرقاقة فلتر الموظف (المدير). */
+  employees?: { id: string; name: string }[];
+  /** فلتر طريقة الشراء — عميل فقط (حالة القائمة). */
+  pm: string[];
+  onPm: (next: string[]) => void;
 }) {
   const router = useRouter();
   const [sortOpen, setSortOpen] = useState(false);
@@ -66,8 +72,9 @@ export function MobileLeadsFilters({
   const [from, setFrom] = useState(values.from);
   const [to, setTo] = useState(values.to);
 
+  const queryOf = (next: LeadFilterValues) => buildLeadsQuery(tab, next);
   const push = (next: LeadFilterValues) => {
-    const qs = buildLeadsQuery(tab, next);
+    const qs = queryOf(next);
     router.push(qs ? `/m/leads?${qs}` : "/m/leads");
   };
 
@@ -75,6 +82,8 @@ export function MobileLeadsFilters({
    * ترجمة اختيار الورقة إلى قيم الرابط — نفس مفاتيح parseLeadFilters.
    * «زيارة» و«مهتم» رمزان مركّبان يُفكّان لمراحلهما (نفس ما تفعله شريحة الديسكتوب)،
    * وbuildLeadsQuery يعيد طيّ زوج الزيارة إلى "visit" في الرابط.
+   * قسم «الموعد» مفرد: today ⟵ from=to=اليوم · week/next ⟵ range · custom ⟵ يفتح ورقة التاريخ.
+   * قسم «طريقة الشراء» عميل فقط ⟵ onPm.
    */
   function applyFilters(next: FilterSelection) {
     const picked = next.stages ?? [];
@@ -83,107 +92,124 @@ export function MobileLeadsFilters({
         : s === "umbrella" ? [...INTEREST_UMBRELLA]
           : [s],
     ))];
+    const date = (next.date ?? [])[0] ?? "";
+    const dateVals: Pick<LeadFilterValues, "range" | "from" | "to"> =
+      date === "today" ? { range: "", from: todayISO, to: todayISO }
+        : date === "week" || date === "next" ? { range: date, from: "", to: "" }
+          : date === "custom" ? { range: "", from: values.from, to: values.to }
+            : { range: "", from: "", to: "" };
+    onPm(next.pm ?? []);
     push({
       ...values,
       stages,
       wait: (next.flags ?? []).includes("wait"),
       tr: (next.flags ?? []).includes("tr"),
       bank: (next.flags ?? []).includes("bank"),
+      ...dateVals,
     });
+    if (date === "custom") { setFrom(values.from); setTo(values.to); setDateOpen(true); }
   }
 
   const customActive = !values.range && (!!values.from || !!values.to);
   const todayActive = values.from === todayISO && values.to === todayISO;
-  const activeDate = todayActive ? "today" : values.range || (customActive ? "custom" : "");
+  const sortLabel = SORTS.find((s) => s.value === values.sort)?.label ?? SORTS[0].label;
+
+  // ===== رقائق المختارات (✕) — كل واحدة تعيد بناء الرابط بلا قيمتها =====
+  const visitOn = VISIT_FILTER_STAGES.every((s) => values.stages.includes(s));
+  const chips: { key: string; label: string; onRemove: () => void; tone?: "green" | "red" }[] = [];
+  if (values.q) chips.push({ key: "q", label: `بحث: ${values.q}`, onRemove: () => push({ ...values, q: "" }) });
+  if (visitOn) chips.push({ key: "visit", label: "زيارة", onRemove: () => push({ ...values, stages: values.stages.filter((s) => !(VISIT_FILTER_STAGES as string[]).includes(s)) }) });
+  for (const s of values.stages) {
+    if (visitOn && (VISIT_FILTER_STAGES as string[]).includes(s)) continue;
+    chips.push({
+      key: `st-${s}`, label: stageLabels[s as LeadStage] ?? s, tone: s === "NEW" ? "green" : undefined,
+      onRemove: () => push({ ...values, stages: values.stages.filter((x) => x !== s) }),
+    });
+  }
+  if (values.wait) chips.push({ key: "wait", label: "في الانتظار", onRemove: () => push({ ...values, wait: false }) });
+  if (values.bank) chips.push({ key: "bank", label: "حسبة البنك", onRemove: () => push({ ...values, bank: false }) });
+  if (values.tr) chips.push({ key: "tr", label: "محوَّل", onRemove: () => push({ ...values, tr: false }) });
+  for (const id of values.emps) {
+    const name = id === "none" ? "غير موزّع" : employees.find((e) => e.id === id)?.name ?? "موظف";
+    chips.push({ key: `emp-${id}`, label: name, onRemove: () => push({ ...values, emps: values.emps.filter((x) => x !== id) }) });
+  }
+  if (todayActive) chips.push({ key: "d-today", label: "الموعد: اليوم", onRemove: () => push({ ...values, range: "", from: "", to: "" }) });
+  else if (values.range) chips.push({ key: "d-range", label: values.range === "week" ? "الموعد: هذا الأسبوع" : "الموعد: الأسبوع الجاي", onRemove: () => push({ ...values, range: "", from: "", to: "" }) });
+  else if (customActive) chips.push({ key: "d-custom", label: `الموعد: ${values.from || "…"} → ${values.to || "…"}`, onRemove: () => push({ ...values, range: "", from: "", to: "" }) });
+  for (const p of pm) {
+    chips.push({ key: `pm-${p}`, label: purchaseMethodLabels[p as keyof typeof purchaseMethodLabels] ?? p, onRemove: () => onPm(pm.filter((x) => x !== p)) });
+  }
+
+  const iconBtn = (on: boolean) => ({
+    boxSizing: "border-box" as const, width: 44, height: 44, borderRadius: 13,
+    ...(on ? { background: `color-mix(in srgb, ${SOP.gold} 16%, ${SOP.plane})`, border: `1px solid ${SOP.gold}`, color: SOP.gold } : { color: SOP.tx2 }),
+  });
 
   return (
     <>
-      {/* ===== صف الأدوات ===== */}
+      {/* ===== صف الأدوات: ترتيب · الفلاتر · تحديد ===== */}
       <div className="flex items-center" style={{ gap: 8 }}>
-        <MobileFilterSheet sections={sections} selection={selection} onApply={applyFilters} />
-
         <button
           type="button"
           onClick={() => setSortOpen(true)}
           aria-label="الترتيب"
-          className="m-press flex flex-none items-center justify-center"
-          style={{
-            boxSizing: "border-box", width: 44, height: 44, borderRadius: 13,
-            background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-            color: MOBILE_COLORS.textSecondary,
-          }}
+          className="m-raise m-press-sc flex flex-none items-center"
+          style={{ boxSizing: "border-box", gap: 6, height: 44, padding: "0 12px", borderRadius: 13, color: SOP.tx2, fontSize: 12.5, fontWeight: 600, maxWidth: "42%" }}
         >
-          <ArrowUpDown size={17} aria-hidden />
+          <ArrowUpDown size={16} strokeWidth={2} aria-hidden />
+          <span className="min-w-0 truncate">{sortLabel}</span>
         </button>
+
+        <MobileFilterSheet
+          sections={sections}
+          selection={{ ...selection, pm }}
+          onApply={applyFilters}
+          savedKey={LEADS_SAVED_KEY}
+          currentQuery={queryOf(values) || "tab=working"}
+          onApplySaved={(q) => router.push(q && q !== "tab=working" ? `/m/leads?${q}` : "/m/leads")}
+        />
 
         <button
           type="button"
           onClick={onToggleSelect}
           aria-label={selectMode ? "إنهاء التحديد" : "تحديد"}
           aria-pressed={selectMode}
-          className="m-press flex flex-none items-center justify-center"
-          style={{
-            boxSizing: "border-box", width: 44, height: 44, borderRadius: 13,
-            background: selectMode ? MOBILE_COLORS.goldBg : MOBILE_COLORS.card,
-            border: `1px solid ${selectMode ? MOBILE_COLORS.goldBorder : MOBILE_COLORS.border}`,
-            color: selectMode ? MOBILE_COLORS.gold : MOBILE_COLORS.textSecondary,
-          }}
+          className={`${selectMode ? "" : "m-raise"} m-press-sc flex flex-none items-center justify-center`}
+          style={iconBtn(selectMode)}
         >
-          <CheckSquare size={17} aria-hidden />
+          <CheckSquare size={17} strokeWidth={2} aria-hidden />
         </button>
       </div>
 
-      {/* ===== صف الموعد الذكي — يظهر فقط مع مرحلة ذات بُعد زمني ===== */}
-      {dateApplies && (
-        <div className="m-rise m-noscroll flex overflow-x-auto" style={{ gap: 7, paddingBottom: 2 }}>
-          {DATE_PRESETS.map((p) => {
-            const on = activeDate === p.value;
+      {/* ===== رقائق المختارات — قابلة للحذف ===== */}
+      {chips.length > 0 && (
+        <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6, paddingBottom: 2 }}>
+          {chips.map((c) => {
+            const color = c.tone === "green" ? SOP.green : c.tone === "red" ? SOP.red : SOP.gold;
             return (
               <button
-                key={p.value || "all"}
+                key={c.key}
                 type="button"
-                onClick={() =>
-                  push(
-                    p.value === "today"
-                      ? { ...values, range: "", from: todayISO, to: todayISO }
-                      : p.value === ""
-                        ? { ...values, range: "", from: "", to: "" }
-                        : { ...values, range: p.value as LeadFilterValues["range"], from: "", to: "" },
-                  )
-                }
-                className="m-press flex flex-none items-center whitespace-nowrap"
+                onClick={c.onRemove}
+                aria-label={`إزالة فلتر ${c.label}`}
+                className="m-press-sc flex flex-none items-center whitespace-nowrap"
                 style={{
-                  boxSizing: "border-box", height: 34, padding: "0 14px", borderRadius: 17,
-                  fontSize: 12, fontWeight: 600,
-                  ...(on
-                    ? { background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }
-                    : { background: MOBILE_COLORS.card, color: MOBILE_COLORS.textSecondary, border: `1px solid ${MOBILE_COLORS.border}` }),
+                  boxSizing: "border-box", gap: 5, height: 30, padding: "0 9px 0 7px", borderRadius: 10,
+                  background: `color-mix(in srgb, ${color} 14%, ${SOP.plane})`, border: `1px solid color-mix(in srgb, ${color} 40%, transparent)`,
+                  color, fontSize: 11.5, fontWeight: 700,
                 }}
               >
-                {p.label}
+                {c.label}
+                <X size={12} strokeWidth={2.5} aria-hidden />
               </button>
             );
           })}
-          <button
-            type="button"
-            onClick={() => { setFrom(values.from); setTo(values.to); setDateOpen(true); }}
-            className="m-press flex flex-none items-center whitespace-nowrap"
-            style={{
-              boxSizing: "border-box", gap: 6, height: 34, padding: "0 14px", borderRadius: 17,
-              fontSize: 12, fontWeight: 600,
-              ...(activeDate === "custom"
-                ? { background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }
-                : { background: MOBILE_COLORS.card, color: MOBILE_COLORS.textSecondary, border: `1px solid ${MOBILE_COLORS.border}` }),
-            }}
-          >
-            <CalendarDays size={13} aria-hidden /> تاريخ محدد
-          </button>
         </div>
       )}
 
       {/* ===== ورقة الترتيب ===== */}
       <BottomSheet open={sortOpen} onClose={() => setSortOpen(false)} title="الترتيب">
-        <div className="flex flex-col" style={{ marginTop: 12 }}>
+        <div className="flex flex-col" style={{ marginTop: 12, gap: 6 }}>
           {SORTS.map((s) => {
             const on = values.sort === s.value;
             return (
@@ -191,41 +217,35 @@ export function MobileLeadsFilters({
                 key={s.value}
                 type="button"
                 onClick={() => { setSortOpen(false); push({ ...values, sort: s.value }); }}
-                className="m-press flex w-full items-center justify-between"
+                className={`${on ? "m-inset" : ""} m-press-sc flex w-full items-center justify-between`}
                 style={{
-                  boxSizing: "border-box", minHeight: 52, borderRadius: 12, padding: "0 14px",
-                  background: on ? MOBILE_COLORS.goldBg : "transparent",
-                  border: `1px solid ${on ? MOBILE_COLORS.goldBorder : "transparent"}`,
-                  color: on ? MOBILE_COLORS.gold : MOBILE_COLORS.textPrimary,
+                  boxSizing: "border-box", minHeight: 50, borderRadius: 12, padding: "0 14px",
+                  ...(on ? { color: SOP.gold } : { background: "transparent", border: `1px solid transparent`, color: SOP.tx }),
                   fontSize: 14, fontWeight: on ? 700 : 500,
                 }}
               >
                 {s.label}
-                {on && <span aria-hidden>✓</span>}
+                {on && <span aria-hidden style={{ width: 8, height: 8, borderRadius: 4, background: SOP.gold }} />}
               </button>
             );
           })}
         </div>
       </BottomSheet>
 
-      {/* ===== ورقة التاريخ المحدد — منتقي تاريخ الجوال الأصلي ===== */}
+      {/* ===== ورقة التاريخ المحدد — منتقي تاريخ الجوال الأصلي (يسري مع زيارة/موعد لاحق) ===== */}
       <BottomSheet
         open={dateOpen}
         onClose={() => setDateOpen(false)}
         title="تاريخ محدد"
-        subtitle="على موعد المتابعة/الزيارة — الطرفان شاملان"
+        subtitle={dateApplies ? "على موعد المتابعة/الزيارة — الطرفان شاملان" : "يسري فقط مع فلتر «زيارة» أو «موعد لاحق»"}
         footer={
           <div className="flex" style={{ gap: 8 }}>
             {customActive && (
               <button
                 type="button"
                 onClick={() => { setDateOpen(false); setFrom(""); setTo(""); push({ ...values, range: "", from: "", to: "" }); }}
-                className="m-press"
-                style={{
-                  boxSizing: "border-box", height: 48, padding: "0 18px", borderRadius: 12,
-                  border: `1px solid ${MOBILE_COLORS.border}`, background: MOBILE_COLORS.card,
-                  color: MOBILE_COLORS.textSecondary, fontSize: 13, fontWeight: 600,
-                }}
+                className="m-raise m-press-sc"
+                style={{ boxSizing: "border-box", height: 48, padding: "0 18px", borderRadius: 12, color: SOP.tx2, fontSize: 13, fontWeight: 600 }}
               >
                 امسح
               </button>
@@ -234,10 +254,10 @@ export function MobileLeadsFilters({
               type="button"
               disabled={!from && !to}
               onClick={() => { setDateOpen(false); push({ ...values, range: "", from, to }); }}
-              className="m-press m-sweep flex-1"
+              className="m-press-sc m-sweep flex-1"
               style={{
                 boxSizing: "border-box", height: 48, borderRadius: 12, border: "none",
-                background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg, fontSize: 14, fontWeight: 700,
+                background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, color: SOP.onGold, fontSize: 14, fontWeight: 700,
                 opacity: !from && !to ? 0.5 : 1,
               }}
             >
@@ -248,11 +268,11 @@ export function MobileLeadsFilters({
       >
         <div className="flex flex-col" style={{ gap: 12, marginTop: 16 }}>
           <label className="block">
-            <span className="block" style={{ fontSize: "12.5px", color: MOBILE_COLORS.textSecondary, marginBottom: 7 }}>من تاريخ</span>
+            <span className="block" style={{ fontSize: 12.5, color: SOP.tx2, marginBottom: 7 }}>من تاريخ</span>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={fieldStyle} />
           </label>
           <label className="block">
-            <span className="block" style={{ fontSize: "12.5px", color: MOBILE_COLORS.textSecondary, marginBottom: 7 }}>إلى تاريخ</span>
+            <span className="block" style={{ fontSize: 12.5, color: SOP.tx2, marginBottom: 7 }}>إلى تاريخ</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={fieldStyle} />
           </label>
         </div>

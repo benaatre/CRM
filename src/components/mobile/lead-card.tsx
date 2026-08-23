@@ -6,7 +6,8 @@ import { Phone, MessageCircle } from "lucide-react";
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import { channelLabel, stageLabel } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { SOP } from "@/lib/mobile-tokens";
+import { actionBtn, BTN_ICON, ACTION_BTN_CLASS } from "@/components/mobile/action-buttons";
 import { waitingLabel, type WaitingBasis } from "@/lib/mobile-format";
 import { markCall } from "@/lib/mobile-call-tracker";
 
@@ -25,14 +26,10 @@ export type MobileLeadCardLead = {
 };
 
 /**
- * أهداف اللمس: الشكل المرئي ٣٦px كما في النموذج، ومساحة اللمس ٤٤px
- * (٣٦ + ٤ أعلى + ٤ أسفل) عبر حشوة شفافة على الرابط نفسه — فالخلفية
- * على الطبقة الداخلية وحدها. هكذا نطابق التصميم بلا كسر حدّ الإتاحة.
- *
- * ⚠️ box-sizing صريح: الثيم هنا content-box (لا border-box)، فبدونه يصير
- * الزر ذو الحد ٣٨px بينما الذهبي بلا حد ٣٦px — تفاوت ٢px في الصف نفسه.
+ * الأزرار من action-buttons (٤٦px) — مساحة اللمس فوق الحد. الرابط حول كل زر يحمل
+ * حشوة رأسية صغيرة فلا يلتصق الصفّ بحافة الكرت.
  */
-const TAP_PAD_Y = 4;
+const TAP_PAD_Y = 2;
 
 export function MobileLeadCard({
   lead,
@@ -62,37 +59,22 @@ export function MobileLeadCard({
   // غير صالح). بدلها رابط بمساحة البطاقة خلف المحتوى، والأزرار فوقه.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
-  const callVisual = late
-    ? { backgroundColor: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg, border: "none" }
-    : {
-        backgroundColor: MOBILE_COLORS.sheet,
-        color: MOBILE_COLORS.textSecondary,
-        border: `1px solid ${MOBILE_COLORS.border}`,
-      };
-  const waVisual = {
-    backgroundColor: MOBILE_COLORS.sheet,
-    color: MOBILE_COLORS.textSecondary,
-    border: `1px solid ${MOBILE_COLORS.border}`,
-  };
+  // أزرار الفعل الموحّدة (action-buttons): المتأخر ⟵ اتصال ذهبي أساسي، وإلا سطح بارز.
+  const callVisual = late ? actionBtn("gold") : { ...actionBtn("file"), color: SOP.tx2, border: `1px solid ${SOP.edge}` };
+  const waVisual = actionBtn("wa");
 
   return (
     <article
-      className="m-leadcard m-rise relative overflow-hidden"
+      className="m-raise m-leadcard m-rise relative overflow-hidden"
       style={{
         boxSizing: "border-box",
-        backgroundColor: MOBILE_COLORS.card,
-        border: `1px solid ${MOBILE_COLORS.border}`,
         borderRadius: 16,
-        padding: "13px 16px 12px 13px",
+        padding: "13px 14px 12px 12px",
+        // الخط الجانبي بلون المرحلة — border-inline-start (لا عنصر مطلق).
+        borderInlineStart: `3px solid ${STAGE_HEX[lead.stage]}`,
         animationDelay: `${delayMs}ms`,
       }}
     >
-      {/* الشريط اللوني — لون المرحلة من مصدرها الوحيد. */}
-      <div
-        className="absolute bottom-0 right-0 top-0"
-        style={{ width: 3, backgroundColor: STAGE_HEX[lead.stage] }}
-        aria-hidden
-      />
 
       {/* مساحة اللمس المؤدية لملف العميل — خلف المحتوى، فلا تبتلع الأزرار. */}
       <Link
@@ -103,7 +85,7 @@ export function MobileLeadCard({
 
       <div className="pointer-events-none relative z-10">
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 truncate text-[15px] font-semibold text-white">{lead.name}</div>
+          <div className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 700, color: SOP.tx }}>{lead.name}</div>
           {trailing ? (
             <span
               className="shrink-0 whitespace-nowrap font-semibold"
@@ -120,9 +102,12 @@ export function MobileLeadCard({
             </span>
           )}
         </div>
+        <div dir="ltr" className="truncate" style={{ fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums", fontSize: 12, color: SOP.mut, marginTop: 3, textAlign: "end" }}>
+          {lead.phone}
+        </div>
         <div
           className="truncate"
-          style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, marginTop: 5 }}
+          style={{ fontSize: "11.5px", color: SOP.tx2, marginTop: 4 }}
         >
           {reason ?? `${waitingLabel(lead.daysWaiting, waitingBasis)} · ${channelLabel(lead.channel)}`}
         </div>
@@ -131,7 +116,7 @@ export function MobileLeadCard({
       {/* الفاصل الأفقي */}
       <div
         className="relative z-10"
-        style={{ height: 1, backgroundColor: MOBILE_COLORS.border, margin: "11px 0 10px" }}
+        style={{ height: 1, backgroundColor: SOP.edge, margin: "11px 0 10px" }}
         aria-hidden
       />
 
@@ -142,12 +127,9 @@ export function MobileLeadCard({
           className="flex flex-1 items-center"
           style={{ paddingBlock: TAP_PAD_Y }}
         >
-          <span
-            className="flex w-full items-center justify-center font-semibold"
-            style={{ boxSizing: "border-box", height: 36, borderRadius: 10, fontSize: 13, gap: 6, ...callVisual }}
-          >
-            <Phone width={15} height={15} aria-hidden />
-            اتصال
+          <span className={`${ACTION_BTN_CLASS} w-full`} style={callVisual}>
+            <Phone {...BTN_ICON} aria-hidden />
+            {late ? "اتصل الآن" : "اتصال"}
           </span>
         </a>
         <a
@@ -158,11 +140,8 @@ export function MobileLeadCard({
           className="flex flex-1 items-center"
           style={{ paddingBlock: TAP_PAD_Y }}
         >
-          <span
-            className="flex w-full items-center justify-center font-semibold"
-            style={{ boxSizing: "border-box", height: 36, borderRadius: 10, fontSize: 13, gap: 6, ...waVisual }}
-          >
-            <MessageCircle width={15} height={15} aria-hidden />
+          <span className={`${ACTION_BTN_CLASS} w-full`} style={waVisual}>
+            <MessageCircle {...BTN_ICON} aria-hidden />
             واتساب
           </span>
         </a>

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Bell } from "lucide-react";
-import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
+import { Bell, Check, Sparkles } from "lucide-react";
+import { requireClientAccess, isManager } from "@/lib/auth-guards";
 import {
   getLeads, getLeadCounts, getNotContactedCount, getWaitingCount,
   getBankCheckCount, getVisitStagesCount,
@@ -9,7 +9,7 @@ import {
 import { getNotifications } from "@/lib/actions/notifications";
 import { getTeam } from "@/lib/data/team";
 import { STAGE_HEX } from "@/lib/stage-colors";
-import { purchaseMethodLabels } from "@/lib/labels";
+import { purchaseMethodLabels, purchaseMethodOptions, purchaseGoalLabels } from "@/lib/labels";
 import { formatNumberShort } from "@/lib/format";
 import {
   parseLeadFilters, buildLeadsQuery, INTEREST_UMBRELLA, VISIT_FILTER_STAGES,
@@ -17,7 +17,7 @@ import {
 } from "@/lib/lead-filters";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { RIYADH_TZ } from "@/lib/format";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import type { FilterSection, FilterSelection } from "@/components/mobile/filter-sheet";
 import { MobileSearchBox } from "@/components/mobile/search-box";
@@ -28,19 +28,28 @@ import { MobileEmployeeAvatars, type EmpChip } from "@/components/mobile/employe
 export const dynamic = "force-dynamic";
 
 /*
- * شاشة العملاء — قرار واحد لكل صف:
- *   ١-أ بحث + «+»  ·  ١-ب التبويبات  ·  ١-جـ أفاتارات الموظفين (مدير) ·
- *   ١-د أدوات (فلاتر/ترتيب/تحديد)  ·  ١-هـ الموعد الذكي  ·  القائمة.
+ * شاشة العملاء v4 («أوبسيديان ناعم Pro» — clients-page-final2):
+ *   الترويسة (عملائي + عدّادان + «+» + جرس) · البحث · ٣ تبويبات (جاري العمل/مبيعاتي/أرشفة)
+ *   · أفاتارات الموظفين (مدير) · زر «عملاء جدد (N)» الأخضر · شبكة كروت المراحل (٣ أعمدة)
+ *   · صف الأدوات (ترتيب/الفلتر المتقدم/تحديد) ورقائق المختارات · القائمة.
  *
- * كل الفلترة عبر parseLeadFilters/buildLeadsQuery/getLeads نفسها — صفر باراميتر
- * جديد. تبويب «غير موزّعين» ليس هنا: له شاشته /m/unassigned في الشريط السفلي.
+ * كل الفلترة الخادمية عبر parseLeadFilters/buildLeadsQuery/getLeads نفسها — صفر باراميتر
+ * جديد. «طريقة الشراء» و«الفلاتر المحفوظة» عميل فقط داخل القائمة/الورقة (لا رابط ولا عدّادات).
+ * تبويب «غير موزّعين» ليس هنا: له شاشته /m/unassigned في الشريط السفلي.
  */
 
+/** التبويبات الثلاثة — المفاتيح خادمية ثابتة (getLeads/getLeadCounts)، التسميات فقط تغيّرت:
+ *  archived = المرحلة RESERVED/CLOSED_WON (تم الحجز/الشراء) ⇒ «مبيعاتي». */
 const TABS: { key: LeadTab; label: string }[] = [
   { key: "working", label: "جاري العمل" },
-  { key: "archived", label: "تم الحجز / الشراء" },
-  { key: "hidden", label: "مؤرشف" },
+  { key: "archived", label: "مبيعاتي" },
+  { key: "hidden", label: "أرشفة" },
 ];
+
+/** مراحل الشبكة — بلا محجوز/مقفول-بيع/غير مهتم (لا تظهر في «جاري العمل» أصلًا). */
+const GRID_EXCLUDED: string[] = ["RESERVED", "CLOSED_WON", "CLOSED_LOST"];
+
+const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
 
 /** «اليوم/التاريخ + الساعة» لموعد الزيارة — توقيت الرياض ميلادي (عرض فقط). */
 function visitWhen(d: Date, now: Date): string {
@@ -118,14 +127,19 @@ export default async function MobileLeadsPage({
   // «زيارة» الموحّدة نشطة لمّا المرحلتان معًا (نفس شرط الديسكتوب).
   const visitActive = VISIT_FILTER_STAGES.every((s) => filters.stages.includes(s));
   const umbrellaActive = INTEREST_UMBRELLA.every((s) => filters.stages.includes(s));
-  // مراحل الشريحة: بترتيب الديسكتوب مع طي مرحلتَي الزيارة في واحدة.
-  const chipStages = stageOrder.filter((s) => !(VISIT_FILTER_STAGES as string[]).includes(s));
+  // مراحل الشبكة: بترتيب الديسكتوب مع طي مرحلتَي الزيارة في واحدة، وبلا المراحل المقفلة.
+  const chipStages = stageOrder.filter((s) => !(VISIT_FILTER_STAGES as string[]).includes(s) && !GRID_EXCLUDED.includes(s));
+  // «عملاء جدد»: الفلتر الوحيد = NEW (بلا علامات) — يبدّل القائمة لكروت العميل الجديد.
+  const newMode = filters.stages.length === 1 && filters.stages[0] === "NEW" && !filters.transferred && !filters.bankCheck && !filters.waiting;
 
   /*
-   * أقسام ورقة الفلاتر — «المراحل» متعدّد و«العلامات» متعدّد.
-   * القيم مركّبة: «زيارة» و«مهتم» تُوسَّعان لمراحلهما عند التطبيق (نفس ما يفعله
-   * الديسكتوب بالضغط على الشريحة)، فالورقة تعرض قيمًا رمزية والصفحة تفكّها.
+   * أقسام ورقة الفلاتر المتقدمة — «المراحل» متعدّد · «الموعد» مفرد (معطّل إلا مع زيارة/موعد
+   * لاحق — نفس شرط سريان النطاق على الخادم dateRangeApplies) · «طريقة الشراء» متعدّد
+   * (عميل فقط) · «علامات» متعدّد (في الانتظار/حسبة البنك/محوَّل — هنا فقط، لا رقائق تحت الشبكة).
+   * القيم مركّبة: «زيارة» و«مهتم» تُوسَّعان لمراحلهما عند التطبيق (نفس ما يفعله الديسكتوب).
    */
+  const dateApplies = visitActive || filters.stages.includes("FOLLOW_UP_LATER");
+  const todayISO = riyadhToday(now);
   const stageOptions = [
     { value: "visit", label: "زيارة", count: visitCount },
     { value: "umbrella", label: "مهتم (المظلة)" },
@@ -133,11 +147,27 @@ export default async function MobileLeadsPage({
       value: s as string,
       label: stageLabels[s],
       count: s === "NEW" ? notContacted : undefined,
-      tone: s === "NEW" ? ("danger" as const) : undefined,
+      tone: s === "NEW" ? ("success" as const) : undefined,
     })),
   ];
   const sections: FilterSection[] = [
     { key: "stages", title: "المراحل", multi: true, options: stageOptions },
+    {
+      key: "date", title: "الموعد", multi: false,
+      disabled: !dateApplies,
+      hint: dateApplies ? "على موعد المتابعة/الزيارة" : "يُفعَّل مع فلتر «زيارة» أو «موعد لاحق»",
+      options: [
+        { value: "today", label: "اليوم" },
+        { value: "week", label: "هذا الأسبوع" },
+        { value: "next", label: "الأسبوع الجاي" },
+        { value: "custom", label: "تاريخ محدد" },
+      ],
+    },
+    {
+      key: "pm", title: "طريقة الشراء", multi: true,
+      hint: "فلتر على هذا الجهاز فقط — لا يدخل في العدّادات",
+      options: purchaseMethodOptions.map((m) => ({ value: m, label: purchaseMethodLabels[m] })),
+    },
     {
       key: "flags", title: "علامات", multi: true,
       options: [
@@ -147,6 +177,8 @@ export default async function MobileLeadsPage({
       ],
     },
   ];
+  const customActive = !v.range && (!!v.from || !!v.to);
+  const todayActive = v.from === todayISO && v.to === todayISO;
   const selection: FilterSelection = {
     stages: [
       ...(visitActive ? ["visit"] : []),
@@ -157,6 +189,7 @@ export default async function MobileLeadsPage({
           !(umbrellaActive && (INTEREST_UMBRELLA as string[]).includes(s)),
       ),
     ],
+    date: todayActive ? ["today"] : v.range ? [v.range] : customActive ? ["custom"] : [],
     flags: [
       ...(filters.waiting ? ["wait"] : []),
       ...(filters.bankCheck ? ["bank"] : []),
@@ -164,27 +197,56 @@ export default async function MobileLeadsPage({
     ],
   };
 
-  /*
-   * صف الموعد يظهر مع المراحل ذات البُعد الزمني (زيارة/موعد لاحق) — نفس شرط
-   * سريان النطاق على الخادم (dateRangeApplies)، فلا نعرض فلترًا لا أثر له.
-   */
-  const dateApplies = visitActive || filters.stages.includes("FOLLOW_UP_LATER");
+  // «عملاء جدد»: نفس رابط شريحة «لم يتم التواصل» السابقة (stages=NEW بلا علامات).
+  const cleanBase = { ...v, stages: [] as string[], wait: false, tr: false, bank: false };
+  const newHref = chipHref(tab, newMode ? cleanBase : { ...cleanBase, stages: ["NEW"] });
+
+  /** كرت مرحلة في الشبكة — خط علوي + نقطة متوهّجة + رقم + تسمية. */
+  const StageCard = ({
+    href, on, color, label, count, glow = false, goldFill = false,
+  }: {
+    href: string; on: boolean; color: string; label: string; count: number; glow?: boolean; goldFill?: boolean;
+  }) => (
+    <Link
+      href={href}
+      scroll={false}
+      aria-pressed={on}
+      className={`${on && goldFill ? "" : "m-raise"} m-press-sc relative flex flex-col overflow-hidden`}
+      style={{
+        boxSizing: "border-box", minHeight: 74, borderRadius: 14, padding: "10px 11px 9px",
+        ...(on && goldFill
+          ? { background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, color: SOP.onGold, boxShadow: `0 8px 20px color-mix(in srgb, ${SOP.gold} 35%, transparent)` }
+          : on
+            ? { background: `color-mix(in srgb, ${color} 16%, ${SOP.plane})`, border: `1px solid ${color}`, boxShadow: glow ? `0 0 16px color-mix(in srgb, ${color} 45%, transparent)` : undefined }
+            : { boxShadow: glow ? `6px 6px 16px ${SOP.sd}, -5px -5px 14px ${SOP.sl}, 0 0 14px color-mix(in srgb, ${color} 28%, transparent)` : undefined }),
+      }}
+    >
+      {/* الخط العلوي بلون المرحلة */}
+      <span aria-hidden style={{ position: "absolute", top: 0, insetInline: 12, height: 3, borderRadius: "0 0 3px 3px", background: on && goldFill ? SOP.onGold : color, opacity: on && goldFill ? 0.35 : 1 }} />
+      <span className="flex items-center" style={{ gap: 5, marginTop: 2 }}>
+        <span aria-hidden style={{ width: 7, height: 7, borderRadius: 4, background: on && goldFill ? SOP.onGold : color, boxShadow: `0 0 8px ${on && goldFill ? SOP.onGold : color}` }} />
+        {on && <Check size={12} strokeWidth={3} aria-hidden />}
+      </span>
+      <span style={{ ...ZAIN, fontSize: 20, fontWeight: 800, lineHeight: 1.1, marginTop: 6, color: on && goldFill ? SOP.onGold : color }}>
+        {toArabicDigits(count)}
+      </span>
+      <span className="truncate" style={{ fontSize: 11, fontWeight: 700, marginTop: 3, color: on && goldFill ? SOP.onGold : SOP.tx2 }}>
+        {label}
+      </span>
+    </Link>
+  );
 
   return (
     <div className="m-screen flex flex-col" style={{ gap: 11 }}>
-      {/* ===== v3) الترويسة: عملائي + عدّادان + إضافة + جرس ===== */}
+      {/* ===== الترويسة: عملائي + عدّادان + إضافة + جرس ===== */}
       <header className="flex items-center justify-between" style={{ padding: "0 2px", gap: 10 }}>
         <div className="min-w-0">
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>عملائي</h1>
-          <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textSecondary, marginTop: 4 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: SOP.tx }}>عملائي</h1>
+          <div style={{ fontSize: 12.5, color: SOP.tx2, marginTop: 4 }}>
             عندك{" "}
-            <span style={{ fontFamily: "var(--font-zain), var(--font-sans)", fontWeight: 800, color: MOBILE_COLORS.gold }}>
-              {toArabicDigits(counts.working)}
-            </span>{" "}
+            <span style={{ ...ZAIN, fontWeight: 800, color: SOP.gold }}>{toArabicDigits(counts.working)}</span>{" "}
             عميل ·{" "}
-            <span style={{ fontFamily: "var(--font-zain), var(--font-sans)", fontWeight: 800, color: MOBILE_COLORS.gold }}>
-              {toArabicDigits(notContacted)}
-            </span>{" "}
+            <span style={{ ...ZAIN, fontWeight: 800, color: SOP.gold }}>{toArabicDigits(notContacted)}</span>{" "}
             ينتظرون أول تواصل
           </div>
         </div>
@@ -193,20 +255,16 @@ export default async function MobileLeadsPage({
           <Link
             href="/m/notifications"
             aria-label="الإشعارات"
-            className="m-press relative flex items-center justify-center"
-            style={{
-              boxSizing: "border-box", width: 44, height: 44, borderRadius: 13,
-              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-              color: MOBILE_COLORS.textSecondary,
-            }}
+            className="m-raise m-press-sc relative flex items-center justify-center"
+            style={{ boxSizing: "border-box", width: 44, height: 44, borderRadius: 13, color: SOP.tx2 }}
           >
-            <Bell size={19} aria-hidden />
+            <Bell size={19} strokeWidth={1.8} aria-hidden />
             {notif.unread > 0 && (
               <span
                 className="absolute flex items-center justify-center"
                 style={{
-                  boxSizing: "border-box", top: 5, left: 5, minWidth: 17, height: 17,
-                  borderRadius: 9, background: MOBILE_COLORS.rose, color: MOBILE_COLORS.bg,
+                  ...ZAIN, boxSizing: "border-box", top: 5, left: 5, minWidth: 17, height: 17,
+                  borderRadius: 9, background: SOP.red, color: SOP.tx,
                   fontSize: 9, fontWeight: 700, padding: "0 4px",
                 }}
               >
@@ -217,14 +275,14 @@ export default async function MobileLeadsPage({
         </div>
       </header>
 
-      {/* ===== ١-أ) البحث ===== */}
+      {/* ===== البحث ===== */}
       <MobileSearchBox
         defaultValue={filters.q}
         base={`/m/leads${tab !== "working" ? `?tab=${tab}` : ""}`}
         autoFocus={sp.focus === "1"}
       />
 
-      {/* ===== ١-ب) التبويبات الأساسية بأعدادها ===== */}
+      {/* ===== التبويبات الثلاثة بأعدادها ===== */}
       <div className="m-noscroll flex overflow-x-auto" style={{ gap: 7, paddingBottom: 2 }}>
         {TABS.map((t) => {
           const on = tab === t.key;
@@ -233,125 +291,94 @@ export default async function MobileLeadsPage({
               key={t.key}
               href={chipHref(t.key, { ...v, stages: [], wait: false, tr: false, bank: false, ar: "" })}
               scroll={false}
-              className="m-press flex flex-none items-center"
-              style={{ paddingBlock: 5 }}
+              className="m-press-sc flex flex-none items-center"
+              style={{ paddingBlock: 4 }}
             >
               <span
-                className="flex items-center whitespace-nowrap"
+                className={`${on ? "" : "m-raise"} flex items-center whitespace-nowrap`}
                 style={{
-                  boxSizing: "border-box", height: 34, padding: "0 14px", borderRadius: 17,
-                  fontSize: "12.5px", fontWeight: 600,
+                  boxSizing: "border-box", height: 36, padding: "0 14px", borderRadius: 12,
+                  fontSize: 12.5, fontWeight: 700,
                   ...(on
-                    ? { background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }
-                    : { background: MOBILE_COLORS.card, color: MOBILE_COLORS.textSecondary, border: `1px solid ${MOBILE_COLORS.border}` }),
+                    ? { background: MOBILE_COLORS.goldBg, color: SOP.gold, border: `1px solid ${SOP.gold}` }
+                    : { color: SOP.tx2 }),
                 }}
               >
-                {t.label} ({toArabicDigits(counts[t.key as "working" | "archived" | "hidden"])})
+                {t.label} (<span style={ZAIN}>{toArabicDigits(counts[t.key as "working" | "archived" | "hidden"])}</span>)
               </span>
             </Link>
           );
         })}
       </div>
 
-      {/* ===== ١-جـ) أفاتارات الموظفين — مدير/مالك فقط ===== */}
+      {/* ===== أفاتارات الموظفين — مدير/مالك فقط ===== */}
       {manager && empChips.length > 0 && (
         <MobileEmployeeAvatars tab={tab} values={v} employees={empChips} selectedId={selectedEmp} />
       )}
 
-      {/* ===== v3) صف المراحل — متعدد الاختيار بعدّاداتها وألوان STAGE_HEX ===== */}
+      {/* ===== «عملاء جدد (N)» — زر أخضر مميز فوق الشبكة (يبدّل القائمة لكروت العميل الجديد) ===== */}
       {tab === "working" && (
-        <div className="m-noscroll flex overflow-x-auto" style={{ gap: 7, paddingBottom: 2 }}>
-          <Link href={chipHref(tab, { ...v, stages: [] })} scroll={false} className="m-press flex flex-none items-center" style={{ paddingBlock: 5 }}>
-            <span
-              className="flex items-center whitespace-nowrap"
-              style={{
-                boxSizing: "border-box", height: 34, padding: "0 13px", borderRadius: 17, fontSize: 12, fontWeight: 700,
-                ...(filters.stages.length === 0
-                  ? { background: MOBILE_COLORS.gold, color: MOBILE_COLORS.bg, border: `1px solid ${MOBILE_COLORS.gold}` }
-                  : { background: MOBILE_COLORS.card, color: MOBILE_COLORS.textSecondary, border: `1px solid ${MOBILE_COLORS.border}` }),
-              }}
-            >
-              {filters.stages.length === 0 ? "✓ " : ""}كل المراحل
-            </span>
-          </Link>
-          {/* «زيارة» الموحّدة (المرحلتان معًا — النمط المعتمد) */}
-          <Link
+        <Link
+          href={newHref}
+          scroll={false}
+          aria-pressed={newMode}
+          className={`${newMode ? "" : "m-raise"} m-press-sc flex items-center justify-between`}
+          style={{
+            boxSizing: "border-box", minHeight: 48, borderRadius: 14, padding: "0 14px", marginTop: 4, gap: 10,
+            ...(newMode
+              ? { background: `linear-gradient(135deg, color-mix(in srgb, ${SOP.green} 85%, white), ${SOP.green})`, color: SOP.onGold, boxShadow: `0 8px 20px color-mix(in srgb, ${SOP.green} 30%, transparent)` }
+              : { background: `color-mix(in srgb, ${SOP.green} 14%, ${SOP.plane})`, border: `1px solid color-mix(in srgb, ${SOP.green} 45%, transparent)`, color: SOP.green }),
+          }}
+        >
+          <span className="flex items-center" style={{ gap: 8, fontSize: 13.5, fontWeight: 800 }}>
+            {newMode ? <Check size={16} strokeWidth={2.5} aria-hidden /> : <Sparkles size={16} strokeWidth={2} aria-hidden />}
+            عملاء جدد
+          </span>
+          <span style={{ ...ZAIN, fontSize: 16, fontWeight: 800 }}>{toArabicDigits(notContacted)}</span>
+        </Link>
+      )}
+
+      {/* ===== شبكة كروت المراحل — ٣ أعمدة، نظيفة (المراحل فقط) ===== */}
+      {tab === "working" && (
+        <div className="grid grid-cols-3" style={{ gap: 8 }}>
+          <StageCard
+            href={chipHref(tab, { ...v, stages: [] })}
+            on={filters.stages.length === 0}
+            color={SOP.gold}
+            label="كل المراحل"
+            count={counts.working}
+            goldFill
+          />
+          <StageCard
             href={chipHref(tab, {
               ...v,
               stages: visitActive
                 ? v.stages.filter((s) => !(VISIT_FILTER_STAGES as string[]).includes(s))
                 : [...new Set([...v.stages, ...VISIT_FILTER_STAGES])],
             })}
-            scroll={false} className="m-press flex flex-none items-center" style={{ paddingBlock: 5 }}
-          >
-            <span
-              className="flex items-center whitespace-nowrap"
-              style={{
-                boxSizing: "border-box", height: 34, padding: "0 13px", borderRadius: 17, fontSize: 12, fontWeight: 700,
-                border: `1px solid ${STAGE_HEX.VISIT_SCHEDULED}`,
-                ...(visitActive
-                  ? { background: STAGE_HEX.VISIT_SCHEDULED, color: MOBILE_COLORS.bg }
-                  : { background: MOBILE_COLORS.card, color: STAGE_HEX.VISIT_SCHEDULED }),
-              }}
-            >
-              {visitActive ? "✓ " : ""}زيارة ({toArabicDigits(visitCount)})
-            </span>
-          </Link>
+            on={visitActive}
+            color={STAGE_HEX.VISIT_SCHEDULED}
+            label="زيارة"
+            count={visitCount}
+          />
           {chipStages.map((s) => {
             const on = filters.stages.includes(s);
-            const count = counts.stageCounts[s] ?? 0;
             return (
-              <Link
+              <StageCard
                 key={s}
                 href={chipHref(tab, { ...v, stages: on ? v.stages.filter((x) => x !== s) : [...v.stages, s] })}
-                scroll={false} className="m-press flex flex-none items-center" style={{ paddingBlock: 5 }}
-              >
-                <span
-                  className="flex items-center whitespace-nowrap"
-                  style={{
-                    boxSizing: "border-box", height: 34, padding: "0 13px", borderRadius: 17, fontSize: 12, fontWeight: 700,
-                    border: `1px solid ${STAGE_HEX[s]}`,
-                    ...(on ? { background: STAGE_HEX[s], color: MOBILE_COLORS.bg } : { background: MOBILE_COLORS.card, color: STAGE_HEX[s] }),
-                  }}
-                >
-                  {on ? "✓ " : ""}{stageLabels[s]} ({toArabicDigits(count)})
-                </span>
-              </Link>
+                on={on}
+                color={STAGE_HEX[s]}
+                label={stageLabels[s]}
+                count={counts.stageCounts[s] ?? 0}
+                glow={s === "ATTEMPTED"}
+              />
             );
           })}
         </div>
       )}
 
-      {/* ===== v3) صف الفلاتر الخاصة — أحادي، الضغط الثاني يلغي ===== */}
-      {tab === "working" && (() => {
-        const ncActive = filters.stages.length === 1 && filters.stages[0] === "NEW" && !filters.transferred && !filters.bankCheck;
-        const clean = { ...v, stages: [] as string[], wait: false, tr: false, bank: false };
-        const specials = [
-          { key: "nc", label: `لم يتم التواصل (${toArabicDigits(notContacted)})`, active: ncActive, next: ncActive ? clean : { ...clean, stages: ["NEW"] }, base: MOBILE_COLORS.rose, bg: MOBILE_COLORS.roseBg },
-          { key: "tr", label: "⇄ محوَّل", active: filters.transferred, next: { ...clean, tr: !filters.transferred }, base: MOBILE_COLORS.sky, bg: MOBILE_COLORS.skyBg },
-          { key: "bank", label: `حسبة البنك (${toArabicDigits(bankCount)})`, active: filters.bankCheck, next: { ...clean, bank: !filters.bankCheck }, base: MOBILE_COLORS.amber, bg: MOBILE_COLORS.amberBg },
-        ];
-        return (
-          <div className="m-noscroll flex overflow-x-auto" style={{ gap: 7, paddingBottom: 2 }}>
-            {specials.map((c) => (
-              <Link key={c.key} href={chipHref(tab, c.next)} scroll={false} className="m-press flex flex-none items-center" style={{ paddingBlock: 5 }}>
-                <span
-                  className="flex items-center whitespace-nowrap"
-                  style={{
-                    boxSizing: "border-box", height: 32, padding: "0 13px", borderRadius: 16, fontSize: 12, fontWeight: 600,
-                    border: `1px solid ${c.active ? c.base : MOBILE_COLORS.border}`,
-                    ...(c.active ? { background: c.bg, color: c.base } : { background: MOBILE_COLORS.card, color: MOBILE_COLORS.textSecondary }),
-                  }}
-                >
-                  {c.active ? "✓ " : ""}{c.label}
-                </span>
-              </Link>
-            ))}
-          </div>
-        );
-      })()}
-
-      {/* ===== ١-د + ١-هـ + القائمة (كلها داخل اللوحة العميلة) ===== */}
+      {/* ===== صف الأدوات + رقائق المختارات + القائمة (كلها داخل اللوحة العميلة) ===== */}
       <MobileLeadsList
         rows={rows.map((l): MobileLeadRow => ({
           id: l.id,
@@ -372,17 +399,21 @@ export default async function MobileLeadsPage({
           booking: l.booking,
           pmLabel: l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : null,
           budgetLabel: l.budget ? formatNumberShort(l.budget) : null,
+          purchaseMethod: l.purchaseMethod,
+          purchaseGoalLabel: l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : null,
+          followUpsCount: l.followUpsCount,
           assignedToName: manager ? (l.assignedTo?.name ?? "غير موزّع") : null,
         }))}
         isManager={manager}
         employees={employees}
         hiddenTab={tab === "hidden"}
+        newMode={newMode}
         tab={tab}
         values={v}
         sections={sections}
         selection={selection}
         dateApplies={dateApplies}
-        todayISO={riyadhToday(now)}
+        todayISO={todayISO}
       />
     </div>
   );

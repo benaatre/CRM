@@ -13,6 +13,7 @@ import { stageChipClass } from "@/lib/stage-colors";
 import { waPhone } from "@/lib/value-normalize";
 import { markCall } from "@/lib/mobile-call-tracker";
 import { EditFollowupSheet, editMinutesLeft } from "@/components/mobile/edit-followup-sheet";
+import { actionBtn, BTN_ICON } from "@/components/mobile/action-buttons";
 
 /**
  * شاشة «متابعاتي» v4 — «أوبسيديان ناعم Pro» (إعادة تنسيق، لا تغيير منطق):
@@ -26,8 +27,6 @@ import { EditFollowupSheet, editMinutesLeft } from "@/components/mobile/edit-fol
 
 const MIN = 60_000;
 const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
-/** ارتفاع أزرار الفعل في الكروت (المرجع البصري: ٤٦px). */
-const BTN_H = 46;
 
 export type FuAppointment = {
   leadId: string;
@@ -116,28 +115,6 @@ const chipStyle = (on: boolean, color: string = SOP.gold, bg: string = MOBILE_CO
     ? { background: bg, color }
     : { background: SOP.plane, color: SOP.tx2 }),
 });
-
-/**
- * أزرار الفعل في الكروت — مطابقة followups-fixed2 حرفيًا (تُعمَّم لاحقًا على كرت العميل
- * وكرت الموعد القادم): ٤٦px · radius 12 · 600/12.5 · gap 7 · أيقونة ١٧px stroke 2.
- *  gold: «اتصال» الأساسي — تدرّج ذهبي، نص/أيقونة --sop-ongold.
- *  wa:   «واتساب» — مزيج أخضر ١٦٪ فوق السطح، نص/أيقونة --sop-green.
- *  file: «الملف» — سطح بارز نيومورفيزمي بحد ذهبي رفيع، نص/أيقونة --sop-gold2.
- */
-const actionBtn = (tone: "gold" | "wa" | "file") => ({
-  boxSizing: "border-box" as const, height: BTN_H, borderRadius: 12, fontSize: 12.5, fontWeight: 600 as const, gap: 7, border: "none",
-  ...(tone === "gold"
-    ? { background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, color: SOP.onGold }
-    : tone === "wa"
-      ? { background: `color-mix(in srgb, ${SOP.green} 16%, ${SOP.plane})`, color: SOP.green }
-      : {
-          background: SOP.plane, color: SOP.gold2,
-          boxShadow: `3px 3px 7px ${SOP.sd}, -3px -3px 7px ${SOP.sl}`,
-          border: `1px solid color-mix(in srgb, ${SOP.gold} 18%, transparent)`,
-        }),
-});
-/** أيقونة زر الفعل — ١٧px بسماكة ٢ (تحت سقف ٢٨px). */
-const BTN_ICON = { size: 17, strokeWidth: 2 } as const;
 
 export function FollowupsScreen({
   todayAppointments, doneToday, missedOld, upcoming, log, unread, projects, initialTab,

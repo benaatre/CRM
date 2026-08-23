@@ -3,8 +3,11 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Share2, Archive, ArchiveRestore, Trash2, Check, Contact, X } from "lucide-react";
-import type { Channel, LeadStage } from "@prisma/client";
+import {
+  Share2, Archive, ArchiveRestore, Trash2, Check, Contact, X,
+  Phone, MessageCircle, UserRound, AlarmClock, CalendarDays, Sparkles, FileText, ArrowLeftRight, Star,
+} from "lucide-react";
+import type { Channel, LeadStage, PurchaseMethod } from "@prisma/client";
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import { stageLabel, channelLabel } from "@/lib/labels";
 import type { LeadFilterValues } from "@/lib/lead-filters";
@@ -14,17 +17,21 @@ import {
   transferLeads, recoverLeads, bulkArchive, bulkDelete, unarchiveLeads,
   type UnarchiveMode,
 } from "@/lib/actions/leads";
-import { Phone, MessageCircle } from "lucide-react";
 import { avatarColor, avatarInitials } from "@/lib/mobile-avatar";
 import { waPhone } from "@/lib/value-normalize";
 import { markCall } from "@/lib/mobile-call-tracker";
-import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, MOBILE_STATUS, SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits, waitingLabel, waitingBasisOf } from "@/lib/mobile-format";
 import { BottomSheet } from "@/components/mobile/bottom-sheet";
 import { MobilePortal } from "@/components/mobile/portal";
 import { MobileActionBar } from "@/components/mobile/action-bar";
 import { MobileLeadsFilters } from "@/components/mobile/leads-filters";
+import { MobileLeadCard } from "@/components/mobile/lead-card";
+import { actionBtn, BTN_ICON, ACTION_BTN_CLASS } from "@/components/mobile/action-buttons";
 import type { FilterSection, FilterSelection } from "@/components/mobile/filter-sheet";
+
+/** الأرقام (الجوال/العدّادات) بخط Zain — أرقام عربية-هندية من المنسّق. */
+const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
 
 export type MobileLeadRow = {
   id: string;
@@ -53,6 +60,12 @@ export type MobileLeadRow = {
   /** كرت v3: وسما طريقة الشراء والميزانية (نصوص جاهزة من الخادم) — null يُخفي الوسم. */
   pmLabel: string | null;
   budgetLabel: string | null;
+  /** طريقة الشراء الخام — لفلتر «طريقة الشراء» العميل (LeadRow.purchaseMethod). */
+  purchaseMethod: PurchaseMethod | null;
+  /** وسم هدف الشراء (LeadRow.purchaseGoal بتسميته) — null يُخفي الوسم. */
+  purchaseGoalLabel: string | null;
+  /** عدد المتابعات (LeadRow.followUpsCount). */
+  followUpsCount: number;
   /** اسم الموظف — للمدير فقط (null للموظف). */
   assignedToName: string | null;
 };
@@ -84,7 +97,7 @@ const UNARCHIVE_OPTIONS: { value: UnarchiveMode; label: string; desc: string }[]
  * الواجهة تخفي ما لا يملكه الدور، والخادم هو خط الدفاع الأول لا الإخفاء.
  */
 export function MobileLeadsList({
-  rows, isManager = false, employees = [], hiddenTab = false,
+  rows: allRows, isManager = false, employees = [], hiddenTab = false, newMode = false,
   tab, values, sections, selection, dateApplies, todayISO,
 }: {
   rows: MobileLeadRow[];
@@ -92,6 +105,8 @@ export function MobileLeadsList({
   employees?: Employee[];
   /** تبويب «مؤرشف» — يستبدل «أرشفة» بـ«إرجاع من الأرشيف». */
   hiddenTab?: boolean;
+  /** فلتر «عملاء جدد» (stages == ["NEW"]) — كروت العميل الجديد المبسّطة بدل كرت v3. */
+  newMode?: boolean;
   tab: LeadTab;
   values: LeadFilterValues;
   sections: FilterSection[];
@@ -101,6 +116,13 @@ export function MobileLeadsList({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  /*
+   * فلتر «طريقة الشراء» — **عميل فقط**: getLeads/parseLeadFilters لا يدعمانه (مكتبة مشتركة
+   * مع الويب لا تُمسّ)، فيُطبَّق هنا على الصفوف المحمّلة كلها قبل التقسيم (PAGE).
+   * لا يظهر في الرابط ولا يؤثّر في عدّادات التبويبات/المراحل القادمة من الخادم.
+   */
+  const [pm, setPm] = useState<string[]>([]);
+  const rows = pm.length ? allRows.filter((r) => r.purchaseMethod && pm.includes(r.purchaseMethod)) : allRows;
   const [shown, setShown] = useState(Math.min(PAGE, rows.length));
   const [selectMode, setSelectMode] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -112,8 +134,9 @@ export function MobileLeadsList({
   const [unMode, setUnMode] = useState<UnarchiveMode>("asis");
   const sentinel = useRef<HTMLDivElement | null>(null);
 
-  // الفلاتر تغيّر الصفوف — نرجّع العدّاد والتحديد.
-  useEffect(() => { setShown(Math.min(PAGE, rows.length)); setSel(new Set()); }, [rows]);
+  // الفلاتر تغيّر الصفوف — نرجّع العدّاد والتحديد. (المصدر allRows/pm لا المشتقّ rows —
+  // المشتقّ مصفوفة جديدة كل تصيير فيصير الأثر حلقة لا تنتهي.)
+  useEffect(() => { setShown(Math.min(PAGE, rows.length)); setSel(new Set()); }, [allRows, pm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = sentinel.current;
@@ -152,10 +175,13 @@ export function MobileLeadsList({
         todayISO={todayISO}
         selectMode={selectMode}
         onToggleSelect={() => { setSelectMode((v) => !v); setSel(new Set()); }}
+        employees={employees}
+        pm={pm}
+        onPm={setPm}
       />
 
-      <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.textMuted, padding: "0 2px" }}>
-        {toArabicDigits(rows.length)} عميل
+      <div style={{ fontSize: 11.5, color: SOP.mut, padding: "0 2px" }}>
+        <span style={ZAIN}>{toArabicDigits(rows.length)}</span> عميل{pm.length > 0 && allRows.length !== rows.length ? ` من ${toArabicDigits(allRows.length)}` : ""}
       </div>
 
       {msg && (
@@ -170,49 +196,67 @@ export function MobileLeadsList({
       )}
 
       {rows.length === 0 ? (
-        <div className="flex flex-col items-center text-center"
-          style={{
-            boxSizing: "border-box", gap: 9, padding: "34px 16px",
-            background: MOBILE_COLORS.card, borderRadius: 16, border: `1px solid ${MOBILE_COLORS.border}`,
-          }}>
-          <Contact size={34} style={{ color: MOBILE_COLORS.textMuted }} aria-hidden />
-          <p style={{ fontSize: "12.5px", color: MOBILE_COLORS.textSecondary }}>ما فيه نتائج لهذا الفلتر</p>
+        <div className="m-inset flex flex-col items-center text-center" style={{ boxSizing: "border-box", gap: 9, padding: "34px 16px", borderRadius: 16 }}>
+          <Contact size={30} strokeWidth={1.6} style={{ color: SOP.mut }} aria-hidden />
+          <p style={{ fontSize: 12.5, color: SOP.tx2 }}>ما فيه نتائج لهذا الفلتر</p>
         </div>
       ) : (
         <div className="flex flex-col" style={{ gap: 9 }}>
           {rows.slice(0, shown).map((l, i) => {
             const on = sel.has(l.id);
             const isNew = l.stage === "NEW";
-            // السياق الذكي — بالأولوية: فاتت ← موعد قادم ← جديد ← حجز نشط ← يُخفى.
+            const stageHex = STAGE_HEX[l.stage];
+
+            // «عملاء جدد»: الكرت المبسّط القائم (lead-card.tsx) — نفس استخدام /m/new حرفيًا.
+            // وضع التحديد يبقى على كرت v3 حتى تعمل الإجراءات الجماعية كما هي.
+            if (newMode && !selectMode) {
+              return (
+                <MobileLeadCard
+                  key={l.id}
+                  lead={l}
+                  late
+                  waitingBasis={waitingBasisOf(l)}
+                  delayMs={Math.min(i, 10) * 35}
+                  reason={`لم يتواصل بعد · ${channelLabel(l.channel)} · ${waitingLabel(l.daysWaiting, waitingBasisOf(l))}`}
+                />
+              );
+            }
+
+            // شريط الموعد القادم — بالأولوية: فاتت (أحمر) ← زيارة/متابعة قادمة (ذهبي خفيف) ←
+            // جديد (أخضر) ← حجز نشط (أخضر). كلها من حقول القائمة القائمة (تُحسب بالخادم).
             const ctx = l.overdueFu && l.followupText
-              ? { text: `⏰ كان المفروض تتواصل — ${l.followupText}`, base: MOBILE_COLORS.rose, bg: MOBILE_COLORS.roseBg }
+              ? { icon: AlarmClock, text: `كان المفروض تتواصل — ${l.followupText}`, color: SOP.red }
               : l.visitText
-                ? { text: `🗓️ زيارة ${l.visitText}`, base: MOBILE_COLORS.amber, bg: MOBILE_COLORS.amberBg }
+                ? { icon: CalendarDays, text: `زيارة ${l.visitText}`, color: SOP.gold2 }
                 : l.followupText
-                  ? { text: `🗓️ متابعة ${l.followupText}`, base: MOBILE_COLORS.amber, bg: MOBILE_COLORS.amberBg }
+                  ? { icon: CalendarDays, text: `متابعة ${l.followupText}`, color: SOP.gold2 }
                   : isNew
-                    ? { text: `✨ من ${channelLabel(l.channel)} · ينتظر أول تواصل`, base: MOBILE_COLORS.sky, bg: MOBILE_COLORS.skyBg }
+                    ? { icon: Sparkles, text: `من ${channelLabel(l.channel)} · ينتظر أول تواصل`, color: SOP.green }
                     : l.booking
-                      ? { text: `📑 حجز نشط · محصّل ${toArabicDigits(l.booking.collected)} من ${toArabicDigits(l.booking.collected + l.booking.remaining)}`, base: MOBILE_COLORS.mint, bg: MOBILE_COLORS.mintBg }
+                      ? { icon: FileText, text: `حجز نشط · محصّل ${toArabicDigits(l.booking.collected)} من ${toArabicDigits(l.booking.collected + l.booking.remaining)}`, color: SOP.green }
                       : null;
-            const tags = [channelLabel(l.channel), l.pmLabel, l.budgetLabel].filter(Boolean) as string[];
+            const CtxIcon = ctx?.icon;
+
+            // الوسوم — الحقول الموجودة فعلًا في الصف: المصدر (ملوّن) · طريقة الشراء · الهدف · عدد المتابعات.
+            const tags: { key: string; text: string; color?: string }[] = [
+              { key: "ch", text: channelLabel(l.channel), color: SOP.teal },
+              ...(l.pmLabel ? [{ key: "pm", text: l.pmLabel }] : []),
+              ...(l.purchaseGoalLabel ? [{ key: "goal", text: l.purchaseGoalLabel }] : []),
+              ...(l.budgetLabel ? [{ key: "budget", text: l.budgetLabel }] : []),
+              { key: "fu", text: `${toArabicDigits(l.followUpsCount)} ${l.followUpsCount === 1 ? "متابعة" : l.followUpsCount === 2 ? "متابعتان" : "متابعات"}` },
+            ];
+
             const card = (
               <>
-                {/* الخط الجانبي المتوهّج بلون المرحلة */}
-                <span
-                  className="absolute"
-                  style={{ insetInlineStart: 0, top: 10, bottom: 10, width: 4, borderRadius: 3, background: STAGE_HEX[l.stage], boxShadow: `0 0 10px ${STAGE_HEX[l.stage]}` }}
-                  aria-hidden
-                />
                 <div className="flex items-center" style={{ gap: 10 }}>
                   {selectMode && (
                     <span
                       className="flex flex-none items-center justify-center"
                       style={{
-                        boxSizing: "border-box", width: 24, height: 24, borderRadius: 12,
-                        border: `2px solid ${on ? MOBILE_COLORS.gold : MOBILE_COLORS.dim2}`,
-                        background: on ? MOBILE_COLORS.gold : "transparent",
-                        color: MOBILE_COLORS.bg,
+                        boxSizing: "border-box", width: 24, height: 24, borderRadius: 8,
+                        border: `2px solid ${on ? SOP.gold : SOP.edge2}`,
+                        background: on ? SOP.gold : "transparent",
+                        color: SOP.onGold,
                         transition: "background .18s, border-color .18s",
                       }}
                       aria-hidden
@@ -220,82 +264,92 @@ export function MobileLeadsList({
                       {on && <Check size={14} strokeWidth={3} />}
                     </span>
                   )}
+                  {/* أفاتار مربّع مستدير بخلفية ذهبية متدرّجة */}
                   <span
                     className="flex flex-none items-center justify-center"
-                    style={{ width: 48, height: 48, borderRadius: 24, fontSize: 16, fontWeight: 700, background: STAGE_HEX[l.stage], color: MOBILE_COLORS.bg }}
+                    style={{
+                      boxSizing: "border-box", width: 46, height: 46, borderRadius: 13, fontSize: 15, fontWeight: 800,
+                      background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, color: SOP.onGold,
+                      boxShadow: `2px 2px 6px ${SOP.sd}`,
+                    }}
+                    aria-hidden
                   >
                     {avatarInitials(l.name)}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center" style={{ gap: 6 }}>
-                      <span className="min-w-0 truncate" style={{ fontSize: "16.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>
+                      <span className="min-w-0 truncate" style={{ fontSize: 16, fontWeight: 800, color: SOP.tx }}>
                         {l.name}
                       </span>
                       {l.manualTransferred && (
-                        <span className="flex-none" title="محوَّل يدويًا بالبيانات"
-                          style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_STATUS.info.bg, color: MOBILE_STATUS.info.fg, border: `1px solid ${MOBILE_STATUS.info.border}` }}>
-                          ⇄ محوَّل
+                        <span className="flex flex-none items-center" title="محوَّل يدويًا بالبيانات"
+                          style={{ boxSizing: "border-box", gap: 3, fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_COLORS.skyBg, color: SOP.blue }}>
+                          <ArrowLeftRight size={10} strokeWidth={2.5} aria-hidden /> محوَّل
                         </span>
                       )}
                       {!l.manualTransferred && l.isTransferred && (
-                        <span className="flex-none" title="مسترد / معاد توجيهه" style={{ fontSize: 11, color: MOBILE_COLORS.gold }}>✦</span>
+                        <Star size={11} strokeWidth={2.2} className="flex-none" style={{ color: SOP.gold }} aria-label="مسترد / معاد توجيهه" />
                       )}
                       {l.waiting && (
                         <span className="flex-none" title="آخر متابعة: في الانتظار"
-                          style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_STATUS.warning.bg, color: MOBILE_STATUS.warning.fg }}>
+                          style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_COLORS.amberBg, color: SOP.amber }}>
                           في الانتظار
                         </span>
                       )}
                     </span>
-                    <span dir="ltr" className="block truncate text-right" style={{ fontSize: 13, color: MOBILE_COLORS.textMuted, marginTop: 3 }}>
+                    <span dir="ltr" className="block truncate text-right" style={{ ...ZAIN, fontSize: 12.5, color: SOP.mut, marginTop: 3 }}>
                       {l.phone}
                     </span>
                   </span>
                   <span className="flex flex-none flex-col items-end" style={{ gap: 5 }}>
                     <span
                       className={`whitespace-nowrap border font-semibold ${stageChipClass[l.stage]}`}
-                      style={{ fontSize: "10.5px", padding: "4px 9px", borderRadius: 7 }}
+                      style={{ fontSize: 10.5, padding: "4px 9px", borderRadius: 7 }}
                     >
                       {stageLabel(l.stage)}
                     </span>
-                    {/* الشارة الزمنية — تحمرّ مع متابعة فاتت */}
-                    <span
-                      className="whitespace-nowrap"
-                      style={{
-                        boxSizing: "border-box", fontSize: "10.5px", fontWeight: 600, padding: "3px 8px", borderRadius: 7,
-                        ...(l.overdueFu
-                          ? { background: MOBILE_COLORS.roseBg, color: MOBILE_COLORS.rose }
-                          : { background: MOBILE_COLORS.bg, color: MOBILE_COLORS.textMuted }),
-                      }}
-                    >
+                    <span className="whitespace-nowrap" style={{ fontSize: 10, color: l.overdueFu ? SOP.red : SOP.mut }}>
                       {waitingLabel(l.daysWaiting, waitingBasisOf(l))}
                     </span>
                   </span>
                 </div>
 
-                {ctx && (
+                {/* الوسوم (+ اسم الموظف للمدير) */}
+                <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6, marginTop: 9 }}>
+                  {l.assignedToName && (
+                    <span className="flex-none" style={{ boxSizing: "border-box", fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: MOBILE_COLORS.goldBg, color: SOP.gold }}>
+                      {l.assignedToName}
+                    </span>
+                  )}
+                  {tags.map((t) => (
+                    <span
+                      key={t.key}
+                      className="flex-none"
+                      style={{
+                        boxSizing: "border-box", fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 7,
+                        ...(t.color
+                          ? { background: `color-mix(in srgb, ${t.color} 14%, transparent)`, color: t.color }
+                          : { background: `color-mix(in srgb, ${SOP.tx} 5%, transparent)`, color: SOP.tx2, border: `1px solid ${SOP.edge}` }),
+                      }}
+                    >
+                      {t.text}
+                    </span>
+                  ))}
+                </div>
+
+                {/* شريط الموعد القادم */}
+                {ctx && CtxIcon && (
                   <div
+                    className="flex items-center"
                     style={{
-                      boxSizing: "border-box", marginTop: 9, borderRadius: 10, padding: "7px 10px",
-                      background: ctx.bg, fontSize: 12, fontWeight: 600, color: ctx.base, lineHeight: 1.55,
+                      boxSizing: "border-box", gap: 7, marginTop: 9, borderRadius: 10, padding: "7px 10px",
+                      background: `color-mix(in srgb, ${ctx.color} 12%, transparent)`,
+                      borderInlineStart: `2px solid ${ctx.color}`,
+                      fontSize: 12, fontWeight: 600, color: ctx.color, lineHeight: 1.5,
                     }}
                   >
-                    {ctx.text}
-                  </div>
-                )}
-
-                {(tags.length > 0 || l.assignedToName) && (
-                  <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6, marginTop: 8 }}>
-                    {l.assignedToName && (
-                      <span className="flex-none" style={{ boxSizing: "border-box", fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 7, background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold }}>
-                        {l.assignedToName}
-                      </span>
-                    )}
-                    {tags.map((t) => (
-                      <span key={t} className="flex-none" style={{ boxSizing: "border-box", fontSize: 10.5, padding: "3px 9px", borderRadius: 7, background: MOBILE_COLORS.bg, color: MOBILE_COLORS.textSecondary, border: `1px solid ${MOBILE_COLORS.line2}` }}>
-                        {t}
-                      </span>
-                    ))}
+                    <CtxIcon size={14} strokeWidth={2} aria-hidden />
+                    <span className="min-w-0 truncate">{ctx.text}</span>
                   </div>
                 )}
 
@@ -304,60 +358,49 @@ export function MobileLeadsList({
                     <a
                       href={`tel:${l.phone}`}
                       onClick={(e) => { e.stopPropagation(); markCall(l.id); }}
-                      className="m-press flex flex-1 items-center justify-center"
-                      style={{
-                        boxSizing: "border-box", height: 40, borderRadius: 11, border: "none",
-                        background: isNew ? MOBILE_COLORS.sky : MOBILE_COLORS.gold, color: MOBILE_COLORS.bg,
-                        fontSize: 13, fontWeight: 700, gap: 5,
-                      }}
+                      className={ACTION_BTN_CLASS}
+                      style={{ ...actionBtn("gold"), flex: 1.3 }}
                     >
-                      <Phone size={14} aria-hidden /> {isNew ? "اتصال أول" : "اتصال"}
+                      <Phone {...BTN_ICON} aria-hidden /> {isNew ? "اتصال أول" : "اتصال"}
                     </a>
                     <a
                       href={`https://wa.me/${waPhone(l.phone)}`}
                       target="_blank" rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="m-press flex flex-1 items-center justify-center"
-                      style={{
-                        boxSizing: "border-box", height: 40, borderRadius: 11,
-                        background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`,
-                        color: MOBILE_COLORS.textPrimary, fontSize: 13, fontWeight: 600, gap: 5,
-                      }}
+                      className={ACTION_BTN_CLASS}
+                      style={{ ...actionBtn("wa"), flex: 1 }}
                     >
-                      <MessageCircle size={14} aria-hidden /> واتساب
+                      <MessageCircle {...BTN_ICON} aria-hidden /> واتساب
                     </a>
                     <Link
                       href={`/m/leads/${l.id}`}
                       onClick={(e) => e.stopPropagation()}
                       aria-label={`ملف العميل ${l.name}`}
-                      className="m-press flex flex-none items-center justify-center"
-                      style={{
-                        boxSizing: "border-box", width: 44, height: 40, borderRadius: 11,
-                        background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`,
-                        color: MOBILE_COLORS.textSecondary, fontSize: 15,
-                      }}
+                      className={ACTION_BTN_CLASS}
+                      style={{ ...actionBtn("file"), flex: 1 }}
                     >
-                      ←
+                      <UserRound {...BTN_ICON} aria-hidden /> الملف
                     </Link>
                   </div>
                 )}
               </>
             );
+            // الكرت: سطح بارز + خط جانبي بلون المرحلة (border-inline-start — لا عنصر مطلق).
             const style = {
               boxSizing: "border-box" as const,
-              background: selectMode && on ? MOBILE_COLORS.goldBg : MOBILE_COLORS.card,
-              border: `1px solid ${selectMode && on ? MOBILE_COLORS.goldBorder : MOBILE_COLORS.border}`,
               borderRadius: 16,
-              padding: "12px 15px 12px 13px",
+              padding: "12px 14px 12px 12px",
+              borderInlineStart: `3px solid ${stageHex}`,
+              ...(selectMode && on ? { background: MOBILE_COLORS.goldBg, border: `1px solid ${SOP.gold}`, borderInlineStart: `3px solid ${stageHex}` } : {}),
               animationDelay: `${Math.min(i, 10) * 35}ms`,
             };
             return selectMode ? (
               <button key={l.id} type="button" onClick={() => toggleSel(l.id)}
-                className="m-rise m-press relative block w-full overflow-hidden text-start" style={style}>
+                className="m-raise m-rise m-press-sc relative block w-full overflow-hidden text-start" style={style}>
                 {card}
               </button>
             ) : (
-              <div key={l.id} className="m-rise m-leadcard relative overflow-hidden" style={style}>
+              <div key={l.id} className="m-raise m-rise m-leadcard relative overflow-hidden" style={style}>
                 {/* مساحة اللمس للملف — خلف المحتوى؛ صف الأزرار وحده يعيد تفعيل النقر (نمط بطاقة v2) */}
                 <Link href={`/m/leads/${l.id}`} aria-label={`ملف العميل ${l.name}`} className="absolute inset-0 z-0" />
                 <div className="pointer-events-none relative z-10">{card}</div>
@@ -367,8 +410,8 @@ export function MobileLeadsList({
 
           {shown < rows.length && (
             <div ref={sentinel} className="flex flex-col" style={{ gap: 9 }} aria-hidden>
-              <div style={{ height: 66, borderRadius: 15, background: MOBILE_COLORS.card }} className="animate-pulse" />
-              <div style={{ height: 66, borderRadius: 15, background: MOBILE_COLORS.card, opacity: 0.6 }} className="animate-pulse" />
+              <div style={{ height: 66, borderRadius: 15, background: SOP.plane }} className="animate-pulse" />
+              <div style={{ height: 66, borderRadius: 15, background: SOP.plane, opacity: 0.6 }} className="animate-pulse" />
             </div>
           )}
         </div>
@@ -496,7 +539,7 @@ export function MobileLeadsList({
                       style={{
                         boxSizing: "border-box", width: 44, height: 44, borderRadius: 22,
                         background: on ? MOBILE_COLORS.gold : avatarColor(e.id),
-                        color: on ? MOBILE_COLORS.bg : "#FFFFFF", fontSize: 13, fontWeight: 700,
+                        color: on ? SOP.onGold : SOP.tx, fontSize: 13, fontWeight: 700,
                         border: `2px solid ${on ? MOBILE_COLORS.goldLight : "transparent"}`,
                         transition: "background .2s, border-color .2s",
                       }}
