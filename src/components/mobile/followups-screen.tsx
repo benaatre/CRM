@@ -2,26 +2,32 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell } from "lucide-react";
+import { Bell, CalendarDays, ListChecks, MapPin, MessageCircle, Pencil, Phone, Sparkles, UserRound } from "lucide-react";
 import type { LeadStage, FollowUpResult } from "@prisma/client";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
 import { formatTime, RIYADH_TZ } from "@/lib/format";
 import { DAY_MS, dayStartKSA, ksaDayKey, ksaDayOfWeek, parseRiyadhLocal } from "@/lib/ksa-time";
-import { followUpResultLabels } from "@/lib/labels";
+import { followUpResultLabels, stageLabel } from "@/lib/labels";
+import { stageChipClass } from "@/lib/stage-colors";
+import { waPhone } from "@/lib/value-normalize";
 import { markCall } from "@/lib/mobile-call-tracker";
-import { FollowupSheet } from "@/components/mobile/followup-sheet";
 import { EditFollowupSheet, editMinutesLeft } from "@/components/mobile/edit-followup-sheet";
 
 /**
- * شاشة «متابعاتي» v3 — ٤ تبويبات (اليوم/فاتت/قادمة/السجل) بملخص ثلاثي وفلترين
- * متراكبين (النوع + الموعد). عرض وتغليف خالص: كل البيانات props من الخادم،
- * والأفعال عبر ورقتي المتابعة والتعديل القائمتين (POST/PATCH القائمين).
+ * شاشة «متابعاتي» v4 — «أوبسيديان ناعم Pro» (إعادة تنسيق، لا تغيير منطق):
+ * هيدر لاصق (sticky في التدفّق الطبيعي — لا absolute) فيه سطر النوع + زر «اليوم»
+ * + صف الوقت (غدًا · خلال أسبوع · مخصص · فائتة) + تبويب «السجل» منفصل،
+ * وتحته حلقة إنجاز (أنجزت/متأخر/باقي). الكروت بأزرار اتصال · واتساب · الملف فقط —
+ * تسجيل النتيجة صار من داخل ملف العميل (لا مُطلق لورقة المتابعة هنا).
+ * كل البيانات props من الخادم، والتعديل عبر ورقة التعديل القائمة (PATCH القائم).
  * الحالات الزمنية بمؤقّت ٣٠ ثانية (cleanup) — نفس إيقاع الرئيسية.
  */
 
 const MIN = 60_000;
-const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)" };
+const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
+/** ارتفاع أزرار الفعل في الكروت (المرجع البصري: ٤٦px). */
+const BTN_H = 46;
 
 export type FuAppointment = {
   leadId: string;
@@ -48,19 +54,14 @@ export type FuLogItem = {
 
 type TabKey = "today" | "missed" | "upcoming" | "log";
 type KindKey = "all" | "fu" | "visit";
-type RangeKey = "all" | "custom" | "tomorrow" | "week" | "next";
+/** «خلال أسبوع» يشمل ما كان «الأسبوع الجاي» (قرار ٢٠٢٦-٠٨-٢٢) — فلا مفتاح next. */
+type RangeKey = "all" | "custom" | "tomorrow" | "week";
 
-const KIND_CHIPS: { key: KindKey; label: string }[] = [
-  { key: "all", label: "✓ الكل" },
-  { key: "fu", label: "📞 متابعات" },
-  { key: "visit", label: "🏠 زيارات" },
-];
-const RANGE_CHIPS: { key: RangeKey; label: string }[] = [
-  { key: "all", label: "✓ الكل" },
-  { key: "custom", label: "📅 من–إلى" },
-  { key: "tomorrow", label: "بكرة" },
-  { key: "week", label: "هذا الأسبوع" },
-  { key: "next", label: "الأسبوع الجاي" },
+/** سطر النوع: الكل ذهبي · زيارات أزرق · موعد لاحق تركوازي. */
+const KIND_CHIPS: { key: KindKey; label: string; color: string }[] = [
+  { key: "all", label: "الكل", color: SOP.gold },
+  { key: "visit", label: "زيارات", color: SOP.blue },
+  { key: "fu", label: "موعد لاحق", color: SOP.teal },
 ];
 
 // الساعة مثبّتة على الرياض (مصدر التنسيق الموحّد) — لا توقيت الجهاز/الخادم.
@@ -81,26 +82,46 @@ function minsOrHours(ms: number): string {
   const dd = Math.round(h / 24);
   return dd === 1 ? "يوم" : dd === 2 ? "يومين" : `${toArabicDigits(dd)} أيام`;
 }
-/** لون نوع الموعد: زيارة كهرماني · متابعة ذهبي · أول تواصل أزرق — والفائت أحمر. */
+/** لون نوع الموعد: زيارة أزرق · متابعة ذهبي · أول تواصل تركوازي — والفائت أحمر. */
 function toneOf(kind: FuAppointment["kind"], missed: boolean): { base: string; bg: string } {
-  if (missed) return { base: MOBILE_COLORS.rose, bg: MOBILE_COLORS.roseBg };
-  if (kind === "visit") return { base: MOBILE_COLORS.amber, bg: MOBILE_COLORS.amberBg };
-  if (kind === "new") return { base: MOBILE_COLORS.sky, bg: MOBILE_COLORS.skyBg };
-  return { base: MOBILE_COLORS.gold, bg: MOBILE_COLORS.goldBg };
+  if (missed) return { base: SOP.red, bg: MOBILE_COLORS.roseBg };
+  if (kind === "visit") return { base: SOP.blue, bg: MOBILE_COLORS.skyBg };
+  if (kind === "new") return { base: SOP.teal, bg: MOBILE_COLORS.skyBg };
+  return { base: SOP.gold, bg: MOBILE_COLORS.goldBg };
+}
+function kindLabel(kind: FuAppointment["kind"]): string {
+  return kind === "visit" ? "زيارة" : kind === "new" ? "أول تواصل" : "موعد لاحق";
+}
+function KindIcon({ kind, size = 18 }: { kind: FuAppointment["kind"]; size?: number }) {
+  if (kind === "visit") return <MapPin size={size} strokeWidth={1.8} aria-hidden />;
+  if (kind === "new") return <Sparkles size={size} strokeWidth={1.8} aria-hidden />;
+  return <Phone size={size} strokeWidth={1.8} aria-hidden />;
 }
 function logTone(result: FollowUpResult): string {
-  if (result.startsWith("NOT_INTERESTED")) return MOBILE_COLORS.rose;
-  if (result.startsWith("NOT_ANSWERED") || result === "NO_ANSWER_INTERESTED" || result === "CALL_LATER") return MOBILE_COLORS.sky;
-  if (result === "NEGOTIATING" || result === "BANK_CHECK" || result === "ON_HOLD") return MOBILE_COLORS.amber;
-  return MOBILE_COLORS.mint;
+  if (result.startsWith("NOT_INTERESTED")) return SOP.red;
+  if (result.startsWith("NOT_ANSWERED") || result === "NO_ANSWER_INTERESTED" || result === "CALL_LATER") return SOP.blue;
+  if (result === "NEGOTIATING" || result === "BANK_CHECK" || result === "ON_HOLD") return SOP.amber;
+  return SOP.green;
 }
 
-const chipStyle = (on: boolean, base?: string, bg?: string) => ({
-  boxSizing: "border-box" as const, height: 32, padding: "0 13px", borderRadius: 16,
-  fontSize: 12, fontWeight: 600 as const, border: `1px solid ${on ? (base ?? MOBILE_COLORS.gold) : MOBILE_COLORS.border}`,
+/** شريحة الفلتر — مفعّلة: خلفية خافتة بلونها + حد بلونها · خاملة: سطح بارز. */
+const chipStyle = (on: boolean, color: string = SOP.gold, bg: string = MOBILE_COLORS.goldBg) => ({
+  boxSizing: "border-box" as const, minHeight: 38, padding: "0 12px", borderRadius: 12,
+  fontSize: 12.5, fontWeight: 700 as const,
+  border: `1px solid ${on ? color : SOP.edge}`,
   ...(on
-    ? { background: bg ?? MOBILE_COLORS.goldBg, color: base ?? MOBILE_COLORS.gold }
-    : { background: MOBILE_COLORS.card, color: MOBILE_COLORS.textSecondary }),
+    ? { background: bg, color }
+    : { background: SOP.plane, color: SOP.tx2 }),
+});
+
+/** زر فعل في الكروت — ٤٦px، ثلاث نغمات: ذهبي ممتلئ · أخضر خفيف · محاط ذهبي. */
+const actionBtn = (tone: "gold" | "wa" | "file") => ({
+  boxSizing: "border-box" as const, height: BTN_H, borderRadius: 13, fontSize: 13, fontWeight: 700 as const, gap: 6,
+  ...(tone === "gold"
+    ? { background: SOP.gold, color: SOP.onGold, border: "none" }
+    : tone === "wa"
+      ? { background: MOBILE_COLORS.mintBg, color: SOP.green, border: `1px solid ${SOP.edge}` }
+      : { background: SOP.planeHi, color: SOP.gold, border: `1px solid ${SOP.gold}` }),
 });
 
 export function FollowupsScreen({
@@ -117,9 +138,11 @@ export function FollowupsScreen({
   /** سجل منجزاته (حتى ٤٠ — «عرض المزيد» محلي). */
   log: FuLogItem[];
   unread: number;
+  /** تبقى بالعقد (الصفحة تمرّرها) — تسجيل النتيجة انتقل لملف العميل فلا تُستهلك هنا. */
   projects: { id: string; name: string }[];
   initialTab?: string;
 }) {
+  void projects;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -134,7 +157,6 @@ export function FollowupsScreen({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [logShown, setLogShown] = useState(10);
-  const [fuSheet, setFuSheet] = useState<FuAppointment | null>(null);
   const [editItem, setEditItem] = useState<FuLogItem | null>(null);
 
   const now = new Date(nowMs);
@@ -147,6 +169,7 @@ export function FollowupsScreen({
     setRange(r);
     if (r !== "all") setTab("upcoming");
   };
+  const goToday = () => { setTab("today"); setRange("all"); };
 
   const upcomingFiltered = useMemo(() => {
     // كل الحدود بيوم الرياض (بداية اليوم ويوم الأسبوع) — لا توقيت الجهاز.
@@ -155,10 +178,10 @@ export function FollowupsScreen({
     const dow = ksaDayOfWeek(now);
     let lo = -Infinity, hi = Infinity;
     if (range === "tomorrow") { lo = t0 + dayMs; hi = t0 + 2 * dayMs; }
-    else if (range === "week") { lo = t0; hi = t0 + (7 - (dow % 7 === 0 ? 7 : dow % 7)) * dayMs + dayMs; }
-    else if (range === "next") {
-      const daysToSun = (7 - dow) % 7 || 7;
-      lo = t0 + daysToSun * dayMs; hi = lo + 7 * dayMs;
+    else if (range === "week") {
+      // «خلال أسبوع» = بقية هذا الأسبوع + الأسبوع الجاي كاملًا (دمج «الأسبوع الجاي» فيه).
+      const endThisWeek = t0 + (7 - (dow % 7 === 0 ? 7 : dow % 7)) * dayMs + dayMs;
+      lo = t0; hi = endThisWeek + 7 * dayMs;
     } else if (range === "custom") {
       if (from) lo = parseRiyadhLocal(from).getTime();
       if (to) hi = parseRiyadhLocal(to).getTime() + dayMs;
@@ -179,150 +202,128 @@ export function FollowupsScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upcomingFiltered]);
 
-  // عدّاد اليوم «٣/٥»: أنجزت ٣ من ٥ — الكلي = المتبقي + المنجز (ما ينقص بالإنجاز).
+  // حلقة الإنجاز: أنجزت = منجزات اليوم · متأخر = فات وقته ولم تُسجَّل لعميله متابعة اليوم ·
+  // باقي = لم يحن وقته ولم يُنجَز. (doneToday متابعة واحدة لكل عميل — نفس مصدر الرئيسية.)
   const doneN = doneToday.length;
-  const todayTotal = todayAppointments.length + doneN;
-  const summary = [
-    { key: "today" as TabKey, label: "اليوم", n: doneN ? `${toArabicDigits(doneN)}/${toArabicDigits(todayTotal)}` : toArabicDigits(todayTotal), base: MOBILE_COLORS.gold, bg: MOBILE_COLORS.goldBg, border: MOBILE_COLORS.goldBorder },
-    { key: "missed" as TabKey, label: "فاتت", n: toArabicDigits(missedAll.length), base: MOBILE_COLORS.rose, bg: MOBILE_COLORS.roseBg, border: MOBILE_COLORS.rose },
-    { key: "upcoming" as TabKey, label: "قادمة", n: toArabicDigits(upcoming.length), base: MOBILE_COLORS.sky, bg: MOBILE_COLORS.skyBg, border: MOBILE_COLORS.border },
-  ];
-  const TABS: { key: TabKey; label: string }[] = [
-    { key: "today", label: "اليوم" },
-    { key: "missed", label: "فاتت" },
-    { key: "upcoming", label: "قادمة" },
-    { key: "log", label: "السجل" },
+  const doneIds = new Set(doneToday.map((d) => d.leadId));
+  const lateN = todayAppointments.filter((a) => a.at.getTime() < nowMs && !doneIds.has(a.leadId)).length;
+  const leftN = todayAppointments.filter((a) => a.at.getTime() >= nowMs && !doneIds.has(a.leadId)).length;
+  const todayTotal = doneN + lateN + leftN;
+  const donePct = todayTotal > 0 ? doneN / todayTotal : 0;
+
+  const timeRow: { key: "tomorrow" | "week" | "custom" | "missed"; label: string; color: string; bg: string; on: boolean; go: () => void }[] = [
+    { key: "tomorrow", label: "غدًا", color: SOP.gold, bg: MOBILE_COLORS.goldBg, on: tab === "upcoming" && range === "tomorrow", go: () => pickRange("tomorrow") },
+    { key: "week", label: "خلال أسبوع", color: SOP.gold, bg: MOBILE_COLORS.goldBg, on: tab === "upcoming" && range === "week", go: () => pickRange("week") },
+    { key: "custom", label: "مخصص", color: SOP.gold, bg: MOBILE_COLORS.goldBg, on: tab === "upcoming" && range === "custom", go: () => pickRange("custom") },
+    { key: "missed", label: "فائتة", color: SOP.red, bg: MOBILE_COLORS.roseBg, on: tab === "missed", go: () => setTab("missed") },
   ];
 
-  /** كرت موعد — بصندوق وقت وسطر سبب وأزرار حسب التبويب. */
-  const AppointmentCard = ({ a, showMissedLine, cta }: { a: FuAppointment; showMissedLine: boolean; cta: string | null }) => {
+  /** كرت موعد — صف علوي (أيقونة النوع · الاسم والجوال · الوقت) + شارتان + ملاحظة + ٣ أزرار. */
+  const AppointmentCard = ({ a, showMissedLine }: { a: FuAppointment; showMissedLine: boolean }) => {
     const missed = a.at.getTime() < nowMs;
     const soon = !missed && a.at.getTime() - nowMs <= 60 * MIN;
     const tone = toneOf(a.kind, missed);
     return (
-      <div
-        className="relative overflow-hidden"
-        style={{
-          boxSizing: "border-box", background: MOBILE_COLORS.card,
-          border: `1px solid ${missed ? MOBILE_COLORS.rose : MOBILE_COLORS.border}`,
-          borderRadius: 15, padding: "12px 14px",
-        }}
-      >
-        <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 9, bottom: 9, width: 4, borderRadius: 3, background: tone.base, boxShadow: `0 0 10px ${tone.base}` }} />
+      <div className="m-raise relative overflow-hidden" style={{ boxSizing: "border-box", borderRadius: 16, padding: "12px 14px 12px 12px" }}>
+        <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 10, bottom: 10, width: 4, borderRadius: "0 3px 3px 0", background: tone.base }} />
+        {/* الصف العلوي */}
         <div className="flex items-center" style={{ gap: 10 }}>
-          <div
-            className="flex-none text-center"
-            style={{ boxSizing: "border-box", borderRadius: 11, padding: "6px 10px", background: tone.bg }}
+          <span
+            className="flex flex-none items-center justify-center"
+            style={{ boxSizing: "border-box", width: 38, height: 38, borderRadius: 11, background: tone.bg, color: tone.base }}
+            aria-hidden
           >
-            <div style={{ ...ZAIN, fontSize: 16, fontWeight: 800, lineHeight: 1, color: tone.base }}>{fmtClock(a.at)}</div>
-          </div>
+            <KindIcon kind={a.kind} />
+          </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center" style={{ gap: 6 }}>
-              <Link href={`/m/leads/${a.leadId}`} className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>
-                {a.name}
-              </Link>
-              {missed && <span className="flex-none" style={{ boxSizing: "border-box", borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 700, background: MOBILE_COLORS.roseBg, color: MOBILE_COLORS.rose }}>فاتت</span>}
-              {soon && <span className="flex-none" style={{ boxSizing: "border-box", borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 700, background: MOBILE_COLORS.amberBg, color: MOBILE_COLORS.amber }}>الآن</span>}
+            <Link href={`/m/leads/${a.leadId}`} className="block min-w-0 truncate" style={{ fontSize: 15, fontWeight: 700, color: SOP.tx }}>
+              {a.name}
+            </Link>
+            <div dir="ltr" className="truncate" style={{ ...ZAIN, fontSize: 11.5, color: SOP.mut, marginTop: 2, textAlign: "end" }}>
+              {a.phone}
             </div>
-            <div className="truncate" style={{ fontSize: 12, color: MOBILE_COLORS.textSecondary, marginTop: 3 }}>{a.reason}</div>
-            {showMissedLine && missed && (
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: MOBILE_COLORS.rose, marginTop: 4 }}>
-                ⚠️ فات من {minsOrHours(nowMs - a.at.getTime())}
-              </div>
-            )}
           </div>
-          <Link
-            href={`/m/leads/${a.leadId}`}
-            aria-label={`ملف العميل ${a.name}`}
-            className="m-press flex flex-none items-center justify-center"
-            style={{ boxSizing: "border-box", width: 40, height: 38, borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 14 }}
-          >
-            ←
+          <div className="flex-none text-center" style={{ boxSizing: "border-box", borderRadius: 10, padding: "6px 9px", background: tone.bg }}>
+            <div style={{ ...ZAIN, fontSize: 15, fontWeight: 800, lineHeight: 1, color: tone.base }}>{fmtClock(a.at)}</div>
+          </div>
+        </div>
+        {/* الشارتان: النوع + المرحلة (+ فاتت/الآن) */}
+        <div className="flex flex-wrap items-center" style={{ gap: 6, marginTop: 9 }}>
+          <span style={{ boxSizing: "border-box", borderRadius: 7, padding: "3px 8px", fontSize: 10.5, fontWeight: 700, background: tone.bg, color: tone.base }}>
+            {kindLabel(a.kind)}
+          </span>
+          <span className={`border font-semibold ${stageChipClass[a.stage]}`} style={{ fontSize: 10.5, padding: "3px 8px", borderRadius: 7 }}>
+            {stageLabel(a.stage)}
+          </span>
+          {missed && (
+            <span style={{ boxSizing: "border-box", borderRadius: 7, padding: "3px 8px", fontSize: 10.5, fontWeight: 700, background: MOBILE_COLORS.roseBg, color: SOP.red }}>فاتت</span>
+          )}
+          {soon && (
+            <span style={{ boxSizing: "border-box", borderRadius: 7, padding: "3px 8px", fontSize: 10.5, fontWeight: 700, background: MOBILE_COLORS.amberBg, color: SOP.amber }}>الآن</span>
+          )}
+        </div>
+        {/* صندوق الملاحظة/السبب */}
+        <div className="m-inset" style={{ boxSizing: "border-box", borderRadius: 11, padding: "8px 11px", marginTop: 9, fontSize: 12, lineHeight: 1.65, color: SOP.tx2 }}>
+          {a.reason}
+          {showMissedLine && missed && (
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: SOP.red, marginTop: 3 }}>
+              فات من {minsOrHours(nowMs - a.at.getTime())}
+            </div>
+          )}
+        </div>
+        {/* أزرار الفعل — اتصال · واتساب · الملف (لا «سجّل النتيجة» — من ملف العميل) */}
+        <div className="flex" style={{ gap: 8, marginTop: 10 }}>
+          <a href={`tel:${a.phone}`} onClick={() => markCall(a.leadId)} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("gold"), flex: 1.4 }}>
+            <Phone size={17} strokeWidth={2} aria-hidden /> اتصال
+          </a>
+          <a href={`https://wa.me/${waPhone(a.phone)}`} target="_blank" rel="noopener noreferrer" className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("wa"), flex: 1 }}>
+            <MessageCircle size={17} strokeWidth={2} aria-hidden /> واتساب
+          </a>
+          <Link href={`/m/leads/${a.leadId}`} aria-label={`ملف العميل ${a.name}`} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("file"), flex: 1 }}>
+            <UserRound size={17} strokeWidth={2} aria-hidden /> الملف
           </Link>
         </div>
-        {cta && (missed || soon) && (
-          <div className="flex" style={{ gap: 8, marginTop: 10 }}>
-            <a
-              href={`tel:${a.phone}`}
-              onClick={() => markCall(a.leadId)}
-              className="m-press flex flex-1 items-center justify-center"
-              style={{ boxSizing: "border-box", height: 38, borderRadius: 10, border: "none", background: missed ? MOBILE_COLORS.rose : MOBILE_COLORS.gold, color: MOBILE_COLORS.bg, fontSize: 12.5, fontWeight: 700 }}
-            >
-              📞 اتصال
-            </a>
-            <button
-              type="button"
-              onClick={() => setFuSheet(a)}
-              className="m-press flex items-center justify-center"
-              style={{ boxSizing: "border-box", flex: 1.6, height: 38, borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${tone.base}`, color: tone.base, fontSize: 12.5, fontWeight: 700 }}
-            >
-              {cta}
-            </button>
-          </div>
-        )}
       </div>
     );
   };
 
-  /** كرت منجز اليوم — يبقى حتى نهاية اليوم بمظهر مكتمل: ✓ خضراء، شطب خفيف،
-      النتيجة سطرًا واحدًا، زر الاتصال والسهم يبقيان، وزر «تمّت» انتهت مهمته. */
+  /** كرت منجز اليوم — يبقى حتى نهاية اليوم بمظهر مكتمل: علامة خضراء، شطب خفيف،
+      النتيجة سطرًا واحدًا، وأزرار اتصال · الملف · تعديل (ضمن نافذة الساعة). */
   const DoneCard = ({ r }: { r: FuLogItem }) => {
     const left = editMinutesLeft(r.createdAt, nowMs);
     return (
-      <div
-        className="relative overflow-hidden"
-        style={{
-          boxSizing: "border-box", background: MOBILE_COLORS.card,
-          border: `1px solid ${MOBILE_COLORS.border}`, borderRadius: 15, padding: "12px 14px",
-        }}
-      >
-        <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 9, bottom: 9, width: 4, borderRadius: 3, background: MOBILE_COLORS.mint }} />
+      <div className="m-raise relative overflow-hidden" style={{ boxSizing: "border-box", borderRadius: 16, padding: "12px 14px 12px 12px" }}>
+        <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 10, bottom: 10, width: 4, borderRadius: "0 3px 3px 0", background: SOP.green }} />
         <div className="flex items-center" style={{ gap: 10 }}>
-          <div
-            className="flex-none text-center"
-            style={{ boxSizing: "border-box", borderRadius: 11, padding: "6px 10px", background: MOBILE_COLORS.mintBg }}
-          >
-            <div style={{ ...ZAIN, fontSize: 16, fontWeight: 800, lineHeight: 1, color: MOBILE_COLORS.mint }}>✓</div>
-            <div style={{ fontSize: 10, color: MOBILE_COLORS.textMuted, marginTop: 3 }}>{fmtClock(r.createdAt)}</div>
-          </div>
+          <span className="flex flex-none items-center justify-center" style={{ boxSizing: "border-box", width: 38, height: 38, borderRadius: 11, background: MOBILE_COLORS.mintBg, color: SOP.green }} aria-hidden>
+            <ListChecks size={18} strokeWidth={1.8} aria-hidden />
+          </span>
           <div className="min-w-0 flex-1">
             <Link
               href={`/m/leads/${r.leadId}`}
               className="block min-w-0 truncate"
-              style={{ fontSize: 15, fontWeight: 700, color: MOBILE_COLORS.textSecondary, textDecoration: "line-through", textDecorationColor: MOBILE_COLORS.textMuted, textDecorationThickness: 1 }}
+              style={{ fontSize: 15, fontWeight: 700, color: SOP.tx2, textDecoration: "line-through", textDecorationColor: SOP.mut, textDecorationThickness: 1 }}
             >
               {r.leadName}
             </Link>
-            <div className="truncate" style={{ fontSize: 12, color: MOBILE_COLORS.mint, marginTop: 3 }}>
+            <div className="truncate" style={{ fontSize: 12, color: SOP.green, marginTop: 3 }}>
               {followUpResultLabels[r.result]}{r.note ? ` — ${r.note}` : ""}
             </div>
           </div>
-          <Link
-            href={`/m/leads/${r.leadId}`}
-            aria-label={`ملف العميل ${r.leadName}`}
-            className="m-press flex flex-none items-center justify-center"
-            style={{ boxSizing: "border-box", width: 40, height: 38, borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 14 }}
-          >
-            ←
-          </Link>
+          <div className="flex-none text-center" style={{ boxSizing: "border-box", borderRadius: 10, padding: "6px 9px", background: MOBILE_COLORS.mintBg }}>
+            <div style={{ ...ZAIN, fontSize: 13, fontWeight: 800, lineHeight: 1, color: SOP.green }}>{fmtClock(r.createdAt)}</div>
+          </div>
         </div>
         <div className="flex" style={{ gap: 8, marginTop: 10 }}>
-          <a
-            href={`tel:${r.leadPhone}`}
-            onClick={() => markCall(r.leadId)}
-            className="m-press flex flex-1 items-center justify-center"
-            style={{ boxSizing: "border-box", height: 38, borderRadius: 10, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 12.5, fontWeight: 700 }}
-          >
-            📞 اتصال
+          <a href={`tel:${r.leadPhone}`} onClick={() => markCall(r.leadId)} className="m-press-sc flex flex-1 items-center justify-center" style={{ ...actionBtn("wa"), color: SOP.tx2, background: SOP.planeHi }}>
+            <Phone size={17} strokeWidth={2} aria-hidden /> اتصال
           </a>
+          <Link href={`/m/leads/${r.leadId}`} aria-label={`ملف العميل ${r.leadName}`} className="m-press-sc flex flex-1 items-center justify-center" style={actionBtn("file")}>
+            <UserRound size={17} strokeWidth={2} aria-hidden /> الملف
+          </Link>
           {left > 0 && (
-            <button
-              type="button"
-              onClick={() => setEditItem(r)}
-              className="m-press flex items-center justify-center"
-              style={{ boxSizing: "border-box", flex: 1.6, height: 38, borderRadius: 10, background: MOBILE_COLORS.goldBg, border: `1px solid ${MOBILE_COLORS.goldBorder}`, color: MOBILE_COLORS.gold, fontSize: 12.5, fontWeight: 700 }}
-            >
-              ✎ تعديل — متاح {toArabicDigits(left)} د
+            <button type="button" onClick={() => setEditItem(r)} className="m-press-sc flex items-center justify-center" style={{ ...actionBtn("wa"), flex: 1.3, background: MOBILE_COLORS.goldBg, color: SOP.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }}>
+              <Pencil size={15} strokeWidth={2} aria-hidden /> تعديل · {toArabicDigits(left)} د
             </button>
           )}
         </div>
@@ -330,93 +331,148 @@ export function FollowupsScreen({
     );
   };
 
+  const inputStyle = {
+    boxSizing: "border-box" as const, flex: 1, minHeight: 42, background: SOP.page, border: `1px solid ${SOP.edge}`,
+    borderRadius: 11, padding: "0 11px", fontSize: 13, color: SOP.tx, outline: "none",
+  };
+
   return (
     <div className="m-screen flex flex-col" style={{ gap: 13 }}>
-      {/* ===== الترويسة ===== */}
-      <header className="flex items-center justify-between" style={{ padding: "0 2px", gap: 10 }}>
-        <div className="min-w-0">
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>متابعاتي</h1>
-          <div style={{ fontSize: "12.5px", color: MOBILE_COLORS.textSecondary, marginTop: 4 }}>
-            اليوم <span style={{ ...ZAIN, fontWeight: 800, color: MOBILE_COLORS.gold }}>{toArabicDigits(todayTotal)}</span> مواعيد
-            {doneN > 0 && <> — أنجزت <span style={{ ...ZAIN, fontWeight: 800, color: MOBILE_COLORS.mint }}>{toArabicDigits(doneN)}</span></>}
-            {" · "}
-            فاتك <span style={{ ...ZAIN, fontWeight: 800, color: MOBILE_COLORS.rose }}>{toArabicDigits(missedAll.length)}</span>
+      {/*
+        ===== الهيدر اللاصق =====
+        sticky (top:0) داخل التدفّق الطبيعي — لا absolute، فلا يغطّي شيئًا: يحجز ارتفاعه
+        في العمود ويلتصق عند التمرير. الهوامش السالبة تلغي حشوة القشرة (١٨px جانبًا +
+        safe-area+١٨ علويًا) ثم تُعاد حشوة داخلية — نفس نمط DiwanTopbar.
+      */}
+      <div
+        className="sticky flex flex-col"
+        style={{
+          zIndex: 40,
+          top: 0,
+          gap: 9,
+          margin: "calc(-1 * (env(safe-area-inset-top) + 18px)) -18px 0",
+          padding: "calc(env(safe-area-inset-top) + 12px) 18px 12px",
+          background: MOBILE_COLORS.navBg,
+          backdropFilter: "blur(20px) saturate(1.15)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.15)",
+          borderBottom: `1px solid ${SOP.edge}`,
+        }}
+      >
+        {/* العنوان + الجرس */}
+        <header className="flex items-center justify-between" style={{ gap: 10 }}>
+          <div className="min-w-0">
+            <h1 style={{ fontSize: 21, fontWeight: 800, color: SOP.tx, lineHeight: 1.15 }}>متابعاتي</h1>
+            <div style={{ fontSize: 12, color: SOP.tx2, marginTop: 3 }}>
+              اليوم <span style={{ ...ZAIN, fontWeight: 800, color: SOP.gold }}>{toArabicDigits(todayTotal)}</span> مواعيد
+              {doneN > 0 && <> — أنجزت <span style={{ ...ZAIN, fontWeight: 800, color: SOP.green }}>{toArabicDigits(doneN)}</span></>}
+              {" · "}
+              فاتك <span style={{ ...ZAIN, fontWeight: 800, color: SOP.red }}>{toArabicDigits(missedAll.length)}</span>
+            </div>
           </div>
-        </div>
-        <Link
-          href="/m/notifications" aria-label="الإشعارات"
-          className="m-press relative flex flex-none items-center justify-center"
-          style={{ boxSizing: "border-box", width: 44, height: 44, borderRadius: 13, background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary }}
-        >
-          <Bell size={19} aria-hidden />
-          {unread > 0 && (
-            <span className="absolute flex items-center justify-center" style={{ boxSizing: "border-box", top: 5, left: 5, minWidth: 17, height: 17, borderRadius: 9, background: MOBILE_COLORS.rose, color: MOBILE_COLORS.bg, fontSize: 9, fontWeight: 700, padding: "0 4px" }}>
-              {toArabicDigits(unread > 99 ? 99 : unread)}
-            </span>
-          )}
-        </Link>
-      </header>
-
-      {/* ===== الملخص الثلاثي — يضغط فينقل للتبويب ===== */}
-      <div className="grid grid-cols-3" style={{ gap: 8 }}>
-        {summary.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            onClick={() => setTab(s.key)}
-            className="m-press flex flex-col items-center justify-center"
-            style={{
-              boxSizing: "border-box", minHeight: 74, gap: 3, borderRadius: 14,
-              background: tab === s.key ? s.bg : MOBILE_COLORS.card,
-              border: `1px solid ${tab === s.key ? s.border : MOBILE_COLORS.border}`,
-            }}
+          <Link
+            href="/m/notifications" aria-label="الإشعارات"
+            className="m-raise m-press-sc relative flex flex-none items-center justify-center"
+            style={{ boxSizing: "border-box", width: 42, height: 42, borderRadius: 13, color: SOP.tx2 }}
           >
-            <span style={{ ...ZAIN, fontSize: 26, fontWeight: 800, lineHeight: 1, color: s.base }}>{s.n}</span>
-            <span style={{ fontSize: 11.5, color: MOBILE_COLORS.textSecondary }}>{s.label}</span>
-            {/* شريط تقدّم رفيع — بطاقة «اليوم» فقط وعند وجود إنجاز */}
-            {s.key === "today" && doneN > 0 && todayTotal > 0 && (
-              <span aria-hidden style={{ width: "72%", height: 3, borderRadius: 2, background: MOBILE_COLORS.border, overflow: "hidden", display: "block" }}>
-                <span style={{ display: "block", height: "100%", width: `${Math.round((doneN / todayTotal) * 100)}%`, borderRadius: 2, background: MOBILE_COLORS.mint }} />
+            <Bell size={18} strokeWidth={1.8} aria-hidden />
+            {unread > 0 && (
+              <span className="absolute flex items-center justify-center" style={{ ...ZAIN, boxSizing: "border-box", top: 4, left: 4, minWidth: 17, height: 17, borderRadius: 9, background: SOP.red, color: SOP.tx, fontSize: 9.5, fontWeight: 700, padding: "0 4px" }}>
+                {toArabicDigits(unread > 99 ? 99 : unread)}
               </span>
             )}
-          </button>
-        ))}
+          </Link>
+        </header>
+
+        {/* سطر النوع — ثلاثة أزرار متساوية */}
+        <div className="grid grid-cols-3" style={{ gap: 7 }}>
+          {KIND_CHIPS.map((c) => (
+            <button key={c.key} type="button" onClick={() => setKind(c.key)} className="m-press-sc" style={chipStyle(kind === c.key, c.color, c.key === "all" ? MOBILE_COLORS.goldBg : MOBILE_COLORS.skyBg)}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {/* زر «اليوم» — عرض كامل بارز بعدّاد */}
+        <button
+          type="button"
+          onClick={goToday}
+          className={`${tab === "today" ? "" : "m-raise"} m-press-sc flex w-full items-center justify-between`}
+          style={{
+            boxSizing: "border-box", minHeight: 46, borderRadius: 14, padding: "0 14px", fontSize: 14, fontWeight: 800,
+            ...(tab === "today"
+              ? { background: SOP.gold, color: SOP.onGold, border: "none" }
+              : { color: SOP.tx }),
+          }}
+        >
+          <span>اليوم</span>
+          <span style={{ ...ZAIN, fontSize: 15, fontWeight: 800 }}>{toArabicDigits(todayTotal)}</span>
+        </button>
+
+        {/* صف الوقت: غدًا · خلال أسبوع · مخصص · فائتة */}
+        <div className="grid grid-cols-4" style={{ gap: 7 }}>
+          {timeRow.map((c) => (
+            <button key={c.key} type="button" onClick={c.go} className="m-press-sc flex items-center justify-center" style={{ ...chipStyle(c.on, c.color, c.bg), gap: 5, padding: "0 6px" }}>
+              {c.key === "custom" && <CalendarDays size={14} strokeWidth={2} aria-hidden />}
+              {c.label}
+            </button>
+          ))}
+        </div>
+        {tab === "upcoming" && range === "custom" && (
+          <div className="flex" style={{ gap: 8 }}>
+            <input type="date" aria-label="من تاريخ" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
+            <input type="date" aria-label="إلى تاريخ" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
+          </div>
+        )}
+
+        {/* تبويب «السجل» — منفصل وواضح */}
+        <button
+          type="button"
+          onClick={() => setTab("log")}
+          className={`${tab === "log" ? "m-inset" : ""} m-press-sc flex w-full items-center justify-center`}
+          style={{
+            boxSizing: "border-box", minHeight: 38, borderRadius: 12, gap: 7, fontSize: 12.5, fontWeight: 700,
+            ...(tab === "log" ? { color: SOP.gold } : { background: "transparent", border: `1px dashed ${SOP.edge2}`, color: SOP.tx2 }),
+          }}
+        >
+          <ListChecks size={15} strokeWidth={2} aria-hidden />
+          السجل · <span style={ZAIN}>{toArabicDigits(log.length)}</span> متابعة
+        </button>
       </div>
 
-      {/* ===== التبويبات ===== */}
-      <div className="m-noscroll flex overflow-x-auto" style={{ gap: 7 }}>
-        {TABS.map((t) => (
-          <button key={t.key} type="button" onClick={() => setTab(t.key)} className="m-press flex-none" style={{ paddingBlock: 4, border: "none", background: "none" }}>
-            <span style={chipStyle(tab === t.key)}>{t.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* ===== الفلتران (يتراكبان) ===== */}
+      {/* ===== حلقة الإنجاز ===== */}
       {tab !== "log" && (
-        <div className="flex flex-col" style={{ gap: 7 }}>
-          <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6 }}>
-            {KIND_CHIPS.map((c) => (
-              <button key={c.key} type="button" onClick={() => setKind(c.key)} className="m-press flex-none" style={{ border: "none", background: "none", padding: 0 }}>
-                <span style={chipStyle(kind === c.key)}>{c.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6 }}>
-            {RANGE_CHIPS.map((c) => (
-              <button key={c.key} type="button" onClick={() => pickRange(c.key)} className="m-press flex-none" style={{ border: "none", background: "none", padding: 0 }}>
-                <span style={chipStyle(range === c.key, MOBILE_COLORS.sky, MOBILE_COLORS.skyBg)}>{c.label}</span>
-              </button>
-            ))}
-          </div>
-          {range === "custom" && (
-            <div className="flex" style={{ gap: 8 }}>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-                style={{ boxSizing: "border-box", flex: 1, minHeight: 42, background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`, borderRadius: 10, padding: "0 11px", fontSize: 13, color: MOBILE_COLORS.textPrimary, outline: "none" }} />
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-                style={{ boxSizing: "border-box", flex: 1, minHeight: 42, background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`, borderRadius: 10, padding: "0 11px", fontSize: 13, color: MOBILE_COLORS.textPrimary, outline: "none" }} />
+        <div className="m-raise flex items-center" style={{ boxSizing: "border-box", borderRadius: 18, padding: "13px 15px", gap: 14 }}>
+          <div className="relative flex-none" style={{ width: 64, height: 64 }}>
+            {/* حلقة ثابتة (لا حركة) — تحترم prefers-reduced-motion بطبيعتها. */}
+            <svg data-svg-free viewBox="0 0 64 64" width={64} height={64} style={{ transform: "rotate(-90deg)" }} aria-hidden>
+              <circle cx={32} cy={32} r={26} fill="none" stroke={SOP.edge2} strokeWidth={6} />
+              <circle
+                cx={32} cy={32} r={26} fill="none" stroke={SOP.green} strokeWidth={6} strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 26}
+                strokeDashoffset={2 * Math.PI * 26 * (1 - donePct)}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center" style={{ ...ZAIN, fontSize: 14, fontWeight: 800, color: SOP.tx }}>
+              {toArabicDigits(Math.round(donePct * 100))}٪
             </div>
-          )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center" style={{ gap: 14 }}>
+              {[
+                { n: doneN, label: "أنجزت", color: SOP.green },
+                { n: lateN, label: "متأخر", color: SOP.red },
+                { n: leftN, label: "باقي", color: SOP.gold },
+              ].map((s) => (
+                <div key={s.label} className="flex flex-col items-center" style={{ minWidth: 44 }}>
+                  <span style={{ ...ZAIN, fontSize: 20, fontWeight: 800, lineHeight: 1.1, color: s.color }}>{toArabicDigits(s.n)}</span>
+                  <span style={{ fontSize: 10.5, color: SOP.mut, marginTop: 2 }}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: SOP.tx2, marginTop: 6 }}>
+              أنجزت <span style={{ ...ZAIN, fontWeight: 700, color: SOP.green }}>{toArabicDigits(doneN)}</span> من <span style={{ ...ZAIN, fontWeight: 700, color: SOP.tx }}>{toArabicDigits(todayTotal)}</span> اليوم
+            </div>
+          </div>
         </div>
       )}
 
@@ -425,7 +481,7 @@ export function FollowupsScreen({
         <div className="flex flex-col" style={{ gap: 9 }}>
           {/* المستحق والفائت أولًا — والمنجز يبقى أسفل القائمة حتى نهاية اليوم */}
           {todayAppointments.filter(kindOk).length === 0 ? (
-            <EmptyCard text={doneToday.length > 0 ? "خلّصت مواعيد اليوم كلها 👏" : "ما عندك مواعيد اليوم 🎉"} />
+            <EmptyCard text={doneToday.length > 0 ? "خلّصت مواعيد اليوم كلها" : "ما عندك مواعيد اليوم"} />
           ) : (
             [...todayAppointments]
               .filter(kindOk)
@@ -435,13 +491,13 @@ export function FollowupsScreen({
                 return am - bm || a.at.getTime() - b.at.getTime(); // الفايتة أول القائمة
               })
               .map((a) => (
-                <AppointmentCard key={`${a.leadId}-${a.kind}`} a={a} showMissedLine cta="✓ تمّت — سجّل النتيجة" />
+                <AppointmentCard key={`${a.leadId}-${a.kind}`} a={a} showMissedLine />
               ))
           )}
           {doneToday.length > 0 && (
             <>
-              <h2 style={{ fontSize: 12.5, fontWeight: 700, color: MOBILE_COLORS.mint, padding: "4px 2px 0" }}>
-                ✓ أنجزت اليوم · {toArabicDigits(doneToday.length)}
+              <h2 className="flex items-center" style={{ gap: 6, fontSize: 12.5, fontWeight: 700, color: SOP.green, padding: "4px 2px 0" }}>
+                <ListChecks size={14} strokeWidth={2} aria-hidden /> أنجزت اليوم · <span style={ZAIN}>{toArabicDigits(doneToday.length)}</span>
               </h2>
               {doneToday.map((r) => <DoneCard key={r.id} r={r} />)}
             </>
@@ -452,10 +508,10 @@ export function FollowupsScreen({
       {tab === "missed" && (
         <div className="flex flex-col" style={{ gap: 9 }}>
           {missedAll.filter(kindOk).length === 0 ? (
-            <EmptyCard text="ما عليك شي فايت 👏" />
+            <EmptyCard text="ما عليك شي فايت" />
           ) : (
             missedAll.filter(kindOk).map((a) => (
-              <AppointmentCard key={`${a.leadId}-${a.kind}-${a.at.getTime()}`} a={a} showMissedLine cta="🔄 تواصلت — سجّل النتيجة وحدّد موعدًا" />
+              <AppointmentCard key={`${a.leadId}-${a.kind}-${a.at.getTime()}`} a={a} showMissedLine />
             ))
           )}
         </div>
@@ -463,16 +519,19 @@ export function FollowupsScreen({
 
       {tab === "upcoming" && (
         <div className="flex flex-col" style={{ gap: 12 }}>
+          <h2 style={{ fontSize: 12.5, fontWeight: 700, color: SOP.mut, padding: "0 2px" }}>
+            {range === "tomorrow" ? "غدًا" : range === "week" ? "خلال أسبوع" : range === "custom" ? "نطاق مخصص" : "القادمة"} · <span style={ZAIN}>{toArabicDigits(upcomingFiltered.length)}</span>
+          </h2>
           {upcomingGroups.length === 0 ? (
             <EmptyCard text="ما فيه مواعيد قادمة بهذا الفلتر" />
           ) : (
             upcomingGroups.map((g) => (
               <section key={g.title} className="flex flex-col" style={{ gap: 8 }}>
-                <h2 style={{ fontSize: 12.5, fontWeight: 700, color: MOBILE_COLORS.textMuted, padding: "0 2px" }}>
-                  {g.title} · {toArabicDigits(g.items.length)}
-                </h2>
+                <h3 style={{ fontSize: 12, fontWeight: 700, color: SOP.tx2, padding: "0 2px" }}>
+                  {g.title} · <span style={ZAIN}>{toArabicDigits(g.items.length)}</span>
+                </h3>
                 {g.items.map((a) => (
-                  <AppointmentCard key={`${a.leadId}-${a.kind}-${a.at.getTime()}`} a={a} showMissedLine={false} cta={null} />
+                  <AppointmentCard key={`${a.leadId}-${a.kind}-${a.at.getTime()}`} a={a} showMissedLine={false} />
                 ))}
               </section>
             ))
@@ -489,28 +548,29 @@ export function FollowupsScreen({
               {log.slice(0, logShown).map((r) => {
                 const left = editMinutesLeft(r.createdAt, nowMs);
                 return (
-                  <div key={r.id} style={{ boxSizing: "border-box", background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`, borderRadius: 14, padding: "11px 13px" }}>
+                  <div key={r.id} className="m-raise" style={{ boxSizing: "border-box", borderRadius: 15, padding: "11px 13px" }}>
                     <div className="flex items-center" style={{ gap: 8 }}>
                       <span className="flex-none" style={{ width: 8, height: 8, borderRadius: 5, background: logTone(r.result), boxShadow: `0 0 9px ${logTone(r.result)}` }} />
-                      <span className="min-w-0 flex-1 truncate" style={{ fontSize: 13.5, color: MOBILE_COLORS.textSecondary }}>
-                        <span style={{ fontWeight: 700, color: MOBILE_COLORS.textPrimary }}>{r.leadName}</span>
+                      <span className="min-w-0 flex-1 truncate" style={{ fontSize: 13.5, color: SOP.tx2 }}>
+                        <span style={{ fontWeight: 700, color: SOP.tx }}>{r.leadName}</span>
                         {" — "}{followUpResultLabels[r.result]}
                       </span>
-                      <span className="flex-none whitespace-nowrap" style={{ fontSize: 10.5, color: MOBILE_COLORS.textMuted }}>
+                      <span className="flex-none whitespace-nowrap" style={{ fontSize: 10.5, color: SOP.mut }}>
                         قبل {elapsedLabel(r.createdAt, now)}
                       </span>
-                      <Link href={`/m/leads/${r.leadId}`} aria-label={`ملف العميل ${r.leadName}`} className="m-press flex flex-none items-center justify-center"
-                        style={{ boxSizing: "border-box", width: 34, height: 32, borderRadius: 9, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.textSecondary, fontSize: 13 }}>
-                        ←
+                      <Link href={`/m/leads/${r.leadId}`} aria-label={`ملف العميل ${r.leadName}`} className="m-press-sc flex flex-none items-center justify-center"
+                        style={{ boxSizing: "border-box", width: 34, height: 32, borderRadius: 9, background: SOP.planeHi, border: `1px solid ${SOP.edge}`, color: SOP.tx2 }}>
+                        <UserRound size={15} strokeWidth={2} aria-hidden />
                       </Link>
                     </div>
                     {r.note && (
-                      <div style={{ fontSize: 12, color: MOBILE_COLORS.textSecondary, marginTop: 6, lineHeight: 1.6 }}>{r.note}</div>
+                      <div className="m-inset" style={{ boxSizing: "border-box", fontSize: 12, color: SOP.tx2, marginTop: 7, lineHeight: 1.6, borderRadius: 10, padding: "7px 10px" }}>{r.note}</div>
                     )}
                     <div className="flex items-center" style={{ gap: 7, marginTop: 7 }}>
                       {r.nextDate && r.nextDate.getTime() > nowMs && (
-                        <span style={{ boxSizing: "border-box", borderRadius: 8, padding: "3px 9px", fontSize: 11, fontWeight: 600, background: MOBILE_COLORS.skyBg, color: MOBILE_COLORS.sky }}>
-                          🗓️ الموعد القادم: {fmtClock(r.nextDate)}{" "}
+                        <span className="flex items-center" style={{ boxSizing: "border-box", gap: 5, borderRadius: 8, padding: "3px 9px", fontSize: 11, fontWeight: 600, background: MOBILE_COLORS.skyBg, color: SOP.blue }}>
+                          <CalendarDays size={12} strokeWidth={2} aria-hidden />
+                          الموعد القادم: {fmtClock(r.nextDate)}{" "}
                           {new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: RIYADH_TZ, day: "numeric", month: "short" }).format(r.nextDate)}
                         </span>
                       )}
@@ -518,10 +578,10 @@ export function FollowupsScreen({
                         <button
                           type="button"
                           onClick={() => setEditItem(r)}
-                          className="m-press"
-                          style={{ boxSizing: "border-box", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, background: MOBILE_COLORS.goldBg, color: MOBILE_COLORS.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }}
+                          className="m-press-sc flex items-center"
+                          style={{ boxSizing: "border-box", gap: 5, borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, background: MOBILE_COLORS.goldBg, color: SOP.gold, border: `1px solid ${MOBILE_COLORS.goldBorder}` }}
                         >
-                          ✎ تعديل — متاح {toArabicDigits(left)} د
+                          <Pencil size={12} strokeWidth={2} aria-hidden /> تعديل — متاح {toArabicDigits(left)} د
                         </button>
                       )}
                     </div>
@@ -529,8 +589,8 @@ export function FollowupsScreen({
                 );
               })}
               {logShown < log.length && (
-                <button type="button" onClick={() => setLogShown((n) => n + 10)} className="m-press"
-                  style={{ boxSizing: "border-box", minHeight: 44, borderRadius: 13, border: `1px dashed ${MOBILE_COLORS.border}`, background: "none", color: MOBILE_COLORS.textSecondary, fontSize: 13, fontWeight: 600 }}>
+                <button type="button" onClick={() => setLogShown((n) => n + 10)} className="m-press-sc"
+                  style={{ boxSizing: "border-box", minHeight: 44, borderRadius: 13, border: `1px dashed ${SOP.edge2}`, background: "none", color: SOP.tx2, fontSize: 13, fontWeight: 600 }}>
                   عرض المزيد ({toArabicDigits(log.length - logShown)})
                 </button>
               )}
@@ -539,20 +599,7 @@ export function FollowupsScreen({
         </div>
       )}
 
-      {/* ورقة تسجيل النتيجة — القائمة، معبّأة بالعميل المختار */}
-      {fuSheet && (
-        <FollowupSheet
-          open
-          onClose={() => setFuSheet(null)}
-          leadId={fuSheet.leadId}
-          leadName={fuSheet.name}
-          phone={fuSheet.phone}
-          stage={fuSheet.stage}
-          firstContact={fuSheet.firstContact}
-          projects={projects}
-        />
-      )}
-      {/* ورقة تعديل المتابعة — PATCH القائم */}
+      {/* ورقة تعديل المتابعة — PATCH القائم (ورقة التسجيل أُزيلت من هنا: تُفتح من ملف العميل) */}
       {editItem && (
         <EditFollowupSheet
           open
@@ -571,12 +618,8 @@ export function FollowupsScreen({
 function EmptyCard({ text }: { text: string }) {
   return (
     <div
-      className="flex items-center justify-center"
-      style={{
-        boxSizing: "border-box", minHeight: 84, borderRadius: 15,
-        background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`,
-        fontSize: 13, color: MOBILE_COLORS.textSecondary,
-      }}
+      className="m-inset flex items-center justify-center"
+      style={{ boxSizing: "border-box", minHeight: 84, borderRadius: 15, fontSize: 13, color: SOP.tx2 }}
     >
       {text}
     </div>
