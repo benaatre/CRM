@@ -560,6 +560,9 @@
   flex: none;
 }
 
+/* صندوق البحث البارز (شاشة العملاء): placeholder بلون --sop-mut واضح (المتصفحات تخفّفه افتراضيًا). */
+[data-theme] .m-search-input::placeholder { color: var(--sop-mut); opacity: 1; }
+
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
   .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx, .m-breathe, .m-goo-squish, .m-gearspin, .m-dialbreathe, .m-ringfill, .m-fab-live::after, .m-panelback, .m-panelin, .m-toastin { animation: none; }

@@ -275,12 +275,15 @@ export default async function MobileLeadsPage({
         </div>
       </header>
 
-      {/* ===== البحث ===== */}
-      <MobileSearchBox
-        defaultValue={filters.q}
-        base={`/m/leads${tab !== "working" ? `?tab=${tab}` : ""}`}
-        autoFocus={sp.focus === "1"}
-      />
+      {/* ===== البحث — بارز ومستقل (raised)، بمسافة تحته قبل التبويبات ===== */}
+      <div className="flex" style={{ marginBottom: 4 }}>
+        <MobileSearchBox
+          defaultValue={filters.q}
+          base={`/m/leads${tab !== "working" ? `?tab=${tab}` : ""}`}
+          autoFocus={sp.focus === "1"}
+          raised
+        />
+      </div>
 
       {/* ===== التبويبات الثلاثة بأعدادها ===== */}
       <div className="m-noscroll flex overflow-x-auto" style={{ gap: 7, paddingBottom: 2 }}>
