@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Bell, Check, Sparkles } from "lucide-react";
+import type { LeadStage } from "@prisma/client";
 import { requireClientAccess, isManager } from "@/lib/auth-guards";
 import {
   getLeads, getLeadCounts, getNotContactedCount, getWaitingCount,
@@ -17,7 +18,7 @@ import {
 } from "@/lib/lead-filters";
 import { stageLabels, stageOrder } from "@/lib/labels";
 import { RIYADH_TZ } from "@/lib/format";
-import { MOBILE_COLORS, SOP } from "@/lib/mobile-tokens";
+import { SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import type { FilterSection, FilterSelection } from "@/components/mobile/filter-sheet";
 import { MobileSearchBox } from "@/components/mobile/search-box";
@@ -46,8 +47,12 @@ const TABS: { key: LeadTab; label: string }[] = [
   { key: "hidden", label: "أرشفة" },
 ];
 
-/** مراحل الشبكة — بلا محجوز/مقفول-بيع/غير مهتم (لا تظهر في «جاري العمل» أصلًا). */
-const GRID_EXCLUDED: string[] = ["RESERVED", "CLOSED_WON", "CLOSED_LOST"];
+/**
+ * ترتيب شبكة المراحل الحرفي (clients-page-final2): كل المراحل · محاولة/لم يرد · مهتم · موعد لاحق
+ * · زيارة (المرحلتان معًا) · تفاوض. «جديد» له زر «عملاء جدد» المستقل، والمقفلة
+ * (محجوز/مقفول-بيع/غير مهتم) لا تظهر في «جاري العمل» أصلًا.
+ */
+const GRID_ORDER: (LeadStage | "visit")[] = ["ATTEMPTED", "INTERESTED", "FOLLOW_UP_LATER", "visit", "NEGOTIATION"];
 
 const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
 
@@ -127,8 +132,8 @@ export default async function MobileLeadsPage({
   // «زيارة» الموحّدة نشطة لمّا المرحلتان معًا (نفس شرط الديسكتوب).
   const visitActive = VISIT_FILTER_STAGES.every((s) => filters.stages.includes(s));
   const umbrellaActive = INTEREST_UMBRELLA.every((s) => filters.stages.includes(s));
-  // مراحل الشبكة: بترتيب الديسكتوب مع طي مرحلتَي الزيارة في واحدة، وبلا المراحل المقفلة.
-  const chipStages = stageOrder.filter((s) => !(VISIT_FILTER_STAGES as string[]).includes(s) && !GRID_EXCLUDED.includes(s));
+  // مراحل ورقة الفلتر: بترتيب الديسكتوب مع طي مرحلتَي الزيارة في واحدة، وبلا المراحل المقفلة.
+  const chipStages = stageOrder.filter((s) => !(VISIT_FILTER_STAGES as string[]).includes(s) && !["RESERVED", "CLOSED_WON", "CLOSED_LOST"].includes(s));
   // «عملاء جدد»: الفلتر الوحيد = NEW (بلا علامات) — يبدّل القائمة لكروت العميل الجديد.
   const newMode = filters.stages.length === 1 && filters.stages[0] === "NEW" && !filters.transferred && !filters.bankCheck && !filters.waiting;
 
@@ -285,8 +290,8 @@ export default async function MobileLeadsPage({
         />
       </div>
 
-      {/* ===== التبويبات الثلاثة بأعدادها ===== */}
-      <div className="m-noscroll flex overflow-x-auto" style={{ gap: 7, paddingBottom: 2 }}>
+      {/* ===== التبويبات الثلاثة بأعدادها — حاوية غائرة واحدة (.gtabs): كل شريحة flex 1، النشطة غائرة بنص ذهبي ===== */}
+      <div className="m-inset flex" style={{ boxSizing: "border-box", gap: 5, padding: 5, borderRadius: 14 }}>
         {TABS.map((t) => {
           const on = tab === t.key;
           return (
@@ -294,21 +299,18 @@ export default async function MobileLeadsPage({
               key={t.key}
               href={chipHref(t.key, { ...v, stages: [], wait: false, tr: false, bank: false, ar: "" })}
               scroll={false}
-              className="m-press-sc flex flex-none items-center"
-              style={{ paddingBlock: 4 }}
+              aria-current={on ? "page" : undefined}
+              className="m-press-sc flex min-w-0 flex-1 items-center justify-center whitespace-nowrap"
+              style={{
+                boxSizing: "border-box", height: 38, padding: "0 8px", borderRadius: 11,
+                fontSize: 12.5, fontWeight: 700, gap: 4,
+                ...(on
+                  ? { background: SOP.plane, color: SOP.gold, boxShadow: `inset 2px 2px 5px ${SOP.sd}, inset -2px -2px 5px ${SOP.sl}` }
+                  : { color: SOP.tx2 }),
+              }}
             >
-              <span
-                className={`${on ? "" : "m-raise"} flex items-center whitespace-nowrap`}
-                style={{
-                  boxSizing: "border-box", height: 36, padding: "0 14px", borderRadius: 12,
-                  fontSize: 12.5, fontWeight: 700,
-                  ...(on
-                    ? { background: MOBILE_COLORS.goldBg, color: SOP.gold, border: `1px solid ${SOP.gold}` }
-                    : { color: SOP.tx2 }),
-                }}
-              >
-                {t.label} (<span style={ZAIN}>{toArabicDigits(counts[t.key as "working" | "archived" | "hidden"])}</span>)
-              </span>
+              <span className="truncate">{t.label}</span>
+              <span style={{ ...ZAIN, fontSize: 11.5, opacity: on ? 1 : 0.8 }}>{toArabicDigits(counts[t.key as "working" | "archived" | "hidden"])}</span>
             </Link>
           );
         })}
@@ -352,19 +354,24 @@ export default async function MobileLeadsPage({
             count={counts.working}
             goldFill
           />
-          <StageCard
-            href={chipHref(tab, {
-              ...v,
-              stages: visitActive
-                ? v.stages.filter((s) => !(VISIT_FILTER_STAGES as string[]).includes(s))
-                : [...new Set([...v.stages, ...VISIT_FILTER_STAGES])],
-            })}
-            on={visitActive}
-            color={STAGE_HEX.VISIT_SCHEDULED}
-            label="زيارة"
-            count={visitCount}
-          />
-          {chipStages.map((s) => {
+          {GRID_ORDER.map((s) => {
+            if (s === "visit") {
+              return (
+                <StageCard
+                  key="visit"
+                  href={chipHref(tab, {
+                    ...v,
+                    stages: visitActive
+                      ? v.stages.filter((x) => !(VISIT_FILTER_STAGES as string[]).includes(x))
+                      : [...new Set([...v.stages, ...VISIT_FILTER_STAGES])],
+                  })}
+                  on={visitActive}
+                  color={STAGE_HEX.VISIT_SCHEDULED}
+                  label="زيارة"
+                  count={visitCount}
+                />
+              );
+            }
             const on = filters.stages.includes(s);
             return (
               <StageCard

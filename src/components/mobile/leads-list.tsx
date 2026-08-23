@@ -315,9 +315,9 @@ export function MobileLeadsList({
                 </div>
 
                 {/* الوسوم (+ اسم الموظف للمدير) */}
-                <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6, marginTop: 9 }}>
+                <div className="m-noscroll flex overflow-x-auto" style={{ gap: 5, marginTop: 8 }}>
                   {l.assignedToName && (
-                    <span className="flex-none" style={{ boxSizing: "border-box", fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: MOBILE_COLORS.goldBg, color: SOP.gold }}>
+                    <span className="flex-none" style={{ boxSizing: "border-box", fontSize: 8, fontWeight: 700, padding: "3px 8px", borderRadius: 7, background: MOBILE_COLORS.goldBg, color: SOP.gold, lineHeight: 1.4 }}>
                       {l.assignedToName}
                     </span>
                   )}
@@ -326,7 +326,7 @@ export function MobileLeadsList({
                       key={t.key}
                       className="flex-none"
                       style={{
-                        boxSizing: "border-box", fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 7,
+                        boxSizing: "border-box", fontSize: 8, fontWeight: 700, padding: "3px 8px", borderRadius: 7, lineHeight: 1.4, letterSpacing: "0.01em",
                         ...(t.color
                           ? { background: `color-mix(in srgb, ${t.color} 14%, transparent)`, color: t.color }
                           : { background: `color-mix(in srgb, ${SOP.tx} 5%, transparent)`, color: SOP.tx2, border: `1px solid ${SOP.edge}` }),
@@ -342,7 +342,7 @@ export function MobileLeadsList({
                   <div
                     className="flex items-center"
                     style={{
-                      boxSizing: "border-box", gap: 7, marginTop: 9, borderRadius: 10, padding: "7px 10px",
+                      boxSizing: "border-box", gap: 7, marginTop: 8, borderRadius: 10, padding: "6px 10px",
                       background: `color-mix(in srgb, ${ctx.color} 12%, transparent)`,
                       borderInlineStart: `2px solid ${ctx.color}`,
                       fontSize: 12, fontWeight: 600, color: ctx.color, lineHeight: 1.5,
@@ -354,7 +354,7 @@ export function MobileLeadsList({
                 )}
 
                 {!selectMode && (
-                  <div className="relative z-10 flex" style={{ gap: 8, marginTop: 10, pointerEvents: "auto" }}>
+                  <div className="relative z-10 flex" style={{ gap: 8, marginTop: 9, pointerEvents: "auto" }}>
                     <a
                       href={`tel:${l.phone}`}
                       onClick={(e) => { e.stopPropagation(); markCall(l.id); }}
@@ -386,10 +386,12 @@ export function MobileLeadsList({
               </>
             );
             // الكرت: سطح بارز + خط جانبي بلون المرحلة (border-inline-start — لا عنصر مطلق).
+            // بروز أنعم من .m-raise الافتراضي (ظل أقصر وأخف) — يُمرَّر سطريًا فيتقدّم على الصنف.
             const style = {
               boxSizing: "border-box" as const,
               borderRadius: 16,
-              padding: "12px 14px 12px 12px",
+              padding: "11px 13px 11px 11px",
+              boxShadow: `4px 4px 10px ${SOP.sd}, -3px -3px 8px ${SOP.sl}`,
               borderInlineStart: `3px solid ${stageHex}`,
               ...(selectMode && on ? { background: MOBILE_COLORS.goldBg, border: `1px solid ${SOP.gold}`, borderInlineStart: `3px solid ${stageHex}` } : {}),
               animationDelay: `${Math.min(i, 10) * 35}ms`,
