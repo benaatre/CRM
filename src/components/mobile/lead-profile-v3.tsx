@@ -7,7 +7,7 @@ import type { LeadStage, Channel, FollowUpResult, FollowUpType, PurchaseGoal, Pu
 import {
   Phone, MessageCircle, MessageSquarePlus, Settings2, ChevronRight, ChevronLeft, FileText, ClipboardList,
   ArrowLeftRight, CalendarDays, Clock, Check, Pencil, Inbox, Save, Heart, PhoneOff, Ban, MapPin, Lock,
-  Archive, Undo2, Target, BadgeCheck, Info,
+  Archive, Undo2, Target, BadgeCheck, Info, Wallet, Megaphone, ChevronDown, Building2, UserRound, X,
 } from "lucide-react";
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import {
@@ -29,7 +29,7 @@ import { fetchSources } from "@/lib/actions/sources";
 import type { SourceListItem } from "@/lib/data/sources";
 import { NI_REASONS, buildNotInterestedBody } from "@/components/leads/not-interested-dialog";
 import { buildBody, buildFirstContactBody, type SaveBody } from "@/lib/mobile-followup";
-import { DistrictSelect } from "@/components/leads/district-select";
+import { ALL_AREAS, ALL_AREAS_LABEL, DISTRICT_OPTIONS, DISTRICT_QUESTION, canonicalAreas, hasAllAreas } from "@/lib/districts";
 import { FollowupSheet } from "@/components/mobile/followup-sheet";
 import { WaSheet } from "@/components/mobile/wa-sheet";
 import { EditFollowupSheet, editMinutesLeft } from "@/components/mobile/edit-followup-sheet";
@@ -812,17 +812,43 @@ function DataTab({ lead, projects }: { lead: ProfileData; projects: { id: string
     });
   }
 
+  // الأحياء — نفس دلالات DistrictSelect المشترك حرفيًا (canonicalAreas/hasAllAreas/القيم القديمة تمرّ كما هي)،
+  // بمظهر رقائق الجوال. يكتب على preferredAreas حصرًا.
+  const allAreas = hasAllAreas(areas);
+  const legacyAreas = areas.filter((v) => !ALL_AREAS.includes(v));
+  const toggleArea = (area: string) => setAreas(canonicalAreas(areas.includes(area) ? areas.filter((v) => v !== area) : [...areas, area]));
+  const toggleAllAreas = () => setAreas(canonicalAreas(allAreas ? legacyAreas : [...ALL_AREAS, ...legacyAreas]));
+
+  /** رقاقة اختيار واحد — المختارة ممتلئة بتدرّج ذهبي. */
+  const singleChip = (on: boolean) => ({
+    boxSizing: "border-box" as const, minHeight: 40, padding: "0 13px", borderRadius: 11, fontSize: "12.5px", fontWeight: 600 as const,
+    ...(on
+      ? { background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, color: SOP.onGold, border: "none", boxShadow: `0 4px 12px color-mix(in srgb, ${SOP.gold} 35%, transparent)` }
+      : { background: SOP.plane, color: SOP.tx2, border: `1px solid ${SOP.edge}` }),
+  });
+  /** رقاقة اختيار متعدد — المختارة خلفية ذهبية خفيفة + حد + نص ذهبي (+ صح). */
+  const multiChip = (on: boolean) => ({
+    boxSizing: "border-box" as const, minHeight: 40, padding: "0 12px", borderRadius: 11, fontSize: "12.5px", fontWeight: 600 as const, gap: 6,
+    ...(on
+      ? { background: `color-mix(in srgb, ${SOP.gold} 14%, transparent)`, color: SOP.gold, border: `1px solid ${SOP.gold}` }
+      : { background: SOP.plane, color: SOP.tx2, border: `1px solid ${SOP.edge}` }),
+  });
+  const priceField = { ...fieldStyle, minHeight: 46, paddingInlineEnd: 44, fontSize: 16, ...ZAIN };
+
   return (
     <div className="flex flex-col" style={{ gap: 12 }}>
-      <div style={{ ...box, padding: 14 }} className="flex flex-col gap-3">
-        {/* الهوية للعرض — تعديل الاسم/الجوال للمدير فقط (قاعدة الخادم القائمة) */}
-        <Row label="الاسم"><input value={lead.name} disabled style={{ ...fieldStyle, opacity: 0.6 }} /></Row>
-        <Row label="الجوال"><input value={lead.phone} disabled dir="ltr" style={{ ...fieldStyle, ...ZAIN, opacity: 0.6 }} /></Row>
+      {/* ١) هوية العميل — للقراءة (تعديل الاسم/الجوال للمدير فقط: قاعدة الخادم القائمة) */}
+      <SectionCard tone={SOP.neutral} title="هوية العميل" icon={<UserRound size={16} strokeWidth={2} aria-hidden />}>
+        <Row label="الاسم"><input value={lead.name} disabled style={{ ...fieldStyle, opacity: 0.7 }} /></Row>
+        <Row label="الجوال"><input value={lead.phone} disabled dir="ltr" style={{ ...fieldStyle, ...ZAIN, opacity: 0.7 }} /></Row>
+      </SectionCard>
 
+      {/* ٢) تفضيلات الشراء */}
+      <SectionCard tone={SOP.gold} title="تفضيلات الشراء" icon={<Wallet size={16} strokeWidth={2} aria-hidden />}>
         <Row label="هدف الشراء">
           <div className="flex flex-wrap" style={{ gap: 7 }}>
             {(Object.keys(purchaseGoalLabels) as PurchaseGoal[]).map((g) => (
-              <button key={g} type="button" onClick={() => setGoal(goal === g ? null : g)} className="m-press" style={chip(goal === g)}>
+              <button key={g} type="button" onClick={() => setGoal(goal === g ? null : g)} className="m-press-sc" style={singleChip(goal === g)}>
                 {purchaseGoalLabels[g]}
               </button>
             ))}
@@ -831,51 +857,129 @@ function DataTab({ lead, projects }: { lead: ProfileData; projects: { id: string
         <Row label="طريقة الشراء">
           <div className="flex flex-wrap" style={{ gap: 7 }}>
             {purchaseMethodOptions.map((m) => (
-              <button key={m} type="button" onClick={() => setMethod(method === m ? null : m)} className="m-press" style={chip(method === m)}>
+              <button key={m} type="button" onClick={() => setMethod(method === m ? null : m)} className="m-press-sc" style={singleChip(method === m)}>
                 {purchaseMethodLabels[m]}
               </button>
             ))}
           </div>
         </Row>
         <div className="grid grid-cols-2" style={{ gap: 9 }}>
-          <Row label="السعر من"><input value={priceMin} onChange={(e) => setPriceMin(e.target.value)} inputMode="numeric" dir="ltr" style={fieldStyle} placeholder="500000" /></Row>
-          <Row label="السعر إلى"><input value={priceMax} onChange={(e) => setPriceMax(e.target.value)} inputMode="numeric" dir="ltr" style={fieldStyle} placeholder="900000" /></Row>
+          <Row label="السعر من">
+            <span className="relative block">
+              <input value={priceMin} onChange={(e) => setPriceMin(e.target.value)} inputMode="numeric" dir="ltr" style={priceField} placeholder="500000" />
+              <span className="absolute top-1/2 -translate-y-1/2" style={{ insetInlineEnd: 12, fontSize: 11, fontWeight: 700, color: SOP.mut, pointerEvents: "none" }}>ريال</span>
+            </span>
+          </Row>
+          <Row label="السعر إلى">
+            <span className="relative block">
+              <input value={priceMax} onChange={(e) => setPriceMax(e.target.value)} inputMode="numeric" dir="ltr" style={priceField} placeholder="900000" />
+              <span className="absolute top-1/2 -translate-y-1/2" style={{ insetInlineEnd: 12, fontSize: 11, fontWeight: 700, color: SOP.mut, pointerEvents: "none" }}>ريال</span>
+            </span>
+          </Row>
         </div>
-        <Row label="المصدر">
-          <select value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} style={fieldStyle}>
-            <option value="">— اختر المصدر —</option>
-            {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </Row>
-        <DistrictSelect value={areas} onChange={setAreas} disabled={pending} />
-        <Row label="المشاريع المناسبة">
-          <div className="flex flex-wrap" style={{ gap: 7 }}>
-            {projects.length === 0 ? (
-              <span style={{ fontSize: 12, color: SOP.mut }}>ما فيه مشاريع</span>
-            ) : projects.map((p) => (
-              <button key={p.id} type="button" className="m-press-sc flex items-center"
-                onClick={() => setProjSel((s) => { const n = new Set(s); if (n.has(p.name)) n.delete(p.name); else n.add(p.name); return n; })}
-                style={{ ...chip(projSel.has(p.name)), gap: 5 }}>
-                {projSel.has(p.name) && <Check size={13} strokeWidth={2.5} aria-hidden />}{p.name}
-              </button>
-            ))}
-          </div>
-        </Row>
+      </SectionCard>
 
-        {msg && (
-          <p style={{
-            boxSizing: "border-box", borderRadius: 10, padding: "9px 12px", fontSize: "12.5px", textAlign: "center",
-            background: msg.ok ? MOBILE_COLORS.mintBg : MOBILE_COLORS.roseBg,
-            color: msg.ok ? SOP.green : SOP.red,
-          }}>{msg.text}</p>
+      {/* ٣) الموقع المفضّل — preferredAreas (اختيار متعدد بنفس دلالات DistrictSelect) */}
+      <SectionCard tone={SOP.teal} title="الموقع المفضّل" icon={<MapPin size={16} strokeWidth={2} aria-hidden />}>
+        <Row label={DISTRICT_QUESTION}>
+          <div className="flex flex-wrap" style={{ gap: 7 }}>
+            {DISTRICT_OPTIONS.map((o) => {
+              const on = areas.includes(o.value);
+              return (
+                <button key={o.value} type="button" disabled={pending} onClick={() => toggleArea(o.value)} className="m-press-sc flex items-center" style={multiChip(on)}>
+                  {on && <Check size={13} strokeWidth={2.5} aria-hidden />}{o.label}
+                </button>
+              );
+            })}
+            <button type="button" disabled={pending} onClick={toggleAllAreas} className="m-press-sc flex items-center" style={multiChip(allAreas)}>
+              {allAreas && <Check size={13} strokeWidth={2.5} aria-hidden />}{ALL_AREAS_LABEL}
+            </button>
+          </div>
+          {legacyAreas.length > 0 && (
+            <div className="flex flex-wrap items-center" style={{ gap: 6, marginTop: 8 }}>
+              <span style={{ fontSize: 11, color: SOP.mut }}>قيم قديمة:</span>
+              {legacyAreas.map((a) => (
+                <span key={a} className="flex items-center" style={{ ...insetBox, gap: 5, borderRadius: 9, padding: "4px 9px", fontSize: 12, color: SOP.tx }}>
+                  {a}
+                  <button type="button" disabled={pending} aria-label="حذف" onClick={() => setAreas(canonicalAreas(areas.filter((v) => v !== a)))} className="m-press-sc flex items-center justify-center" style={{ border: "none", background: "none", color: SOP.mut, padding: 0 }}>
+                    <X size={12} strokeWidth={2.4} aria-hidden />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </Row>
+      </SectionCard>
+
+      {/* ٤) مصدر العميل — قائمة المصادر (sourceId؛ القناة تُشتق منه على الخادم) */}
+      <SectionCard tone={SOP.purple} title="مصدر العميل" icon={<Megaphone size={16} strokeWidth={2} aria-hidden />}>
+        <Row label="المصدر">
+          <span className="relative block">
+            <select value={sourceSel} onChange={(e) => setSourceSel(e.target.value)} style={{ ...fieldStyle, minHeight: 46, appearance: "none", WebkitAppearance: "none", paddingInlineEnd: 40 }}>
+              <option value="">— اختر المصدر —</option>
+              {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <ChevronDown size={16} strokeWidth={2} className="absolute top-1/2 -translate-y-1/2" style={{ insetInlineEnd: 12, color: SOP.purple, pointerEvents: "none" }} aria-hidden />
+          </span>
+        </Row>
+      </SectionCard>
+
+      {/* ٥) المشاريع المناسبة — شبكة عمودين، اختيار متعدد (الأسماء كما في المنطق القائم) */}
+      <SectionCard tone={SOP.gold} title="المشاريع المناسبة" icon={<Building2 size={16} strokeWidth={2} aria-hidden />}>
+        {projects.length === 0 ? (
+          <span style={{ fontSize: 12, color: SOP.mut }}>ما فيه مشاريع</span>
+        ) : (
+          <div className="grid grid-cols-2" style={{ gap: 8 }}>
+            {projects.map((p) => {
+              const on = projSel.has(p.name);
+              return (
+                <button key={p.id} type="button" className="m-press-sc flex items-center"
+                  aria-pressed={on}
+                  onClick={() => setProjSel((s) => { const n = new Set(s); if (n.has(p.name)) n.delete(p.name); else n.add(p.name); return n; })}
+                  style={{ ...multiChip(on), minHeight: 44, padding: "0 10px", textAlign: "start" }}>
+                  <span className="flex flex-none items-center justify-center" style={{ boxSizing: "border-box", width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${on ? SOP.gold : SOP.edge2}`, background: on ? SOP.gold : "transparent", color: SOP.onGold }} aria-hidden>
+                    {on && <Check size={12} strokeWidth={3} aria-hidden />}
+                  </span>
+                  <span className="min-w-0 truncate">{p.name}</span>
+                </button>
+              );
+            })}
+          </div>
         )}
+      </SectionCard>
+
+      {msg && (
+        <p style={{
+          boxSizing: "border-box", borderRadius: 10, padding: "9px 12px", fontSize: "12.5px", textAlign: "center",
+          background: msg.ok ? MOBILE_COLORS.mintBg : MOBILE_COLORS.roseBg,
+          color: msg.ok ? SOP.green : SOP.red,
+        }}>{msg.text}</p>
+      )}
+
+      {/* زر الحفظ — لاصق أسفل الشاشة فوق الشريط السفلي (نفس منطق الحفظ) */}
+      <div className="sticky" style={{ bottom: "calc(env(safe-area-inset-bottom) + 92px)", zIndex: 30, paddingTop: 6 }}>
         <button type="button" onClick={save} disabled={pending}
           className="m-press-sc m-sweep flex w-full items-center justify-center"
-          style={{ ...goldBtn, height: 48, gap: 7, borderRadius: 13, fontSize: 14, fontWeight: 700, opacity: pending ? 0.6 : 1 }}>
+          style={{ ...goldBtn, height: 50, gap: 7, borderRadius: 14, fontSize: 14.5, fontWeight: 700, opacity: pending ? 0.6 : 1, boxShadow: `0 10px 24px color-mix(in srgb, ${SOP.gold} 35%, transparent), 0 2px 6px ${SOP.sd}` }}>
           <Save {...BTN_ICON} aria-hidden /> {pending ? "جارٍ الحفظ…" : "حفظ البيانات"}
         </button>
       </div>
     </div>
+  );
+}
+
+/** كرت قسم في تبويب «بيانات» — مرفوع، بأيقونة ملوّنة وعنوان. */
+function SectionCard({ tone, title, icon, children }: { tone: string; title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="m-rise flex flex-col" style={{ ...box, gap: 12, padding: 14 }}>
+      <div className="flex items-center" style={{ gap: 9 }}>
+        <span className="flex flex-none items-center justify-center" style={{ boxSizing: "border-box", width: 30, height: 30, borderRadius: 9, background: `color-mix(in srgb, ${tone} 14%, transparent)`, color: tone }}>
+          {icon}
+        </span>
+        <h3 style={{ fontSize: 13.5, fontWeight: 800, color: SOP.tx }}>{title}</h3>
+      </div>
+      {children}
+    </section>
   );
 }
 
