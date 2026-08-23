@@ -82,13 +82,16 @@ function minsOrHours(ms: number): string {
   const dd = Math.round(h / 24);
   return dd === 1 ? "يوم" : dd === 2 ? "يومين" : `${toArabicDigits(dd)} أيام`;
 }
-/** لون نوع الموعد: زيارة أزرق · متابعة ذهبي · أول تواصل تركوازي — والفائت أحمر. */
-function toneOf(kind: FuAppointment["kind"], missed: boolean): { base: string; bg: string } {
-  if (missed) return { base: SOP.red, bg: MOBILE_COLORS.roseBg };
-  if (kind === "visit") return { base: SOP.blue, bg: MOBILE_COLORS.skyBg };
-  if (kind === "new") return { base: SOP.teal, bg: MOBILE_COLORS.skyBg };
-  return { base: SOP.gold, bg: MOBILE_COLORS.goldBg };
+/**
+ * لون النوع (يتبع النوع لا الحالة): متابعة اتصال ذهبي (gold2) · زيارة أزرق · أول تواصل تركوازي.
+ * الخلفية الخافتة بـcolor-mix من لون النوع نفسه (تتبع الوضع تلقائيًا).
+ */
+function kindTone(kind: FuAppointment["kind"]): { base: string; bg: string } {
+  const base = kind === "visit" ? SOP.blue : kind === "new" ? SOP.teal : SOP.gold2;
+  return { base, bg: `color-mix(in srgb, ${base} 14%, transparent)` };
 }
+/** خلفية صندوق الملاحظة: مسحة خفيفة من لون النص (لا أسود قوي) — تتبع الوضع. */
+const NOTE_BG = `color-mix(in srgb, ${SOP.tx} 5%, transparent)`;
 function kindLabel(kind: FuAppointment["kind"]): string {
   return kind === "visit" ? "زيارة" : kind === "new" ? "أول تواصل" : "موعد لاحق";
 }
@@ -222,15 +225,17 @@ export function FollowupsScreen({
   const AppointmentCard = ({ a, showMissedLine }: { a: FuAppointment; showMissedLine: boolean }) => {
     const missed = a.at.getTime() < nowMs;
     const soon = !missed && a.at.getTime() - nowMs <= 60 * MIN;
-    const tone = toneOf(a.kind, missed);
+    const tone = kindTone(a.kind);
+    // الخط الجانبي وحده يتبع الحالة (فاتت = أحمر)؛ الأيقونة والوقت وشارة النوع تتبع النوع.
+    const lineColor = missed ? SOP.red : tone.base;
     return (
       <div className="m-raise relative overflow-hidden" style={{ boxSizing: "border-box", borderRadius: 16, padding: "12px 14px 12px 12px" }}>
-        <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 10, bottom: 10, width: 4, borderRadius: "0 3px 3px 0", background: tone.base }} />
+        <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 10, bottom: 10, width: 4, borderRadius: "0 3px 3px 0", background: lineColor }} />
         {/* الصف العلوي */}
         <div className="flex items-center" style={{ gap: 10 }}>
           <span
             className="flex flex-none items-center justify-center"
-            style={{ boxSizing: "border-box", width: 38, height: 38, borderRadius: 11, background: tone.bg, color: tone.base }}
+            style={{ boxSizing: "border-box", width: 36, height: 36, borderRadius: 11, background: tone.bg, color: tone.base }}
             aria-hidden
           >
             <KindIcon kind={a.kind} />
@@ -263,7 +268,7 @@ export function FollowupsScreen({
           )}
         </div>
         {/* صندوق الملاحظة/السبب */}
-        <div className="m-inset" style={{ boxSizing: "border-box", borderRadius: 11, padding: "8px 11px", marginTop: 9, fontSize: 12, lineHeight: 1.65, color: SOP.tx2 }}>
+        <div className="m-inset" style={{ boxSizing: "border-box", background: NOTE_BG, borderInlineStart: `2px solid ${SOP.edge2}`, borderRadius: 11, padding: "8px 11px", marginTop: 9, fontSize: 12, lineHeight: 1.65, color: SOP.tx2 }}>
           {a.reason}
           {showMissedLine && missed && (
             <div style={{ fontSize: 11.5, fontWeight: 700, color: SOP.red, marginTop: 3 }}>
@@ -386,7 +391,7 @@ export function FollowupsScreen({
         {/* سطر النوع — ثلاثة أزرار متساوية */}
         <div className="grid grid-cols-3" style={{ gap: 7 }}>
           {KIND_CHIPS.map((c) => (
-            <button key={c.key} type="button" onClick={() => setKind(c.key)} className="m-press-sc" style={chipStyle(kind === c.key, c.color, c.key === "all" ? MOBILE_COLORS.goldBg : MOBILE_COLORS.skyBg)}>
+            <button key={c.key} type="button" onClick={() => setKind(c.key)} className="m-press-sc" style={chipStyle(kind === c.key, c.color, `color-mix(in srgb, ${c.color} 14%, transparent)`)}>
               {c.label}
             </button>
           ))}
@@ -564,7 +569,7 @@ export function FollowupsScreen({
                       </Link>
                     </div>
                     {r.note && (
-                      <div className="m-inset" style={{ boxSizing: "border-box", fontSize: 12, color: SOP.tx2, marginTop: 7, lineHeight: 1.6, borderRadius: 10, padding: "7px 10px" }}>{r.note}</div>
+                      <div className="m-inset" style={{ boxSizing: "border-box", background: NOTE_BG, borderInlineStart: `2px solid ${SOP.edge2}`, fontSize: 12, color: SOP.tx2, marginTop: 7, lineHeight: 1.6, borderRadius: 10, padding: "7px 10px" }}>{r.note}</div>
                     )}
                     <div className="flex items-center" style={{ gap: 7, marginTop: 7 }}>
                       {r.nextDate && r.nextDate.getTime() > nowMs && (
