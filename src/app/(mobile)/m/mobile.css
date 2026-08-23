@@ -563,6 +563,18 @@
 /* صندوق البحث البارز (شاشة العملاء): placeholder بلون --sop-mut واضح (المتصفحات تخفّفه افتراضيًا). */
 [data-theme] .m-search-input::placeholder { color: var(--sop-mut); opacity: 1; }
 
+/*
+ * منع زوم iOS عند التركيز على الحقول (WKWebView/سفاري يكبّران الصفحة لأي حقل < 16px):
+ * كل input/textarea/select داخل غلاف /m ([data-theme]) بحدّ أدنى 16px.
+ * !important ضروري لأن معظم الحقول تحمل fontSize سطريًا (13–14px) وهو يتقدّم على CSS.
+ * الاستثناءات: الحقول غير النصية (checkbox/radio/hidden) وأي حقل موسوم data-zoom-ok
+ * (حقل بخط أكبر أصلًا مثل مبلغ الدفعة ٢٤px). الويب بلا [data-theme] ⇒ لا يتأثر،
+ * وviewport المشترك (maximumScale 5) يبقى كما هو.
+ */
+[data-theme] :is(input, textarea, select):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]):not([data-zoom-ok]) {
+  font-size: 16px !important;
+}
+
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
   .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx, .m-breathe, .m-goo-squish, .m-gearspin, .m-dialbreathe, .m-ringfill, .m-fab-live::after, .m-panelback, .m-panelin, .m-toastin { animation: none; }

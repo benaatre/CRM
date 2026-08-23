@@ -526,6 +526,7 @@ function BookingCard({ booking, canAddPayment }: { booking: NonNullable<OwnerExt
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
             inputMode="numeric" dir="ltr" placeholder="0"
+            data-zoom-ok
             style={{ ...fieldStyle, minHeight: 56, fontSize: 24, fontWeight: 800, textAlign: "center", fontFamily: "var(--font-zain), var(--font-sans)" }}
           />
           <div className="flex flex-wrap" style={{ gap: 7 }}>
