@@ -7,7 +7,7 @@ import type { LeadStage, Channel, FollowUpResult, FollowUpType, PurchaseGoal, Pu
 import {
   Phone, MessageCircle, MessageSquarePlus, Settings2, ChevronRight, ChevronLeft, FileText, ClipboardList,
   ArrowLeftRight, CalendarDays, Clock, Check, Pencil, Inbox, Save, Heart, PhoneOff, Ban, MapPin, Lock,
-  Archive, Undo2, Target, BadgeCheck,
+  Archive, Undo2, Target, BadgeCheck, Info,
 } from "lucide-react";
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import {
@@ -387,17 +387,27 @@ function DataStrip({ lead }: { lead: ProfileData }) {
     { key: "channel", label: "المصدر", value: channelLabel(lead.channel) },
   ];
   if (items.length === 0) return null;
+  // المرجع client-file-premium: حاوية مرفوعة radius 15 · عنوان ١٠px ذهبي فاتح بأيقونة info ·
+  // رقائق ملتفّة (flex-wrap، gap 8) غائرة ناعمة (inset 2px/5px) بمسمى ٩px رمادي وقيمة ١١.٥px/٦٠٠.
   return (
-    <div className="m-rise" style={{ ...box, padding: "11px 13px 12px" }}>
-      <div className="flex items-center" style={{ gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: SOP.tx2 }}>
-        <FileText size={13} strokeWidth={2} aria-hidden />
+    <div className="m-raise m-rise" style={{ boxSizing: "border-box", borderRadius: 15, padding: "12px 13px" }}>
+      <div className="flex items-center" style={{ gap: 6, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", color: SOP.gold2, marginBottom: 10 }}>
+        <Info size={13} strokeWidth={2} aria-hidden />
         بيانات العميل — كلّه على أساسها
       </div>
-      <div className="m-noscroll flex overflow-x-auto" style={{ gap: 6, marginTop: 9 }}>
+      <div className="flex flex-wrap" style={{ gap: 8 }}>
         {items.map((it) => (
-          <span key={it.key} className="flex flex-none items-center whitespace-nowrap" style={{ ...insetBox, gap: 5, borderRadius: 9, padding: "5px 9px", fontSize: 11 }}>
-            <span style={{ color: SOP.mut, fontWeight: 600 }}>{it.label}</span>
-            <span style={{ color: SOP.tx, fontWeight: 700 }}>{it.value}</span>
+          <span
+            key={it.key}
+            className="inline-flex items-center"
+            style={{
+              boxSizing: "border-box", gap: 6, borderRadius: 10, padding: "7px 11px", lineHeight: 1.2,
+              background: SOP.page, border: `1px solid ${SOP.edge}`,
+              boxShadow: `inset 2px 2px 5px ${SOP.sd}, inset -2px -2px 5px ${SOP.sl}`,
+            }}
+          >
+            <span style={{ fontSize: 9, color: SOP.mut }}>{it.label}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: SOP.tx }}>{it.value}</span>
           </span>
         ))}
       </div>
