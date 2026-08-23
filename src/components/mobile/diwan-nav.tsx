@@ -131,7 +131,8 @@ export function DiwanNav({ badgeCount = 0 }: { badgeCount?: number }) {
             className={`m-press relative${working ? " m-fab-live" : ""}`}
             style={{ pointerEvents: "auto", top: -24, width: FAB, height: FAB }}
           >
-            <svg width={FAB} height={FAB} className="absolute inset-0" style={{ transform: "rotate(-90deg)" }} aria-hidden>
+            {/* data-svg-free: حلقة التقدّم ٦٤px مستثناة من سقف أيقونات الأزرار (mobile.css). */}
+            <svg data-svg-free width={FAB} height={FAB} className="absolute inset-0" style={{ transform: "rotate(-90deg)" }} aria-hidden>
               <circle cx={FAB / 2} cy={FAB / 2} r={RING_R} fill="none" strokeWidth="3.2" style={{ stroke: "rgba(255,255,255,0.14)" }} />
               {working && (
                 <circle

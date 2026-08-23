@@ -88,6 +88,44 @@ export const MOBILE_STATUS: Record<"danger" | "success" | "warning" | "info", St
 /** حدّ أدنى لهدف اللمس (إرشادات iOS/Android) — يُستخدم في الشريط السفلي والأزرار. */
 export const TOUCH_TARGET_PX = 44;
 
+/**
+ * ===== SOP — «أوبسيديان ناعم Pro» =====
+ * طبقة التوكنز الدلالية الجديدة (mobile.css — كتلتا --sop-* ليل/نهار). نفس عقد
+ * MOBILE_COLORS: قيم `var()` نصية تُستخدم داخل style السطري وتتبع الوضع تلقائيًا.
+ * ألوان المراحل تبقى من `@/lib/stage-colors` (STAGE_HEX) — لا تُكرَّر هنا.
+ */
+export const SOP = {
+  page: "var(--sop-page)",
+  plane: "var(--sop-plane)",
+  planeHi: "var(--sop-plane-hi)",
+  /** ظل غامق (النيومورفيزم). */
+  sd: "var(--sop-sd)",
+  /** لمعة فاتحة (النيومورفيزم). */
+  sl: "var(--sop-sl)",
+  edge: "var(--sop-edge)",
+  edge2: "var(--sop-edge-2)",
+  tx: "var(--sop-tx)",
+  tx2: "var(--sop-tx2)",
+  mut: "var(--sop-mut)",
+  gold: "var(--sop-gold)",
+  gold2: "var(--sop-gold2)",
+  /** نص فوق الذهبي الممتلئ. */
+  onGold: "var(--sop-ongold)",
+  green: "var(--sop-green)",
+  red: "var(--sop-red)",
+  blue: "var(--sop-blue)",
+  amber: "var(--sop-amber)",
+  neutral: "var(--sop-neutral)",
+  purple: "var(--sop-purple)",
+  teal: "var(--sop-teal)",
+} as const;
+
+/** ظلال النيومورفيزم الجاهزة للـstyle السطري (نفس قيم .m-raise/.m-inset في mobile.css). */
+export const SOP_SHADOW = {
+  raise: `6px 6px 16px ${SOP.sd}, -5px -5px 14px ${SOP.sl}`,
+  inset: `inset 4px 4px 10px ${SOP.sd}, inset -4px -4px 10px ${SOP.sl}`,
+} as const;
+
 /** وضع العرض — يُقرأ من كوكي `m-theme` على الخادم فلا وميض ولا اختلاف ترطيب. */
 export type MobileTheme = "dark" | "light";
 export const MOBILE_THEME_COOKIE = "m-theme";

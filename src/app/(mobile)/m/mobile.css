@@ -183,6 +183,105 @@
   --m-dw-red-dim: rgba(178, 91, 104, 0.12);
 }
 
+/*
+ * ===== SOP — «أوبسيديان ناعم Pro» (إضافي؛ لا يحذف ولا يغيّر أي --m-* أعلاه) =====
+ * طبقة التوكنز الدلالية الجديدة لقشرة /m. تُقرأ من TS عبر `SOP` في lib/mobile-tokens.ts
+ * أو مباشرةً بـvar(--sop-*). تُعرَّف على نفس محدِّدات --m-* فتتبع الوضع (ليل/نهار) تلقائيًا.
+ */
+:root,
+[data-theme="dark"] {
+  --sop-page: #0A0A0B;
+  --sop-plane: #17181B;
+  --sop-plane-hi: #1b1d22;
+  --sop-sd: #0b0c0e; /* ظل غامق (النيومورفيزم) */
+  --sop-sl: #242630; /* لمعة فاتحة */
+  --sop-edge: rgba(255, 255, 255, 0.06);
+  --sop-edge-2: rgba(255, 255, 255, 0.11);
+  --sop-tx: #F4F5F7;
+  --sop-tx2: #AEB0B7;
+  --sop-mut: #6f7178;
+  --sop-gold: #CBA45E;
+  --sop-gold2: #E4C489;
+  --sop-ongold: #1a1304;
+  --sop-green: #42D699;
+  --sop-red: #F0656A;
+  --sop-blue: #6E9BE6;
+  --sop-amber: #E5A54D;
+  --sop-neutral: #8f9199;
+  --sop-purple: #a98edb;
+  --sop-teal: #5bbccb;
+}
+[data-theme="light"] {
+  --sop-page: #e8e4dd;
+  --sop-plane: #f4f1ea;
+  --sop-plane-hi: #faf8f2;
+  --sop-sd: #d0ccc2;
+  --sop-sl: #ffffff;
+  --sop-edge: rgba(90, 74, 45, 0.08);
+  --sop-edge-2: rgba(90, 74, 45, 0.14);
+  --sop-tx: #221f18;
+  --sop-tx2: #5b564b;
+  --sop-mut: #928c7e;
+  --sop-gold: #9c7a2f;
+  --sop-gold2: #b28a35;
+  --sop-ongold: #fff;
+  --sop-green: #1a8f5f;
+  --sop-red: #c9433c;
+  --sop-blue: #3f74c4;
+  --sop-amber: #b07d22;
+  --sop-neutral: #7c7568;
+  --sop-purple: #7a5fb0;
+  --sop-teal: #2f8b9c;
+}
+
+/*
+ * color-scheme على غلاف /m فقط (لا على :root — ذاك شأن الويب في globals.css):
+ * عناصر النظام الأصلية (input date/time، scrollbars) تتبع الوضع.
+ */
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
+
+/*
+ * ===== ربط --m-* → --sop-* (على [data-theme] = غلاف /m حصرًا) =====
+ * الشاشات القديمة تقرأ --m-* عبر MOBILE_COLORS فتكتسب المظهر الجديد بلا تعديل TSX.
+ * يأتي بعد كتلتَي الثيم فيتقدّم عليهما بالترتيب المصدري، وvar() يُحلّ على نفس العنصر
+ * فيتبع الوضع. الويب بلا [data-theme] ⇒ لا يتأثر. ألوان المراحل (STAGE_HEX) خارج هذا كليًا.
+ * ما لم يُربط عمدًا: --m-gold-bg/-bd، رباعيات الحالات *-bg/-fg/-bd، --m-*-bg للوحة v2،
+ * --m-acc-*، --m-nav-bg، --m-tabbar، --m-wa، --m-tabbar-h، --m-dw-*-dim/-a32/-d، --m-grad-a/c.
+ */
+[data-theme] {
+  --m-bg: var(--sop-page);
+  --m-card: var(--sop-plane);
+  --m-sheet: var(--sop-plane-hi);
+  --m-panel: var(--sop-plane-hi);
+  --m-page: var(--sop-sd);
+  --m-border: var(--sop-edge-2);
+  --m-hair: var(--sop-edge);
+  --m-line2: var(--sop-edge);
+  --m-line3: var(--sop-edge);
+  --m-text1: var(--sop-tx);
+  --m-text2: var(--sop-tx2);
+  --m-text3: var(--sop-mut);
+  --m-dim1: var(--sop-neutral);
+  --m-gold: var(--sop-gold);
+  --m-gold-lt: var(--sop-gold2);
+  --m-grad-b: var(--sop-gold);
+  --m-mint: var(--sop-green);
+  --m-rose: var(--sop-red);
+  --m-sky: var(--sop-blue);
+  --m-amber: var(--sop-amber);
+  --m-danger: var(--sop-red);
+  --m-success: var(--sop-green);
+  --m-warning: var(--sop-amber);
+  --m-info: var(--sop-blue);
+  --m-dw-purple: var(--sop-purple);
+  --m-dw-sky: var(--sop-teal);
+  --m-dw-green: var(--sop-green);
+  --m-dw-amber: var(--sop-amber);
+  --m-dw-red: var(--sop-red);
+  --m-dw-blue: var(--sop-blue);
+}
+
 /* ===== keyframes النموذج (نصًّا كما هي) ===== */
 @keyframes m-riseIn {
   from { opacity: 0; transform: translateY(14px); }
@@ -425,9 +524,45 @@
 .m-noscroll::-webkit-scrollbar { width: 0; height: 0; }
 .m-noscroll { scrollbar-width: none; }
 
+/*
+ * ===== محرّك النيومورفيزم الناعم (SOP) — محصور بغلاف /m عبر [data-theme] =====
+ * .m-raise  سطح بارز: ظل غامق من الأسفل-اليسار (RTL) ولمعة من الأعلى-اليمين، blur ≤ 18px.
+ * .m-inset  عنصر غائر: ظل داخلي مزدوج.
+ * .m-press-sc  ردّ فعل لمس بالتصغير ٠٫٩٧ (بديل .m-press للأسطح البارزة).
+ */
+[data-theme] .m-raise {
+  background: var(--sop-plane);
+  border: 1px solid var(--sop-edge);
+  box-shadow:
+    6px 6px 16px var(--sop-sd),
+    -5px -5px 14px var(--sop-sl);
+}
+[data-theme] .m-inset {
+  background: var(--sop-page);
+  border: 1px solid var(--sop-edge);
+  box-shadow:
+    inset 4px 4px 10px var(--sop-sd),
+    inset -4px -4px 10px var(--sop-sl);
+}
+[data-theme] .m-press-sc {
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.16s;
+  -webkit-tap-highlight-color: transparent;
+}
+[data-theme] .m-press-sc:active { transform: scale(0.97); }
+
+/*
+ * سقف صارم لأيقونات SVG داخل الأزرار/الروابط — يمنع تمدّدها مع flex/grid.
+ * الاستثناء الوحيد: svg موسوم data-svg-free (حلقة تقدّم زر الدوام بالديوان).
+ */
+[data-theme] :where(button, a, .m-iconbtn, .m-press) > svg:not([data-svg-free]) {
+  max-width: 28px;
+  max-height: 28px;
+  flex: none;
+}
+
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
   .m-screen, .m-rise, .m-pulse, .m-skel, .m-sweep::after, .m-sheet, .m-actionbar, .m-ctapulse, .m-fillx, .m-breathe, .m-goo-squish, .m-gearspin, .m-dialbreathe, .m-ringfill, .m-fab-live::after, .m-panelback, .m-panelin, .m-toastin { animation: none; }
-  .m-iconbtn, .m-urgency, .m-leadcard, .m-press, .m-goo-drop, .m-goo-icon { transition: none; }
-  .m-press:active { transform: none; }
+  .m-iconbtn, .m-urgency, .m-leadcard, .m-press, .m-goo-drop, .m-goo-icon, .m-press-sc { transition: none; }
+  .m-press:active, .m-press-sc:active { transform: none; }
 }

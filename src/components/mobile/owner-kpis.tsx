@@ -38,7 +38,7 @@ function Ring({ pct, size = 46, stroke = 4 }: { pct: number; size?: number; stro
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.min(pct, 100) / 100);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }} aria-hidden>
+    <svg data-svg-free width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }} aria-hidden>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={MOBILE_COLORS.line2} strokeWidth={stroke} />
       <circle
         cx={size / 2} cy={size / 2} r={r} fill="none"
