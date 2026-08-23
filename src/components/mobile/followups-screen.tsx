@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell, CalendarDays, ListChecks, MapPin, MessageCircle, Pencil, Phone, Sparkles, UserRound } from "lucide-react";
+import { Bell, CalendarDays, ListChecks, MapPin, MessageCircle, Pencil, Phone, Sparkles, UserRound, X } from "lucide-react";
 import type { LeadStage, FollowUpResult } from "@prisma/client";
 import { MOBILE_COLORS, SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel } from "@/lib/mobile-format";
@@ -326,9 +326,15 @@ export function FollowupsScreen({
     );
   };
 
+  // حقل التاريخ داخل صفّه (أيقونة + input) — خلفية plane وحد edge2 حتى يُرى على خلفية الهيدر الداكنة؛
+  // حجم الخط ١٦ (منع زوم iOS — قاعدة mobile.css تفرضه أصلًا).
   const inputStyle = {
-    boxSizing: "border-box" as const, flex: 1, minHeight: 42, background: SOP.page, border: `1px solid ${SOP.edge}`,
-    borderRadius: 11, padding: "0 11px", fontSize: 13, color: SOP.tx, outline: "none",
+    boxSizing: "border-box" as const, flex: 1, minWidth: 0, minHeight: 42, background: "transparent", border: "none",
+    padding: 0, fontSize: 16, color: SOP.tx, outline: "none",
+  };
+  const dateFieldWrap = {
+    boxSizing: "border-box" as const, gap: 8, minHeight: 42, background: SOP.plane, border: `1px solid ${SOP.edge2}`,
+    borderRadius: 11, padding: "0 11px",
   };
 
   return (
@@ -412,10 +418,34 @@ export function FollowupsScreen({
             </button>
           ))}
         </div>
+        {/* النطاق المخصص — تسمية مرئية + أيقونة تقويم لكل حقل (native date الفارغ على iOS بلا نص) */}
         {tab === "upcoming" && range === "custom" && (
-          <div className="flex" style={{ gap: 8 }}>
-            <input type="date" aria-label="من تاريخ" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
-            <input type="date" aria-label="إلى تاريخ" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
+          <div className="flex items-end" style={{ gap: 8 }}>
+            <label className="flex min-w-0 flex-1 flex-col" style={{ gap: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: SOP.mut }}>من تاريخ</span>
+              <span className="flex items-center" style={dateFieldWrap}>
+                <CalendarDays size={15} strokeWidth={2} style={{ color: SOP.gold2, flex: "none" }} aria-hidden />
+                <input type="date" aria-label="من تاريخ" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
+              </span>
+            </label>
+            <label className="flex min-w-0 flex-1 flex-col" style={{ gap: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: SOP.mut }}>إلى تاريخ</span>
+              <span className="flex items-center" style={dateFieldWrap}>
+                <CalendarDays size={15} strokeWidth={2} style={{ color: SOP.gold2, flex: "none" }} aria-hidden />
+                <input type="date" aria-label="إلى تاريخ" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
+              </span>
+            </label>
+            {(from || to) && (
+              <button
+                type="button"
+                aria-label="مسح النطاق"
+                onClick={() => { setFrom(""); setTo(""); }}
+                className="m-press-sc flex flex-none items-center justify-center"
+                style={{ boxSizing: "border-box", width: 42, height: 42, borderRadius: 11, border: `1px solid ${SOP.edge2}`, background: SOP.plane, color: SOP.tx2 }}
+              >
+                <X size={16} strokeWidth={2.2} aria-hidden />
+              </button>
+            )}
           </div>
         )}
 
