@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Channel, LeadStage } from "@prisma/client";
-import { Phone, MessageCircle } from "lucide-react";
+import { Phone, MessageCircle, ChevronLeft } from "lucide-react";
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import { channelLabel, stageLabel } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
@@ -56,7 +56,8 @@ export function MobileLeadCard({
 }) {
   const wa = waPhone(lead.phone);
   // الأزرار روابط حقيقية (tel:/wa.me) — فلا نضع البطاقة كـ<a> حولها (تعشيق روابط
-  // غير صالح). بدلها رابط بمساحة البطاقة خلف المحتوى، والأزرار فوقه.
+  // غير صالح). بدلها: جسم الكرت (الاسم/الجوال/الوسوم) هو Link صريح يفتح الملف
+  // (نفس التنقّل الداخلي المستخدم بالمشروع)، وصف الأزرار مستقل عنه تمامًا.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   // أزرار الفعل الموحّدة (action-buttons): المتأخر ⟵ اتصال ذهبي أساسي، وإلا سطح بارز.
@@ -75,52 +76,53 @@ export function MobileLeadCard({
         animationDelay: `${delayMs}ms`,
       }}
     >
-
-      {/* مساحة اللمس المؤدية لملف العميل — خلف المحتوى، فلا تبتلع الأزرار. */}
+      {/* جسم الكرت — رابط صريح لملف العميل (Link داخلي) مع حالة ضغط ومؤشّر سهم */}
       <Link
         href={`/m/leads/${lead.id}`}
         aria-label={`ملف العميل ${lead.name}`}
-        className="absolute inset-0 z-0"
-      />
-
-      <div className="pointer-events-none relative z-10">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 700, color: SOP.tx }}>{lead.name}</div>
-          {trailing ? (
-            <span
-              className="shrink-0 whitespace-nowrap font-semibold"
-              style={{ fontSize: 12, color: trailing.color }}
-            >
-              {trailing.text}
-            </span>
-          ) : (
-            <span
-              className={`shrink-0 whitespace-nowrap border font-semibold ${stageChipClass[lead.stage]}`}
-              style={{ fontSize: "10.5px", padding: "4px 9px", borderRadius: 7 }}
-            >
-              {stageLabel(lead.stage)}
-            </span>
-          )}
+        className="m-press-sc flex items-center"
+        style={{ gap: 10, margin: "-6px -6px 0", padding: 6, borderRadius: 12 }}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 700, color: SOP.tx }}>{lead.name}</div>
+            {trailing ? (
+              <span
+                className="shrink-0 whitespace-nowrap font-semibold"
+                style={{ fontSize: 12, color: trailing.color }}
+              >
+                {trailing.text}
+              </span>
+            ) : (
+              <span
+                className={`shrink-0 whitespace-nowrap border font-semibold ${stageChipClass[lead.stage]}`}
+                style={{ fontSize: "10.5px", padding: "4px 9px", borderRadius: 7 }}
+              >
+                {stageLabel(lead.stage)}
+              </span>
+            )}
+          </div>
+          <div dir="ltr" className="truncate" style={{ fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums", fontSize: 12, color: SOP.mut, marginTop: 3, textAlign: "end" }}>
+            {lead.phone}
+          </div>
+          <div
+            className="truncate"
+            style={{ fontSize: "11.5px", color: SOP.tx2, marginTop: 4 }}
+          >
+            {reason ?? `${waitingLabel(lead.daysWaiting, waitingBasis)} · ${channelLabel(lead.channel)}`}
+          </div>
         </div>
-        <div dir="ltr" className="truncate" style={{ fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums", fontSize: 12, color: SOP.mut, marginTop: 3, textAlign: "end" }}>
-          {lead.phone}
-        </div>
-        <div
-          className="truncate"
-          style={{ fontSize: "11.5px", color: SOP.tx2, marginTop: 4 }}
-        >
-          {reason ?? `${waitingLabel(lead.daysWaiting, waitingBasis)} · ${channelLabel(lead.channel)}`}
-        </div>
-      </div>
+        {/* مؤشّر «قابل للفتح» — سهم صغير (يسار في RTL) بسقف حجم صارم */}
+        <span className="flex flex-none items-center justify-center" style={{ boxSizing: "border-box", width: 26, height: 26, borderRadius: 8, background: `color-mix(in srgb, ${SOP.gold} 12%, transparent)`, color: SOP.gold }} aria-hidden>
+          <ChevronLeft size={15} strokeWidth={2.2} aria-hidden />
+        </span>
+      </Link>
 
       {/* الفاصل الأفقي */}
-      <div
-        className="relative z-10"
-        style={{ height: 1, backgroundColor: SOP.edge, margin: "11px 0 10px" }}
-        aria-hidden
-      />
+      <div style={{ height: 1, backgroundColor: SOP.edge, margin: "11px 0 10px" }} aria-hidden />
 
-      <div className="relative z-10 flex" style={{ gap: 8 }}>
+      {/* صف الأزرار — مستقل عن منطقة النقر؛ كل زر ينفّذ فعله فقط (stopPropagation احتياطًا) */}
+      <div className="flex" style={{ gap: 8 }}>
         <a
           href={`tel:${lead.phone}`}
           onClick={(e) => { stop(e); markCall(lead.id); }}
