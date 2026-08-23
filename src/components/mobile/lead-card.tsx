@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Channel, LeadStage } from "@prisma/client";
-import { Phone, MessageCircle, ChevronLeft } from "lucide-react";
+import { Phone, MessageCircle, UserRound } from "lucide-react";
 import { STAGE_HEX, stageChipClass } from "@/lib/stage-colors";
 import { channelLabel, stageLabel } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
@@ -24,12 +24,6 @@ export type MobileLeadCardLead = {
   /** أيام الانتظار — محسوبة على الخادم. ⚠️ لا نستخدم createdAt: محجوب عن الموظف (null). */
   daysWaiting: number;
 };
-
-/**
- * الأزرار من action-buttons (٤٦px) — مساحة اللمس فوق الحد. الرابط حول كل زر يحمل
- * حشوة رأسية صغيرة فلا يلتصق الصفّ بحافة الكرت.
- */
-const TAP_PAD_Y = 2;
 
 export function MobileLeadCard({
   lead,
@@ -55,14 +49,8 @@ export function MobileLeadCard({
   trailing?: { text: string; color: string };
 }) {
   const wa = waPhone(lead.phone);
-  // الأزرار روابط حقيقية (tel:/wa.me) — فلا نضع البطاقة كـ<a> حولها (تعشيق روابط
-  // غير صالح). بدلها: جسم الكرت (الاسم/الجوال/الوسوم) هو Link صريح يفتح الملف
-  // (نفس التنقّل الداخلي المستخدم بالمشروع)، وصف الأزرار مستقل عنه تمامًا.
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
-
-  // أزرار الفعل الموحّدة (action-buttons): المتأخر ⟵ اتصال ذهبي أساسي، وإلا سطح بارز.
-  const callVisual = late ? actionBtn("gold") : { ...actionBtn("file"), color: SOP.tx2, border: `1px solid ${SOP.edge}` };
-  const waVisual = actionBtn("wa");
+  // الكرت نفسه ليس رابطًا — التنقّل والأفعال عبر صف الأزرار الثلاثة الموحّد (action-buttons):
+  // اتصال (الأعرض، ذهبي) · واتساب (أخضر) · الملف (سطح مرفوع بحد ذهبي) — مطابق لبطاقة العميل العادية.
 
   return (
     <article
@@ -76,13 +64,8 @@ export function MobileLeadCard({
         animationDelay: `${delayMs}ms`,
       }}
     >
-      {/* جسم الكرت — رابط صريح لملف العميل (Link داخلي) مع حالة ضغط ومؤشّر سهم */}
-      <Link
-        href={`/m/leads/${lead.id}`}
-        aria-label={`ملف العميل ${lead.name}`}
-        className="m-press-sc flex items-center"
-        style={{ gap: 10, margin: "-6px -6px 0", padding: 6, borderRadius: 12 }}
-      >
+      {/* جسم الكرت — عرض فقط */}
+      <div className="flex items-center" style={{ gap: 10 }}>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 700, color: SOP.tx }}>{lead.name}</div>
@@ -112,41 +95,22 @@ export function MobileLeadCard({
             {reason ?? `${waitingLabel(lead.daysWaiting, waitingBasis)} · ${channelLabel(lead.channel)}`}
           </div>
         </div>
-        {/* مؤشّر «قابل للفتح» — سهم صغير (يسار في RTL) بسقف حجم صارم */}
-        <span className="flex flex-none items-center justify-center" style={{ boxSizing: "border-box", width: 26, height: 26, borderRadius: 8, background: `color-mix(in srgb, ${SOP.gold} 12%, transparent)`, color: SOP.gold }} aria-hidden>
-          <ChevronLeft size={15} strokeWidth={2.2} aria-hidden />
-        </span>
-      </Link>
+      </div>
 
       {/* الفاصل الأفقي */}
       <div style={{ height: 1, backgroundColor: SOP.edge, margin: "11px 0 10px" }} aria-hidden />
 
-      {/* صف الأزرار — مستقل عن منطقة النقر؛ كل زر ينفّذ فعله فقط (stopPropagation احتياطًا) */}
+      {/* صف الأزرار الثلاثة الموحّد — مطابق لبطاقة العميل العادية (actionBtn، ٤٦px، أيقونات ١٧px) */}
       <div className="flex" style={{ gap: 8 }}>
-        <a
-          href={`tel:${lead.phone}`}
-          onClick={(e) => { stop(e); markCall(lead.id); }}
-          className="flex flex-1 items-center"
-          style={{ paddingBlock: TAP_PAD_Y }}
-        >
-          <span className={`${ACTION_BTN_CLASS} w-full`} style={callVisual}>
-            <Phone {...BTN_ICON} aria-hidden />
-            {late ? "اتصل الآن" : "اتصال"}
-          </span>
+        <a href={`tel:${lead.phone}`} onClick={() => markCall(lead.id)} className={ACTION_BTN_CLASS} style={{ ...actionBtn("gold"), flex: 1.3 }}>
+          <Phone {...BTN_ICON} aria-hidden /> {late ? "اتصل الآن" : "اتصال"}
         </a>
-        <a
-          href={`https://wa.me/${wa}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={stop}
-          className="flex flex-1 items-center"
-          style={{ paddingBlock: TAP_PAD_Y }}
-        >
-          <span className={`${ACTION_BTN_CLASS} w-full`} style={waVisual}>
-            <MessageCircle {...BTN_ICON} aria-hidden />
-            واتساب
-          </span>
+        <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className={ACTION_BTN_CLASS} style={{ ...actionBtn("wa"), flex: 1 }}>
+          <MessageCircle {...BTN_ICON} aria-hidden /> واتساب
         </a>
+        <Link href={`/m/leads/${lead.id}`} aria-label={`ملف العميل ${lead.name}`} className={ACTION_BTN_CLASS} style={{ ...actionBtn("file"), flex: 1 }}>
+          <UserRound {...BTN_ICON} aria-hidden /> الملف
+        </Link>
       </div>
     </article>
   );
