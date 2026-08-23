@@ -36,7 +36,7 @@ export async function MobileHeaderActions({ unread }: { unread: number }) {
             className="m-pulse absolute flex items-center justify-center"
             style={{
               boxSizing: "border-box", top: -6, left: -6, minWidth: 19, height: 19,
-              borderRadius: 10, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
+              borderRadius: 10, background: MOBILE_STATUS.danger.base, color: "var(--sop-tx)",
               fontSize: 10, fontWeight: 700, padding: "0 5px",
               border: `2px solid ${MOBILE_COLORS.bg}`,
             }}

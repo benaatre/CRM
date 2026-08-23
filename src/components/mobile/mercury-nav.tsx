@@ -170,7 +170,7 @@ export function MercuryNav({
                         className="absolute flex items-center justify-center"
                         style={{
                           boxSizing: "border-box", top: -6, left: -10, minWidth: 17, height: 17,
-                          borderRadius: 9, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
+                          borderRadius: 9, background: MOBILE_STATUS.danger.base, color: "var(--sop-tx)",
                           fontSize: 9, fontWeight: 700, padding: "0 4px",
                           border: `2px solid ${MOBILE_COLORS.sheet}`,
                         }}

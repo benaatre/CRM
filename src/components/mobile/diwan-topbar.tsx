@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { Bell, Search } from "lucide-react";
-import { MOBILE_COLORS, MOBILE_THEME_COOKIE, normalizeTheme } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, MOBILE_THEME_COOKIE, normalizeTheme, SOP, SOP_SHADOW } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 import { MobileThemeToggle } from "@/components/mobile/theme-toggle";
 
@@ -23,9 +23,10 @@ const BRAND_TAGLINE = "بنائات العقارية";
 export async function DiwanTopbar({ companyName, unread }: { companyName: string; unread: number }) {
   const theme = normalizeTheme((await cookies()).get(MOBILE_THEME_COOKIE)?.value);
 
+  // أزرار ٣٦×٣٦ بسطح بارز ناعم (نفس .m-raise — سطريًا لأن المكوّن خادمي والصنف يكفي، لكن الظل الأخف يناسب التوب بار).
   const tbtn = {
     boxSizing: "border-box" as const, width: 36, height: 36, borderRadius: 12,
-    background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.hair}`,
+    background: SOP.plane, border: `1px solid ${SOP.edge}`, boxShadow: `3px 3px 7px ${SOP.sd}, -3px -3px 7px ${SOP.sl}`,
   };
 
   return (
@@ -49,39 +50,40 @@ export async function DiwanTopbar({ companyName, unread }: { companyName: string
         <span
           className="flex flex-none items-center justify-center"
           style={{
-            boxSizing: "border-box", width: 32, height: 32, borderRadius: 16,
-            border: `1px solid ${MOBILE_COLORS.accA32}`,
+            boxSizing: "border-box", width: 32, height: 32, borderRadius: 11,
+            background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, color: SOP.onGold,
+            boxShadow: SOP_SHADOW.raise,
             fontFamily: "var(--font-zain), var(--font-sans)",
-            fontWeight: 700, fontSize: 13, color: MOBILE_COLORS.gold,
+            fontWeight: 800, fontSize: 13,
           }}
           aria-hidden
         >
           {companyName.trim().charAt(0) || "س"}
         </span>
         <div className="min-w-0">
-          <div className="truncate" style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.2, color: MOBILE_COLORS.textPrimary }}>
+          <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.2, color: SOP.tx }}>
             {companyName}
           </div>
-          <div style={{ fontSize: 9.5, color: MOBILE_COLORS.textMuted, marginTop: 1 }}>{BRAND_TAGLINE}</div>
+          <div style={{ fontSize: 9.5, color: SOP.mut, marginTop: 1 }}>{BRAND_TAGLINE}</div>
         </div>
       </div>
 
       <Link href="/m/leads?focus=1" aria-label="بحث" className="m-press flex flex-none items-center justify-center" style={tbtn}>
-        <Search size={16} strokeWidth={1.6} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
+        <Search size={16} strokeWidth={1.8} style={{ color: SOP.tx2 }} aria-hidden />
       </Link>
 
       {/* الجرس ← شاشة الإشعارات، والشارة = غير المقروء (نفس مصدر الويب). */}
       <Link href="/m/notifications" aria-label="الإشعارات" className="m-press relative flex flex-none items-center justify-center" style={tbtn}>
-        <Bell size={16} strokeWidth={1.6} style={{ color: unread > 0 ? MOBILE_COLORS.amber : MOBILE_COLORS.textSecondary }} aria-hidden />
+        <Bell size={16} strokeWidth={1.8} style={{ color: unread > 0 ? SOP.amber : SOP.tx2 }} aria-hidden />
         {unread > 0 && (
           <span
             className="absolute flex items-center justify-center"
             style={{
               boxSizing: "border-box", top: -4, left: -4, minWidth: 15, height: 15,
-              borderRadius: 8, background: MOBILE_COLORS.amber, color: MOBILE_COLORS.bg,
+              borderRadius: 8, background: SOP.red, color: SOP.tx,
               fontSize: 8.5, fontWeight: 700, padding: "0 3px",
               fontFamily: "var(--font-zain), var(--font-sans)",
-              border: `1.5px solid ${MOBILE_COLORS.bg}`,
+              border: `1.5px solid ${SOP.plane}`,
             }}
           >
             {toArabicDigits(unread > 99 ? 99 : unread)}

@@ -85,7 +85,7 @@ export function DiwanNav({ badgeCount = 0 }: { badgeCount?: number }) {
               className="absolute flex items-center justify-center"
               style={{
                 boxSizing: "border-box", top: -5, left: -9, minWidth: 16, height: 16,
-                borderRadius: 8, background: MOBILE_STATUS.danger.base, color: "#FFFFFF",
+                borderRadius: 8, background: MOBILE_STATUS.danger.base, color: "var(--sop-tx)",
                 fontSize: 8.5, fontWeight: 700, padding: "0 4px",
                 border: `1.5px solid ${MOBILE_COLORS.sheet}`,
               }}
@@ -154,7 +154,7 @@ export function DiwanNav({ badgeCount = 0 }: { badgeCount?: number }) {
                 background: working
                   ? `linear-gradient(150deg, ${MOBILE_COLORS.dwGreen}, ${MOBILE_COLORS.dwGreenD})`
                   : MOBILE_COLORS.gold,
-                color: working ? "#08130D" : "var(--m-gold-bg)",
+                color: working ? "var(--sop-ongold)" : "var(--m-gold-bg)",
                 boxShadow: working
                   ? "0 8px 22px color-mix(in srgb, var(--m-dw-green) 40%, transparent), inset 0 1px 0 rgba(255,255,255,0.25)"
                   : `0 8px 22px ${MOBILE_COLORS.accGlow}, inset 0 1px 0 rgba(255,255,255,0.25)`,

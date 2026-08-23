@@ -68,7 +68,7 @@ export function UrgencyCard({
               className="flex items-center justify-center"
               style={{
                 boxSizing: "border-box", minWidth: 23, height: 23, borderRadius: 8,
-                background: color, color: "#FFFFFF",
+                background: color, color: "var(--sop-tx)",
                 fontSize: 12, fontWeight: 700, padding: "0 6px",
               }}
             >
