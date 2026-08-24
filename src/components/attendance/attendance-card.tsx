@@ -6,6 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import { Zain } from "next/font/google";
 import {
   CalendarDays,
+  Check,
   ChevronDown,
   Laptop,
   LogIn,
@@ -45,6 +46,8 @@ type Intent = "CHECK_IN" | "CHECK_OUT" | "LOCATION_CHANGE";
 
 type StatusPayload = {
   ok: boolean;
+  /** الموافقة خادمية الحقيقة (سجل PRIVACY_CONSENT بالإصدار الحالي) — تتبع المستخدم لا الجهاز. */
+  consented?: boolean;
   state: "none" | "in" | "out";
   session: {
     startedAt: string;
@@ -196,7 +199,8 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
     return () => clearInterval(t);
   }, [undoUntil]);
 
-  // الموافقة تُقرأ بعد التركيب لا أثناء العرض — قراءة localStorage في العرض تكسر الترطيب.
+  // كاش تفاؤلي للعرض الفوري فقط — يُقرأ بعد التركيب لا أثناء العرض (الترطيب)،
+  // والحقيقة الحاكمة تصل من الخادم مع /status (`consented`) فتتقدم عليه.
   useEffect(() => {
     try {
       setConsent(window.localStorage.getItem(CONSENT_KEY) === "1");
@@ -212,7 +216,19 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
         setStatusFailed(true);
         return;
       }
-      setStatus((await res.json()) as StatusPayload);
+      const data = (await res.json()) as StatusPayload;
+      setStatus(data);
+      // الموافقة خادمية الحقيقة: حكم الخادم يتقدم على الكاش المحلي في الاتجاهين
+      // (جهاز مشترك لا يسرّب موافقة مستخدم لغيره) — والكاش يُزامَن وفقه.
+      if (typeof data.consented === "boolean") {
+        setConsent(data.consented);
+        try {
+          if (data.consented) window.localStorage.setItem(CONSENT_KEY, "1");
+          else window.localStorage.removeItem(CONSENT_KEY);
+        } catch {
+          /* تخزين محجوب — الحالة بالذاكرة تكفي */
+        }
+      }
       setStatusFailed(false);
     } catch {
       // لا نخمّن حالة: «لم تسجّل حضورك» وهو حاضر كذبة أسوأ من الاعتراف بالفشل.
@@ -574,7 +590,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                 : onLeave ? { color: "var(--att-leave)", label: "إجازة اليوم" }
                 : noResponsePause ? { color: "var(--att-miss)", label: "متوقف — بلا رد" }
                 : status.state === "out" && dayBase >= targetMinutes
-                  ? { color: "var(--att-on)", label: "أكمل دوامه ✓" }
+                  ? { color: "var(--att-on)", label: "أكمل دوامه", done: true }
                 : status.state === "out" ? { color: "var(--att-done)", label: "منصرف" }
                 : { color: "var(--m-dw-amber)", label: "لم تسجّل الحضور" };
               return (
@@ -588,6 +604,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                 >
                   <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
                   {tag.label}
+                  {"done" in tag && tag.done && <Check aria-hidden size={12} strokeWidth={2.4} style={{ maxWidth: 22, maxHeight: 22 }} />}
                 </span>
               );
             })()}
@@ -696,7 +713,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                   <>
                     {/* ===== `.ringbox` ١٨٤px — حلقة r=77 stroke=8 بتدرّج ذهبي ===== */}
                     <div className="relative" style={{ width: 184, height: 184, margin: "10px auto 6px" }}>
-                      <svg width={184} height={184} style={{ transform: "rotate(-90deg)" }} aria-hidden>
+                      <svg data-svg-free width={184} height={184} style={{ transform: "rotate(-90deg)" }} aria-hidden>
                         <defs>
                           <linearGradient id="att-card-grad" x1="0" y1="0" x2="1" y2="1">
                             <stop offset="0" style={{ stopColor: "var(--m-grad-a)" }} />
@@ -801,7 +818,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                         className="flex items-center justify-center"
                         style={{ gap: 7, borderRadius: 13, padding: "13px 0", fontSize: 13, fontWeight: 700, background: soft("var(--att-on)", 12), color: "var(--att-on)" }}
                       >
-                        أكملت دوامك اليوم ✓ — يعطيك العافية
+                        أكملت دوامك اليوم <Check aria-hidden size={13} strokeWidth={2.4} style={{ maxWidth: 22, maxHeight: 22 }} /> — يعطيك العافية
                       </p>
                     ) : (
                       <div className="flex" style={{ gap: 9 }}>
@@ -1249,7 +1266,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
         >
           {/* الحلقة الراديّة — العدّاد اليومي التراكمي (v2) داخلها */}
           <div className="relative mx-auto" style={{ width: 168, height: 168 }}>
-            <svg width={168} height={168} style={{ transform: "rotate(-90deg)" }} aria-hidden>
+            <svg data-svg-free width={168} height={168} style={{ transform: "rotate(-90deg)" }} aria-hidden>
               <defs>
                 <linearGradient id="att-panel-grad" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0" style={{ stopColor: "var(--m-grad-a, var(--att-gold))" }} />
