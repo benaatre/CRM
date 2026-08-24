@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { MapPin, Fingerprint, EyeOff, MoonStar, Settings2 } from "lucide-react";
 import { MobilePortal } from "@/components/mobile/portal";
+import { toArabicDigits } from "@/lib/format";
 import {
   queryGeoPermission,
   requestGeoPermission,
   onGeoPermissionChange,
+  canOpenLocationSettings,
+  openLocationSettings,
   type GeoPermState,
 } from "@/lib/geolocation-permission";
 import "./attendance.css";
@@ -14,16 +17,19 @@ import "./attendance.css";
 /**
  * شاشة تفعيل الموقع (الحضور بالرادار — ر١) — تمهيد قبل طلب الإذن الرسمي.
  *
- * تظهر **بعد قبول الإفصاح v3** (المالك لا يقبله فلا تظهر له) وحين تكون حالة
- * الإذن `prompt`: تشرح الفائدة وتطمئن، ثم زر «تفعيل الموقع» يُطلق الطلب الرسمي
- * (قراءة موقع فعلية — الحقيقة الحاكمة: الإذن يُمنح فقط لحظة طلب فعلي). «لاحقًا»
- * تؤجّلها للجلسة دون حرق الطلب. حالة `denied` → بانر إرشاد الإعدادات (غير حاجب).
+ * تظهر **بعد ثبوت موافقة الإفصاح v3 خادميًا** (سجل PRIVACY_CONSENT للمستخدم
+ * الحالي — تتبع المستخدم لا الجهاز، فجهاز مشترك لا يسرّب موافقة موظف لغيره؛
+ * المالك لا يقبل الإفصاح فلا تظهر له) وحين تكون حالة الإذن `prompt`: تشرح
+ * الفائدة وتطمئن، ثم زر «تفعيل الموقع» يُطلق الطلب الرسمي (قراءة موقع فعلية —
+ * الحقيقة الحاكمة: الإذن يُمنح فقط لحظة طلب فعلي). «لاحقًا» تؤجّلها للجلسة دون
+ * حرق الطلب. حالة `denied` → بانر إرشاد الإعدادات (غير حاجب)، وعلى iOS داخل
+ * التطبيق زر «افتح الإعدادات» (app-settings: عبر AppLauncher الجاهزة).
  *
  * لا تتبع ولا طلب من النبض — الطلب من هذا الزر الصريح وحده.
  */
 
-const CONSENT_KEY = "attendance-geo-consent-v3";
 const SNOOZE_KEY = "attendance-loc-priming-snoozed";
+const FAL_LICENSE = "1200021029";
 
 const ASSURANCES = [
   { icon: Fingerprint, text: "أول ما توصل الموقع نبصم لك تلقائيًا" },
@@ -31,20 +37,39 @@ const ASSURANCES = [
   { icon: MoonStar, text: "تتوقف خارج أوقات دوامك" },
 ] as const;
 
+/** سطر ترخيص فال — نفس نمط تذييل صفحات /m (more/employee-home) حرفيًا. */
+function RegaLine() {
+  return (
+    <p className="mt-3 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
+      ترخيص فال (REGA) {toArabicDigits(FAL_LICENSE)}
+    </p>
+  );
+}
+
 export function LocationPriming() {
   const [perm, setPerm] = useState<GeoPermState | null>(null);
-  const [consented, setConsented] = useState(false);
+  // الموافقة خادمية الحقيقة: null = غير محسومة (لا عرض) — لا اعتماد على كاش الجهاز
+  // هنا إطلاقًا، فالشاشة أصلًا غير عاجلة والحسم الصادق أهم من الظهور المبكر.
+  const [consented, setConsented] = useState<boolean | null>(null);
   const [snoozed, setSnoozed] = useState(false);
   const [busy, setBusy] = useState(false);
+  // زر «افتح الإعدادات» — داخل التطبيق على iOS فقط (AppLauncher app-settings:).
+  const [canOpenSettings, setCanOpenSettings] = useState(false);
 
-  // الإفصاح v3 والتأجيل يُقرآن بعد التركيب (localStorage يكسر الترطيب في العرض).
   useEffect(() => {
     try {
-      setConsented(window.localStorage.getItem(CONSENT_KEY) === "1");
       setSnoozed(window.sessionStorage.getItem(SNOOZE_KEY) === "1");
     } catch {
-      /* تخزين محجوب — نُبقي الافتراضات */
+      /* تخزين محجوب — نُبقي الافتراض */
     }
+    // حقيقة الموافقة من الخادم (نفس مصدر البطاقة /status) — فشل/401 = لا عرض (fail-closed).
+    fetch("/api/attendance/status", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { ok?: boolean; consented?: boolean } | null) => {
+        setConsented(d?.ok === true && d.consented === true);
+      })
+      .catch(() => setConsented(false));
+    void canOpenLocationSettings().then(setCanOpenSettings);
     void queryGeoPermission().then(setPerm);
     // يُعاد الفحص عند رجوع التطبيق للمقدمة (قد يمنح الإذن من الإعدادات).
     const onVisible = () => {
@@ -74,8 +99,8 @@ export function LocationPriming() {
     setSnoozed(true);
   }, []);
 
-  // لا نعرض شيئًا قبل قبول الإفصاح، أو والحالة غير محسومة/ممنوحة/غير متاحة.
-  if (!consented || perm === null || perm === "granted" || perm === "unavailable") return null;
+  // لا نعرض شيئًا قبل ثبوت الموافقة خادميًا، أو والحالة غير محسومة/ممنوحة/غير متاحة.
+  if (consented !== true || perm === null || perm === "granted" || perm === "unavailable") return null;
 
   // ===== إرشاد الإعدادات — الإذن مرفوض (بانر سفلي غير حاجب) =====
   if (perm === "denied") {
@@ -92,7 +117,7 @@ export function LocationPriming() {
             style={{
               boxSizing: "border-box", borderRadius: 16, padding: "13px 14px",
               background: "var(--m-sheet)", border: "1px solid var(--m-hair)",
-              boxShadow: "0 12px 32px rgba(0,0,0,.4)",
+              boxShadow: "0 12px 32px var(--att-overlay-soft)",
             }}
           >
             <div className="flex items-start gap-2.5">
@@ -104,10 +129,23 @@ export function LocationPriming() {
                 تمام
               </button>
             </div>
-            {/* إرشاد يدوي يعمل من الويب فورًا — زر الفتح التلقائي (app-launcher) مؤجّل لرفعة iOS. */}
-            <p className="text-[11px] leading-relaxed" style={{ color: "var(--m-text2)", paddingInlineStart: 28 }}>
-              افتح إعدادات جهازك ← الخصوصية ← خدمات الموقع ← مشاريع السلطان ← اختر «أثناء الاستخدام»
-            </p>
+            {canOpenSettings ? (
+              /* داخل التطبيق (iOS): فتح إعدادات التطبيق مباشرة — بلا رحلة يدوية. */
+              <button
+                type="button"
+                onClick={() => void openLocationSettings()}
+                className="flex min-h-10 items-center justify-center gap-2 rounded-xl border-0 text-[12.5px] font-bold"
+                style={{ background: "var(--att-gold)", color: "var(--att-on-gold)", marginInlineStart: 28 }}
+              >
+                <Settings2 aria-hidden size={14} strokeWidth={1.8} style={{ maxWidth: 22, maxHeight: 22 }} />
+                افتح الإعدادات
+              </button>
+            ) : (
+              /* المتصفح/أندرويد: الإرشاد اليدوي كما هو. */
+              <p className="text-[11px] leading-relaxed" style={{ color: "var(--m-text2)", paddingInlineStart: 28 }}>
+                افتح إعدادات جهازك ← الخصوصية ← خدمات الموقع ← مشاريع السلطان ← اختر «أثناء الاستخدام»
+              </p>
+            )}
           </div>
         </div>
       </MobilePortal>
@@ -125,16 +163,16 @@ export function LocationPriming() {
         aria-label="تفعيل الموقع"
         className="att-scope fixed inset-0 z-[88] flex items-center justify-center p-4"
       >
-        <button type="button" aria-label="لاحقًا" onClick={snooze} className="absolute inset-0 border-0" style={{ background: "rgba(8, 5, 3, 0.82)", backdropFilter: "blur(5px)" }} />
+        <button type="button" aria-label="لاحقًا" onClick={snooze} className="absolute inset-0 border-0" style={{ background: "var(--att-overlay-soft)", backdropFilter: "blur(5px)" }} />
 
         <div
           className="relative w-full max-w-md overflow-hidden rounded-3xl border p-6 text-center"
           style={{ borderColor: "var(--att-esp-line)", background: "var(--att-esp-bg)" }}
         >
-          {/* أيقونة الموقع بحلقة متوهّجة */}
+          {/* أيقونة الموقع بحلقة متوهّجة — أكبر من سقف الأيقونات عمدًا (بطلة الشاشة) */}
           <span className="relative mx-auto mb-4 flex size-16 items-center justify-center">
-            <span aria-hidden className="absolute inset-0 rounded-full" style={{ border: "1px solid var(--m-acc-a32)", boxShadow: "0 0 34px var(--m-acc-glow)" }} />
-            <MapPin aria-hidden size={28} strokeWidth={1.6} style={{ color: "var(--att-gold)" }} />
+            <span aria-hidden className="absolute inset-0 rounded-full" style={{ border: "1px solid var(--att-esp-line)", boxShadow: "0 0 34px var(--att-esp-glow)" }} />
+            <MapPin data-svg-free aria-hidden size={28} strokeWidth={1.6} style={{ color: "var(--att-gold)" }} />
           </span>
 
           <h2 className="text-[18px] font-extrabold" style={{ color: "var(--att-esp-text)" }}>
@@ -173,6 +211,7 @@ export function LocationPriming() {
           >
             لاحقًا
           </button>
+          <RegaLine />
         </div>
       </div>
     </MobilePortal>
