@@ -18,12 +18,12 @@ export const dynamic = "force-dynamic";
 export default async function MobileHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ p?: string; fu?: string }>;
+  searchParams: Promise<{ p?: string; fu?: string; lb?: string }>;
 }) {
   const user = await requireUser();
   if (isManager(user.role)) {
     const sp = await searchParams;
-    return <MobileOwnerHome user={user} period={sp.p} fuWindow={sp.fu} />;
+    return <MobileOwnerHome user={user} period={sp.p} fuWindow={sp.fu} lbWeek={sp.lb} />;
   }
 
   // المدير المالي — داشبورد مالية مخصصة (قرار 2026-08-20): لا محتوى عملاء يصل له.

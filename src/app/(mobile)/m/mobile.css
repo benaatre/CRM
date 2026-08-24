@@ -210,6 +210,9 @@
   --sop-neutral: #8f9199;
   --sop-purple: #a98edb;
   --sop-teal: #5bbccb;
+  /* مركزا لوحة الأسبوع (leaderboard-inline) — فضّي وبرونزي بثيميه */
+  --sop-silver: #c8ccd4;
+  --sop-bronze: #cd9b6a;
 }
 [data-theme="light"] {
   --sop-page: #e8e4dd;
@@ -232,6 +235,8 @@
   --sop-neutral: #7c7568;
   --sop-purple: #7a5fb0;
   --sop-teal: #2f8b9c;
+  --sop-silver: #8b8f98;
+  --sop-bronze: #a9743f;
 }
 
 /*

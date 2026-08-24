@@ -7,15 +7,17 @@ import { normalizeFuWindow, FU_WINDOWS } from "@/lib/data/team-commitment";
 import { getOwnerTeamFollowups, getOwnerAudit } from "@/lib/data/owner-dashboard";
 import { getLiveBoard } from "@/lib/data/attendance";
 import { getTeam, getTeamPresence } from "@/lib/data/team";
+import { getLeaderboard } from "@/lib/data/leaderboard";
 import { pauseReasonLabel, formatPauseRemaining } from "@/lib/availability";
 import { SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel, greeting } from "@/lib/mobile-format";
-import { formatDate } from "@/lib/format";
+import { formatDate, RIYADH_TZ } from "@/lib/format";
 import { MobileHeaderActions } from "@/components/mobile/header-actions";
 import { OwnerKpis } from "@/components/mobile/owner-kpis";
 import { OwnerTeamSection, type OwnerTeamRow, type OwnerTeamState } from "@/components/mobile/owner-team";
 import { OwnerAuditSection, type OwnerAuditItem } from "@/components/mobile/owner-audit";
 import { OwnerFunnel } from "@/components/mobile/owner-funnel";
+import { OwnerLeaderboardSection, type LeaderboardRaceRow } from "@/components/mobile/owner-leaderboard";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 /**
@@ -25,7 +27,7 @@ import { AttendanceCard } from "@/components/attendance/attendance-card";
  * ٣) التزام المتابعات (getOwnerTeamFollowups — الأسوأ أولًا من الخادم)
  * ٤) سجل التدقيق التفاعلي (getOwnerAudit + معاينة العميل)
  * ٥) قمع المبيعات (getDashboard.funnel بألوان STAGE_HEX)
- * ٦) نجم الأسبوع — Placeholder بانتظار اعتماد المعادلة.
+ * ٦) لوحة الأسبوع (getLeaderboard — سباق الأشرطة بنفس درجة الويب حرفيًا)
  * عرض وتغليف خالص فوق الدوال القائمة — صفر منطق أعمال جديد.
  */
 
@@ -161,17 +163,31 @@ function fmtTarget(mins: number): string {
   return mins % 60 === 0 ? `${toArabicDigits(mins / 60)}س` : fmtHM(mins);
 }
 
+/** «٢٣ – ٢٩ أغسطس ٢٠٢٦» بيوم الرياض — نهاية الأسبوع الحصرية تُطرح يومًا للعرض. */
+function weekRangeText(weekStart: Date, weekEnd: Date): string {
+  const last = new Date(weekEnd.getTime() - 86_400_000);
+  const f = (d: Date, opts: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("ar-SA-u-nu-arab", { calendar: "gregory", timeZone: RIYADH_TZ, ...opts }).format(d);
+  const sameMonth = f(weekStart, { month: "numeric", year: "numeric" }) === f(last, { month: "numeric", year: "numeric" });
+  return sameMonth
+    ? `${f(weekStart, { day: "numeric" })} – ${f(last, { day: "numeric", month: "long", year: "numeric" })}`
+    : `${f(weekStart, { day: "numeric", month: "long" })} – ${f(last, { day: "numeric", month: "long", year: "numeric" })}`;
+}
+
 // ===================== الصفحة =====================
 
 export async function MobileOwnerHome({
   user,
   period: rawPeriod,
   fuWindow: rawFu,
+  lbWeek: rawLb,
 }: {
   user: { id?: string; name?: string | null; role: string };
   period?: string;
   /** فلتر قسم «التزام المتابعات» (?fu=) — مستقل تمامًا عن فلتر الأرقام (?p=). */
   fuWindow?: string;
+  /** فلتر «لوحة الأسبوع» (?lb=) — «الأسبوع السابق» امتياز المالك (نفس قاعدة ويب /leaderboard). */
+  lbWeek?: string;
 }) {
   const period = normalizePeriod(rawPeriod);
   const fuWin = normalizeFuWindow(rawFu);
@@ -179,7 +195,11 @@ export async function MobileOwnerHome({
   const now = new Date();
   const nowMs = now.getTime();
 
-  const [data, counts, notif, presence, live, team, fu, audit] = await Promise.all([
+  // «الأسبوع السابق» يُحترم للمالك فقط — الأدمن يثبت على الحالي خادميًا.
+  const lb: "this" | "last" = owner && rawLb === "last" ? "last" : "this";
+  const lbRef = lb === "last" ? new Date(nowMs - 7 * 86_400_000) : now;
+
+  const [data, counts, notif, presence, live, team, fu, audit, board] = await Promise.all([
     getDashboard(period),
     // نفس دالة شارة الزئبق حرفيًا — ومغلّفة بـcache() فالبطاقة والشارة تقرآن نتيجة الطلب الواحدة.
     getLeadCounts(),
@@ -193,6 +213,8 @@ export async function MobileOwnerHome({
     getOwnerTeamFollowups(fuWin),
     // آخر ٣٠ عملية بأسماء وجوالات محلولة ومعرّف عميل مؤكد — نفس مسار لوحة الويب.
     getOwnerAudit(30),
+    // لوحة الأسبوع — نفس درجة /leaderboard حرفيًا (الإنجاز × الجودة)، مرتّبة ومرقّمة.
+    getLeaderboard(lbRef),
   ]);
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
@@ -309,6 +331,13 @@ export async function MobileOwnerHome({
     clientName: a.clientName,
   }));
 
+  // ===== ٦) لوحة الأسبوع — صفوف getLeaderboard كما وصلت (مرتّبة ومرقّمة) =====
+  const raceRows: LeaderboardRaceRow[] = board.rows.map((r) => ({ id: r.id, rank: r.rank, name: r.name, score: r.score }));
+  const lbRange = weekRangeText(board.weekStart, board.weekEnd);
+  // بارامترات محفوظة بين الفلاتر الثلاثة (?p= و?fu= و?lb=) — الافتراضي يُسقط.
+  const keepPF: Record<string, string> = { ...(period !== "all" ? { p: period } : {}), ...(fuWin !== "today" ? { fu: fuWin } : {}) };
+  const keepLb: Record<string, string> = lb === "last" ? { lb } : {};
+
   // ===== ١) أرقام الأداء =====
   const unassigned = counts.unassigned;
   const PERIODS: { key: Period; label: string }[] = [
@@ -342,7 +371,7 @@ export async function MobileOwnerHome({
 
       {/* ===== ١) أرقام الأداء (owner-home-final) ===== */}
       <SecNum n="١" ac={SOP.gold} title="أرقام الأداء" cnt="حسب الفترة" />
-      <PeriodSeg param="p" current={period} base="/m" items={PERIODS} keep={fuWin !== "today" ? { fu: fuWin } : undefined} />
+      <PeriodSeg param="p" current={period} base="/m" items={PERIODS} keep={{ ...(fuWin !== "today" ? { fu: fuWin } : {}), ...keepLb }} />
 
       {/* كرت غير الموزّعين — نفس مصدر شارة الزئبق ونفس وجهتها (/m/unassigned) */}
       {unassigned > 0 && (
@@ -395,7 +424,7 @@ export async function MobileOwnerHome({
 
       {/* ===== ٣) التزام الموظفين بالمتابعات ===== */}
       <SecNum n="٣" ac={SOP.amber} title="التزام الموظفين بالمتابعات" cnt="الكل ←" cntHref="/m/team" />
-      <ChipsRow param="fu" current={fuWin} base="/m" items={FU_WINDOWS} keep={period !== "all" ? { p: period } : undefined} />
+      <ChipsRow param="fu" current={fuWin} base="/m" items={FU_WINDOWS} keep={{ ...(period !== "all" ? { p: period } : {}), ...keepLb }} />
       {commitRows.length === 0 ? (
         <div className="m-raise text-center" style={{ borderRadius: 13, padding: 16, fontSize: 12, color: SOP.mut }}>
           ما فيه متابعات مجدولة بهذه النافذة
@@ -443,12 +472,17 @@ export async function MobileOwnerHome({
       <SecNum n="٥" ac={SOP.purple} title="قمع المبيعات" cnt="للتفصيل ←" cntHref="/m/analytics" />
       <OwnerFunnel funnel={data.funnel} />
 
-      {/* ===== ٦) نجم الأسبوع — Placeholder (المعادلة والتصميم بانتظار الاعتماد) ===== */}
-      <SecNum n="٦" ac={SOP.gold} title="نجم الأسبوع" cnt="هذا الأسبوع" />
-      <div className="m-raise text-center" style={{ borderRadius: 20, padding: "18px 14px" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: SOP.tx2 }}>يُفعّل بعد اعتماد معادلة الترشيح</div>
-        <div style={{ fontSize: "9.5px", color: SOP.mut, marginTop: 4 }}>الأعلى إنجازًا هذا الأسبوع — قريبًا</div>
-      </div>
+      {/* ===== ٦) لوحة الأسبوع ===== */}
+      <SecNum n="٦" ac={SOP.gold} title="لوحة الأسبوع" cnt="ترتيب الفريق" />
+      <OwnerLeaderboardSection
+        rows={raceRows}
+        unranked={board.unranked.map((r) => r.name)}
+        rangeText={lbRange}
+        current={lb}
+        showLast={owner}
+        hrefThis={chipHref("lb", "this", "this", "/m", keepPF)}
+        hrefLast={chipHref("lb", "last", "this", "/m", keepPF)}
+      />
     </div>
   );
 }

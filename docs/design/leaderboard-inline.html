@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة الأسبوع — قسم في الرئيسية</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Zain:wght@400;700;800;900&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{--page:#0A0A0B;--plane:#17181B;--plane-hi:#1b1d22;--sd:#0b0c0e;--sl:#242630;--edge:rgba(255,255,255,.06);--edge-2:rgba(255,255,255,.11);
+    --tx:#F4F5F7;--tx2:#AEB0B7;--mut:#6f7178;--gold:#CBA45E;--gold2:#E4C489;--ongold:#1a1304;--green:#42D699;--red:#F0656A;--blue:#6E9BE6;--amber:#E5A54D;--teal:#5bbccb;--purple:#a98edb;--silver:#c8ccd4;--bronze:#cd9b6a;
+    background:#050506;color:var(--tx);font-family:'IBM Plex Sans Arabic',sans-serif;padding:24px 0 60px;transition:background .4s}
+  body.day{--page:#e8e4dd;--plane:#f4f1ea;--plane-hi:#faf8f2;--sd:#d0ccc2;--sl:#ffffff;--edge:rgba(90,74,45,.08);--edge-2:rgba(90,74,45,.14);--tx:#221f18;--tx2:#5b564b;--mut:#928c7e;--gold:#9c7a2f;--gold2:#b28a35;--ongold:#fff;--green:#1a8f5f;--red:#c9433c;--blue:#3f74c4;--amber:#b07d22;--teal:#2f8b9c;--purple:#7a5fb0;--silver:#8b8f98;--bronze:#a9743f;background:#dcd7cd}
+  .num{font-family:'Zain',sans-serif;font-weight:800;letter-spacing:-.5px;font-feature-settings:"tnum"}
+  svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  @keyframes fillbar{from{width:0}}@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  .anim{opacity:0;animation:slideUp .5s ease forwards}
+  .top{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:14px}
+  .top h1{font-size:20px;font-weight:700}.top p{font-size:11px;color:var(--tx2);text-align:center;max-width:380px;line-height:1.6}
+  .toggle{display:flex;gap:4px;padding:5px;border-radius:14px;background:var(--plane);box-shadow:inset 3px 3px 8px var(--sd),inset -3px -3px 8px var(--sl)}
+  .toggle button{padding:7px 18px;border-radius:10px;border:none;background:transparent;color:var(--tx2);font-size:12px;font-weight:600;cursor:pointer}
+  .toggle button.on{color:var(--gold2);background:var(--plane);box-shadow:4px 4px 9px var(--sd),-4px -4px 9px var(--sl)}
+  .stage{display:flex;justify-content:center;padding:6px 20px 26px}
+  .ph{width:342px;border-radius:34px;padding:16px;background:var(--page);border:1px solid var(--edge);box-shadow:0 24px 66px rgba(0,0,0,.5)}
+
+  .sec-h{display:flex;align-items:center;gap:8px;margin:0 2px 11px}
+  .sec-h .sn{font-family:'Zain';font-weight:800;font-size:11px;width:19px;height:19px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+  .sec-h .tt{font-size:14px;font-weight:800}.sec-h .cc{margin-inline-start:auto;font-size:9px;color:var(--mut)}
+
+  /* period filter */
+  .pfilt{display:flex;gap:6px;margin-bottom:8px}
+  .pf{flex:1;padding:8px 4px;border-radius:11px;border:none;background:var(--plane);box-shadow:3px 3px 7px var(--sd),-3px -3px 7px var(--sl);color:var(--tx2);font-size:10.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .pf.on{color:var(--ongold);background:linear-gradient(135deg,var(--gold2),var(--gold))}
+  .daterange{font-size:9px;color:var(--mut);text-align:center;margin-bottom:12px}
+  /* custom row (hidden unless مخصّص) */
+  .customrow{display:none;gap:7px;margin-bottom:12px}
+  .customrow.show{display:flex}
+  .customrow label{flex:1;position:relative;border-radius:11px;padding:8px 10px;background:var(--plane);box-shadow:inset 2px 2px 6px var(--sd),inset -2px -2px 6px var(--sl);display:flex;align-items:center;gap:6px}
+  .customrow label span{font-size:8.5px;color:var(--mut)}.customrow label .dv{font-size:10px;color:var(--tx2);font-family:'Zain';font-weight:700;margin-inline-start:auto}
+  .customrow label svg{width:13px;stroke:var(--gold2)}
+
+  .race{border-radius:16px;padding:14px 13px;background:var(--plane);box-shadow:5px 5px 12px var(--sd),-5px -5px 12px var(--sl)}
+  .rr{margin-bottom:13px}.rr:last-child{margin-bottom:0}
+  .rr .rh{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  .rr .rk{font-family:'Zain';font-weight:800;font-size:12px;width:16px;color:var(--mut);flex:none;text-align:center}
+  .rr.p1 .rk{color:var(--gold2)}
+  .rr .nm{flex:1;font-size:11.5px;font-weight:600}.rr .nm .crown{color:var(--gold2);margin-inline-start:4px}.rr .nm .crown svg{width:12px;vertical-align:-2px}
+  .rr .sc{font-family:'Zain';font-weight:800;font-size:15px;color:var(--bc)}
+  .rr .track{height:12px;border-radius:6px;background:var(--sd);overflow:hidden;margin-inline-start:24px}
+  .rr .track i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--bc),color-mix(in srgb,var(--bc) 55%,var(--plane)));animation:fillbar 1.3s cubic-bezier(.2,.7,.3,1)}
+
+  .unranked{margin-top:11px}.unranked .ut{font-size:9px;color:var(--mut);margin-bottom:7px}
+  .unranked .uw{display:flex;gap:6px;flex-wrap:wrap}
+  .uchip{font-size:10px;padding:6px 11px;border-radius:9px;background:var(--plane);box-shadow:3px 3px 7px var(--sd),-3px -3px 7px var(--sl);color:var(--tx2)}
+  .formula{margin-top:11px;border-radius:12px;padding:11px;background:var(--plane-hi);box-shadow:inset 2px 2px 6px var(--sd),inset -2px -2px 6px var(--sl);font-size:8.5px;color:var(--mut);line-height:1.7}
+  .formula b{color:var(--gold2)}
+</style>
+</head>
+<body class="night">
+  <div class="top">
+    <h1>لوحة الأسبوع — قسم داخل الرئيسية</h1>
+    <p>سباق الأشرطة (٣) كقسم بالرئيسية مباشرة، بلا صفحة منفصلة. + فلتر: هذا الأسبوع / السابق / مخصّص (جرّب «مخصّص» يطلع حقلي التاريخ). ليل + نهار.</p>
+    <div class="toggle"><button class="on" id="bN">ليل</button><button id="bD">نهار</button></div>
+  </div>
+
+  <div class="stage"><div class="ph">
+    <div class="sec-h"><span class="sn">٦</span><span class="tt">لوحة الأسبوع</span><span class="cc">ترتيب الفريق</span></div>
+
+    <div class="pfilt">
+      <button class="pf on" data-p="this">هذا الأسبوع</button>
+      <button class="pf" data-p="last">الأسبوع السابق</button>
+      <button class="pf" data-p="custom">مخصّص</button>
+    </div>
+    <div class="daterange" id="drange">٢٣ – ٢٩ أغسطس ٢٠٢٦</div>
+    <div class="customrow" id="crow">
+      <label><svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg><span>من</span><span class="dv">٢٣ أغسطس</span></label>
+      <label><svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg><span>إلى</span><span class="dv">٢٩ أغسطس</span></label>
+    </div>
+
+    <div class="race">
+      <div class="rr p1" style="--bc:var(--gold2)"><div class="rh"><span class="rk num">١</span><span class="nm">عبير الحربي<span class="crown"><svg viewBox="0 0 24 24"><path d="M3 6l4 4 5-6 5 6 4-4-2 12H5L3 6Z"/></svg></span></span><span class="sc num">٣٢٩</span></div><div class="track"><i style="width:100%"></i></div></div>
+      <div class="rr" style="--bc:var(--silver)"><div class="rh"><span class="rk num">٢</span><span class="nm">محمد حامد</span><span class="sc num">٢١٩</span></div><div class="track"><i style="width:67%"></i></div></div>
+      <div class="rr" style="--bc:var(--bronze)"><div class="rh"><span class="rk num">٣</span><span class="nm">أسماء الشهري</span><span class="sc num">٢١٨</span></div><div class="track"><i style="width:66%"></i></div></div>
+      <div class="rr" style="--bc:var(--blue)"><div class="rh"><span class="rk num">٤</span><span class="nm">سعود حامد</span><span class="sc num">١٠١</span></div><div class="track"><i style="width:31%"></i></div></div>
+      <div class="rr" style="--bc:var(--teal)"><div class="rh"><span class="rk num">٥</span><span class="nm">بدر حامد</span><span class="sc num">٤٧</span></div><div class="track"><i style="width:14%"></i></div></div>
+      <div class="rr" style="--bc:var(--mut)"><div class="rh"><span class="rk num">٦</span><span class="nm">أمل</span><span class="sc num">٠</span></div><div class="track"><i style="width:2%"></i></div></div>
+    </div>
+
+    <div class="unranked"><div class="ut">خارج الترتيب — بلا عملاء مسندين هذا الأسبوع:</div><div class="uw"><span class="uchip">خالد الجابر</span><span class="uchip">مها الزهراني</span></div></div>
+    <div class="formula"><b>الدرجة</b> = الإنجاز × الجودة (٠٫٨–١٫٢). الطول نسبة لأعلى درجة (عبير ٣٢٩ = ١٠٠٪). عرض وترتيب فقط — بلا مكافآت مالية.</div>
+  </div></div>
+
+<script>
+  const b=document.body,bN=document.getElementById('bN'),bD=document.getElementById('bD');
+  bN.onclick=()=>{b.classList.remove('day');b.classList.add('night');bN.classList.add('on');bD.classList.remove('on')};
+  bD.onclick=()=>{b.classList.remove('night');b.classList.add('day');bD.classList.add('on');bN.classList.remove('on')};
+  const ranges={this:'٢٣ – ٢٩ أغسطس ٢٠٢٦',last:'١٦ – ٢٢ أغسطس ٢٠٢٦',custom:'اختر المدة'};
+  document.querySelectorAll('.pf').forEach(p=>p.onclick=()=>{
+    document.querySelectorAll('.pf').forEach(x=>x.classList.remove('on'));p.classList.add('on');
+    const k=p.dataset.p;document.getElementById('drange').textContent=ranges[k];
+    document.getElementById('crow').classList.toggle('show',k==='custom');
+    document.getElementById('drange').style.display=k==='custom'?'none':'block';
+  });
+</script>
+</body>
+</html>
