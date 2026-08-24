@@ -12,18 +12,46 @@
 
 export type GeoPermState = "granted" | "prompt" | "denied" | "unavailable";
 
+/**
+ * ذاكرة المنحة الجهازية — iOS WKWebView بلا permissions.query كان يفترض
+ * «prompt» كل إقلاع فتعود شاشة التمهيد ويتعطل نبض الرادار (heartbeat يشترط
+ * «granted» حرفيًا). المفتاح جهازي عمدًا: إذن OS نفسه جهازي لا مستخدمي.
+ * يُكتب عند أي قراءة ناجحة، ويُمسح عند رفض صريح (code 1 — سحب الإذن).
+ */
+const GRANT_KEY = "attendance-geo-granted-v1";
+
+function rememberGrant(granted: boolean): void {
+  try {
+    if (granted) window.localStorage.setItem(GRANT_KEY, "1");
+    else window.localStorage.removeItem(GRANT_KEY);
+  } catch {
+    /* تخزين محجوب (تصفح خاص) — الذاكرة تسقط بأمان لسلوك ما قبلها */
+  }
+}
+
+function hasRememberedGrant(): boolean {
+  try {
+    return window.localStorage.getItem(GRANT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** حالة الإذن الحالية — بلا إطلاق أي طلب. `unavailable` = لا API إطلاقًا. */
 export async function queryGeoPermission(): Promise<GeoPermState> {
   if (typeof navigator === "undefined" || !navigator.geolocation) return "unavailable";
-  // بعض المتصفحات/الـWebViews لا تدعم permissions.query لـgeolocation — نفترض
-  // «prompt» بأمان (شاشة التفعيل تظهر، والطلب الفعلي يحسم الحالة الحقيقية).
-  if (!navigator.permissions?.query) return "prompt";
+  // لا permissions.query (iOS WKWebView غالبًا): ذاكرة المنحة تحسم — منحة OS
+  // نفسها ثابتة بين الفتحات، والذي كان يضيع هو «علم التطبيق» بها.
+  if (!navigator.permissions?.query) return hasRememberedGrant() ? "granted" : "prompt";
   try {
     const st = await navigator.permissions.query({ name: "geolocation" as PermissionName });
     // «prompt-with-rationale» (أندرويد) تُعامل كـprompt.
-    return st.state === "granted" ? "granted" : st.state === "denied" ? "denied" : "prompt";
+    const state: GeoPermState = st.state === "granted" ? "granted" : st.state === "denied" ? "denied" : "prompt";
+    // permissions.query هو الحاكم حيث يتوفر — والذاكرة تُحدَّث وفق حكمه.
+    rememberGrant(state === "granted");
+    return state;
   } catch {
-    return "prompt";
+    return hasRememberedGrant() ? "granted" : "prompt";
   }
 }
 
@@ -52,12 +80,22 @@ export function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPos
       reject(new Error("unavailable"));
       return;
     }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 12_000,
-      ...opts,
-    });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
+        resolve(pos);
+      },
+      (err) => {
+        if (err?.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
+        reject(err);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 12_000,
+        ...opts,
+      },
+    );
   });
 }
 
@@ -87,8 +125,13 @@ export function readBestPosition(opts?: { targetAccuracy?: number; timeoutMs?: n
       done = true;
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       clearTimeout(timer);
-      if (pos) resolve(pos);
-      else reject(err ?? new Error("timeout"));
+      if (pos) {
+        rememberGrant(true); // تثبيت وصل = المنحة قائمة
+        resolve(pos);
+      } else {
+        if ((err as GeolocationPositionError | undefined)?.code === 1) rememberGrant(false);
+        reject(err ?? new Error("timeout"));
+      }
     };
     const consider = (pos: GeolocationPosition) => {
       if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
