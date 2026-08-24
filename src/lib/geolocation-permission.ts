@@ -1,16 +1,88 @@
 /**
  * طبقة إذن الموقع الموحّدة (الحضور بالرادار — ر١) — عميل فقط.
  *
- * تعمل عبر Web Geolocation API + navigator.permissions، فتغطّي المتصفح
- * وWebView أندرويد (يرث إذن التطبيق من AndroidManifest). طبقة native
- * (@capacitor/geolocation + Info.plist) تُضاف في مرحلة البناء المنفصلة — هذا
- * الملف مكتوب ليُلفّ لاحقًا بلا تغيير واجهته.
+ * مساران خلف واجهة واحدة لا تتغيّر:
+ * - **أصلي** (تطبيق Capacitor + إضافة Geolocation متوفّرة): @capacitor/geolocation
+ *   يخاطب CoreLocation مباشرة، فالإجابات إجابات iOS الرسمية (لا تخمين WebView).
+ * - **ويب** (متصفح، أو تطبيق قديم بلا الإضافة): Web Geolocation API +
+ *   navigator.permissions كما كان حرفيًا — توافق خلفي كامل.
+ *
+ * الكاشف أدناه (`nativeGeo`) هو الفاصل الوحيد بينهما، وذاكرة المنحة الجهازية
+ * تُحدَّث من المسارين معًا.
  *
  * الحقيقة الحاكمة (من البحث): الإذن يُمنح فقط لحظة طلب موقع فعلي — فالطلب
  * الرسمي يُطلق من زر صريح (شاشة التفعيل / «أنا موجود بالموقع») لا من النبض.
  */
 
 export type GeoPermState = "granted" | "prompt" | "denied" | "unavailable";
+
+type NativeGeo = typeof import("@capacitor/geolocation").Geolocation;
+type NativePosition = import("@capacitor/geolocation").Position;
+
+/**
+ * كاشف المسار الأصلي — تحميل كسول مرّة واحدة (الوعد نفسه مُخبّأ فلا سباق).
+ * `isPluginAvailable` شرط جوهري: تطبيق قديم مبني قبل هذه الدفعة لا يحمل
+ * الإضافة، فيسقط للمسار الويبي بلا كسر.
+ */
+let nativeGeoPromise: Promise<NativeGeo | null> | null = null;
+
+function nativeGeo(): Promise<NativeGeo | null> {
+  nativeGeoPromise ??= (async () => {
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable("Geolocation")) return null;
+      const { Geolocation } = await import("@capacitor/geolocation");
+      return Geolocation;
+    } catch {
+      return null;
+    }
+  })();
+  return nativeGeoPromise;
+}
+
+/** تطبيع تثبيت أصلي إلى شكل GeolocationPosition — المستهلكون لا يفرّقون. */
+function toWebPosition(p: NativePosition): GeolocationPosition {
+  const c = p.coords;
+  const coords = {
+    latitude: c.latitude,
+    longitude: c.longitude,
+    accuracy: c.accuracy,
+    altitude: c.altitude ?? null,
+    altitudeAccuracy: c.altitudeAccuracy ?? null,
+    heading: c.heading ?? null,
+    speed: c.speed ?? null,
+  };
+  return {
+    coords: { ...coords, toJSON: () => ({ ...coords }) },
+    timestamp: p.timestamp,
+    toJSON: () => ({ coords: { ...coords }, timestamp: p.timestamp }),
+  } as unknown as GeolocationPosition;
+}
+
+/**
+ * تطبيع خطأ أصلي إلى شكل GeolocationPositionError — `code === 1` هو ما تبني
+ * عليه ذاكرة المنحة قرار المسح، فنستنطق checkPermissions لنعرف أهو رفض إذن
+ * فعلًا أم مجرد تعذّر تثبيت.
+ */
+async function toWebError(err: unknown, geo: NativeGeo): Promise<GeolocationPositionError> {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  let code = 2; // POSITION_UNAVAILABLE
+  try {
+    const st = await geo.checkPermissions();
+    if (st.location === "denied") code = 1;
+    else if (/timeout|timed out/i.test(message)) code = 3;
+  } catch {
+    // checkPermissions ترمي حين تكون خدمات الموقع مطفأة نظاميًا — لا رفض إذن.
+    if (/timeout|timed out/i.test(message)) code = 3;
+  }
+  return {
+    code,
+    message,
+    PERMISSION_DENIED: 1,
+    POSITION_UNAVAILABLE: 2,
+    TIMEOUT: 3,
+  } as GeolocationPositionError;
+}
 
 /**
  * ذاكرة المنحة الجهازية — iOS WKWebView بلا permissions.query كان يفترض
@@ -39,6 +111,20 @@ function hasRememberedGrant(): boolean {
 
 /** حالة الإذن الحالية — بلا إطلاق أي طلب. `unavailable` = لا API إطلاقًا. */
 export async function queryGeoPermission(): Promise<GeoPermState> {
+  const geo = await nativeGeo();
+  if (geo) {
+    try {
+      const st = await geo.checkPermissions();
+      // 'prompt-with-rationale' (أندرويد) تُعامل كـprompt — كما في المسار الويبي.
+      const state: GeoPermState =
+        st.location === "granted" ? "granted" : st.location === "denied" ? "denied" : "prompt";
+      rememberGrant(state === "granted");
+      return state;
+    } catch {
+      // خدمات الموقع مطفأة نظاميًا (checkPermissions ترمي) — نسقط للمسار
+      // الويبي أدناه بدل اختلاق حكم، فيبقى السلوك كما كان قبل الدفعة.
+    }
+  }
   if (typeof navigator === "undefined" || !navigator.geolocation) return "unavailable";
   // لا permissions.query (iOS WKWebView غالبًا): ذاكرة المنحة تحسم — منحة OS
   // نفسها ثابتة بين الفتحات، والذي كان يضيع هو «علم التطبيق» بها.
@@ -74,7 +160,28 @@ export function onGeoPermissionChange(cb: (state: GeoPermState) => void): () => 
 }
 
 /** قراءة موقع واحدة — للنبض و«أنا موجود بالموقع». عالية الدقة للطلب الصريح. */
-export function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
+export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
+  const geo = await nativeGeo();
+  if (geo) {
+    try {
+      const pos = await geo.getCurrentPosition({
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 12_000,
+        ...opts,
+      });
+      rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
+      return toWebPosition(pos);
+    } catch (err) {
+      const e = await toWebError(err, geo);
+      if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
+      throw e;
+    }
+  }
+  return readPositionOnceWeb(opts);
+}
+
+function readPositionOnceWeb(opts?: PositionOptions): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       reject(new Error("unavailable"));
@@ -108,9 +215,83 @@ export function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPos
  * ترياق iOS: watchPosition قد لا يطلق أول حدث بسرعة — نطلق getCurrentPosition
  * بالتوازي كبذرة، وأيّهما وصل بدقة كافية يحسم.
  */
-export function readBestPosition(opts?: { targetAccuracy?: number; timeoutMs?: number }): Promise<GeolocationPosition> {
+export async function readBestPosition(opts?: {
+  targetAccuracy?: number;
+  timeoutMs?: number;
+}): Promise<GeolocationPosition> {
   const targetAccuracy = opts?.targetAccuracy ?? 50;
   const timeoutMs = opts?.timeoutMs ?? 12_000;
+  const geo = await nativeGeo();
+  if (geo) return readBestPositionNative(geo, targetAccuracy, timeoutMs);
+  return readBestPositionWeb(targetAccuracy, timeoutMs);
+}
+
+/**
+ * نسخة أصلية بنفس دلالات النسخة الويبية حرفيًا: بذرة getCurrentPosition
+ * موازية · حسم عند accuracy ≤ الهدف · المهلة ترجع أفضل تثبيت · clearWatch
+ * دائمًا (حتى لو وصل معرّف الـwatch بعد الحسم — لا watch يبقى حيًا يستنزف
+ * البطارية).
+ */
+function readBestPositionNative(
+  geo: NativeGeo,
+  targetAccuracy: number,
+  timeoutMs: number,
+): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    let best: GeolocationPosition | null = null;
+    let done = false;
+    let watchId: string | null = null;
+    let cleared = false;
+
+    const clear = () => {
+      if (cleared || watchId === null) return; // لا معرّف بعد — يُلغى فور وصوله
+      cleared = true;
+      void geo.clearWatch({ id: watchId }).catch(() => {});
+    };
+    const finish = (pos: GeolocationPosition | null, err?: unknown) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      clear();
+      if (pos) {
+        rememberGrant(true); // تثبيت وصل = المنحة قائمة
+        resolve(pos);
+      } else {
+        if ((err as GeolocationPositionError | undefined)?.code === 1) rememberGrant(false);
+        reject(err ?? new Error("timeout"));
+      }
+    };
+    const consider = (pos: GeolocationPosition) => {
+      if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+      if (pos.coords.accuracy <= targetAccuracy) finish(pos); // دقة كافية — احسم فورًا
+    };
+    const fail = (err: unknown) => {
+      if (best) return; // عندنا تثبيت — المهلة تحسم به كما في الويب
+      void toWebError(err, geo).then((e) => finish(null, e));
+    };
+
+    const timer = setTimeout(() => finish(best), timeoutMs);
+    const highAcc = { enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs };
+
+    geo
+      .watchPosition(highAcc, (pos, err) => {
+        if (pos) consider(toWebPosition(pos));
+        else if (err) fail(err);
+      })
+      .then((id) => {
+        watchId = id;
+        if (done) clear(); // حُسم قبل وصول المعرّف — ألغِ الآن
+      })
+      .catch(fail);
+    // بذرة موازية — تعجّل أول تثبيت.
+    geo
+      .getCurrentPosition(highAcc)
+      .then((p) => consider(toWebPosition(p)))
+      .catch(() => {});
+  });
+}
+
+function readBestPositionWeb(targetAccuracy: number, timeoutMs: number): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       reject(new Error("unavailable"));
@@ -152,6 +333,20 @@ export function readBestPosition(opts?: { targetAccuracy?: number; timeoutMs?: n
  * (قد يكون منح مع فشل تثبيت مؤقت).
  */
 export async function requestGeoPermission(): Promise<GeoPermState> {
+  const geo = await nativeGeo();
+  if (geo) {
+    try {
+      // الطلب الرسمي عبر CoreLocation — حوار iOS الحقيقي لا استنتاج WebView.
+      const st = await geo.requestPermissions({ permissions: ["location"] });
+      if (st.location === "denied") {
+        rememberGrant(false);
+        return "denied";
+      }
+    } catch {
+      // خدمات مطفأة أو رفض — القراءة التأكيدية أدناه تحسم.
+    }
+  }
+  // قراءة تأكيدية — مشتركة بين المسارين (readPositionOnce توجّه بنفسها).
   try {
     await readPositionOnce({ enableHighAccuracy: true, timeout: 12_000 });
     return "granted";
