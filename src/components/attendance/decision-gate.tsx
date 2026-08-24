@@ -201,8 +201,8 @@ export function DecisionGate() {
         aria-label="حسم يومك"
         className="att-scope fixed inset-0 z-[93] flex items-center justify-center p-4"
       >
-        {/* خلفية بلا onClick عمدًا — الشاشة لا تُرفع إلا بإجابة */}
-        <div className="absolute inset-0" style={{ background: "rgba(8, 5, 3, 0.9)", backdropFilter: "blur(6px)" }} />
+        {/* خلفية بلا onClick عمدًا — الشاشة لا تُرفع إلا بإجابة. التعتيم توكن بثيميه. */}
+        <div className="absolute inset-0" style={{ background: "var(--att-overlay)", backdropFilter: "blur(6px)" }} />
 
         <div
           className="relative w-full max-w-md overflow-hidden rounded-3xl border p-5"
@@ -287,6 +287,10 @@ export function DecisionGate() {
               </button>
               <p className="pt-1 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
                 ما تنغلق إلا بإجابة — وكل إجابة تصل الإدارة فورًا
+              </p>
+              {/* ترخيص فال — نفس نمط تذييل صفحات /m حرفيًا. */}
+              <p className="text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
+                ترخيص فال (REGA) {toArabicDigits("1200021029")}
               </p>
             </div>
           )}

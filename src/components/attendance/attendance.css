@@ -54,6 +54,20 @@
   --att-esp-text: #f4ecdd;
   --att-esp-muted: #b3a68e;
   --att-esp-grain-blend: overlay;
+
+  /* ===== تعتيم الشاشات الحاجبة (الحسم/التفعيل) — كان rgba سطريًا في TSX ===== */
+  --att-overlay: rgba(8, 5, 3, 0.9);
+  --att-overlay-soft: rgba(8, 5, 3, 0.82);
+}
+
+/*
+ * سقف أيقونات شاشات الحضور — يمنع تمدد svg مع flex/grid (نظير سقف mobile.css
+ * لكن لكل نطاق .att-scope بما فيه البورتالات). الاستثناء الموسوم data-svg-free:
+ * الحلقات والرسوم المقصودة أكبر (حلقة 168/184px، أيقونة بطلة الشاشة).
+ */
+.att-scope svg:not([data-svg-free]) {
+  max-width: 24px;
+  max-height: 24px;
 }
 
 /* ===== النهاري — يتفعّل بسمة الثيم القائمة (غلاف الجوال أو <html>) ===== */
@@ -87,6 +101,10 @@
   --att-esp-text: #2b2417;
   --att-esp-muted: #6f6551;
   --att-esp-grain-blend: multiply;
+
+  /* تعتيم نهاري — بنّي دافئ خفيف من عائلة نص الثيم النهاري بدل السواد الليلي. */
+  --att-overlay: rgba(43, 36, 23, 0.55);
+  --att-overlay-soft: rgba(43, 36, 23, 0.45);
 }
 
 /* ═══════════════ البلاط الموحّد ═══════════════ */
