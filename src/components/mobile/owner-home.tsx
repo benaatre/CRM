@@ -1,140 +1,164 @@
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { getDashboard, normalizePeriod, type Period } from "@/lib/data/dashboard";
 import { getLeadCounts } from "@/lib/data/leads";
-import { getNoResponseCount } from "@/lib/data/no-response";
 import { getNotifications } from "@/lib/actions/notifications";
-import { activeDuplicateGroupCount } from "@/lib/data/duplicates";
-import { getTeamCommitment, normalizeFuWindow, FU_WINDOWS, type FuWindow } from "@/lib/data/team-commitment";
-import { getAuditLog, resolveAuditNames, inferFollowupLeads, type AuditEntry, type AuditNameMaps } from "@/lib/data/audit";
-import { getTeamPresence, type PresenceRow } from "@/lib/data/team";
-import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
+import { normalizeFuWindow, FU_WINDOWS } from "@/lib/data/team-commitment";
+import { getOwnerTeamFollowups, getOwnerAudit } from "@/lib/data/owner-dashboard";
+import { getLiveBoard } from "@/lib/data/attendance";
+import { getTeam, getTeamPresence } from "@/lib/data/team";
+import { pauseReasonLabel, formatPauseRemaining } from "@/lib/availability";
+import { SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits, elapsedLabel, greeting } from "@/lib/mobile-format";
-import { formatDate, formatDateTime, RIYADH_TZ } from "@/lib/format";
-import { ksaDayKey } from "@/lib/ksa-time";
-import { MobileChips } from "@/components/mobile/chips";
+import { formatDate } from "@/lib/format";
 import { MobileHeaderActions } from "@/components/mobile/header-actions";
 import { OwnerKpis } from "@/components/mobile/owner-kpis";
-import { TeamCommitment, type CommitmentRow } from "@/components/mobile/team-commitment";
-import { TeamStrip, type StripTile } from "@/components/mobile/team-strip";
-import { AuditFeed, type AuditFeedRow } from "@/components/mobile/audit-feed";
+import { OwnerTeamSection, type OwnerTeamRow, type OwnerTeamState } from "@/components/mobile/owner-team";
+import { OwnerAuditSection, type OwnerAuditItem } from "@/components/mobile/owner-audit";
 import { OwnerFunnel } from "@/components/mobile/owner-funnel";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 /**
- * رئيسية المالك/المدير v3 — «قرارك الآن» + أرقامك + شريط الفريق الحي +
- * التزام المتابعات + سجل التدقيق + القمع المطوي. عرض وتغليف خالص:
- * كل البيانات من الدوال القائمة (+ توسعتان معلنتان: عدّاد مكرري اليوم في
- * activeDuplicateGroupCount وإنتاج اليوم في getTeamPresence) — صفر منطق أعمال جديد.
+ * رئيسية المالك/المدير — إعادة تصميم owner-home-final الكاملة:
+ * ١) أرقام الأداء (segmented + كرت غير الموزّعين + الحبوب)
+ * ٢) دوام وحالة الفريق (getLiveBoard + getTeam — حلقات نسبة الدوام والاستقبال)
+ * ٣) التزام المتابعات (getOwnerTeamFollowups — الأسوأ أولًا من الخادم)
+ * ٤) سجل التدقيق التفاعلي (getOwnerAudit + معاينة العميل)
+ * ٥) قمع المبيعات (getDashboard.funnel بألوان STAGE_HEX)
+ * ٦) نجم الأسبوع — Placeholder بانتظار اعتماد المعادلة.
+ * عرض وتغليف خالص فوق الدوال القائمة — صفر منطق أعمال جديد.
  */
 
 const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)" };
-const HOUR_MS = 3_600_000;
-const DAY_MS = 86_400_000;
 
-// ===================== شريط الفريق: الحالة وشارة المدة =====================
+// ===================== ترويسة قسم مرقّمة + شرائط الفلاتر (owner-home-final) =====================
 
-function sinceParts(p: PresenceRow, now: number): Pick<StripTile, "state" | "sinceNum" | "sinceUnit"> {
-  // مدة الجلسة غير متاحة بقاعدة البيانات (loginAt في الـJWT فقط) — لا نخترع مدة:
-  // المتصل شارته «متصل / الآن» والبقية «X من آخر ظهور».
-  if (p.online) return { state: "on", sinceNum: "متصل", sinceUnit: "الآن" };
-  if (!p.lastSeenAt) return { state: "dorm", sinceNum: "—", sinceUnit: "ما دخل أبدًا" };
-  const diff = now - p.lastSeenAt.getTime();
-  const mins = Math.max(1, Math.floor(diff / 60_000));
-  if (diff < HOUR_MS) return { state: "soon", sinceNum: toArabicDigits(mins), sinceUnit: "دقيقة من آخر ظهور" };
-  const hours = Math.floor(diff / HOUR_MS);
-  if (hours < 24) {
-    return { state: "away", sinceNum: toArabicDigits(hours), sinceUnit: `${hours === 1 ? "ساعة" : hours === 2 ? "ساعتين" : hours <= 10 ? "ساعات" : "ساعة"} من آخر ظهور` };
-  }
-  const days = Math.floor(diff / DAY_MS);
-  const unit = `${days === 1 ? "يوم" : days === 2 ? "يومين" : days <= 10 ? "أيام" : "يوم"} من آخر ظهور`;
-  if (days >= 15) return { state: "dorm", sinceNum: toArabicDigits(days), sinceUnit: unit };
-  return { state: "away", sinceNum: toArabicDigits(days), sinceUnit: unit };
-}
-
-// ===================== سجل التدقيق: التصنيف والتعريب =====================
-
-function auditKind(e: AuditEntry): AuditFeedRow["kind"] {
-  const a = e.action;
-  if (/Pull|warned/i.test(a) || a.includes("security") || a.includes("delete")
-    || a.startsWith("REVEAL") || a.startsWith("HIDE") || a.startsWith("session.") || a.startsWith("auth.")) return "crit";
-  if (!e.userId || /auto/i.test(a)) return "sys";
-  if (a.startsWith("followup.") || a === "lead.stage" || a === "lead.firstStage") return "fup";
-  return "adm";
-}
-
-/** شارة الفعل — قاموس ثابت بالواجهة فوق مفاتيح action؛ المجهول «إجراء». */
-function auditBadge(action: string, summary: string): string {
-  if (action === "followup.added") return /زيار/.test(summary) ? "زيارة" : "متابعة";
-  if (action === "followup.edited") return "تعديل";
-  if (action === "lead.stage" || action === "lead.firstStage") return "مرحلة";
-  if (action.startsWith("booking.")) return /دفعة/.test(summary) ? "دفعة" : "حجز";
-  if (/Pull/i.test(action)) return "سحب";
-  if (/warned/i.test(action)) return "إنذار";
-  if (/distributed/i.test(action)) return "توزيع";
-  if (action === "lead.reassigned" || action === "lead.transferred") return "نقل";
-  if (action === "lead.created") return "إضافة";
-  if (action === "lead.recovered") return "استرجاع";
-  if (action.includes("archive")) return "أرشفة";
-  if (action.startsWith("REVEAL") || action.startsWith("HIDE") || action.includes("security")) return "أمان";
-  if (action.includes("delete")) return "حذف";
-  return "إجراء";
-}
-
-// cuid داخل نص summary — يُستبدل بالاسم المحلول (نفس نمط /m/audit حرفيًا).
-const CUID_RE = /\bc[a-z0-9]{24}\b/g;
-const resolveSummary = (summary: string, names: AuditNameMaps): string =>
-  summary
-    .replace(CUID_RE, (id) => names.leadNames[id] ?? names.userNames[id] ?? "عنصر محذوف")
-    // تنظيف الأنماط الخام: «· العميل=خالد» → «· خالد» (لا مصطلحات تقنية بالواجهة).
-    .replace(/العميل\s*=\s*/g, "");
-
-function leadIdIn(summary: string, names: AuditNameMaps): string | null {
-  for (const id of summary.match(CUID_RE) ?? []) if (names.leadNames[id]) return id;
-  return null;
-}
-
-/**
- * معرّف العميل المعتمد للسهم — **لا يُقبل إلا معرّفًا حُلّ فعلًا إلى عميل قائم**
- * (`leadNames` تأتي من استعلام جدول العملاء). المسار المستدلّ (`inferFollowupLeads`)
- * كان يُمرَّر بلا هذا التحقق، فمعرّف لعميل محذوف/مدموج يبني سهمًا يفتح ٤٠٤.
- * سهم لا يعمل أسوأ من غياب السهم — فالمجهول يُسقط السهم بالكامل.
- */
-function confirmedLeadId(e: AuditEntry, names: AuditNameMaps, inferred: Record<string, string>): string | null {
-  const id = leadIdIn(e.summary, names) ?? inferred[e.id] ?? null;
-  return id && names.leadNames[id] ? id : null;
-}
-
-/** عنوان يوم المجموعة بيوم الرياض — «اليوم/أمس — {التاريخ}» والأقدم تاريخ فقط. */
-function dayTitle(d: Date, todayKey: string, yesterdayKey: string): string {
-  const key = ksaDayKey(d);
-  const label = new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
-    calendar: "gregory", timeZone: RIYADH_TZ, weekday: "long", day: "numeric", month: "short",
-  }).format(d);
-  if (key === todayKey) return `اليوم — ${label}`;
-  if (key === yesterdayKey) return `أمس — ${label}`;
-  return label;
-}
-
-// ===================== عناوين الأقسام =====================
-
-function Sec({ color, title, sub, cnt, cntHref }: {
-  color?: string; title: string; sub?: string; cnt?: string; cntHref?: string;
-}) {
-  const bar = color ?? MOBILE_COLORS.gold;
+/** ترويسة قسم بأسلوب المرجع: رقم داخل صندوق بلون القسم + العنوان + وسم/رابط يمين. */
+function SecNum({ n, ac, title, cnt, cntHref }: { n: string; ac: string; title: string; cnt?: string; cntHref?: string }) {
   return (
-    <div className="flex items-start" style={{ gap: 8, margin: "6px 2px 0" }}>
-      <span aria-hidden className="flex-none" style={{ width: 3.5, height: 16, borderRadius: 3, background: bar, boxShadow: `0 0 9px ${bar}`, marginTop: 2 }} />
-      <div className="min-w-0 flex-1">
-        <div style={{ fontSize: 15, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>{title}</div>
-        {sub && <div style={{ fontSize: 11, color: MOBILE_COLORS.textMuted, fontWeight: 600, marginTop: 3, lineHeight: 1.6 }}>{sub}</div>}
-      </div>
+    <div className="flex items-center" style={{ gap: 8, margin: "7px 2px 0" }}>
+      <span
+        className="flex flex-none items-center justify-center"
+        style={{
+          ...ZAIN, boxSizing: "border-box", width: 19, height: 19, borderRadius: 6,
+          fontSize: 11, fontWeight: 800,
+          background: `color-mix(in srgb, ${ac} 18%, transparent)`, color: ac,
+        }}
+      >
+        {n}
+      </span>
+      <span style={{ fontSize: 14, fontWeight: 800, color: SOP.tx }}>{title}</span>
       {cnt && (cntHref ? (
-        <Link href={cntHref} className="flex-none" style={{ fontSize: 11, color: MOBILE_COLORS.gold, fontWeight: 700, marginTop: 2 }}>{cnt}</Link>
+        <Link href={cntHref} style={{ marginInlineStart: "auto", fontSize: "9.5px", fontWeight: 700, color: SOP.gold2 }}>{cnt}</Link>
       ) : (
-        <span className="flex-none" style={{ fontSize: 11, color: MOBILE_COLORS.textMuted, fontWeight: 700, marginTop: 2 }}>{cnt}</span>
+        <span style={{ marginInlineStart: "auto", fontSize: "9.5px", color: SOP.mut }}>{cnt}</span>
       ))}
     </div>
   );
+}
+
+/** بارامترات URL مشتركة لشرائط الفلاتر — القيم الفارغة والافتراضي (أول عنصر) تُسقط. */
+function chipHref<T extends string>(param: string, key: T, first: T, base: string, keep?: Record<string, string>): string {
+  const qp = new URLSearchParams();
+  if (key !== first) qp.set(param, key);
+  for (const [k, v] of Object.entries(keep ?? {})) if (v) qp.set(k, v);
+  const qs = qp.toString();
+  return qs ? `${base}?${qs}` : base;
+}
+
+/**
+ * شريط الفترات المنزلق (segmented) — روابط لا أزرار، فالحالة في الرابط
+ * (قابلة للمشاركة والرجوع). الحاوية غائرة (.m-inset) والفعّالة بتدرّج ذهبي.
+ */
+function PeriodSeg<T extends string>({
+  param, current, base, items, keep,
+}: {
+  param: string;
+  current: T;
+  base: string;
+  items: { key: T; label: string }[];
+  keep?: Record<string, string>;
+}) {
+  return (
+    <div className="m-inset flex" style={{ boxSizing: "border-box", padding: 4, borderRadius: 13 }}>
+      {items.map((it) => {
+        const on = it.key === current;
+        return (
+          <Link
+            key={it.key}
+            href={chipHref(param, it.key, items[0].key, base, keep)}
+            scroll={false}
+            aria-current={on ? "true" : undefined}
+            className="m-press-sc flex min-w-0 flex-1 items-center justify-center whitespace-nowrap"
+            style={{
+              boxSizing: "border-box", minHeight: 34, padding: "8px 4px", borderRadius: 9,
+              fontSize: "10.5px", fontWeight: on ? 700 : 600,
+              ...(on
+                ? {
+                    color: SOP.onGold,
+                    background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`,
+                    boxShadow: `0 3px 9px color-mix(in srgb, ${SOP.gold} 32%, transparent)`,
+                  }
+                : { color: SOP.tx2 }),
+            }}
+          >
+            {it.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** رقائق فلتر بارزة (نمط .chips في المرجع) — نفس عقد الروابط. */
+function ChipsRow<T extends string>({
+  param, current, base, items, keep,
+}: {
+  param: string;
+  current: T;
+  base: string;
+  items: readonly { key: T; label: string }[];
+  keep?: Record<string, string>;
+}) {
+  return (
+    <div className="m-noscroll flex overflow-x-auto" style={{ gap: 7 }}>
+      {items.map((it) => {
+        const on = it.key === current;
+        return (
+          <Link
+            key={it.key}
+            href={chipHref(param, it.key, items[0].key, base, keep)}
+            scroll={false}
+            aria-current={on ? "true" : undefined}
+            className={`${on ? "" : "m-raise"} m-press-sc flex flex-none items-center whitespace-nowrap`}
+            style={{
+              boxSizing: "border-box", padding: "8px 15px", borderRadius: 11,
+              fontSize: 12, fontWeight: on ? 700 : 600,
+              ...(on
+                ? { color: SOP.onGold, background: `linear-gradient(135deg, ${SOP.gold2}, ${SOP.gold})`, boxShadow: `0 3px 9px color-mix(in srgb, ${SOP.gold} 32%, transparent)` }
+                : { color: SOP.tx2 }),
+            }}
+          >
+            {it.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ===================== قسم الفريق: تجهيز الصفوف من getLiveBoard + getTeam =====================
+
+/** «٦:١٩» — ساعات:دقائق بأرقام عربية. */
+function fmtHM(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${toArabicDigits(h)}:${toArabicDigits(String(m).padStart(2, "0"))}`;
+}
+
+/** هدف الوردية: «٨س» للساعات الكاملة وإلا «٧:٣٠». */
+function fmtTarget(mins: number): string {
+  return mins % 60 === 0 ? `${toArabicDigits(mins / 60)}س` : fmtHM(mins);
 }
 
 // ===================== الصفحة =====================
@@ -155,100 +179,159 @@ export async function MobileOwnerHome({
   const now = new Date();
   const nowMs = now.getTime();
 
-  const [data, counts, dupCounts, noResponseCount, notif, commitment, presence, auditEntries] = await Promise.all([
+  const [data, counts, notif, presence, live, team, fu, audit] = await Promise.all([
     getDashboard(period),
     // نفس دالة شارة الزئبق حرفيًا — ومغلّفة بـcache() فالبطاقة والشارة تقرآن نتيجة الطلب الواحدة.
     getLeadCounts(),
-    owner ? activeDuplicateGroupCount() : Promise.resolve({ total: 0, newToday: 0 }),
-    owner ? getNoResponseCount() : Promise.resolve(0),
     getNotifications(),
-    getTeamCommitment(fuWin, now),
     getTeamPresence(),
-    // ٣٠ سجلًا: تُعرض آخر ١٥ بعد الفلترة، والهامش يمنع فراغ القائمة عند فلتر ضيّق
-    // (حرِج/النظام). السجل الكامل في /m/audit بحدّه الخاص (١٥٠).
-    getAuditLog({ limit: 30 }),
+    // اليوم الحي (بلا مدى) — نفس مصدر لوحة الدوام حرفيًا.
+    getLiveBoard(),
+    // حالة الاستقبال وآخر الظهور لكل الأدوار — نفس مصدر شاشة الفريق.
+    getTeam(),
+    // «التزام المتابعات» بفترات المالك — مرتّبة الأسوأ أولًا من الخادم.
+    getOwnerTeamFollowups(fuWin),
+    // آخر ٣٠ عملية بأسماء وجوالات محلولة ومعرّف عميل مؤكد — نفس مسار لوحة الويب.
+    getOwnerAudit(30),
   ]);
-  const inferred = await inferFollowupLeads(auditEntries);
-  const names = await resolveAuditNames(auditEntries, Object.values(inferred));
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
   const onlineCount = presence.filter((p) => p.online).length;
 
-  // ===== شريط الفريق: بلاطات بحالاتها — الراكد خلف الطي =====
-  const allTiles: StripTile[] = presence.map((p) => ({
-    id: p.id,
-    name: p.name,
-    fu: p.fuToday,
-    visits: p.visitsToday,
-    bookings: p.bookingsToday,
-    ...sinceParts(p, nowMs),
+  // ===== ٢) دوام وحالة الفريق =====
+  const liveRows = live.mode === "today" ? live.rows : [];
+  const memberById = new Map(team.members.map((m) => [m.id, m]));
+
+  const teamRows: OwnerTeamRow[] = liveRows.map((r) => {
+    // المنجز الحي صافيًا من التوقف — نفس معادلة getLiveBoard مفكوكة (لا منطق جديد).
+    const liveMin = r.startedAtIso
+      ? Math.max(0, Math.floor(
+          (nowMs - new Date(r.startedAtIso).getTime() - r.pausedMsBase
+            - (r.activePause ? nowMs - new Date(r.activePause.startedIso).getTime() : 0)) / 60_000,
+        ))
+      : 0;
+    const worked = r.doneMinutes + liveMin;
+    const pct = r.targetMinutes > 0 ? Math.min(100, Math.round((worked / r.targetMinutes) * 100)) : 0;
+
+    const state: OwnerTeamState =
+      r.state === "on" || r.state === "late" ? "on"
+        : r.state === "done" ? "done"
+          : r.state === "remote" ? "remote"
+            : r.state === "paused" ? "paused"
+              : r.state === "exc" ? "leave"
+                : "miss";
+
+    const badgeText =
+      state === "on" ? "مداوم"
+        : state === "done" ? "أنهى دوامه"
+          : state === "remote" ? "عن بُعد"
+            : state === "paused" ? "مستأذن"
+              : state === "leave"
+                ? (r.leave ? "إجازة" : r.exceptionType === "WEEKEND" ? "عطلة" : "مستثنى")
+                : "لم يسجّل";
+
+    const metaText =
+      state === "on" || state === "done"
+        ? `الدوام ${fmtHM(worked)}/${fmtTarget(r.targetMinutes)}`
+        : state === "paused"
+          ? `مستأذن${r.activePause?.authorizerLabel ? ` · لدى ${r.activePause.authorizerLabel}` : ""}`
+          : state === "remote"
+            ? `عن بُعد${r.remote ? ` · منذ ${r.remote.startedText}` : ""}`
+            : state === "leave"
+              ? (r.leave ? `إجازة ${r.leave.typeLabel} · حتى ${r.leave.toText}` : r.exceptionType === "WEEKEND" ? "عطلة أسبوعية" : "مستثنى اليوم")
+              : `دوامه ${r.scheduledStartText}`;
+
+    const m = memberById.get(r.id);
+    const activeNow = m?.online ?? false;
+    const activityText = activeNow
+      ? "نشط الآن"
+      : m?.lastSeenAt
+        ? `آخر ظهور قبل ${elapsedLabel(m.lastSeenAt, now)}`
+        : "لسة ما دخلت";
+
+    // الاستقبال للبائعين فقط — المقفول عادي بسببه، ليس إنذارًا.
+    const reception =
+      m && (m.role === "EMPLOYEE" || m.role === "HR")
+        ? m.paused
+          ? { open: false, text: `مقفول · ${pauseReasonLabel(m.pauseReason)} · ${formatPauseRemaining(m.pauseUntil)}` }
+          : { open: true, text: "استقبال مفتوح" }
+        : null;
+
+    return {
+      id: r.id,
+      name: r.name,
+      state,
+      pct,
+      activityText,
+      activeNow,
+      metaText,
+      // المقصّر الحقيقي فقط يبرز أحمر (غياب متتالٍ) — سلسلة getLiveBoard نفسها.
+      dangerText: state === "miss" && r.absenceStreak > 0 ? `غياب ${toArabicDigits(r.absenceStreak)} يوم متتالية` : null,
+      reception,
+      badgeText,
+    } satisfies OwnerTeamRow;
+  });
+
+  const stCount = (s: OwnerTeamState) => teamRows.filter((t) => t.state === s).length;
+  const onDutyCount = stCount("on") + stCount("done");
+  const teamSummary = [
+    { label: "مداوم", count: onDutyCount, color: SOP.green },
+    { label: "عن بُعد", count: stCount("remote"), color: SOP.teal },
+    { label: "مستأذن", count: stCount("paused"), color: SOP.amber },
+    { label: "إجازة", count: stCount("leave"), color: SOP.neutral },
+    { label: "لم يسجّل", count: stCount("miss"), color: SOP.red },
+  ].filter((s) => s.count > 0);
+
+  // ===== ٣) التزام المتابعات — صفوف الخادم كما وصلت (الأسوأ أولًا) =====
+  const commitRows = fu.rows.map((r) => ({
+    ...r,
+    pct: r.total > 0 ? Math.round((r.done / r.total) * 100) : 0,
   }));
-  const stripTiles = allTiles.filter((t) => t.state !== "dorm");
-  const dormTiles = allTiles.filter((t) => t.state === "dorm");
+  const pctTone = (pct: number) => (pct >= 90 ? SOP.green : pct >= 65 ? SOP.amber : SOP.red);
 
-  // ===== التزام المتابعات: الأسوأ أولًا + سطر من بلا مواعيد =====
-  const commitAll = data.team.map((t) => {
-    const c = commitment.get(t.id);
-    const done = c?.done ?? 0;
-    const missed = c?.missed ?? 0;
-    const total = done + missed;
-    return {
-      id: t.id, name: t.name, done, missed, total,
-      pct: total > 0 ? Math.round((done / total) * 100) : 0,
-      lastLabel: c?.lastAt ? `آخر نشاط قبل ${elapsedLabel(c.lastAt, now)}` : "لا نشاط مسجّل",
-    } satisfies CommitmentRow;
-  });
-  const commitRows = commitAll.filter((r) => r.total > 0).sort((a, b) => a.pct - b.pct || b.missed - a.missed);
-  const idleNames = commitAll.filter((r) => r.total === 0).map((r) => r.name);
-  const FU_SUB: Record<FuWindow, string> = {
-    today: "متابعات مجدولة سابقًا حان موعدها اليوم — كم أنجز منها وكم فاته",
-    yesterday: "متابعات مجدولة سابقًا حان موعدها أمس — كم أنجز منها وكم فاته",
-    all: "كل المتابعات المجدولة التي حان موعدها — كم أنجز منها وكم فاته",
-  };
+  // ===== ٤) سجل التدقيق — تجميع أنواع getOwnerAudit في مجموعات الفلترة الأربع =====
+  const FUP_KINDS = new Set(["visit", "nego", "call", "interested", "followup"]);
+  const CRIT_KINDS = new Set(["crit", "pull"]);
+  const auditItems: OwnerAuditItem[] = audit.map((a) => ({
+    id: a.id,
+    group: CRIT_KINDS.has(a.kind)
+      ? "crit"
+      : a.employeeName === "النظام" || a.employeeName === null
+        ? "sys"
+        : FUP_KINDS.has(a.kind)
+          ? "fup"
+          : "adm",
+    badge: a.badge,
+    actor: a.employeeName ?? "النظام",
+    desc: a.desc,
+    whenText: a.whenText,
+    leadId: a.leadId,
+    clientName: a.clientName,
+  }));
 
-  // ===== سجل التدقيق: صفوف جاهزة للعرض (التصنيف والتعريب والأيام هنا — العميل يعرض فقط) =====
-  const todayKey = ksaDayKey(now);
-  const yesterdayKey = ksaDayKey(new Date(nowMs - DAY_MS));
-  const auditRows: AuditFeedRow[] = auditEntries.map((e) => {
-    const leadId = confirmedLeadId(e, names, inferred);
-    return {
-      id: e.id,
-      kind: auditKind(e),
-      actor: e.userId && e.userId === user.id ? "أنت" : (e.userName ?? "النظام"),
-      badge: auditBadge(e.action, e.summary),
-      head: resolveSummary(e.summary, names),
-      leadId,
-      leadName: leadId ? (names.leadNames[leadId] ?? null) : null,
-      whenText: `قبل ${elapsedLabel(e.createdAt, now)}`,
-      fullWhen: formatDateTime(e.createdAt),
-      group: dayTitle(e.createdAt, todayKey, yesterdayKey),
-    };
-  });
-
-  // ===== «قرارك الآن» — بطاقة عريضة + ثنائي (المصادر القائمة حصرًا) =====
+  // ===== ١) أرقام الأداء =====
   const unassigned = counts.unassigned;
-  const dupN = dupCounts.newToday > 0 ? dupCounts.newToday : dupCounts.total;
-  const dupLabel = dupCounts.newToday > 0 ? "مكرّرو اليوم" : "مكرّرون";
-  const noDecisions = unassigned === 0 && noResponseCount === 0 && dupN === 0;
-
   const PERIODS: { key: Period; label: string }[] = [
     { key: "all", label: "الكل" },
     { key: "week", label: "أسبوع" },
-    { key: "72h", label: "٧٢ ساعة" },
-    { key: "48h", label: "٤٨ ساعة" },
-    { key: "24h", label: "٢٤ ساعة" },
+    { key: "72h", label: "٧٢س" },
+    { key: "48h", label: "٤٨س" },
+    { key: "24h", label: "٢٤س" },
   ];
 
   return (
     <div className="flex flex-col" style={{ gap: 13 }}>
-      {/* ===== الترويسة ===== */}
+      {/* ===== الترويسة (owner-home-final): تحية ١٧ + سطر التاريخ/المتصلين + أزرار بارزة ===== */}
       <header className="flex items-start justify-between" style={{ padding: "0 2px", gap: 10 }}>
         <div className="min-w-0">
-          <div className="truncate" style={{ fontSize: 21, fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>
-            {greeting(now)} {firstName} 👋
+          <div className="truncate" style={{ fontSize: 17, fontWeight: 700, color: SOP.tx }}>
+            {greeting(now)}، {firstName}
           </div>
-          <div style={{ fontSize: 12, color: MOBILE_COLORS.textSecondary, marginTop: 4, fontWeight: 600 }}>
-            {formatDate(now)} · <span style={{ color: MOBILE_STATUS.success.base }}>{toArabicDigits(onlineCount)}</span> من {toArabicDigits(presence.length)} متصلين الآن
+          <div style={{ fontSize: 10, color: SOP.mut, marginTop: 4 }}>
+            {formatDate(now)} ·{" "}
+            <b style={{ color: SOP.green, fontWeight: 700 }}>
+              {toArabicDigits(onlineCount)} من {toArabicDigits(presence.length)} متصلين الآن
+            </b>
           </div>
         </div>
         <MobileHeaderActions unread={notif.unread} />
@@ -257,102 +340,115 @@ export async function MobileOwnerHome({
       {/* ===== تسجيل الدوام — للمدير فقط؛ المالك مراقب لا يبصم ===== */}
       {!owner && <AttendanceCard theme="mobile" />}
 
-      {/* ===== قرارك الآن ===== */}
-      <Sec color={MOBILE_STATUS.danger.base} title="قرارك الآن" cnt="اليوم" />
-      {noDecisions ? (
-        <div className="flex items-center justify-center" style={{ boxSizing: "border-box", minHeight: 74, borderRadius: 18, background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`, fontSize: 13, color: MOBILE_COLORS.textSecondary }}>
-          ما فيه قرارات معلّقة 👏
-        </div>
-      ) : (
-        <div className="flex flex-col" style={{ gap: 11 }}>
-          {unassigned > 0 && (
-            <Link
-              href="/m/unassigned"
-              className="m-rise m-press relative flex items-center overflow-hidden"
-              style={{
-                boxSizing: "border-box", gap: 16, borderRadius: 22, padding: "19px 18px",
-                background: `linear-gradient(135deg, ${MOBILE_STATUS.danger.bg} 0%, ${MOBILE_COLORS.card} 75%)`,
-                border: `1px solid ${MOBILE_STATUS.danger.border}`,
-              }}
-            >
-              <span aria-hidden style={{ position: "absolute", top: 0, insetInline: 0, height: 3, background: `linear-gradient(90deg, transparent, ${MOBILE_STATUS.danger.base}, transparent)`, boxShadow: `0 0 16px ${MOBILE_STATUS.danger.base}` }} />
-              <span className="flex-none" style={{ ...ZAIN, fontSize: 50, lineHeight: 0.95, fontWeight: 800, color: MOBILE_STATUS.danger.base, textShadow: `0 0 26px ${MOBILE_STATUS.danger.bg}` }}>
-                {toArabicDigits(unassigned)}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block" style={{ fontSize: 16, fontWeight: 800, color: MOBILE_COLORS.textPrimary, lineHeight: 1.4 }}>عملاء غير موزّعين</span>
-                <span className="block" style={{ fontSize: 12, color: MOBILE_COLORS.textMuted, fontWeight: 600, marginTop: 4 }}>ما أحد يشتغل عليهم</span>
-              </span>
-              <span className="m-ctapulse flex flex-none items-center" style={{ boxSizing: "border-box", height: 46, padding: "0 20px", borderRadius: 14, background: MOBILE_STATUS.danger.base, color: MOBILE_COLORS.bg, fontSize: 14, fontWeight: 800 }}>
-                وزّع ←
-              </span>
-            </Link>
-          )}
-          {(noResponseCount > 0 || dupN > 0) && (
-            <div className="grid grid-cols-2" style={{ gap: 11 }}>
-              {noResponseCount > 0 && (
-                <Link
-                  href="/m/no-response"
-                  className="m-rise m-press relative flex flex-col overflow-hidden"
-                  style={{ boxSizing: "border-box", borderRadius: 19, padding: "15px 14px 13px", background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`, animationDelay: "70ms" }}
-                >
-                  <span aria-hidden style={{ position: "absolute", top: 0, insetInline: 0, height: 2.5, background: `linear-gradient(90deg, transparent, ${MOBILE_STATUS.warning.base}, transparent)`, boxShadow: `0 0 12px ${MOBILE_STATUS.warning.base}` }} />
-                  <span className="flex items-center" style={{ gap: 10 }}>
-                    <span style={{ ...ZAIN, fontSize: 30, lineHeight: 1, fontWeight: 800, color: MOBILE_STATUS.warning.base }}>{toArabicDigits(noResponseCount)}</span>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: MOBILE_COLORS.textSecondary, lineHeight: 1.5 }}>لم يتم<br />الرد</span>
-                  </span>
-                  <span className="flex items-center justify-center" style={{ boxSizing: "border-box", marginTop: 12, height: 38, borderRadius: 11, background: MOBILE_STATUS.warning.bg, border: `1px solid ${MOBILE_STATUS.warning.border}`, color: MOBILE_STATUS.warning.base, fontSize: 12, fontWeight: 800 }}>
-                    راجع
-                  </span>
-                </Link>
-              )}
-              {dupN > 0 && (
-                <Link
-                  href="/m/duplicates"
-                  className="m-rise m-press relative flex flex-col overflow-hidden"
-                  style={{ boxSizing: "border-box", borderRadius: 19, padding: "15px 14px 13px", background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}`, animationDelay: "130ms" }}
-                >
-                  <span aria-hidden style={{ position: "absolute", top: 0, insetInline: 0, height: 2.5, background: `linear-gradient(90deg, transparent, ${MOBILE_COLORS.sky}, transparent)`, boxShadow: `0 0 12px ${MOBILE_COLORS.sky}` }} />
-                  <span className="flex items-center" style={{ gap: 10 }}>
-                    <span style={{ ...ZAIN, fontSize: 30, lineHeight: 1, fontWeight: 800, color: MOBILE_COLORS.sky }}>{toArabicDigits(dupN)}</span>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: MOBILE_COLORS.textSecondary, lineHeight: 1.5 }}>{dupLabel}</span>
-                  </span>
-                  <span className="flex items-center justify-center" style={{ boxSizing: "border-box", marginTop: 12, height: 38, borderRadius: 11, background: MOBILE_COLORS.skyBg, border: `1px solid ${MOBILE_COLORS.border}`, color: MOBILE_COLORS.sky, fontSize: 12, fontWeight: 800 }}>
-                    افتح
-                  </span>
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
+      {/* ===== ١) أرقام الأداء (owner-home-final) ===== */}
+      <SecNum n="١" ac={SOP.gold} title="أرقام الأداء" cnt="حسب الفترة" />
+      <PeriodSeg param="p" current={period} base="/m" items={PERIODS} keep={fuWin !== "today" ? { fu: fuWin } : undefined} />
+
+      {/* كرت غير الموزّعين — نفس مصدر شارة الزئبق ونفس وجهتها (/m/unassigned) */}
+      {unassigned > 0 && (
+        <Link
+          href="/m/unassigned"
+          className="m-rise m-press-sc flex items-center"
+          style={{
+            boxSizing: "border-box", gap: 13, borderRadius: 18, padding: 15,
+            background: `linear-gradient(135deg, color-mix(in srgb, ${SOP.red} 13%, ${SOP.plane}), ${SOP.plane})`,
+            border: `1px solid color-mix(in srgb, ${SOP.red} 28%, transparent)`,
+            boxShadow: `5px 5px 13px ${SOP.sd}, -5px -5px 13px ${SOP.sl}`,
+            animationDelay: "50ms",
+          }}
+        >
+          <span className="flex-none" style={{ ...ZAIN, fontSize: 38, lineHeight: 1, fontWeight: 800, color: SOP.red }}>
+            {toArabicDigits(unassigned)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block" style={{ fontSize: 12, fontWeight: 700, color: SOP.tx }}>عملاء غير موزّعين</span>
+            <span className="block" style={{ fontSize: "8.5px", color: SOP.mut, marginTop: 2 }}>اضغط للتوزيع — ما أحد يشتغل عليهم</span>
+          </span>
+          <span
+            className="flex flex-none items-center"
+            style={{
+              boxSizing: "border-box", gap: 5, padding: "9px 15px", borderRadius: 11,
+              background: SOP.red, color: SOP.onGold, fontSize: "11.5px", fontWeight: 700,
+            }}
+          >
+            وزّع
+            <ChevronLeft size={13} strokeWidth={2.4} style={{ maxWidth: 24, maxHeight: 24 }} aria-hidden />
+          </span>
+        </Link>
       )}
 
-      {/* ===== أرقامك ===== */}
-      <Sec title="أرقامك" cnt="حسب الفترة" />
-      <MobileChips param="p" current={period} base="/m" items={PERIODS} goldGradient keep={fuWin !== "today" ? { fu: fuWin } : undefined} />
       <OwnerKpis
-        total={data.kpis.newInPeriod}
+        totalClients={data.kpis.totalClients}
         conversion={data.kpis.conversion}
         bookings={data.kpis.bookings}
         visits={data.kpis.visits}
       />
 
-      {/* ===== الفريق الآن ===== */}
-      <Sec color={MOBILE_STATUS.success.base} title="الفريق الآن" sub="آخر ظهور وإنتاج اليوم — يلف تلقائيًا أو اسحب" />
-      <TeamStrip tiles={stripTiles} dorm={dormTiles} onlineCount={onlineCount} fileLinks={user.role === "OWNER"} />
+      {/* ===== ٢) دوام وحالة الفريق ===== */}
+      <SecNum
+        n="٢"
+        ac={SOP.green}
+        title="دوام وحالة الفريق"
+        cnt={`${toArabicDigits(teamRows.length)} · ${toArabicDigits(onDutyCount)} مداوم`}
+      />
+      <OwnerTeamSection rows={teamRows} summary={teamSummary} teamHref="/m/team" />
 
-      {/* ===== التزام الموظفين بالمتابعات ===== */}
-      <Sec title="التزام الموظفين بالمتابعات" sub={FU_SUB[fuWin]} cnt={`الكل (${toArabicDigits(data.team.length)}) ←`} cntHref="/m/team" />
-      <MobileChips param="fu" current={fuWin} base="/m" items={FU_WINDOWS} goldGradient keep={period !== "all" ? { p: period } : undefined} />
-      <TeamCommitment rows={commitRows} idleNames={idleNames} fileLinks={user.role === "OWNER"} />
+      {/* ===== ٣) التزام الموظفين بالمتابعات ===== */}
+      <SecNum n="٣" ac={SOP.amber} title="التزام الموظفين بالمتابعات" cnt="الكل ←" cntHref="/m/team" />
+      <ChipsRow param="fu" current={fuWin} base="/m" items={FU_WINDOWS} keep={period !== "all" ? { p: period } : undefined} />
+      {commitRows.length === 0 ? (
+        <div className="m-raise text-center" style={{ borderRadius: 13, padding: 16, fontSize: 12, color: SOP.mut }}>
+          ما فيه متابعات مجدولة بهذه النافذة
+        </div>
+      ) : (
+        <div className="flex flex-col" style={{ gap: 8 }}>
+          {commitRows.map((r, i) => {
+            const tone = pctTone(r.pct);
+            return (
+              <div key={r.id} className="m-raise m-rise flex items-center" style={{ boxSizing: "border-box", borderRadius: 13, padding: "11px 12px", gap: 11, animationDelay: `${Math.min(i, 8) * 55}ms` }}>
+                <span className="flex-none text-center" style={{ ...ZAIN, width: 16, fontSize: 13, fontWeight: 800, color: SOP.mut }}>
+                  {toArabicDigits(i + 1)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center" style={{ gap: 6 }}>
+                    <span className="truncate" style={{ fontSize: 12, fontWeight: 600, color: SOP.tx }}>{r.name}</span>
+                    {r.missed > 0 && (
+                      <span className="flex-none" style={{ boxSizing: "border-box", fontSize: "7.5px", fontWeight: 600, padding: "2px 6px", borderRadius: 5, color: SOP.red, background: `color-mix(in srgb, ${SOP.red} 14%, transparent)` }}>
+                        {toArabicDigits(r.missed)} فايتة
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "8.5px", color: SOP.mut, marginTop: 2 }}>
+                    أنجز {toArabicDigits(r.done)} من {toArabicDigits(r.total)}
+                    {r.missed > 0 && <> · {toArabicDigits(r.missed)} فاتت بلا نتيجة</>}
+                  </div>
+                  <div className="overflow-hidden" style={{ height: 4, borderRadius: 2, background: SOP.sd, marginTop: 6 }}>
+                    <i className="m-fillx block" style={{ height: "100%", borderRadius: 2, background: tone, transform: `scaleX(${r.pct / 100})`, transformOrigin: "right", animationDelay: `${150 + i * 70}ms` }} />
+                  </div>
+                </div>
+                <span className="flex-none" style={{ ...ZAIN, fontSize: 18, fontWeight: 800, color: tone }}>
+                  {toArabicDigits(r.pct)}٪
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* ===== سجل التدقيق ===== */}
-      <Sec title="سجل التدقيق" sub="كل حركة بالنظام — اضغط أي سطر يفتح تفاصيله" cnt="الكامل ←" cntHref="/m/audit" />
-      <AuditFeed rows={auditRows} />
+      {/* ===== ٤) سجل التدقيق ===== */}
+      <SecNum n="٤" ac={SOP.blue} title="سجل التدقيق" cnt="الكامل ←" cntHref="/m/audit" />
+      <OwnerAuditSection rows={auditItems} />
 
-      {/* ===== القمع ===== */}
-      <Sec title="قمع المبيعات" cnt="اضغط للتفصيل" />
+      {/* ===== ٥) قمع المبيعات ===== */}
+      <SecNum n="٥" ac={SOP.purple} title="قمع المبيعات" cnt="للتفصيل ←" cntHref="/m/analytics" />
       <OwnerFunnel funnel={data.funnel} />
+
+      {/* ===== ٦) نجم الأسبوع — Placeholder (المعادلة والتصميم بانتظار الاعتماد) ===== */}
+      <SecNum n="٦" ac={SOP.gold} title="نجم الأسبوع" cnt="هذا الأسبوع" />
+      <div className="m-raise text-center" style={{ borderRadius: 20, padding: "18px 14px" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: SOP.tx2 }}>يُفعّل بعد اعتماد معادلة الترشيح</div>
+        <div style={{ fontSize: "9.5px", color: SOP.mut, marginTop: 4 }}>الأعلى إنجازًا هذا الأسبوع — قريبًا</div>
+      </div>
     </div>
   );
 }

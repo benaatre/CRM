@@ -1,51 +1,66 @@
-"use client";
-
-import { useState } from "react";
 import type { LeadStage } from "@prisma/client";
-import { MOBILE_COLORS, MOBILE_STATUS } from "@/lib/mobile-tokens";
+import { stageLabels } from "@/lib/labels";
+import { STAGE_HEX } from "@/lib/stage-colors";
+import { SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
-import { SalesFunnel } from "@/components/mobile/sales-funnel";
 
 /**
- * «قمع المبيعات» المطوي (رئيسية المالك v3) — الملخص الثلاثي ظاهر دائمًا
- * (مهتم = INTERESTED · زيارة = VISIT_SCHEDULED · حجز/بيع = RESERVED + CLOSED_WON)
- * والمراحل الكاملة تنفتح بالضغط: SalesFunnel القائم يُركَّب عند الفتح فتتعبّى
- * أشرطته بأنيميشن m-fillx (transform فقط — يحترم تقليل الحركة تلقائيًا).
+ * «قمع المبيعات» (رئيسية المالك — owner-home-final §٥): ثلاثية علوية
+ * (حجز/بيع · زيارة · مهتم) + أشرطة كل مراحل getDashboard().funnel العشر
+ * بألوان STAGE_HEX (المصدر الموحّد — لا تكرار لون مرحلة). عرض خادمي خالص،
+ * الامتلاء بأنيميشن m-fillx (transform فقط — يحترم تقليل الحركة تلقائيًا).
  */
+
+const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
+
 export function OwnerFunnel({ funnel }: { funnel: { stage: LeadStage; count: number }[] }) {
-  const [open, setOpen] = useState(false);
   const of = (s: LeadStage) => funnel.find((f) => f.stage === s)?.count ?? 0;
   const trio = [
-    { label: "مهتم", value: of("INTERESTED"), color: MOBILE_STATUS.success.base },
-    { label: "زيارة", value: of("VISIT_SCHEDULED"), color: MOBILE_STATUS.info.base },
-    { label: "حجز/بيع", value: of("RESERVED") + of("CLOSED_WON"), color: MOBILE_COLORS.gold },
+    { label: "حجز/بيع", value: of("RESERVED") + of("CLOSED_WON"), color: SOP.gold2 },
+    { label: "زيارة", value: of("VISIT_SCHEDULED"), color: STAGE_HEX.VISIT_SCHEDULED },
+    { label: "مهتم", value: of("INTERESTED"), color: STAGE_HEX.INTERESTED },
   ];
+  const max = Math.max(...funnel.map((f) => f.count), 1);
 
   return (
-    <div className="overflow-hidden" style={{ borderRadius: 18, background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.border}` }}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center text-start"
-        style={{ gap: 9, padding: "13px 15px", background: "none", border: "none" }}
-      >
-        <span className="flex-1" style={{ fontSize: "13.5px", fontWeight: 800, color: MOBILE_COLORS.textPrimary }}>📊 القمع الكامل</span>
-        <span aria-hidden style={{ fontSize: 13, color: MOBILE_COLORS.textMuted, transition: "transform .3s", transform: open ? "rotate(90deg)" : "none" }}>←</span>
-      </button>
-      <div className="flex" style={{ gap: 8, padding: "0 14px 12px" }}>
-        {trio.map((t) => (
-          <div key={t.label} className="flex-1 text-center" style={{ boxSizing: "border-box", borderRadius: 12, background: MOBILE_COLORS.sheet, border: `1px solid ${MOBILE_COLORS.border}`, padding: 10 }}>
-            <div style={{ fontFamily: "var(--font-zain), var(--font-sans)", fontSize: 18, fontWeight: 800, color: t.color }}>{toArabicDigits(t.value)}</div>
-            <div style={{ fontSize: "9.5px", color: MOBILE_COLORS.textMuted, fontWeight: 700, marginTop: 2 }}>{t.label}</div>
+    <>
+      {/* الثلاثية العلوية */}
+      <div className="grid grid-cols-3" style={{ gap: 8 }}>
+        {trio.map((t, i) => (
+          <div key={t.label} className="m-raise m-rise text-center" style={{ boxSizing: "border-box", borderRadius: 14, padding: "12px 6px", animationDelay: `${i * 60}ms` }}>
+            <div style={{ ...ZAIN, fontSize: 22, fontWeight: 800, color: t.color }}>{toArabicDigits(t.value)}</div>
+            <div style={{ fontSize: "8.5px", color: SOP.tx2, marginTop: 2 }}>{t.label}</div>
           </div>
         ))}
       </div>
-      {open && (
-        <div style={{ padding: "4px 14px 14px" }}>
-          <SalesFunnel funnel={funnel} />
-        </div>
-      )}
-    </div>
+
+      {/* أشرطة المراحل كاملة */}
+      <div className="m-raise" style={{ boxSizing: "border-box", borderRadius: 16, padding: 13 }}>
+        {funnel.map((f, i) => {
+          const ratio = f.count / max;
+          // أدنى امتلاء مرئي للمراحل غير الصفرية — الصفر شريط فارغ فعلًا.
+          const scale = f.count > 0 ? Math.max(ratio, 0.05) : 0;
+          return (
+            <div key={f.stage} className="flex items-center" style={{ gap: 8, marginBottom: i === funnel.length - 1 ? 0 : 6 }}>
+              <span className="flex-none truncate" style={{ width: 70, fontSize: "9.5px", color: SOP.tx2 }}>{stageLabels[f.stage]}</span>
+              <span className="flex-1 overflow-hidden" style={{ height: 18, borderRadius: 6, background: SOP.sd, display: "block" }}>
+                <i
+                  className="m-fillx block"
+                  style={{
+                    height: "100%", borderRadius: 6, background: STAGE_HEX[f.stage],
+                    transform: `scaleX(${scale})`, transformOrigin: "right",
+                    animationDelay: `${120 + i * 60}ms`,
+                  }}
+                />
+              </span>
+              <span className="flex-none text-start" style={{ ...ZAIN, width: 30, fontSize: 10, fontWeight: 800, color: SOP.tx }}>
+                {toArabicDigits(f.count)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

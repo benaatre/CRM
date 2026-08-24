@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الرئيسية — المالك (كاملة)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Zain:wght@400;700;800;900&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{--page:#0A0A0B;--plane:#17181B;--plane-hi:#1b1d22;--sd:#0b0c0e;--sl:#242630;--edge:rgba(255,255,255,.06);--edge-2:rgba(255,255,255,.11);
+    --tx:#F4F5F7;--tx2:#AEB0B7;--mut:#6f7178;--gold:#CBA45E;--gold2:#E4C489;--ongold:#1a1304;--green:#42D699;--red:#F0656A;--blue:#6E9BE6;--amber:#E5A54D;--neutral:#8f9199;--teal:#5bbccb;--purple:#a98edb;
+    background:#050506;color:var(--tx);font-family:'IBM Plex Sans Arabic',sans-serif;padding:24px 0 60px;transition:background .4s}
+  body.day{--page:#e8e4dd;--plane:#f4f1ea;--plane-hi:#faf8f2;--sd:#d0ccc2;--sl:#ffffff;--edge:rgba(90,74,45,.08);--edge-2:rgba(90,74,45,.14);--tx:#221f18;--tx2:#5b564b;--mut:#928c7e;--gold:#9c7a2f;--gold2:#b28a35;--ongold:#fff;--green:#1a8f5f;--red:#c9433c;--blue:#3f74c4;--amber:#b07d22;--neutral:#7c7568;--teal:#2f8b9c;--purple:#7a5fb0;background:#dcd7cd}
+  .num{font-family:'Zain',sans-serif;font-weight:800;letter-spacing:-.5px;font-feature-settings:"tnum"}
+  svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.35)}}
+  @keyframes fillbar{from{width:0}}@keyframes ringdraw{from{stroke-dashoffset:var(--circ)}}
+  @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .anim{opacity:0;animation:slideUp .55s ease forwards}
+  .top{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:16px}
+  .top h1{font-size:20px;font-weight:700}.top p{font-size:11px;color:var(--tx2);text-align:center;max-width:360px;line-height:1.6}
+  .toggle{display:flex;gap:4px;padding:5px;border-radius:14px;background:var(--plane);box-shadow:inset 3px 3px 8px var(--sd),inset -3px -3px 8px var(--sl)}
+  .toggle button{padding:7px 18px;border-radius:10px;border:none;background:transparent;color:var(--tx2);font-size:12px;font-weight:600;cursor:pointer}
+  .toggle button.on{color:var(--gold2);background:var(--plane);box-shadow:4px 4px 9px var(--sd),-4px -4px 9px var(--sl)}
+  .stage{display:flex;justify-content:center;padding:6px 20px 26px}
+  .ph{width:342px;height:770px;border-radius:42px;overflow:hidden;position:relative;background:var(--page);border:1px solid var(--edge);box-shadow:0 28px 80px rgba(0,0,0,.55);display:flex;flex-direction:column}
+  .raise{background:var(--plane);border:1px solid var(--edge);box-shadow:5px 5px 12px var(--sd),-5px -5px 12px var(--sl)}
+
+  .hd{flex:none;padding:15px 15px 10px;display:flex;align-items:flex-start;justify-content:space-between}
+  .hd .greet{font-size:17px;font-weight:700}.hd .sub{font-size:10px;color:var(--mut);margin-top:4px}.hd .sub b{color:var(--green)}
+  .hd .acts{display:flex;gap:7px}
+  .ib{width:35px;height:35px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:var(--tx2);background:var(--plane);box-shadow:4px 4px 9px var(--sd),-4px -4px 9px var(--sl);border:none;position:relative}.ib svg{width:15px}
+  .ib .dot{position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--red);color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .scr{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;padding:2px 15px 16px}.scr::-webkit-scrollbar{display:none}
+
+  .sec-h{display:flex;align-items:center;gap:8px;margin:20px 2px 11px}
+  .sec-h .n{font-family:'Zain';font-weight:800;font-size:11px;width:19px;height:19px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--ac) 18%,transparent);color:var(--ac)}
+  .sec-h .tt{font-size:14px;font-weight:800}.sec-h .c{margin-inline-start:auto;font-size:9.5px;color:var(--mut)}
+
+  .chips{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;margin-bottom:12px}.chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;padding:8px 15px;border-radius:11px;border:none;background:var(--plane);box-shadow:3px 3px 7px var(--sd),-3px -3px 7px var(--sl);color:var(--tx2);font-size:12px;font-weight:600;cursor:pointer}
+  .chip.on{color:var(--ongold);background:linear-gradient(135deg,var(--gold2),var(--gold))}
+
+  /* 1 performance */
+  .unas{border-radius:18px;padding:15px;margin-bottom:11px;display:flex;align-items:center;gap:13px;background:linear-gradient(135deg,color-mix(in srgb,var(--red) 13%,var(--plane)),var(--plane));border:1px solid color-mix(in srgb,var(--red) 28%,transparent);box-shadow:5px 5px 13px var(--sd),-5px -5px 13px var(--sl);cursor:pointer}
+  .unas .v{font-family:'Zain';font-weight:800;font-size:38px;color:var(--red);line-height:1}
+  .unas .mm{flex:1}.unas .k{font-size:12px;font-weight:700}.unas .s{font-size:8.5px;color:var(--mut);margin-top:2px}
+  .unas .go{padding:9px 15px;border-radius:11px;border:none;background:var(--red);color:#fff;font-weight:700;font-size:11.5px;display:flex;align-items:center;gap:5px}.unas .go svg{width:13px;stroke:#fff;stroke-width:2.4}
+  .kgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kpi{border-radius:16px;padding:14px;position:relative;overflow:hidden}
+  .kpi .t{position:absolute;top:0;inset-inline:0;height:2px;background:var(--kc)}
+  .kpi .k{font-size:10.5px;color:var(--tx2);margin-bottom:8px}.kpi .v{font-family:'Zain';font-weight:800;font-size:28px;color:var(--kc);line-height:1}.kpi .v small{font-size:13px;color:var(--mut)}
+  .kpi .ring{position:absolute;bottom:11px;left:11px;width:40px;height:40px}.kpi .ring svg{transform:rotate(-90deg)}
+  /* option 5: segmented filter + ring pills */
+  .seg{display:flex;padding:4px;border-radius:13px;margin-bottom:12px;background:var(--plane);box-shadow:inset 3px 3px 7px var(--sd),inset -3px -3px 7px var(--sl)}
+  .seg button{flex:1;padding:8px 4px;border-radius:9px;border:none;background:transparent;color:var(--tx2);font-size:10.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .seg button.on{color:var(--ongold);background:linear-gradient(135deg,var(--gold2),var(--gold));box-shadow:0 3px 9px color-mix(in srgb,var(--gold) 32%,transparent)}
+  .pills{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .pill{border-radius:15px;padding:12px;display:flex;align-items:center;gap:11px}
+  .pill .ring{position:relative;width:44px;height:44px;flex:none}.pill .ring svg{transform:rotate(-90deg)}
+  .pill .ring .rv{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Zain';font-weight:800;font-size:12px;color:var(--kc)}
+  .pill .bd{width:36px;height:36px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--kc) 15%,transparent)}.pill .bd svg{width:18px;stroke:var(--kc)}
+  .pill .mm{min-width:0}.pill .mm .kk{font-size:9.5px;color:var(--tx2)}.pill .mm .vv{font-family:'Zain';font-weight:800;font-size:23px;color:var(--kc);line-height:1.1}.pill .mm .vv small{font-size:11px;color:var(--mut)}
+
+  /* 2 team — approved card condensed */
+  .tsumm{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;margin-bottom:11px}.tsumm::-webkit-scrollbar{display:none}
+  .ts{flex:none;border-radius:11px;padding:7px 12px;text-align:center;background:var(--plane);box-shadow:3px 3px 7px var(--sd),-3px -3px 7px var(--sl)}
+  .ts .v{font-family:'Zain';font-weight:800;font-size:15px;color:var(--tsc)}.ts .k{font-size:7.5px;color:var(--mut);margin-top:1px}
+  .trow{border-radius:15px;padding:11px 12px;margin-bottom:9px;display:flex;align-items:center;gap:11px;border-inline-start:3px solid var(--stc)}
+  .ringav{position:relative;width:42px;height:42px;flex:none}.ringav svg{transform:rotate(-90deg)}
+  .ringav .ct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .ringav .ct .p{font-family:'Zain';font-weight:800;font-size:12px;color:var(--stc)}
+  .ringav .liv{position:absolute;bottom:0;left:0;width:11px;height:11px;border-radius:50%;background:var(--green);border:2.5px solid var(--plane);animation:pulse 1.8s infinite}
+  .ringav.off .liv{background:var(--mut);animation:none}
+  .tw{flex:1;min-width:0}.tw .nm{font-size:13px;font-weight:700}
+  .tw .meta{font-size:9px;color:var(--mut);margin-top:4px;display:flex;flex-wrap:wrap;gap:3px 9px;align-items:center}
+  .tw .meta .a{display:inline-flex;align-items:center;gap:4px}.tw .meta .a .d{width:6px;height:6px;border-radius:50%}
+  .tw .meta .a.on{color:var(--green)}.tw .meta .a.on .d{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 1.8s infinite}
+  .tw .meta .a.off{color:var(--mut)}.tw .meta .a.off .d{background:var(--mut)}
+  .tw .meta b{color:var(--tx2);font-family:'Zain';font-weight:800;font-size:11px}
+  .rec{font-size:8.5px;font-weight:700;padding:3px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}.rec svg{width:10px}
+  .rec.open{color:var(--green);background:color-mix(in srgb,var(--green) 13%,transparent)}
+  .rec.closed{color:var(--neutral);background:color-mix(in srgb,var(--neutral) 14%,transparent)}
+  .tr{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}
+  .badge{font-size:8.5px;font-weight:700;padding:4px 8px;border-radius:7px;display:inline-flex;align-items:center;gap:4px}.badge svg{width:10px}
+  .b-on{color:var(--green);background:color-mix(in srgb,var(--green) 15%,transparent)}
+  .b-teal{color:var(--teal);background:color-mix(in srgb,var(--teal) 15%,transparent)}
+  .b-amber{color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent)}
+  .b-neutral{color:var(--neutral);background:color-mix(in srgb,var(--neutral) 15%,transparent)}
+  .b-red{color:var(--red);background:color-mix(in srgb,var(--red) 15%,transparent)}
+  .recbell{width:18px;height:18px;position:relative;display:flex;align-items:center;justify-content:center}.recbell svg{width:13px}
+  .recbell.open{color:var(--green)}.recbell.closed{color:var(--mut)}.recbell.closed .strike{position:absolute;width:16px;height:1.8px;background:var(--mut);transform:rotate(45deg);border-radius:2px}
+  .viewall{width:100%;padding:10px;border-radius:12px;border:1px solid var(--edge);background:transparent;color:var(--gold2);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}.viewall svg{width:13px}
+
+  /* 3 commitment */
+  .cm{border-radius:13px;padding:11px 12px;margin-bottom:8px;display:flex;align-items:center;gap:11px}
+  .cm .rank{font-family:'Zain';font-weight:800;font-size:13px;color:var(--mut);width:16px;text-align:center;flex:none}
+  .cm .mm{flex:1;min-width:0}.cm .nm{font-size:12px;font-weight:600}.cm .s{font-size:8.5px;color:var(--mut);margin-top:2px}
+  .cm .track{height:4px;border-radius:2px;background:var(--sd);margin-top:6px;overflow:hidden}.cm .track i{display:block;height:100%;border-radius:2px;background:var(--pc);animation:fillbar 1.2s ease}
+  .cm .pct{font-family:'Zain';font-weight:800;font-size:18px;color:var(--pc);flex:none}
+  .cm .miss{font-size:7.5px;font-weight:600;padding:2px 6px;border-radius:5px;color:var(--red);background:color-mix(in srgb,var(--red) 14%,transparent);margin-inline-start:6px}
+
+  /* 4 audit */
+  .afilter{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:10px}.afilter::-webkit-scrollbar{display:none}
+  .af{flex:none;padding:7px 12px;border-radius:10px;border:none;background:var(--plane);box-shadow:2px 2px 6px var(--sd),-2px -2px 6px var(--sl);color:var(--tx2);font-size:10px;font-weight:600;cursor:pointer}.af.on{color:var(--ongold);background:linear-gradient(135deg,var(--gold2),var(--gold))}
+  .arow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--edge)}.arow:last-child{border-bottom:none}
+  .arow .ai{width:28px;height:28px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--nc) 15%,transparent)}.arow .ai svg{width:14px;stroke:var(--nc)}
+  .arow .txt{flex:1;font-size:10.5px;line-height:1.4}.arow .txt b{font-weight:600}.arow .tm{font-size:8.5px;color:var(--mut);flex:none}
+
+  /* 5 funnel */
+  .ftrip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:11px}
+  .ft{border-radius:14px;padding:12px 6px;text-align:center}.ft .v{font-family:'Zain';font-weight:800;font-size:22px;color:var(--fc)}.ft .k{font-size:8.5px;color:var(--tx2);margin-top:2px}
+  .frow{display:flex;align-items:center;gap:8px;margin-bottom:6px}.frow .fl{width:70px;font-size:9.5px;color:var(--tx2);flex:none}.frow .fb{flex:1;height:18px;border-radius:6px;background:var(--sd);overflow:hidden}.frow .fb i{display:block;height:100%;border-radius:6px;animation:fillbar 1.3s ease}.frow .fn{font-family:'Zain';font-weight:800;font-size:10px;flex:none;width:30px}
+
+  /* 6 star */
+  .star{border-radius:20px;padding:17px;position:relative;overflow:hidden;background:linear-gradient(150deg,color-mix(in srgb,var(--gold) 22%,var(--plane)),var(--plane));border:1px solid color-mix(in srgb,var(--gold) 40%,transparent);box-shadow:0 10px 28px color-mix(in srgb,var(--gold) 16%,transparent)}
+  .star::after{content:"";position:absolute;top:-40px;left:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--gold) 28%,transparent),transparent 70%)}
+  .star .crown{position:absolute;top:13px;left:15px;color:var(--gold2)}.star .crown svg{width:24px}
+  .star .r1{display:flex;align-items:center;gap:13px;margin-bottom:13px;position:relative;z-index:1}
+  .star .av{width:54px;height:54px;border-radius:16px;flex:none;display:flex;align-items:center;justify-content:center;position:relative}
+  .star .av svg{transform:rotate(-90deg)}.star .av .p{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Zain';font-weight:800;font-size:15px;color:var(--gold2)}
+  .star .who .lbl{font-size:9.5px;color:var(--gold2);font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:5px}.star .who .lbl svg{width:12px}
+  .star .who .nm{font-size:18px;font-weight:700}
+  .star .stats{display:flex;gap:8px;position:relative;z-index:1}
+  .star .st{flex:1;border-radius:12px;padding:10px 6px;text-align:center;background:var(--plane);box-shadow:inset 2px 2px 6px var(--sd),inset -2px -2px 6px var(--sl)}
+  .star .st .sv{font-family:'Zain';font-weight:800;font-size:19px;color:var(--gold2)}.star .st .sk{font-size:8px;color:var(--mut);margin-top:2px}
+  .rega{text-align:center;font-size:9px;color:var(--mut);margin-top:18px}
+  /* top-lit floating nav (design 4) */
+  .navwrap{flex:none;padding:8px 14px 14px;background:linear-gradient(0deg,var(--page) 60%,transparent)}
+  .nav{display:flex;background:var(--plane);border-radius:20px 20px 16px 16px;padding:10px 6px 8px;box-shadow:5px 5px 13px var(--sd),-5px -5px 13px var(--sl),0 -2px 10px rgba(0,0,0,.15)}
+  .nav .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;position:relative;padding:6px 0}
+  .nav .tab svg{width:21px;stroke:var(--mut);stroke-width:1.8;fill:none}
+  .nav .tab .lb{font-size:8.5px;color:var(--mut);font-weight:600}
+  .nav .tab.on svg{stroke:var(--gold);filter:drop-shadow(0 0 6px color-mix(in srgb,var(--gold) 55%,transparent))}
+  .nav .tab.on .lb{color:var(--gold);font-weight:700}
+  .nav .tab.on::after{content:"";position:absolute;top:-10px;width:26px;height:3px;border-radius:2px;background:var(--gold);box-shadow:0 0 10px var(--gold)}
+  .nav .bdg{position:absolute;top:0;left:50%;transform:translateX(4px);min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:var(--red);color:#fff;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Zain';box-shadow:0 2px 6px color-mix(in srgb,var(--red) 50%,transparent);animation:pulse 2s infinite}
+</style>
+</head>
+<body class="night">
+  <div class="top">
+    <h1>الرئيسية — المالك (كاملة)</h1>
+    <p>الترتيب: أرقام الأداء ← دوام وحالة الفريق ← الالتزام ← التدقيق ← القمع ← نجم الأسبوع. قسم الفريق بأسلوب كرت الدوام المعتمد. حدّث للحركة.</p>
+    <div class="toggle"><button class="on" id="bN">ليل</button><button id="bD">نهار</button></div>
+  </div>
+
+  <div class="stage"><div class="ph">
+    <div class="hd">
+      <div><div class="greet">مساء الخير، إدارة</div><div class="sub">٢٣ أغسطس · <b>٣ من ٨ متصلين الآن</b></div></div>
+      <div class="acts">
+        <button class="ib"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+        <button class="ib"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
+        <button class="ib"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/></svg><span class="dot">٩</span></button>
+      </div>
+    </div>
+    <div class="scr">
+      <!-- 1 PERFORMANCE -->
+      <div class="sec-h" style="--ac:var(--gold)"><span class="n">١</span><span class="tt">أرقام الأداء</span><span class="c">حسب الفترة</span></div>
+      <div class="seg"><button class="on">الكل</button><button>أسبوع</button><button>٧٢س</button><button>٤٨س</button><button>٢٤س</button></div>
+      <div class="unas anim" style="animation-delay:.05s">
+        <div class="v num">١١٩</div><div class="mm"><div class="k">عملاء غير موزّعين</div><div class="s">اضغط للتوزيع — ما أحد يشتغل عليهم</div></div>
+        <span class="go">وزّع<svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></span>
+      </div>
+      <div class="pills">
+        <div class="pill raise anim" style="--kc:var(--gold2);animation-delay:.1s"><div class="bd"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div class="mm"><div class="kk">إجمالي العملاء</div><div class="vv num">٢٣١٩</div></div></div>
+        <div class="pill raise anim" style="--kc:var(--green);animation-delay:.15s"><div class="ring"><svg width="44" height="44"><circle cx="22" cy="22" r="18" fill="none" stroke="var(--sd)" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="var(--green)" stroke-width="4" stroke-linecap="round" stroke-dasharray="113" stroke-dashoffset="93.8" style="--circ:113;animation:ringdraw 1.3s ease"/></svg><span class="rv num">١٧٪</span></div><div class="mm"><div class="kk">تحويل لحجز</div></div></div>
+        <div class="pill raise anim" style="--kc:var(--blue);animation-delay:.2s"><div class="bd"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></div><div class="mm"><div class="kk">زيارات</div><div class="vv num">٧٥</div></div></div>
+        <div class="pill raise anim" style="--kc:var(--amber);animation-delay:.25s"><div class="bd"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><div class="mm"><div class="kk">حجوزات</div><div class="vv num">١٣</div></div></div>
+      </div>
+
+      <!-- 2 TEAM -->
+      <div class="sec-h" style="--ac:var(--green)"><span class="n">٢</span><span class="tt">دوام وحالة الفريق</span><span class="c">٨ · ٣ مداوم</span></div>
+      <div class="tsumm">
+        <div class="ts" style="--tsc:var(--green)"><div class="v num">٣</div><div class="k">مداوم</div></div>
+        <div class="ts" style="--tsc:var(--teal)"><div class="v num">١</div><div class="k">عن بُعد</div></div>
+        <div class="ts" style="--tsc:var(--amber)"><div class="v num">١</div><div class="k">مستأذن</div></div>
+        <div class="ts" style="--tsc:var(--neutral)"><div class="v num">١</div><div class="k">إجازة</div></div>
+        <div class="ts" style="--tsc:var(--red)"><div class="v num">٢</div><div class="k">لم يسجّل</div></div>
+      </div>
+      <div class="trow raise anim" style="--stc:var(--green);animation-delay:.1s">
+        <div class="ringav"><svg width="42" height="42"><circle cx="21" cy="21" r="17" fill="none" stroke="var(--sd)" stroke-width="4"/><circle cx="21" cy="21" r="17" fill="none" stroke="var(--green)" stroke-width="4" stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="22.4" style="--circ:106.8;animation:ringdraw 1.2s ease"/></svg><div class="ct"><div class="p num">٧٩٪</div></div><span class="liv"></span></div>
+        <div class="tw"><div class="nm">عبير الحربي</div><div class="meta"><span class="a on"><span class="d"></span>نشط الآن</span><span>الدوام <b>٦:١٩</b>/٨س</span></div></div>
+        <div class="tr"><span class="badge b-on"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>مداوم</span><span class="rec open"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M9 21h6"/></svg>استقبال مفتوح</span></div>
+      </div>
+      <div class="trow raise anim" style="--stc:var(--teal);animation-delay:.16s">
+        <div class="ringav"><svg width="42" height="42"><circle cx="21" cy="21" r="17" fill="none" stroke="var(--sd)" stroke-width="4"/><circle cx="21" cy="21" r="17" fill="none" stroke="var(--teal)" stroke-width="4" stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="50.2" style="--circ:106.8;animation:ringdraw 1.2s ease"/></svg><div class="ct"><div class="p num">٥٣٪</div></div><span class="liv"></span></div>
+        <div class="tw"><div class="nm">سعود حامد</div><div class="meta"><span class="a on"><span class="d"></span>نشط الآن</span><span>عن بُعد · منذ ٣:١٠</span></div></div>
+        <div class="tr"><span class="badge b-teal"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H4z"/><path d="M2 20h20"/></svg>عن بُعد</span><span class="rec open"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M9 21h6"/></svg>استقبال مفتوح</span></div>
+      </div>
+      <div class="trow raise anim" style="--stc:var(--green);animation-delay:.22s">
+        <div class="ringav off"><svg width="42" height="42"><circle cx="21" cy="21" r="17" fill="none" stroke="var(--sd)" stroke-width="4"/><circle cx="21" cy="21" r="17" fill="none" stroke="var(--green)" stroke-width="4" stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="50" style="--circ:106.8;animation:ringdraw 1.2s ease"/></svg><div class="ct"><div class="p num">٥٣٪</div></div><span class="liv"></span></div>
+        <div class="tw"><div class="nm">محمد حامد</div><div class="meta"><span class="a off"><span class="d"></span>آخر ظهور قبل ١٠د</span><span>الدوام <b>٤:١٥</b>/٨س</span></div></div>
+        <div class="tr"><span class="badge b-on"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>مداوم</span><span class="rec closed"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M9 21h6"/></svg>مقفول · مشغول ٢س</span></div>
+      </div>
+      <div class="trow raise anim" style="--stc:var(--amber);animation-delay:.28s">
+        <div class="ringav off"><svg width="42" height="42"><circle cx="21" cy="21" r="17" fill="none" stroke="var(--sd)" stroke-width="4"/><circle cx="21" cy="21" r="17" fill="none" stroke="var(--amber)" stroke-width="4" stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="69.4" style="--circ:106.8;animation:ringdraw 1.2s ease"/></svg><div class="ct"><div class="p num">٣٥٪</div></div><span class="liv"></span></div>
+        <div class="tw"><div class="nm">بدر حامد</div><div class="meta"><span class="a off"><span class="d"></span>آخر ظهور قبل ساعة</span><span>مستأذن · لدى خالد</span></div></div>
+        <div class="tr"><span class="badge b-amber"><svg viewBox="0 0 24 24"><path d="M12 2 3 7v6c0 5 4 8 9 9 5-1 9-4 9-9V7z"/></svg>مستأذن</span></div>
+      </div>
+      <div class="trow raise anim" style="--stc:var(--red);animation-delay:.34s;background:linear-gradient(140deg,color-mix(in srgb,var(--red) 8%,var(--plane)),var(--plane))">
+        <div class="ringav off"><svg width="42" height="42"><circle cx="21" cy="21" r="17" fill="none" stroke="var(--sd)" stroke-width="4"/><circle cx="21" cy="21" r="17" fill="none" stroke="var(--red)" stroke-width="4" stroke-dasharray="106.8" stroke-dashoffset="106.8"/></svg><div class="ct"><div class="p num" style="color:var(--red);font-size:10px">٠٪</div></div><span class="liv"></span></div>
+        <div class="tw"><div class="nm">خالد الجابر</div><div class="meta"><span class="a off"><span class="d"></span>دوامه ٩:٠٠ص</span><span style="color:var(--red)">غياب ٢٠ يوم متتالية</span></div></div>
+        <div class="tr"><span class="badge b-red"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>لم يسجّل</span></div>
+      </div>
+      <button class="viewall">عرض كل الفريق (٨)<svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+
+      <!-- 3 COMMITMENT -->
+      <div class="sec-h" style="--ac:var(--amber)"><span class="n">٣</span><span class="tt">التزام الموظفين بالمتابعات</span><span class="c">الكل ←</span></div>
+      <div class="chips"><button class="chip on">اليوم</button><button class="chip">أمس</button><button class="chip">الإجمالي</button></div>
+      <div class="cm raise anim" style="--pc:var(--red);animation-delay:.05s"><span class="rank num">١</span><div class="mm"><div class="nm">بدر حامد<span class="miss">١١ فايتة</span></div><div class="s">أنجز ٧ من ١٨ · ١١ فاتت بلا نتيجة</div><div class="track"><i style="width:39%"></i></div></div><div class="pct num">٣٩٪</div></div>
+      <div class="cm raise anim" style="--pc:var(--amber);animation-delay:.1s"><span class="rank num">٢</span><div class="mm"><div class="nm">سعود حامد</div><div class="s">أنجز ٤ من ٦ · ٢ فاتت</div><div class="track"><i style="width:67%"></i></div></div><div class="pct num">٦٧٪</div></div>
+      <div class="cm raise anim" style="--pc:var(--green);animation-delay:.15s"><span class="rank num">٣</span><div class="mm"><div class="nm">محمد حامد</div><div class="s">أنجز ٢٥ من ٢٦</div><div class="track"><i style="width:96%"></i></div></div><div class="pct num">٩٦٪</div></div>
+
+      <!-- 4 AUDIT -->
+      <div class="sec-h" style="--ac:var(--blue)"><span class="n">٤</span><span class="tt">سجل التدقيق</span><span class="c">الكامل ←</span></div>
+      <div class="afilter"><button class="af on">الكل</button><button class="af">متابعات</button><button class="af">إداري</button><button class="af">النظام</button><button class="af">حرِج</button></div>
+      <div class="arow" style="--nc:var(--blue)"><div class="ai"><svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6"/></svg></div><div class="txt"><b>بدر حامد</b> — متابعة: لم يرد · جدول محاولة</div><div class="tm">٥د</div></div>
+      <div class="arow" style="--nc:var(--gold2)"><div class="ai"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div><div class="txt"><b>أنت</b> — أدخلت ٧ عملاء لبركة التوزيع</div><div class="tm">٧د</div></div>
+      <div class="arow" style="--nc:var(--red)"><div class="ai"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div><div class="txt"><b>النظام</b> — دورة سحب تلقائي</div><div class="tm">١٣د</div></div>
+
+      <!-- 5 FUNNEL -->
+      <div class="sec-h" style="--ac:var(--purple)"><span class="n">٥</span><span class="tt">قمع المبيعات</span><span class="c">للتفصيل ←</span></div>
+      <div class="ftrip">
+        <div class="ft raise" style="--fc:var(--gold2)"><div class="v num">١٣</div><div class="k">حجز/بيع</div></div>
+        <div class="ft raise" style="--fc:var(--blue)"><div class="v num">١٤٨</div><div class="k">زيارة</div></div>
+        <div class="ft raise" style="--fc:var(--green)"><div class="v num">٥٠٧</div><div class="k">مهتم</div></div>
+      </div>
+      <div class="raise" style="border-radius:16px;padding:13px">
+        <div class="frow"><span class="fl">جديد</span><span class="fb"><i style="width:54%;background:var(--neutral)"></i></span><span class="fn num">٢٧٣</span></div>
+        <div class="frow"><span class="fl">محاولة/لم يرد</span><span class="fb"><i style="width:78%;background:var(--amber)"></i></span><span class="fn num">٣٩٩</span></div>
+        <div class="frow"><span class="fl">مهتم</span><span class="fb"><i style="width:100%;background:var(--green)"></i></span><span class="fn num">٥٠٧</span></div>
+        <div class="frow"><span class="fl">زيارة</span><span class="fb"><i style="width:29%;background:var(--blue)"></i></span><span class="fn num">١٤٨</span></div>
+        <div class="frow"><span class="fl">تفاوض</span><span class="fb"><i style="width:12%;background:var(--purple)"></i></span><span class="fn num">١٨</span></div>
+        <div class="frow"><span class="fl">حجز/بيع</span><span class="fb"><i style="width:8%;background:var(--gold)"></i></span><span class="fn num">١٣</span></div>
+        <div class="frow"><span class="fl">غير مهتم</span><span class="fb"><i style="width:84%;background:var(--red)"></i></span><span class="fn num">٤٢٥</span></div>
+      </div>
+
+      <!-- 6 STAR -->
+      <div class="sec-h" style="--ac:var(--gold)"><span class="n">٦</span><span class="tt">نجم الأسبوع</span><span class="c">هذا الأسبوع</span></div>
+      <div class="star anim" style="animation-delay:.1s">
+        <div class="crown"><svg viewBox="0 0 24 24"><path d="M3 6l4 4 5-6 5 6 4-4-2 12H5L3 6Z"/></svg></div>
+        <div class="r1">
+          <div class="av"><svg width="54" height="54"><circle cx="27" cy="27" r="23" fill="none" stroke="color-mix(in srgb,var(--gold) 25%,transparent)" stroke-width="4"/><circle cx="27" cy="27" r="23" fill="none" stroke="var(--gold2)" stroke-width="4" stroke-linecap="round" stroke-dasharray="144.5" stroke-dashoffset="18.8" style="--circ:144.5;animation:ringdraw 1.4s ease"/></svg><div class="p num">٨٧٪</div></div>
+          <div class="who"><div class="lbl"><svg viewBox="0 0 24 24"><path d="m12 3 2.4 5.9L21 9.3l-4.8 4 1.5 6.4L12 16.9 6.3 19.7l1.5-6.4L3 9.3l6.6-.4z"/></svg>الأعلى إنجازًا هذا الأسبوع</div><div class="nm">عبير الحربي</div></div>
+        </div>
+        <div class="stats">
+          <div class="st"><div class="sv num">٥</div><div class="sk">حجوزات</div></div>
+          <div class="st"><div class="sv num">٦٢</div><div class="sk">متابعة</div></div>
+          <div class="st"><div class="sv num">٨٧٪</div><div class="sk">التزام</div></div>
+        </div>
+      </div>
+      <div class="rega">رخصة فال (REGA) <span class="num">١٢٠٠٠٢١٠٢٩</span></div>
+    </div>
+    <div class="navwrap">
+      <div class="nav">
+        <div class="tab on"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="lb">الرئيسية</span></div>
+        <div class="tab"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/></svg><span class="lb">العملاء</span></div>
+        <div class="tab"><span class="bdg">٩٩</span><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5 6h14l3 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/></svg><span class="lb">غير موزّعين</span></div>
+        <div class="tab"><svg viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 12h6M9 16h4"/></svg><span class="lb">التدقيق</span></div>
+        <div class="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span class="lb">حسابي</span></div>
+      </div>
+    </div>
+  </div></div>
+
+<script>
+  const b=document.body,bN=document.getElementById('bN'),bD=document.getElementById('bD');
+  bN.onclick=()=>{b.classList.remove('day');b.classList.add('night');bN.classList.add('on');bD.classList.remove('on')};
+  bD.onclick=()=>{b.classList.remove('night');b.classList.add('day');bD.classList.add('on');bN.classList.remove('on')};
+  document.querySelectorAll('.chips,.seg').forEach(g=>g.querySelectorAll('.chip,button').forEach(c=>c.onclick=()=>{g.querySelectorAll('.chip,button').forEach(x=>x.classList.remove('on'));c.classList.add('on')}));
+  document.querySelectorAll('.afilter').forEach(g=>g.querySelectorAll('.af').forEach(c=>c.onclick=()=>{g.querySelectorAll('.af').forEach(x=>x.classList.remove('on'));c.classList.add('on')}));
+  document.querySelectorAll('.nav .tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.nav .tab').forEach(x=>x.classList.remove('on'));t.classList.add('on')});
+</script>
+</body>
+</html>

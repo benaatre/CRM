@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MOBILE_COLORS } from "@/lib/mobile-tokens";
+import { Users, Eye, SquareCheckBig } from "lucide-react";
+import { SOP } from "@/lib/mobile-tokens";
 import { toArabicDigits } from "@/lib/mobile-format";
 
 /**
- * رأس لوحة المالك الحي — بانر «غير موزّعين» + شبكة KPI ٢×٢ بعدّ تصاعدي.
- * client لأجل rAF فقط؛ البيانات كلها تصل props من getDashboard (لا استعلامات هنا).
- * الحركة transform/opacity (m-rise/m-press/m-ctapulse) والعدّ يحترم prefers-reduced-motion.
+ * حبوب «أرقام الأداء» (رئيسية المالك — owner-home-final): شبكة ٢×٢ بأسلوب
+ * النيومورفيزم الناعم (.m-raise): إجمالي العملاء (ذهبي) · تحويل لحجز بحلقة (أخضر)
+ * · زيارات (أزرق) · حجوزات (كهرماني). client لأجل rAF فقط؛ البيانات كلها props
+ * من getDashboard (لا استعلامات هنا). العدّ والحلقة يحترمان prefers-reduced-motion.
  */
+
+const ZAIN = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" as const };
 
 /** عدّ تصاعدي من صفر بـrAF — يقفز للقيمة النهائية مباشرة مع تفضيل تقليل الحركة. */
 export function useCountUp(target: number, durationMs = 750): number {
@@ -32,80 +36,102 @@ export function useCountUp(target: number, durationMs = 750): number {
   return val;
 }
 
-/** حلقة تقدّم SVG — تمتلئ بتزامن مع رقم العدّ (نفس قيمة rAF الواحدة). */
-function Ring({ pct, size = 46, stroke = 4 }: { pct: number; size?: number; stroke?: number }) {
+/** حلقة تقدّم SVG (٤٤px، النموذج حرفيًا) — تمتلئ بتزامن مع رقم العدّ (نفس قيمة rAF الواحدة). */
+function Ring({ pct, color, size = 44, stroke = 4 }: { pct: number; color: string; size?: number; stroke?: number }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.min(pct, 100) / 100);
   return (
-    <svg data-svg-free width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }} aria-hidden>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={MOBILE_COLORS.line2} strokeWidth={stroke} />
+    <svg
+      data-svg-free
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      style={{ maxWidth: size, maxHeight: size, transform: "rotate(-90deg)" }}
+      aria-hidden
+    >
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={SOP.sd} strokeWidth={stroke} />
       <circle
         cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={MOBILE_COLORS.gold} strokeWidth={stroke} strokeLinecap="round"
+        stroke={color} strokeWidth={stroke} strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={off}
       />
     </svg>
   );
 }
 
-/** بطاقة KPI زجاجية: تدرّج ذهبي خافت + خط علوي ذهبي مضيء + دخول متدرّج + ضغط scale. */
-function KpiCard({
-  label, value, suffix = "", color, delayMs, ring = false,
+/** حبة رقم: أيقونة داخل صندوق ملوّن خافت + التسمية + القيمة بخط Zain. */
+function Pill({
+  icon: Icon, label, value, suffix = "", color, delayMs,
 }: {
+  icon: typeof Users;
   label: string;
   value: number;
   suffix?: string;
   color: string;
   delayMs: number;
-  ring?: boolean;
 }) {
   const n = useCountUp(value);
   return (
     <div
-      className="m-rise m-press relative flex items-center justify-between overflow-hidden"
-      style={{
-        boxSizing: "border-box",
-        background: `linear-gradient(165deg, ${MOBILE_COLORS.goldBg} 0%, ${MOBILE_COLORS.card} 55%)`,
-        border: `1px solid ${MOBILE_COLORS.border}`,
-        borderRadius: 16, padding: "14px 13px", minHeight: 86, gap: 8,
-        animationDelay: `${delayMs}ms`,
-      }}
+      className="m-raise m-rise m-press-sc flex items-center"
+      style={{ boxSizing: "border-box", borderRadius: 15, padding: 12, gap: 11, animationDelay: `${delayMs}ms` }}
     >
       <span
-        aria-hidden
+        className="flex flex-none items-center justify-center"
         style={{
-          position: "absolute", top: 0, insetInline: 10, height: 2, borderRadius: 2,
-          background: `linear-gradient(90deg, transparent, ${MOBILE_COLORS.gold}, transparent)`,
-          boxShadow: `0 0 10px ${MOBILE_COLORS.gold}`,
+          boxSizing: "border-box", width: 36, height: 36, borderRadius: 11,
+          background: `color-mix(in srgb, ${color} 15%, transparent)`,
         }}
-      />
-      <div className="flex flex-col justify-center" style={{ gap: 5 }}>
-        <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color }}>
+      >
+        <Icon size={18} strokeWidth={1.7} style={{ color, maxWidth: 24, maxHeight: 24 }} aria-hidden />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate" style={{ fontSize: "9.5px", color: SOP.tx2 }}>{label}</span>
+        <span className="block" style={{ ...ZAIN, fontSize: 23, fontWeight: 800, lineHeight: 1.1, color }}>
           {toArabicDigits(n)}{suffix}
-        </div>
-        <div style={{ fontSize: "11.5px", color: MOBILE_COLORS.textSecondary }}>{label}</div>
-      </div>
-      {ring && <Ring pct={n} />}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/** حبة الحلقة (تحويل لحجز): النسبة داخل الحلقة، والتسمية بجانبها. */
+function RingPill({ label, pct, color, delayMs }: { label: string; pct: number; color: string; delayMs: number }) {
+  const n = useCountUp(pct);
+  return (
+    <div
+      className="m-raise m-rise m-press-sc flex items-center"
+      style={{ boxSizing: "border-box", borderRadius: 15, padding: 12, gap: 11, animationDelay: `${delayMs}ms` }}
+    >
+      <span className="relative flex-none" style={{ width: 44, height: 44 }}>
+        <Ring pct={n} color={color} />
+        <span
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ ...ZAIN, fontSize: 12, fontWeight: 800, color }}
+        >
+          {toArabicDigits(n)}٪
+        </span>
+      </span>
+      <span className="min-w-0" style={{ fontSize: "9.5px", color: SOP.tx2 }}>{label}</span>
     </div>
   );
 }
 
 export function OwnerKpis({
-  total, conversion, bookings, visits,
+  totalClients, conversion, bookings, visits,
 }: {
-  total: number;
+  totalClients: number;
   conversion: number;
   bookings: number;
   visits: number;
 }) {
-  // بانر «غير موزّعين» انتقل لقسم «قرارك الآن» (v3) — الشبكة ٢×٢ فقط هنا.
   return (
-    <div className="grid grid-cols-2" style={{ gap: 9 }}>
-      <KpiCard label="إجمالي العملاء" value={total} color={MOBILE_COLORS.textPrimary} delayMs={90} />
-      <KpiCard label="تحويل الزيارات إلى حجوزات" value={conversion} suffix="٪" ring color={MOBILE_COLORS.gold} delayMs={160} />
-      <KpiCard label="عدد الزيارات" value={visits} color={MOBILE_COLORS.textPrimary} delayMs={230} />
-      <KpiCard label="عدد الحجوزات" value={bookings} color={MOBILE_COLORS.gold} delayMs={300} />
+    <div className="grid grid-cols-2" style={{ gap: 10 }}>
+      <Pill icon={Users} label="إجمالي العملاء" value={totalClients} color={SOP.gold2} delayMs={100} />
+      <RingPill label="تحويل لحجز" pct={conversion} color={SOP.green} delayMs={150} />
+      <Pill icon={Eye} label="زيارات" value={visits} color={SOP.blue} delayMs={200} />
+      <Pill icon={SquareCheckBig} label="حجوزات" value={bookings} color={SOP.amber} delayMs={250} />
     </div>
   );
 }

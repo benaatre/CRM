@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Moon, Sun } from "lucide-react";
-import { MOBILE_COLORS, MOBILE_THEME_COOKIE, type MobileTheme } from "@/lib/mobile-tokens";
+import { MOBILE_COLORS, SOP, MOBILE_THEME_COOKIE, type MobileTheme } from "@/lib/mobile-tokens";
 
 /**
  * زر ليلي/نهاري — الخانة التي يحجزها النموذج في الترويسة.
@@ -36,18 +36,24 @@ export function MobileThemeToggle({
       type="button"
       onClick={toggle}
       aria-label={theme === "dark" ? "التبديل للوضع النهاري" : "التبديل للوضع الليلي"}
-      className="m-iconbtn flex items-center justify-center"
-      style={{
-        boxSizing: "border-box",
-        width: compact ? 36 : 42,
-        height: compact ? 36 : 42,
-        borderRadius: compact ? 12 : 14,
-        background: MOBILE_COLORS.card,
-        border: `1px solid ${compact ? MOBILE_COLORS.hair : MOBILE_COLORS.border}`,
-        cursor: "pointer",
-      }}
+      className={compact ? "m-iconbtn flex items-center justify-center" : "m-raise m-press-sc flex items-center justify-center"}
+      style={
+        compact
+          ? {
+              boxSizing: "border-box", width: 36, height: 36, borderRadius: 12,
+              background: MOBILE_COLORS.card, border: `1px solid ${MOBILE_COLORS.hair}`,
+              cursor: "pointer",
+            }
+          : // هندسة ترويسة المالك (owner-home-final): ٣٥×٣٥ · نصف قطر ١١ · سطح بارز.
+            { boxSizing: "border-box", width: 35, height: 35, borderRadius: 11, cursor: "pointer" }
+      }
     >
-      <Icon size={compact ? 16 : 19} strokeWidth={1.8} style={{ color: MOBILE_COLORS.textSecondary }} aria-hidden />
+      <Icon
+        size={compact ? 16 : 15}
+        strokeWidth={1.7}
+        style={{ color: compact ? MOBILE_COLORS.textSecondary : SOP.tx2, maxWidth: 24, maxHeight: 24 }}
+        aria-hidden
+      />
     </button>
   );
 }
