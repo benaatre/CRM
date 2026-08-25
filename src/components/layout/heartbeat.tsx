@@ -10,6 +10,10 @@ import { queryGeoPermission, readBestPosition } from "@/lib/geolocation-permissi
  * فنقرأ الموقع **بصمت** ونرسله بنبضة ثانية. قواعد صارمة:
  * - لا prompt إذن أبدًا من النبضة: نقرأ فقط إذا الإذن `granted` مسبقًا — الطلب
  *   الرسمي من شاشة التفعيل (الحضور بالرادار — ر١) لا من هنا.
+ * - (دفعة إغلاق النبض) **النبضة الأولى لكل فترة مقدّمة** تحمل الموقع مباشرة —
+ *   فقط والإذن `granted` مؤكَّدًا والموافقة قائمة (ذاكرتها المحلية المزامَنة من
+ *   حقيقة الخادم) — فمن يفتح التطبيق دقيقة ليبصم يولّد نبضة جغرافية بلا
+ *   انتظار دورة wantGeo كاملة. الخادم يظل الحاكم: غير المستحق تُهمل إحداثياته.
  * - رفق بالبطارية: بلا enableHighAccuracy وبكاش قصير — الحكم خادمي، والدقة
  *   الرديئة تصير «حياة بلا حكم موقع» هناك لا حكمًا خاطئًا هنا.
  * - القراءة تتوقف تلقائيًا بإغلاق التطبيق (لا تتبع بالخلفية — WebView معلّق).
@@ -42,6 +46,22 @@ export function Heartbeat() {
       }
     };
 
+    /**
+     * موقع للنبضة الأولى — فقط والإذن `granted` مؤكَّدًا (الطبقة الموحّدة:
+     * تشمل المسار الأصلي وذاكرة المنحة) والموافقة قائمة. أي تعذّر = نبضة
+     * عادية بلا موقع — مسار wantGeo القائم يغطي البقية. **صفر prompt**.
+     */
+    const firstBeatCoords = async (): Promise<{ lat: number; lng: number; accuracy: number } | null> => {
+      try {
+        if (window.localStorage.getItem("attendance-geo-consent-v3") !== "1") return null;
+        if ((await queryGeoPermission()) !== "granted") return null;
+        const pos = await readBestPosition({ targetAccuracy: 60, timeoutMs: 8_000 });
+        return { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+      } catch {
+        return null;
+      }
+    };
+
     let timer: ReturnType<typeof setTimeout> | null = null;
     let delay = 120_000;
 
@@ -50,14 +70,20 @@ export function Heartbeat() {
       timer = setTimeout(() => void ping(), delay);
     };
 
-    const ping = async () => {
+    const ping = async (firstOfForeground = false) => {
       if (busyRef.current) {
         schedule();
         return;
       }
       busyRef.current = true;
       try {
-        const res = await fetch("/api/heartbeat", { method: "POST" });
+        const coords = firstOfForeground ? await firstBeatCoords() : null;
+        const res = await fetch("/api/heartbeat", {
+          method: "POST",
+          ...(coords
+            ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(coords) }
+            : {}),
+        });
         const data = (await res.json().catch(() => null)) as { wantGeo?: boolean; openSession?: boolean } | null;
         if (data?.wantGeo) await sendGeo();
         // قرار ١٠ (الدوام الواقعي): أثناء جلسة مفتوحة النبض كل دقيقة — المراقبة بالدقيقة.
@@ -69,11 +95,11 @@ export function Heartbeat() {
       schedule();
     };
 
-    void ping();
+    void ping(true);
     // رجوع التطبيق للمقدمة = نبضة فورية — يسرّع البصم التلقائي وكشف الرجوع
-    // بعد الاستئذان بلا انتظار الدورة.
+    // بعد الاستئذان بلا انتظار الدورة. أول نبضة الرجوع تحمل الموقع كذلك.
     const onVisible = () => {
-      if (document.visibilityState === "visible") void ping();
+      if (document.visibilityState === "visible") void ping(true);
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
