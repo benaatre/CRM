@@ -373,6 +373,8 @@ export async function POST(req: Request) {
     : 0;
 
   // ===== ٩) التسجيل + الجلسة — معاملة واحدة فلا تبقى بصمة بلا جلستها =====
+  // معرّف جلسة الحضور المنشأة — لربط صف النبض الراداري بها بعد المعاملة.
+  let checkInSessionId: string | null = null;
   const event = await prisma.$transaction(async (tx) => {
     const created = await tx.attendanceEvent.create({
       data: {
@@ -399,6 +401,7 @@ export async function POST(req: Request) {
           lastAliveAt: now, lastZoneProofAt: now,
         },
       });
+      checkInSessionId = session.id;
 
       // أول حضور فقط يثبّت بداية اليوم وتأخيره — الاستئناف لا يمسّهما.
       if (!isResume) {
@@ -476,6 +479,30 @@ export async function POST(req: Request) {
 
     return created;
   });
+
+  /*
+   * ===== إغلاق النبض: البصمة اليدوية إثبات راداري كامل =====
+   * حضور ناجح داخل النطاق (الوصول هنا يضمنه) بدقة مقبولة أصلًا (حارس ٣) —
+   * صف AttendancePulse من نفس الإحداثيات والحكم، فيظهر في «المواقع الحية»
+   * فورًا بلا انتظار دورتي heartbeat (lastZoneProofAt خُتم بإنشاء الجلسة).
+   * فشله لا يمس البصمة — النبض القادم يعوّضه.
+   */
+  if (body.intent === AttendanceEventType.CHECK_IN) {
+    await prisma.attendancePulse
+      .create({
+        data: {
+          userId,
+          sessionId: checkInSessionId,
+          at: now,
+          lat: body.lat,
+          lng: body.lng,
+          accuracy: body.accuracy,
+          locationId: match.id,
+          inZone: true,
+        },
+      })
+      .catch(() => {});
+  }
 
   /*
    * ===== ١٠) إشعارات المالك — بعد نجاح المعاملة (best-effort لا يفشل البصمة) =====
