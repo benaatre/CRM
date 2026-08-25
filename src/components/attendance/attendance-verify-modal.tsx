@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DoorOpen, Loader2, MapPin, Route, UserRoundCheck } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
+import { readPositionOnce } from "@/lib/geolocation-permission";
 import "./attendance.css";
 
 /**
@@ -26,19 +27,9 @@ type Authorizer = { id: string; label: string };
 
 type RespondResult = { ok: boolean; status?: string; message?: string; reason?: string };
 
-/** قراءة موقع واحدة — نفس ضبط البطاقة حرفيًا. */
+/** قراءة موقع واحدة — نفس ضبط البطاقة حرفيًا، عبر الطبقة الموحّدة (المسار الأصلي على التطبيق). */
 function readPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      reject(new Error("unsupported"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000,
-    });
-  });
+  return readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
 }
 
 function geoErrorMessage(err: unknown): string {

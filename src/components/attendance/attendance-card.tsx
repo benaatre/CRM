@@ -19,6 +19,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { hmLabel, type AttendanceTheme } from "@/lib/attendance-ui";
+import { readPositionOnce } from "@/lib/geolocation-permission";
 import { toArabicDigits } from "@/lib/format";
 import { DayLine, StationsLog, type StationDto, type VerificationDto } from "@/components/attendance/attendance-stations";
 import { LocationSheet, type NearbyLocation } from "@/components/attendance/location-sheet";
@@ -122,19 +123,12 @@ const LEAVE_TYPES = [
 /** خلفية باهتة من لون التوكن — color-mix يشتغل على var() بخلاف دمج النصوص. */
 const soft = (color: string, pct = 12) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
-/** قراءة موقع واحدة بأعلى دقة متاحة — بلا كاش (maximumAge:0) ومهلة ١٥ ثانية. */
+/**
+ * قراءة موقع واحدة بأعلى دقة متاحة — بلا كاش (maximumAge:0) ومهلة ١٥ ثانية.
+ * عبر الطبقة الموحّدة: المسار الأصلي (CoreLocation) على التطبيق + ذاكرة المنحة.
+ */
 function readPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      reject(new Error("unsupported"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000,
-    });
-  });
+  return readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
 }
 
 /** رسالة خطأ الموقع بلهجة واضحة — الرفض له نصّه الخاص. */
