@@ -19,11 +19,13 @@ import { notify, ownerIds } from "@/lib/notify";
  * البصم التلقائي بالنبض الجغرافي (الدوام الواقعي — قرار ٣) — ينفَّذ لحظة
  * استقبال النبضة في heartbeat/route (أدق من انتظار الكرون).
  *
- * حمايتا المالك المعتمدتان:
+ * حمايات المالك المعتمدة:
  *  (أ) نبضتان متتاليتان داخل النطاق (خلال نافذة قصيرة) — لا بصمة عابرة.
  *  (ب) idempotency صارم: قفل ذري على `AttendanceDay.firstCheckInAt` داخل
  *      المعاملة — `updateMany(where: firstCheckInAt=null)` يفوز به طلب واحد
  *      مهما تسابقت النبضات، والبصم التلقائي لأول بصمة اليوم حصرًا.
+ *  (ج) قفل استشاري معاملي `pg_advisory_xact_lock` على (المستخدم + اليوم) —
+ *      يسدّ ثغرة تسابق ما قبل وجود صف اليوم (تفصيلها داخل المعاملة أدناه).
  *
  * متى يستحق: موظف بلا جلسة اليوم، يوم عمل «في الموقع»، داخل نافذة بدايته —
  * أو «بالطريق» معلنة ما زالت بمهلتها (وصوله يحسمها ARRIVED_AUTO).
@@ -141,6 +143,21 @@ export async function tryAutoPunch(args: {
   const config = mergeConfig(settings, schedRow, now);
 
   const punched = await prisma.$transaction(async (tx) => {
+    /*
+     * الحماية (ج): قفل استشاري معاملي على (المستخدم + اليوم المنطقي) — القفل
+     * الذري (ب) يفترض صف AttendanceDay واحدًا، لكن نبضات متزامنة قبل وجود
+     * الصف قد تُنشئ عبر ensureAttendanceDay صفوفًا متوازية يفوز كلٌّ بقفل
+     * صفّه. القفل هنا يسلسل المتسابقين قبل ensureAttendanceDay، ويُفك تلقائيًا
+     * بنهاية المعاملة.
+     */
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`auto-punch:${userId}:${todayKey}`}, 0))`;
+    // إعادة فحص «لا بصمة دخول قائمة» داخل القفل: من انتظر القفل يرى جلسة الفائز.
+    const dupSession = await tx.attendanceSession.findFirst({
+      where: { userId, voided: false, startedAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) } },
+      select: { id: true },
+    });
+    if (dupSession) return false;
+
     const day = await ensureAttendanceDay(tx, userId, todayKey);
     if (day.mode !== "ONSITE") return false;
     // يوم مقفول نهائيًا (القرار أ): لا بصم تلقائيًا أيضًا — دوامه يبدأ بكرة.
