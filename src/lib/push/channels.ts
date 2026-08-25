@@ -145,6 +145,8 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.verify": "pull_warn",
   // تذكير الموقوف «رجعت؟» — للموظف، فعل مطلوب لكنه ليس إنذارًا.
   "attendance.pause_reminder": "appointments",
+  // تذكير البصم «دوامك بدأ» — للموظف، فعل مطلوب لكنه ليس إنذارًا.
+  "attendance.punch_reminder": "appointments",
   // ===== الدوام الواقعي =====
   // «بصمنا لك ✓» للموظف — بشرى هادئة لا إنذار.
   "attendance.auto_punch": "appointments",
@@ -201,6 +203,7 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "attendance.leave_cancelled": "إلغاء إجازة (للموظف)",
   "attendance.verify": "نداء تحقق (للموظف)",
   "attendance.pause_reminder": "تذكير الموقوف (للموظف)",
+  "attendance.punch_reminder": "تذكير الحضور (للموظف)",
 };
 
 /**

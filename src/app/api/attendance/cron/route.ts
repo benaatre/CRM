@@ -40,6 +40,7 @@ export const dynamic = "force-dynamic";
  *   ٣) «لم يداوم»: يوم عمل مرّت noShowAfterMinutes من بداية دوامه بلا جلسة → إشعار المالك مرة باليوم.
  *   ٤) إقفال الجلسات المنسية (autoClosed) عند نهاية نافذة الشركة/الدوام الشخصي.
  *   ٥) تذكير الموقوف «لا زلت مستأذنًا — رجعت؟» بعد ساعة، ومرة ثانية أخيرة بعد ساعة إضافية.
+ *   +) تذكير البصم (دفعة الختام): فتحت نافذته ولا بصمة ولا قرار → push «تذكير الحضور» مرة باليوم.
  *
  * الحماية: هيدر `x-cron-secret` يطابق CRON_SECRET (حسب التصميم المعتمد)،
  * ويُقبل أيضًا `Authorization: Bearer` كبقية مسارات الكرون في الريبو.
@@ -430,6 +431,94 @@ async function checkNoShows(now: Date, settings: Settings): Promise<number> {
     alerted++;
   }
   return alerted;
+}
+
+/**
+ * ١٠) تذكير البصم (الركيزة الثالثة): موظف مرصود مُلزَم فتحت نافذة بدايته ولا
+ * بصمة دخول اليوم ولا قرار حسم قائم ولا إجازة/عطلة/يوم غير «في الموقع» →
+ * push للموظف نفسه يفتح التطبيق (فالنبضة تبصم له تلقائيًا). مرة واحدة يوميًا
+ * لكل موظف عبر صف الإشعار نفسه — نفس آلية dedup «لم يداوم» حرفيًا.
+ */
+async function remindPunchIn(now: Date, settings: Settings): Promise<number> {
+  const todayKey = ksaDayKey(now);
+  const dayStart = dayStartKSA(now);
+  const dow = ksaDayOfWeek(now);
+  const nowMinutes = ksaMinutesOfDay(now);
+  // خارج نافذة الشركة كلها لا تذكير — بعد الإقفال يفوت الغرض، وقبلها لم يبدأ أحد.
+  if (nowMinutes < settings.workStartMinutes || nowMinutes >= settings.workEndMinutes) return 0;
+
+  const [users, schedules, exceptions, sessions, decisions, dayRows] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: { in: TRACKED_ROLES }, active: true },
+      select: { id: true },
+    }),
+    prisma.attendanceSchedule.findMany(),
+    prisma.attendanceException.findMany({
+      where: {
+        dateFrom: { lte: new Date(`${todayKey}T00:00:00Z`) },
+        dateTo: { gte: new Date(`${todayKey}T00:00:00Z`) },
+      },
+    }),
+    prisma.attendanceSession.findMany({
+      where: { voided: false, OR: [{ startedAt: { gte: dayStart } }, { endedAt: null }] },
+      select: { userId: true },
+    }),
+    // قرار حسم قائم اليوم (بالطريق/إجازة/مستأذن/عن بُعد غير متراجَع عنه) — أجاب فلا نذكّره.
+    prisma.attendanceDecision.findMany({
+      where: {
+        date: dayDateOf(todayKey),
+        OR: [{ outcome: null }, { outcome: { not: "REVOKED" } }],
+      },
+      select: { userId: true },
+    }),
+    prisma.attendanceDay.findMany({
+      where: { date: dayDateOf(todayKey), mode: { not: "ONSITE" } },
+      select: { userId: true },
+    }),
+  ]);
+
+  const scheduleByUser = new Map(schedules.map((s) => [s.userId, s]));
+  const attended = new Set(sessions.map((s) => s.userId));
+  const decided = new Set(decisions.map((d) => d.userId));
+  const offSite = new Set(dayRows.map((d) => d.userId));
+
+  let reminded = 0;
+  for (const u of users) {
+    if (attended.has(u.id) || decided.has(u.id) || offSite.has(u.id)) continue;
+    // «مراقبة/معفى» بلا تذكير — التذكير يعد ببصم تلقائي وهو لSTRICT حصرًا.
+    const cfg = mergeConfig(settings, scheduleByUser.get(u.id) ?? null, now);
+    if (!cfg.enforced) continue;
+    const eff = effectiveDay(
+      scheduleByUser.get(u.id),
+      exceptions.filter((e) => e.userId === u.id),
+      todayKey,
+      dow,
+      cfg.weekendSet,
+    );
+    if (eff.isWeekend || eff.onLeave) continue;
+    // نافذة بدايته لم تفتح بعد — التذكير عند أول كرون بعد فتحها.
+    if (nowMinutes < eff.startMinutes) continue;
+
+    // مرة واحدة يوميًا: صف إشعار اليوم بنفس النوع للموظف نفسه يعني ذُكِّر.
+    const already = await prisma.notification.findFirst({
+      where: { userId: u.id, type: "attendance.punch_reminder", createdAt: { gte: dayStart } },
+      select: { id: true },
+    });
+    if (already) continue;
+
+    await notify(
+      prisma,
+      [u.id],
+      "attendance.punch_reminder",
+      "تذكير الحضور",
+      settings.autoPunchEnabled
+        ? "دوامك بدأ — افتح التطبيق ويتسجّل حضورك تلقائي"
+        : "دوامك بدأ — افتح التطبيق وسجّل حضورك",
+      "/m",
+    );
+    reminded++;
+  }
+  return reminded;
 }
 
 /**
@@ -826,6 +915,7 @@ export async function POST(req: Request) {
     sendDueVerifications(now, settings),
     expireMissedVerifications(now),
     checkNoShows(now, settings),
+    remindPunchIn(now, settings),
     closeCompletedTargets(now, settings),
     autoCloseForgotten(now, settings),
     checkHeartbeatGaps(now, settings),
@@ -833,8 +923,8 @@ export async function POST(req: Request) {
     remindPaused(now),
     cleanOldPulses(now),
   ]);
-  const names = ["verifySent", "verifyMissed", "noShow", "targetClosed", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
-  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, targetClosed: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
+  const names = ["verifySent", "verifyMissed", "noShow", "punchReminders", "targetClosed", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
+  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, punchReminders: 0, targetClosed: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
   const failed: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") counts[names[i]] = r.value;
