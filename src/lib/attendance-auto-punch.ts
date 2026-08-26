@@ -4,15 +4,16 @@ import { AttendanceEventType, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
+import { lateAlertText } from "@/lib/attendance-notify";
 import {
   effectiveDay,
   isLateCheckIn,
+  minutesToHM,
   parseWeekendDays,
   planVerificationTimes,
   type EffectiveDay,
 } from "@/lib/attendance-logic";
 import { dayDateOf, ensureAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
-import { NEW_RANDOM_CALLS_DISABLED } from "@/lib/attendance-conditional";
 import { mergeConfig } from "@/lib/attendance-config";
 import { notify, ownerIds } from "@/lib/notify";
 
@@ -194,8 +195,8 @@ export async function tryAutoPunch(args: {
     });
 
     // جدولة النداءات — نفس قواعد punch حرفيًا (السقف والحرسان)، بنداءات الموظف المخصصة.
-    // فلسفة النبض الحاكم (الدفعة أ): معطَّلة بثابت NEW_RANDOM_CALLS_DISABLED الموثق.
-    if (!NEW_RANDOM_CALLS_DISABLED && settings.verificationEnabled && !eff.isWeekend) {
+    // مفتاح العشوائي الموحّد (مركز التحكم): verificationEnabled وحده يحكم.
+    if (settings.verificationEnabled && !eff.isWeekend) {
       const dailyCap = Math.min(config.verificationPerDay, 2);
       const alreadyToday = await tx.attendanceVerification.count({
         where: { userId, kind: "RANDOM", scheduledAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) } },
@@ -235,6 +236,28 @@ export async function tryAutoPunch(args: {
       undefined,
       "/m",
     );
+    // تنبيه التأخير («بصمة فقط»): مرة واحدة لكل موظف/يوم — نمط dedup تذكير البصم.
+    if (isLate) {
+      const already = await prisma.notification.findFirst({
+        where: {
+          type: "attendance.late",
+          link: `/attendance/${userId}`,
+          createdAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) },
+        },
+        select: { id: true },
+      });
+      if (!already) {
+        const who = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+        await notify(
+          prisma,
+          await ownerIds(prisma),
+          "attendance.late",
+          lateAlertText(who?.name ?? "موظف", Math.max(1, nowMinutes - eff.accountStartMinutes), minutesToHM(eff.accountStartMinutes)),
+          undefined,
+          `/attendance/${userId}`,
+        );
+      }
+    }
     if (settings.notifyAutoPunchOwner) {
       const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
       await notify(

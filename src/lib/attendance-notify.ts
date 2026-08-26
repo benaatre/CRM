@@ -46,6 +46,11 @@ export function lateCheckInText(name: string, lateMinutes: number, locationName:
   return `تأخر ${name} عن دوامه ${durationArabic(lateMinutes)} — حضر الآن${locationName ? ` ${locationName}` : ""}`;
 }
 
+/** «تأخر سعود ٢٥ دقيقة عن ورديته (بدايتها ٩:٠٠ ص)» — تنبيه attendance.late («بصمة فقط»). */
+export function lateAlertText(name: string, lateMinutes: number, shiftStartText: string): string {
+  return `تأخر ${name} ${durationArabic(lateMinutes)} عن ورديته (بدايتها ${shiftStartText})`;
+}
+
 /** «سعود ما سجّل حضور اليوم — مرّت ٣ ساعات على بداية دوامه» */
 export function noShowText(name: string, elapsedMinutes: number): string {
   const hours = Math.floor(elapsedMinutes / 60);

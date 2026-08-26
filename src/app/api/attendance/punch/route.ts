@@ -22,12 +22,12 @@ import {
 import {
   checkedInText,
   completedText,
+  lateAlertText,
   lateCheckInText,
   locationChangeOutOfZoneText,
   resumedCheckInText,
 } from "@/lib/attendance-notify";
 import { daySessionsOf, ensureAttendanceDay } from "@/lib/data/attendance";
-import { NEW_RANDOM_CALLS_DISABLED } from "@/lib/attendance-conditional";
 import { mergeConfig } from "@/lib/attendance-config";
 import { notify, ownerIds } from "@/lib/notify";
 
@@ -420,9 +420,9 @@ export async function POST(req: Request) {
        * يوم إجازة أسبوعية. عند الاستئناف تُجدول داخل **المتبقي من هدف اليوم**
        * وبما لا يتجاوز السقف اليومي مع نداءات اليوم السابقة.
        */
-      // فلسفة النبض الحاكم (الدفعة أ): لا جدولة نداءات عشوائية جديدة — البنية
-      // باقية والمعلقة تنتهي طبيعيًا؛ الثابت موثق في attendance-conditional.
-      if (!NEW_RANDOM_CALLS_DISABLED && settings.verificationEnabled && config.enforced && !eff.isWeekend) {
+      // مفتاح العشوائي الموحّد الصادق (مركز التحكم — الدفعة أ): verificationEnabled
+      // وحده يحكم الجدولة — إطفاؤه من المركز يوقف العشوائي الجديد كليًا.
+      if (settings.verificationEnabled && config.enforced && !eff.isWeekend) {
         const dailyCap = Math.min(config.verificationPerDay, 2);
         const alreadyToday = await tx.attendanceVerification.count({
           where: {
@@ -532,6 +532,30 @@ export async function POST(req: Request) {
           ? lateCheckInText(name, Math.max(1, nowMinutes - eff.accountStartMinutes), location?.name ?? null)
           : checkedInText(name, formatTime(now), location?.name ?? null);
       await notify(prisma, await ownerIds(prisma), "attendance.checked_in", text, undefined, `/attendance/${userId}`);
+      /*
+       * تنبيه التأخير («بصمة فقط» — الدفعة أ): attendance.late للمسؤولين مرة
+       * واحدة لكل موظف/يوم — نفس آلية dedup تذكير البصم (صف الإشعار نفسه).
+       */
+      if (isLate) {
+        const already = await prisma.notification.findFirst({
+          where: {
+            type: "attendance.late",
+            link: `/attendance/${userId}`,
+            createdAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) },
+          },
+          select: { id: true },
+        });
+        if (!already) {
+          await notify(
+            prisma,
+            await ownerIds(prisma),
+            "attendance.late",
+            lateAlertText(name, Math.max(1, nowMinutes - eff.accountStartMinutes), minutesToHM(eff.accountStartMinutes)),
+            undefined,
+            `/attendance/${userId}`,
+          );
+        }
+      }
     } else if (
       body.intent === AttendanceEventType.CHECK_OUT &&
       dayTotalMinutes >= eff.targetMinutes &&

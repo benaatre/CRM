@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOwnerApi } from "@/lib/attendance-guard";
 import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay, parseRiyadhLocal } from "@/lib/ksa-time";
-import { effectiveDay, isLateCheckIn } from "@/lib/attendance-logic";
+import { effectiveDay, isLateCheckIn, minutesToHM } from "@/lib/attendance-logic";
+import { lateAlertText } from "@/lib/attendance-notify";
 import { ensureAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
 import { mergeConfig } from "@/lib/attendance-config";
 import { recordAuditEvent } from "@/lib/audit-event";
-import { notify } from "@/lib/notify";
+import { notify, ownerIds } from "@/lib/notify";
 import { formatTime } from "@/lib/format";
 
 export const runtime = "nodejs";
@@ -105,6 +106,28 @@ export async function POST(req: Request) {
 
   if (typeof sessionId !== "string" || !sessionId.startsWith("c")) {
     return NextResponse.json({ ok: false, error: String(sessionId) }, { status: 409 });
+  }
+
+  // تنبيه التأخير («بصمة فقط»): حتى بصمة النيابة المتأخرة تُنذر المسؤولين — مرة/يوم.
+  if (isLate) {
+    const already = await prisma.notification.findFirst({
+      where: {
+        type: "attendance.late",
+        link: `/attendance/${userId}`,
+        createdAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) },
+      },
+      select: { id: true },
+    });
+    if (!already) {
+      await notify(
+        prisma,
+        await ownerIds(prisma),
+        "attendance.late",
+        lateAlertText(user.name ?? "موظف", Math.max(1, ksaMinutesOfDay(at) - eff.accountStartMinutes), minutesToHM(eff.accountStartMinutes)),
+        undefined,
+        `/attendance/${userId}`,
+      ).catch(() => {});
+    }
   }
 
   // إشعار الموظف اختياري — الافتراضي صامت (تدقيق فقط)، مثل مودال الانصراف.

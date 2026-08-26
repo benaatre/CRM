@@ -158,6 +158,8 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.auto_closed": "staff",
   // تنبيه قرار النبض (فلسفة النبض الحاكم) — للمالك: خارج النطاق/منقطع.
   "attendance.pulse_alert": "staff",
+  // تأخر عن ورديته («بصمة فقط» — الدفعة أ): للمسؤولين، مرة باليوم لكل موظف.
+  "attendance.late": "staff",
 };
 
 /**
@@ -207,6 +209,7 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "attendance.pause_reminder": "تذكير الموقوف (للموظف)",
   "attendance.punch_reminder": "تذكير الحضور (للموظف)",
   "attendance.pulse_alert": "تنبيه قرار النبض (للمالك)",
+  "attendance.late": "تأخر عن ورديته",
 };
 
 /**
