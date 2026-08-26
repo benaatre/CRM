@@ -33,13 +33,6 @@ const CAPPED: ConditionalReason[] = ["HEARTBEAT_GAP", "OUT_ZONE", "SILENT_OUT"];
 export const PULSE_IMMUNITY_MINUTES = 30;
 
 /**
- * إيقاف جدولة النداءات العشوائية الجديدة (من العشوائي الأعمى إلى تنبيهات
- * القرار): البنية كلها باقية — sendDueVerifications والتصعيد والرد — والمعلقة
- * القائمة تنتهي طبيعيًا؛ فقط لا جدولة RANDOM جديدة عند البصم/البصم التلقائي.
- */
-export const NEW_RANDOM_CALLS_DISABLED: boolean = true;
-
-/**
  * «النداء التلقائي عند الخروج المؤكد» (م٣-٣): عند التفعيل، خروجٌ مؤكَّد مستمر
  * ≥ settings.maxOutOfZoneMinutes يرسل نداءً تلقائيًا واحدًا (بسقوف اليوم
  * القائمة) بدل تنبيه قرار المالك. لا حقل إعداد قائم يصلح له ولا حقل JSON في

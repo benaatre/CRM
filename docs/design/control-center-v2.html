@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="night">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مركز التحكم v2 — إعدادات الحضور · Sultan CRM</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Zain:wght@400;700;800;900&display=swap');
+
+[data-theme="night"]{
+  --page:#0A0A0B; --plane:#17181B; --plane-hi:#1b1d22; --sd:#0b0c0e; --sl:#242630;
+  --edge:rgba(255,255,255,.06); --edge-2:rgba(255,255,255,.11);
+  --tx:#F4F5F7; --tx2:#AEB0B7; --mut:#6f7178;
+  --gold:#CBA45E; --gold2:#E4C489; --gold3:#F5D98B; --ongold:#1a1304;
+  --green:#42D699; --red:#F0656A; --blue:#6E9BE6; --amber:#E5A54D;
+  --gold-soft:rgba(203,164,94,.10); --red-soft:rgba(240,101,106,.12); --blue-soft:rgba(110,155,230,.12); --green-soft:rgba(66,214,153,.12);
+}
+[data-theme="day"]{
+  --page:#e8e4dd; --plane:#f4f1ea; --plane-hi:#faf8f2; --sd:#d0ccc2; --sl:#ffffff;
+  --edge:rgba(90,74,45,.08); --edge-2:rgba(90,74,45,.14);
+  --tx:#221f18; --tx2:#5b564b; --mut:#928c7e;
+  --gold:#9c7a2f; --gold2:#b28a35; --gold3:#c99b3a; --ongold:#fff;
+  --green:#1a8f5f; --red:#c9433c; --blue:#3f74c4; --amber:#b07d22;
+  --gold-soft:rgba(156,122,47,.10); --red-soft:rgba(201,67,60,.10); --blue-soft:rgba(63,116,196,.10); --green-soft:rgba(26,143,95,.12);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--page);color:var(--tx);font-family:'IBM Plex Sans Arabic',sans-serif;transition:background .35s;padding-bottom:60px}
+.num{font-family:'Zain',sans-serif;font-weight:800;letter-spacing:-.5px;font-feature-settings:"tnum"}
+svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.ic svg,.row svg,.badge svg,.gate svg,.bk svg{max-width:24px;max-height:24px}
+button{font-family:'IBM Plex Sans Arabic',sans-serif;cursor:pointer;border:none;background:none;color:inherit}
+.raise{background:var(--plane);border:1px solid var(--edge);box-shadow:5px 5px 12px var(--sd),-5px -5px 12px var(--sl)}
+.inset{background:var(--plane);box-shadow:inset 3px 3px 7px var(--sd),inset -3px -3px 7px var(--sl)}
+.wrap{max-width:820px;margin:0 auto;padding:0 18px}
+
+/* الشريط العلوي */
+.topbar{position:sticky;top:0;z-index:50;backdrop-filter:blur(18px);background:color-mix(in srgb,var(--page) 82%,transparent);border-bottom:1px solid var(--edge)}
+.topbar .in{max-width:820px;margin:0 auto;padding:13px 18px;display:flex;align-items:center;gap:12px}
+.bk{width:38px;height:38px;border-radius:12px;display:none;align-items:center;justify-content:center;color:var(--tx2);flex:none;transition:.2s}
+.bk:active{transform:scale(.93)}
+.tb-title{flex:1;min-width:0}
+.tb-title h1{font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-title p{font-size:11.5px;color:var(--mut);margin-top:1px}
+.chip-changes{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:11px;font-size:11.5px;color:var(--mut);transition:.25s;flex:none}
+.chip-changes.on{color:var(--amber)}
+.chip-changes .dot{width:6px;height:6px;border-radius:50%;background:var(--mut)}
+.chip-changes.on .dot{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:blink 1.5s infinite}
+@keyframes blink{50%{opacity:.35}}
+.btn-save{display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:12px;font-size:12.5px;font-weight:700;color:var(--mut);background:var(--plane);border:1px solid var(--edge);transition:.25s;cursor:not-allowed;flex:none}
+.btn-save.on{cursor:pointer;background:linear-gradient(135deg,var(--gold2),var(--gold));color:var(--ongold);border-color:transparent;box-shadow:0 4px 16px rgba(203,164,94,.35)}
+.btn-theme{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex:none}
+
+/* إدارة الشاشات */
+.view{display:none}
+.view.active{display:block;animation:slideUp .35s cubic-bezier(.2,.6,.2,1)}
+@keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.view.active{animation:none}.chip-changes.on .dot{animation:none}}
+
+/* ═══ الرئيسية — البوابات ═══ */
+.policy-strip{display:flex;gap:12px;align-items:flex-start;margin-top:20px;padding:15px 17px;border-radius:16px;background:var(--green-soft);border:1px solid color-mix(in srgb,var(--green) 25%,transparent);font-size:12.5px;line-height:1.9;color:var(--tx2)}
+.policy-strip svg{flex:none;color:var(--green);margin-top:2px}
+.policy-strip b{color:var(--tx)}
+.gates{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+.gate{border-radius:19px;padding:19px 18px;text-align:right;cursor:pointer;transition:transform .18s cubic-bezier(.34,1.56,.64,1);position:relative;overflow:hidden}
+.gate:active{transform:scale(.97)}
+.gate .g-ic{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--gold);margin-bottom:13px}
+.gate h3{font-size:14.5px;font-weight:700}
+.gate p{font-size:11.5px;color:var(--mut);margin-top:4px;line-height:1.7;min-height:34px}
+.gate .g-status{display:inline-flex;align-items:center;gap:6px;margin-top:11px;font-size:11px;font-weight:600;color:var(--gold);background:var(--gold-soft);padding:5px 11px;border-radius:9px}
+.gate .g-status .num{font-size:12px}
+.gate.gold-gate{border:1px solid rgba(203,164,94,.28)}
+.gate.gold-gate::before{content:"";position:absolute;top:0;right:0;left:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),var(--gold3),var(--gold),transparent)}
+.gate.gold-gate .g-ic{background:linear-gradient(135deg,var(--gold2),var(--gold));color:var(--ongold)}
+.gate.emp-gate{grid-column:1/-1}
+.gate.emp-gate .g-row{display:flex;align-items:center;gap:14px}
+.gate.emp-gate .g-ic{margin-bottom:0}
+.gate.emp-gate p{min-height:auto}
+.avatars{display:flex;margin-inline-start:auto}
+.avatars i{width:32px;height:32px;border-radius:11px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:var(--ongold);display:flex;align-items:center;justify-content:center;font-family:'Zain';font-weight:800;font-size:13px;font-style:normal;border:2px solid var(--plane);margin-inline-start:-9px}
+.avatars i:first-child{margin-inline-start:0}
+.avatars i.more{background:var(--plane-hi);color:var(--mut);font-size:11px}
+
+/* ═══ صف الإعداد ═══ */
+.card{border-radius:19px;margin-top:16px;overflow:hidden}
+.card-title{padding:15px 19px 13px;border-bottom:1px solid var(--edge);font-size:13px;font-weight:700;color:var(--tx2);display:flex;align-items:center;gap:8px}
+.card-title svg{color:var(--gold)}
+.row{display:flex;align-items:center;gap:16px;padding:15px 19px;border-bottom:1px solid var(--edge)}
+.row:last-child{border-bottom:none}
+.row .info{flex:1;min-width:0}
+.row .lbl{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row .desc{font-size:11.5px;color:var(--mut);margin-top:4px;line-height:1.75}
+.row .ctl{flex:none;display:flex;align-items:center;gap:9px}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;padding:3px 8px;border-radius:8px}
+.badge.custom{background:var(--blue-soft);color:var(--blue)}
+.badge.danger{background:var(--red-soft);color:var(--red)}
+.badge.off{background:var(--gold-soft);color:var(--gold)}
+.badge.general{background:var(--plane-hi);color:var(--mut);border:1px solid var(--edge)}
+
+.tgl{position:relative;width:50px;height:29px;border-radius:16px;flex:none;box-shadow:inset 3px 3px 7px var(--sd),inset -3px -3px 7px var(--sl);background:var(--plane);transition:.3s;cursor:pointer;border:1px solid var(--edge)}
+.tgl i{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:var(--plane-hi);border:1px solid var(--edge-2);box-shadow:2px 2px 6px var(--sd);transition:.3s cubic-bezier(.34,1.4,.64,1)}
+.tgl.on{background:linear-gradient(135deg,var(--gold2),var(--gold))}
+.tgl.on i{right:calc(100% - 24px);background:#fff;border-color:transparent}
+
+.step{display:flex;align-items:center;border-radius:12px;overflow:hidden}
+.step button{width:32px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--tx2);font-size:17px;transition:.15s}
+.step button:active{background:var(--gold-soft);color:var(--gold)}
+.step .val{min-width:58px;text-align:center;padding:0 5px}
+.step .val .num{font-size:18px;color:var(--gold)}
+.step .val small{font-size:9.5px;color:var(--mut);display:block;margin-top:-3px;font-family:'IBM Plex Sans Arabic'}
+
+.timebox{display:flex;align-items:center;gap:7px;border-radius:12px;padding:5px 7px 5px 11px}
+.timebox .t .num{font-size:19px;color:var(--gold)}
+.timebox .t .per{font-size:11.5px;color:var(--tx2);margin-inline-start:4px;font-weight:600}
+.timebox .arr{display:flex;flex-direction:column;gap:2px}
+.timebox .arr button{width:23px;height:16px;display:flex;align-items:center;justify-content:center;color:var(--mut);border-radius:5px}
+.timebox .arr button:active{color:var(--gold);background:var(--gold-soft)}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:280px}
+.chips button{padding:6px 10px;border-radius:9px;font-size:11px;font-weight:600;color:var(--mut);background:var(--plane);box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl);border:1px solid var(--edge);transition:.2s}
+.chips button.on{background:linear-gradient(135deg,var(--gold2),var(--gold));color:var(--ongold);box-shadow:0 3px 10px rgba(203,164,94,.3);border-color:transparent}
+
+.impact{display:flex;align-items:center;gap:10px;margin:0 19px 15px;padding:11px 14px;border-radius:12px;background:var(--gold-soft);border:1px solid rgba(203,164,94,.2);font-size:12px;color:var(--gold2)}
+[data-theme="day"] .impact{color:var(--gold)}
+.impact svg{flex:none}
+.impact .num{font-size:13.5px}
+
+/* segmented — وضع الموظف */
+.seg{display:flex;border-radius:12px;overflow:hidden;padding:4px;gap:4px}
+.seg button{padding:8px 13px;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--mut);transition:.2s}
+.seg button.on{background:linear-gradient(135deg,var(--gold2),var(--gold));color:var(--ongold);box-shadow:0 3px 10px rgba(203,164,94,.3)}
+
+/* مصفوفة التنبيهات */
+.mtx{padding:6px 19px 16px}
+.mtx table{width:100%;border-collapse:collapse}
+.mtx th{font-size:11px;color:var(--mut);font-weight:600;padding:11px 6px;text-align:center}
+.mtx th:first-child{text-align:right;font-size:12px;color:var(--tx2)}
+.mtx td{padding:10px 6px;text-align:center;border-top:1px solid var(--edge)}
+.mtx td:first-child{text-align:right;font-size:12.5px;font-weight:600}
+.mtx td .sub{display:block;font-size:10.5px;color:var(--mut);font-weight:400;margin-top:2px}
+.mtx .tgl{margin:0 auto;transform:scale(.85)}
+
+/* قائمة الموظفين */
+.emp-row{display:flex;align-items:center;gap:13px;padding:14px 19px;border-bottom:1px solid var(--edge);cursor:pointer;transition:background .2s}
+.emp-row:last-child{border-bottom:none}
+.emp-row:active{background:var(--gold-soft)}
+.emp-row .av{width:40px;height:40px;border-radius:13px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:var(--ongold);display:flex;align-items:center;justify-content:center;font-family:'Zain';font-weight:800;font-size:15px;flex:none}
+.emp-row .who{flex:1;min-width:0}
+.emp-row .who .n{font-size:13.5px;font-weight:600}
+.emp-row .who .s{font-size:11px;color:var(--mut);margin-top:2px}
+.emp-row .who .s .num{font-size:11.5px}
+.emp-row .go{color:var(--mut)}
+
+/* رأس صفحة الموظف */
+.emp-head{display:flex;align-items:center;gap:15px;margin-top:20px;padding:19px;border-radius:19px}
+.emp-head .av{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:var(--ongold);display:flex;align-items:center;justify-content:center;font-family:'Zain';font-weight:800;font-size:21px}
+.emp-head .who h2{font-size:16.5px;font-weight:700}
+.emp-head .who p{font-size:11.5px;color:var(--mut);margin-top:3px}
+
+.foot{text-align:center;margin-top:40px;color:var(--mut);font-size:11px;line-height:2}
+.foot .num{font-size:11.5px}
+.preview-tag{font-size:10px;color:var(--mut);border:1px dashed var(--edge-2);border-radius:7px;padding:2px 8px;flex:none}
+
+@media (max-width:620px){
+  .gates{grid-template-columns:1fr}
+  .row{flex-direction:column;align-items:stretch;gap:11px}
+  .row .ctl{justify-content:flex-end}
+  .chip-changes span:last-child{display:none}
+  .mtx{overflow-x:auto}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="in">
+    <button class="bk raise" id="btnBack" onclick="goHome()"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+    <div class="tb-title"><h1 id="tbTitle">مركز التحكم</h1><p id="tbSub">كل قسم صفحته — والموظف صفحته</p></div>
+    <span class="preview-tag">معاينة تصميم</span>
+    <div class="chip-changes raise" id="chgChip"><span class="dot"></span><span id="chgTxt">لا تغييرات</span></div>
+    <button class="btn-save" id="btnSave"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>حفظ</button>
+    <button class="btn-theme raise" onclick="flipTheme()"><svg id="icMoon" width="17" height="17" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="icSun" width="17" height="17" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4 1.4-1.4"/></svg></button>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ═══════════ الرئيسية ═══════════ -->
+<div class="view active" id="v-home" data-title="مركز التحكم" data-sub="كل قسم صفحته — والموظف صفحته">
+
+  <div class="policy-strip">
+    <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14l-3-3"/></svg>
+    <span><b>شاشة الموظف الآن: البصمة فقط.</b> أُلغيت شاشة الحسم الإجبارية — الموظف يفتح فيدخل مباشرة، يبصم بنفسه أو يبصمه التلقائي. الإجازة والمرضية والاستئذان طلبات يقدّمها في قسم الإجازات ويعتمدها القسم المختص، والتأخير يُرصد ويصل المسؤولين دون أن يوقفه شيء.</span>
+  </div>
+
+  <div class="gates">
+
+    <div class="gate raise" onclick="go('v-time')">
+      <div class="g-ic inset"><svg width="21" height="21" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+      <h3>الدوام والأوقات</h3>
+      <p>نافذة قبول البصمات، حد التأخير، وأيام العطلة.</p>
+      <span class="g-status"><span class="num">٧:٠٠ ص — ١١:٠٠ م</span></span>
+    </div>
+
+    <div class="gate raise" onclick="go('v-punch')">
+      <div class="g-ic inset"><svg width="21" height="21" viewBox="0 0 24 24"><path d="M12 22s7-5.3 7-12a7 7 0 1 0-14 0c0 6.7 7 12 7 12z"/><circle cx="12" cy="10" r="2.6"/></svg></div>
+      <h3>البصم والمواقع</h3>
+      <p>البصم التلقائي، الدقة المقبولة، والمشاريع.</p>
+      <span class="g-status">التلقائي مفعّل</span>
+    </div>
+
+    <div class="gate raise gold-gate" onclick="go('v-pulse')">
+      <div class="g-ic"><svg width="21" height="21" viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
+      <h3>النبض الحاكم</h3>
+      <p>الحصانة، الرادار، الخروج المؤكد — النبض يحكم والنداء آخر دواء.</p>
+      <span class="g-status">الحصانة <span class="num">٣٠</span> دقيقة</span>
+    </div>
+
+    <div class="gate raise" onclick="go('v-calls')">
+      <div class="g-ic inset"><svg width="21" height="21" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+      <h3>النداءات والتحقق</h3>
+      <p>مهل الرد والحرّاس والنداءات المشروطة.</p>
+      <span class="g-status">العشوائي متوقف</span>
+    </div>
+
+    <div class="gate raise" onclick="go('v-alerts')" style="grid-column:1/-1">
+      <div class="g-row">
+        <div class="g-ic inset"><svg width="21" height="21" viewBox="0 0 24 24"><path d="M4 4h16v12H5.2L4 17.2V4z"/><path d="M8 9h8M8 12h5"/></svg></div>
+        <div style="flex:1">
+          <h3>توزيع التنبيهات</h3>
+          <p style="min-height:auto">من يستلم ماذا: التأخير والغياب وتنبيهات القرار — لك وللحسابات المسؤولة.</p>
+        </div>
+        <span class="g-status">لـ<span class="num">٣</span> حسابات</span>
+      </div>
+    </div>
+
+    <div class="gate raise emp-gate" onclick="go('v-emps')">
+      <div class="g-row">
+        <div class="g-ic inset"><svg width="21" height="21" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16.5 3.13A4 4 0 0 1 16.5 11"/></svg></div>
+        <div style="flex:1">
+          <h3>الموظفون — تحكم فردي</h3>
+          <p style="min-height:auto">لكل موظف صفحته: ورديته، نداءاته، عطلته، ووضعه — الفردي يتقدّم على العام.</p>
+        </div>
+        <div class="avatars"><i>ع</i><i>م</i><i>أ</i><i class="more">+٦</i></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ ١ · الدوام والأوقات ═══════════ -->
+<div class="view" id="v-time" data-title="الدوام والأوقات" data-sub="نافذة الشركة — الورديات الفردية من صفحة كل موظف">
+
+  <div class="card raise">
+    <div class="card-title"><svg width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>نافذة قبول البصمات</div>
+    <div class="row">
+      <div class="info"><div class="lbl">بداية الاستقبال</div><div class="desc">أي بصمة قبلها تُرفض. المبكّر يُحسب له من لحظة بصمته.</div></div>
+      <div class="ctl"><div class="timebox inset"><div class="t"><span class="num" id="tStart">٧:٠٠</span><span class="per" id="pStart">ص</span></div><div class="arr"><button onclick="bumpTime('start',30)"><svg width="10" height="10" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button><button onclick="bumpTime('start',-30)"><svg width="10" height="10" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">نهاية الدوام</div><div class="desc">بعدها تُقفل الجلسات المفتوحة تلقائيًا — والمتأخر بالعمل يُحسب له حتى هنا.</div></div>
+      <div class="ctl"><div class="timebox inset"><div class="t"><span class="num" id="tEnd">١١:٠٠</span><span class="per" id="pEnd">م</span></div><div class="arr"><button onclick="bumpTime('end',30)"><svg width="10" height="10" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button><button onclick="bumpTime('end',-30)"><svg width="10" height="10" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div></div></div>
+    </div>
+    <div class="impact"><svg width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg><span id="impactLine"></span></div>
+  </div>
+
+  <div class="card raise">
+    <div class="card-title"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>التأخير</div>
+    <div class="row">
+      <div class="info"><div class="lbl">حد التأخير</div><div class="desc">يُقاس على بداية وردية كل موظف (لا نافذة الشركة). المتأخر يبصم ويدخل عادي — <b>والتنبيه يصل المسؤولين</b> حسب توزيع التنبيهات.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="15" data-min="0" data-max="60">١٥</span><small>دقيقة</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+  </div>
+
+  <div class="card raise">
+    <div class="card-title"><svg width="15" height="15" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4m8-4v4M3 10h18"/></svg>العطلة والضبط الدقيق</div>
+    <div class="row">
+      <div class="info"><div class="lbl">أيام العطلة الأسبوعية <span class="badge custom">مخصص لدى ١</span></div><div class="desc">لا حساب غياب ولا تذكيرات فيها.</div></div>
+      <div class="ctl"><div class="chips"><button onclick="chip(this)">الأحد</button><button onclick="chip(this)">الاثنين</button><button onclick="chip(this)">الثلاثاء</button><button onclick="chip(this)">الأربعاء</button><button onclick="chip(this)">الخميس</button><button class="on" onclick="chip(this)">الجمعة</button><button class="on" onclick="chip(this)">السبت</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">فاصل تكرار البصم</div><div class="desc">حماية من الضغط المزدوج.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-30)">−</button><div class="val"><span class="num" data-v="120" data-min="30" data-max="600">١٢٠</span><small>ثانية</small></div><button onclick="bump(this,30)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">سماحية الإقفال التلقائي</div><div class="desc">عند الإقفال القسري تُحتسب هذه المدة بعد آخر إثبات حياة.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="30" data-min="5" data-max="120">٣٠</span><small>دقيقة</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ٢ · البصم والمواقع ═══════════ -->
+<div class="view" id="v-punch" data-title="البصم والمواقع" data-sub="البصمة هي كل ما يراه الموظف">
+  <div class="card raise">
+    <div class="row">
+      <div class="info"><div class="lbl">البصم التلقائي <span class="badge danger"><svg width="10" height="10" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>إطفاؤه يوقف البصم التلقائي كليًا</span></div><div class="desc">نبضتان متتاليتان داخل النطاق = حضور مسجّل بلا أي ضغطة — قلب «الثقة المتجددة».</div></div>
+      <div class="ctl"><div class="tgl on" onclick="tgl(this)"><i></i></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">أسوأ دقة مقبولة</div><div class="desc">بصمة أو نبضة أسوأ من هذا الرقم تُرفض أو تبقى بلا حكم موقع.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-10)">−</button><div class="val"><span class="num" data-v="100" data-min="10" data-max="1000">١٠٠</span><small>متر</small></div><button onclick="bump(this,10)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">قبول الحضور من المشاريع</div><div class="desc">مطفأ: الحضور الرسمي من المقر فقط والمشاريع زيارات.</div></div>
+      <div class="ctl"><div class="tgl on" onclick="tgl(this)"><i></i></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ٣ · النبض الحاكم ═══════════ -->
+<div class="view" id="v-pulse" data-title="النبض الحاكم" data-sub="النبض يحكم — والنداء آخر دواء">
+  <div class="policy-strip" style="background:var(--gold-soft);border-color:rgba(203,164,94,.25)">
+    <svg width="17" height="17" viewBox="0 0 24 24" style="color:var(--gold)"><path d="M12 22s7-4 7-10V5l-7-3-7 3v7c0 6 7 10 7 10z"/></svg>
+    <span>من يثبت نبضُه وجودَه داخل الموقع <b>محصّن من كل النداءات الآلية</b> — وتنبيهات القرار تصلك أنت بدل النداء الأعمى.</span>
+  </div>
+  <div class="card raise">
+    <div class="row">
+      <div class="info"><div class="lbl">مدة حصانة النبض</div><div class="desc">آخر نبضة داخل النطاق أحدث من هذه المدة = صفر نداءات لصاحبها.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="30" data-min="5" data-max="120">٣٠</span><small>دقيقة</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">عتبة الرادار الحي</div><div class="desc">بعدها بلا نبضة يُعتبر الإثبات «منقطعًا» في المواقع الحية.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-1)">−</button><div class="val"><span class="num" data-v="3" data-min="1" data-max="15">٣</span><small>دقائق</small></div><button onclick="bump(this,1)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">عتبة تنبيه الانقطاع</div><div class="desc">جلسة مفتوحة بلا إثبات لهذه المدة → يصلك تنبيه قرار.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="45" data-min="15" data-max="180">٤٥</span><small>دقيقة</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">عتبة الخروج المؤكد</div><div class="desc">نبض خارج النطاق مستمر لهذه المدة → تنبيه قرار، أو نداء تلقائي إن فعّلت المفتاح التالي.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="30" data-min="10" data-max="120">٣٠</span><small>دقيقة</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">نداء تلقائي عند الخروج المؤكد <span class="badge off">مطفأ — كل شيء يمر عليك</span></div><div class="desc">مفعّل: الخروج المؤكد يُندّى بلا انتظارك. مطفأ: يصلك «أرسل نداء / تجاهل».</div></div>
+      <div class="ctl"><div class="tgl" onclick="tgl(this)"><i></i></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ٤ · النداءات ═══════════ -->
+<div class="view" id="v-calls" data-title="النداءات والتحقق" data-sub="تعمل فقط لمن سقطت حصانته">
+  <div class="card raise">
+    <div class="row">
+      <div class="info"><div class="lbl">النداءات العشوائية <span class="badge off">متوقفة — تنبيهات القرار هي الأساس</span></div><div class="desc">المفتاح الموحّد الصادق: تشغيله يعيد جدولتها للملزَمين.</div></div>
+      <div class="ctl"><div class="tgl" onclick="tgl(this)"><i></i></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">مهلة الرد على النداء</div><div class="desc">بعدها يُوسم فائتًا ويبدأ التصعيد.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="20" data-min="5" data-max="60">٢٠</span><small>دقيقة</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">حارسا البداية والنهاية</div><div class="desc">لا نداء بأول الدوام ولا بآخره — راحة مضمونة بالطرفين.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="60" data-min="0" data-max="120">٦٠</span><small>البداية</small></div><button onclick="bump(this,5)">+</button></div><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="45" data-min="0" data-max="120">٤٥</span><small>النهاية</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">نافذة الهدوء الذكية</div><div class="desc">نشاط حديث خلالها يؤجل أي نداء — لا نقاطع من يعمل.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-15)">−</button><div class="val"><span class="num" data-v="90" data-min="15" data-max="240">٩٠</span><small>دقيقة</small></div><button onclick="bump(this,15)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">النداءات المشروطة</div><div class="desc">تهدئة بين نداءين + سقف يومي.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" data-v="60" data-min="15" data-max="240">٦٠</span><small>تهدئة</small></div><button onclick="bump(this,5)">+</button></div><div class="step inset"><button onclick="bump(this,-1)">−</button><div class="val"><span class="num" data-v="4" data-min="1" data-max="8">٤</span><small>السقف</small></div><button onclick="bump(this,1)">+</button></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ٥ · توزيع التنبيهات ═══════════ -->
+<div class="view" id="v-alerts" data-title="توزيع التنبيهات" data-sub="من يستلم ماذا — أنت والحسابات المسؤولة">
+  <div class="card raise">
+    <div class="card-title"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 4h16v12H5.2L4 17.2V4z"/><path d="M8 9h8M8 12h5"/></svg>كل تنبيه — ولمن يصل</div>
+    <div class="mtx">
+      <table>
+        <tr><th>التنبيه</th><th>المالك<br>سلطان</th><th>الإدارة<br>محمد وجية</th><th>الموارد<br>أسماء</th></tr>
+        <tr><td>تأخر عن الوردية<span class="sub">بعد حد التأخير من بداية وردية الموظف</span></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td><td><div class="tgl" onclick="tgl(this)"><i></i></div></td></tr>
+        <tr><td>لم يداوم<span class="sub">إنذار الغياب بعد ١٨٠ دقيقة</span></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td><td><div class="tgl" onclick="tgl(this)"><i></i></div></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td></tr>
+        <tr><td>تنبيهات القرار<span class="sub">خروج مؤكد أو انقطاع نبض — «أرسل نداء / تجاهل»</span></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td><td><div class="tgl" onclick="tgl(this)"><i></i></div></td><td><div class="tgl" onclick="tgl(this)"><i></i></div></td></tr>
+        <tr><td>بصم تلقائي<span class="sub">«بصمنا لفلان» لحظة حدوثه</span></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td><td><div class="tgl" onclick="tgl(this)"><i></i></div></td><td><div class="tgl" onclick="tgl(this)"><i></i></div></td></tr>
+        <tr><td>طلبات الإجازة والاستئذان<span class="sub">تصل القسم المختص للاعتماد</span></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td><td><div class="tgl" onclick="tgl(this)"><i></i></div></td><td><div class="tgl on" onclick="tgl(this)"><i></i></div></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ٦ · قائمة الموظفين ═══════════ -->
+<div class="view" id="v-emps" data-title="الموظفون" data-sub="اضغط الاسم — صفحة تحكم كاملة له">
+  <div class="card raise">
+    <div class="emp-row" onclick="openEmp('محمد حامد','م', true)"><div class="av">م</div><div class="who"><div class="n">محمد حامد</div><div class="s">وردية <span class="num">١٠:٠٠ ص</span> · نداءات <span class="num">٠</span></div></div><span class="badge custom">مخصص</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('عبير الحربي','ع', false)"><div class="av">ع</div><div class="who"><div class="n">عبير الحربي</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('امل','أ', false)"><div class="av">أ</div><div class="who"><div class="n">امل</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('أسماء الشهري','أ', false)"><div class="av">أ</div><div class="who"><div class="n">أسماء الشهري</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('بدر حامد','ب', false)"><div class="av">ب</div><div class="who"><div class="n">بدر حامد</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('سعود حامد','س', false)"><div class="av">س</div><div class="who"><div class="n">سعود حامد</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('مها الزهراني','م', false)"><div class="av">م</div><div class="who"><div class="n">مها الزهراني</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('خالد الجابر','خ', false)"><div class="av">خ</div><div class="who"><div class="n">خالد الجابر</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+    <div class="emp-row" onclick="openEmp('محمد وجية','م', false)"><div class="av">م</div><div class="who"><div class="n">محمد وجية</div><div class="s">يتبع الإعدادات العامة</div></div><span class="badge general">عام</span><span class="go"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></span></div>
+  </div>
+</div>
+
+<!-- ═══════════ صفحة الموظف الواحد ═══════════ -->
+<div class="view" id="v-emp" data-title="ملف الموظف — الإعدادات" data-sub="هذا قسم الإعدادات داخل ملف الموظف الحي نفسه — مصدر واحد للحقيقة">
+
+  <div class="emp-head raise">
+    <div class="av" id="empAv">م</div>
+    <div class="who"><h2 id="empName">محمد حامد</h2><p>تُفتح من مركز التحكم أو من ملفه مباشرة — نفس المكان، نفس الحقول. «عام» يعني اتباع إعدادات الشركة</p></div>
+  </div>
+
+  <div class="card raise">
+    <div class="card-title"><svg width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ورديته</div>
+    <div class="row">
+      <div class="info"><div class="lbl">بداية الوردية <span class="badge custom" id="empShiftBadge">مخصص</span></div><div class="desc">تأخيره يُقاس من هنا — لا من نافذة الشركة.</div></div>
+      <div class="ctl"><div class="timebox inset"><div class="t"><span class="num" id="tEmp">١٠:٠٠</span><span class="per" id="pEmp">ص</span></div><div class="arr"><button onclick="bumpTime('emp',30)"><svg width="10" height="10" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button><button onclick="bumpTime('emp',-30)"><svg width="10" height="10" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">طول الوردية</div><div class="desc">مقياس «أكمل دوامه» — والزائد يظهر إنجازًا إضافيًا.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-1)">−</button><div class="val"><span class="num" data-v="8" data-min="4" data-max="12">٨</span><small>ساعات</small></div><button onclick="bump(this,1)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">حد تأخيره الخاص <span class="badge custom">مخصص</span></div><div class="desc">العام <span class="num">١٥</span> دقيقة — خصص له حدًا أشد أو أرخى، والتنبيه يصل المسؤولين حسب التوزيع.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-5)">−</button><div class="val"><span class="num" id="empLate" data-v="15" data-min="0" data-max="60">١٥</span><small>دقيقة</small></div><button onclick="bump(this,5)">+</button></div></div>
+    </div>
+    <div class="impact"><svg width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg><span id="empImpact"></span></div>
+  </div>
+
+  <div class="card raise">
+    <div class="card-title"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>نداءاته — افتح وأغلق كل نوع عنده</div>
+    <div class="row">
+      <div class="info"><div class="lbl">النداءات العشوائية <span class="badge custom">مخصص: صفر</span></div><div class="desc">العدد باليوم — صفر يعفيه منها كليًا.</div></div>
+      <div class="ctl"><div class="step inset"><button onclick="bump(this,-1)">−</button><div class="val"><span class="num" data-v="0" data-min="0" data-max="4">٠</span><small>باليوم</small></div><button onclick="bump(this,1)">+</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">نداء الخروج من النطاق</div><div class="desc">تعطيله فرديًا يجعل خروجه تنبيه قرار لك بدل نداء له.</div></div>
+      <div class="ctl"><div class="tgl on" onclick="tgl(this)"><i></i></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">نداء انقطاع الإثبات</div><div class="desc">جلسته مفتوحة ونبضه منقطع ٤٥ دقيقة — يُندّى أم يبقى تنبيهًا لك فقط؟</div></div>
+      <div class="ctl"><div class="tgl on" onclick="tgl(this)"><i></i></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">تذكير البصم الصباحي</div><div class="desc">«دوامك بدأ — افتح التطبيق» عند فوات نافذته.</div></div>
+      <div class="ctl"><div class="tgl on" onclick="tgl(this)"><i></i></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">وضع الاستثناء الإخباري <span class="badge off">صفر إزعاج</span></div><div class="desc">تشغيله يسكت كل ما سبق دفعة واحدة: يبصم دخولًا وخروجًا فقط — ونبضه يصلك أنت كل نصف ساعة: داخل الموقع / خارجه.</div></div>
+      <div class="ctl"><div class="tgl" onclick="tgl(this)"><i></i></div></div>
+    </div>
+  </div>
+
+  <div class="card raise">
+    <div class="card-title"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 22s7-4 7-10V5l-7-3-7 3v7c0 6 7 10 7 10z"/></svg>وضعه في المنظومة</div>
+    <div class="row">
+      <div class="info"><div class="lbl">وضع الإلزام</div><div class="desc">كامل: كل القواعد · مراقبة: رصد بلا نداءات ولا غياب · معفى: خارج المنظومة مؤقتًا.</div></div>
+      <div class="ctl"><div class="seg inset"><button class="on" onclick="seg(this)">كامل</button><button onclick="seg(this)">مراقبة</button><button onclick="seg(this)">معفى</button></div></div>
+    </div>
+    <div class="row">
+      <div class="info"><div class="lbl">عطلته الأسبوعية <span class="badge general">عام</span></div><div class="desc">يتبع عطلة الشركة (الجمعة والسبت) ما لم تخصص له.</div></div>
+      <div class="ctl"><div class="chips"><button onclick="chip(this)">الخميس</button><button class="on" onclick="chip(this)">الجمعة</button><button class="on" onclick="chip(this)">السبت</button></div></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="foot">
+  كل تغيير يُوثَّق في سجل التدقيق: من غيّر، ماذا، من كم إلى كم<br>
+  ترخيص فال (REGA) <span class="num">١٢٠٠٠٢١٠٢٩</span>
+</div>
+
+</div>
+
+<script>
+const AR="٠١٢٣٤٥٦٧٨٩", toAr=n=>String(n).replace(/\d/g,d=>AR[d]);
+
+/* التنقل */
+let stack=['v-home'];
+function render(){
+  const id=stack[stack.length-1], v=document.getElementById(id);
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  v.classList.add('active');
+  document.getElementById('tbTitle').textContent=v.dataset.title;
+  document.getElementById('tbSub').textContent=v.dataset.sub;
+  document.getElementById('btnBack').style.display=stack.length>1?'flex':'none';
+  window.scrollTo({top:0});
+}
+function go(id){stack.push(id);render()}
+function goHome(){if(stack.length>1)stack.pop();render()}
+function openEmp(name,av,custom){
+  document.getElementById('empName').textContent=name;
+  document.getElementById('empAv').textContent=av;
+  document.getElementById('empShiftBadge').textContent=custom?'مخصص':'عام';
+  document.getElementById('empShiftBadge').className='badge '+(custom?'custom':'general');
+  go('v-emp');
+}
+
+/* التغييرات */
+let changes=0;
+function markChange(){
+  changes++;
+  document.getElementById('chgChip').classList.add('on');
+  document.getElementById('chgTxt').textContent='غير محفوظة ('+toAr(changes)+')';
+  document.getElementById('btnSave').classList.add('on');
+}
+document.getElementById('btnSave').addEventListener('click',()=>{
+  if(!changes)return;changes=0;
+  document.getElementById('chgChip').classList.remove('on');
+  document.getElementById('chgTxt').textContent='حُفظت (معاينة)';
+  document.getElementById('btnSave').classList.remove('on');
+});
+
+function tgl(el){el.classList.toggle('on');markChange()}
+function chip(el){el.classList.toggle('on');markChange()}
+function seg(el){el.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('on'));el.classList.add('on');markChange()}
+function bump(btn,d){
+  const v=btn.parentElement.querySelector('.num');
+  let x=Math.max(+v.dataset.min,Math.min(+v.dataset.max,+v.dataset.v+d));
+  v.dataset.v=x;v.textContent=toAr(x);markChange();
+  if(document.getElementById('v-emp').classList.contains('active'))empImpact();
+}
+
+/* الأوقات */
+const times={start:420,end:1380,emp:600};
+function f12(m){const h=Math.floor(m/60),mm=m%60;return{t:toAr((h%12)||12)+':'+toAr(String(mm).padStart(2,'0')),p:h>=12?'م':'ص'}}
+function paint(k){
+  const map={start:['tStart','pStart'],end:['tEnd','pEnd'],emp:['tEmp','pEmp']};
+  const x=f12(times[k]);
+  document.getElementById(map[k][0]).textContent=x.t;
+  document.getElementById(map[k][1]).textContent=x.p;
+}
+function bumpTime(k,d){times[k]=Math.max(0,Math.min(1439,times[k]+d));paint(k);impact();empImpact();markChange()}
+function impact(){
+  const x=f12(times.start+15);
+  document.getElementById('impactLine').innerHTML='بصمة <span class="num">'+x.t+' '+x.p+'</span> ستُقبل وتُحسب من لحظتها — والدوام الممتد للمساء يُحتسب كاملًا.';
+}
+function empImpact(){
+  const late=+document.getElementById('empLate').dataset.v, x=f12(times.emp+late);
+  document.getElementById('empImpact').innerHTML='يُوسم متأخرًا بعد <span class="num">'+x.t+' '+x.p+'</span> — يبصم ويدخل عادي، والتنبيه يصل المسؤولين.';
+}
+paint('start');paint('end');paint('emp');impact();empImpact();
+
+/* الثيم */
+function flipTheme(){
+  const n=document.documentElement.dataset.theme==='night';
+  document.documentElement.dataset.theme=n?'day':'night';
+  document.getElementById('icMoon').style.display=n?'none':'';
+  document.getElementById('icSun').style.display=n?'':'none';
+}
+</script>
+</body>
+</html>

@@ -23,6 +23,15 @@ const RANGES: Record<string, [number, number]> = {
   escalationDelayMinutes: [5, 120],
   silentCheckIntervalMinutes: [5, 240],
   remoteWeeklyCap: [0, 7],
+  // ===== مركز التحكم (الدفعة أ): الحقول الحية التي كانت مدفونة بلا واجهة =====
+  heartbeatGapMinutes: [15, 180],
+  conditionalWindowMinutes: [5, 60],
+  conditionalCooldownMinutes: [15, 240],
+  maxConditionalPerDay: [1, 8],
+  maxOutOfZoneMinutes: [10, 120],
+  visitReverifyMinutes: [5, 120],
+  autoCloseAliveGraceMinutes: [5, 120],
+  radarFreshMinutes: [1, 15],
 };
 
 /** رموز أيام الأسبوع المقبولة في weekendDays. */
@@ -63,6 +72,16 @@ export async function PATCH(req: Request) {
   }
   if (typeof raw.leavePausesLeadIntake === "boolean") {
     data.leavePausesLeadIntake = raw.leavePausesLeadIntake;
+  }
+  // مفاتيح مركز التحكم (الدفعة أ) — نفس نمط المفاتيح أعلاه حرفيًا.
+  if (typeof raw.quietWindowCountsCrm === "boolean") {
+    data.quietWindowCountsCrm = raw.quietWindowCountsCrm;
+  }
+  if (typeof raw.autoPunchEnabled === "boolean") {
+    data.autoPunchEnabled = raw.autoPunchEnabled;
+  }
+  if (typeof raw.notifyAutoPunchOwner === "boolean") {
+    data.notifyAutoPunchOwner = raw.notifyAutoPunchOwner;
   }
   // أيام الإجازة الأسبوعية — رموز معروفة فقط، وستة أيام إجازة كحد أقصى.
   let weekendDays: string | undefined;

@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Time12 } from "@/components/ui/time12";
 import { useRouter } from "next/navigation";
 import { Building2, CalendarDays, Crosshair, MapPin, Power, SlidersHorizontal, Users } from "lucide-react";
-import type { AttendanceLocation, AttendanceSettings } from "@prisma/client";
+import type { AttendanceLocation } from "@prisma/client";
 import { toArabicDigits } from "@/lib/format";
 import { DEFAULT_RADIUS_M, splitCoords } from "@/lib/attendance-location-input";
-import { minutesToTime, timeToMinutes } from "@/lib/attendance-ui";
-import { WEEKDAY_CODES } from "@/lib/attendance-logic";
 import { LiveTab } from "@/components/attendance/attendance-live";
 import type { LocationRadar } from "@/lib/data/attendance";
 import { TeamTab } from "@/components/attendance/attendance-team";
@@ -32,19 +29,8 @@ const TABS: { key: Tab; label: string; icon: typeof MapPin }[] = [
   { key: "settings", label: "الإعدادات", icon: SlidersHorizontal },
 ];
 
-const WEEKDAY_LABELS: Record<string, string> = {
-  SUN: "الأحد",
-  MON: "الاثنين",
-  TUE: "الثلاثاء",
-  WED: "الأربعاء",
-  THU: "الخميس",
-  FRI: "الجمعة",
-  SAT: "السبت",
-};
-
 export function AttendanceAdmin({
   locations,
-  settings,
   live,
   radar,
   teamMonth,
@@ -52,7 +38,6 @@ export function AttendanceAdmin({
   readOnly = false,
 }: {
   locations: AttendanceLocation[];
-  settings: AttendanceSettings;
   live: LiveBoardPayload;
   radar: LocationRadar;
   teamMonth: string;
@@ -60,6 +45,7 @@ export function AttendanceAdmin({
   /** HR/FINANCE: مشاهدة فقط — تبويبا المواقع والإعدادات (كتابة) يُخفيان، والخادم يصدهما أصلًا. */
   readOnly?: boolean;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("live");
   const visibleTabs = readOnly ? TABS.filter((t) => t.key === "live" || t.key === "team") : TABS;
 
@@ -76,7 +62,8 @@ export function AttendanceAdmin({
               role="tab"
               type="button"
               aria-selected={active}
-              onClick={() => setTab(t.key)}
+              // «الإعدادات» خلَفها مركز التحكم — لا سطحين إعدادات (الدفعة أ).
+              onClick={() => (t.key === "settings" ? router.push("/attendance/control") : setTab(t.key))}
               className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition-colors ${
                 active
                   ? "border-foreground font-bold text-foreground"
@@ -93,7 +80,6 @@ export function AttendanceAdmin({
       {tab === "live" && <LiveTab initial={live} radar={radar} />}
       {tab === "team" && <TeamTab initialMonth={teamMonth} initialRows={teamRows} />}
       {tab === "locations" && !readOnly && <LocationsTab locations={locations} />}
-      {tab === "settings" && !readOnly && <SettingsTab settings={settings} />}
     </div>
   );
 }
@@ -303,277 +289,6 @@ function LocationsTab({ locations }: { locations: AttendanceLocation[] }) {
   );
 }
 
-/* ═══════════════════ ٢) الإعدادات ═══════════════════ */
-
-function SettingsTab({ settings }: { settings: AttendanceSettings }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [start_, setStart] = useState(minutesToTime(settings.workStartMinutes));
-  const [end, setEnd] = useState(minutesToTime(settings.workEndMinutes));
-  const [late, setLate] = useState(String(settings.lateThresholdMinutes));
-  const [allowProject, setAllowProject] = useState(settings.allowProjectAttendance);
-  const [accuracy, setAccuracy] = useState(String(settings.minAccuracyMeters));
-  const [weekend, setWeekend] = useState<Set<string>>(
-    () => new Set(settings.weekendDays.split(",").map((c) => c.trim()).filter(Boolean)),
-  );
-  const [noShow, setNoShow] = useState(String(settings.noShowAfterMinutes));
-  const [verifyOn, setVerifyOn] = useState(settings.verificationEnabled);
-  const [verifyPerDay, setVerifyPerDay] = useState(String(settings.verificationPerDay));
-  const [verifyWindow, setVerifyWindow] = useState(String(settings.verificationWindowMinutes));
-  const [arrivalMinutes, setArrivalMinutes] = useState(String(settings.arrivalConfirmMinutes));
-  // الدفعة الرابعة — التحقق الذكي والأوضاع.
-  const [quietWindow, setQuietWindow] = useState(String(settings.verificationQuietWindowMinutes));
-  const [startGuard, setStartGuard] = useState(String(settings.verificationStartGuardMinutes));
-  const [endGuard, setEndGuard] = useState(String(settings.verificationEndGuardMinutes));
-  const [escalationDelay, setEscalationDelay] = useState(String(settings.escalationDelayMinutes));
-  const [silentInterval, setSilentInterval] = useState(String(settings.silentCheckIntervalMinutes));
-  const [remoteCap, setRemoteCap] = useState(String(settings.remoteWeeklyCap));
-  const [leaveIntake, setLeaveIntake] = useState(settings.leavePausesLeadIntake);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const toggleWeekendDay = (code: string) => {
-    setWeekend((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
-
-  const save = () => {
-    setMsg(null);
-    const s = timeToMinutes(start_);
-    const e = timeToMinutes(end);
-    if (s === null || e === null) {
-      setMsg({ ok: false, text: "أوقات الدوام غير صحيحة" });
-      return;
-    }
-    start(async () => {
-      const res = await fetch("/api/attendance/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workStartMinutes: s,
-          workEndMinutes: e,
-          lateThresholdMinutes: Number(late),
-          allowProjectAttendance: allowProject,
-          minAccuracyMeters: Number(accuracy),
-          weekendDays: [...weekend].join(","),
-          noShowAfterMinutes: Number(noShow),
-          verificationEnabled: verifyOn,
-          verificationPerDay: Number(verifyPerDay),
-          verificationWindowMinutes: Number(verifyWindow),
-          arrivalConfirmMinutes: Number(arrivalMinutes),
-          verificationQuietWindowMinutes: Number(quietWindow),
-          verificationStartGuardMinutes: Number(startGuard),
-          verificationEndGuardMinutes: Number(endGuard),
-          escalationDelayMinutes: Number(escalationDelay),
-          silentCheckIntervalMinutes: Number(silentInterval),
-          remoteWeeklyCap: Number(remoteCap),
-          leavePausesLeadIntake: leaveIntake,
-        }),
-      });
-      const data = (await res.json()) as { ok: boolean; error?: string };
-      setMsg(data.ok ? { ok: true, text: "انحفظت الإعدادات" } : { ok: false, text: data.error ?? "ما انحفظت" });
-      if (data.ok) router.refresh();
-    });
-  };
-
-  return (
-    <div className="max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">بداية الدوام</span>
-          <Time12 value={start_} onChange={setStart} />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">نهاية الدوام</span>
-          <Time12 value={end} onChange={setEnd} />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">حد التأخير (دقيقة بعد بداية الدوام)</span>
-          <input
-            value={late}
-            onChange={(e) => setLate(e.target.value)}
-            inputMode="numeric"
-            dir="ltr"
-            className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">أسوأ دقة مقبولة (متر)</span>
-          <input
-            value={accuracy}
-            onChange={(e) => setAccuracy(e.target.value)}
-            inputMode="numeric"
-            dir="ltr"
-            className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-          />
-        </label>
-      </div>
-
-      <label className="flex items-start gap-3 rounded-xl border border-border bg-secondary/50 p-3">
-        <input
-          type="checkbox"
-          checked={allowProject}
-          onChange={(e) => setAllowProject(e.target.checked)}
-          className="mt-0.5 size-4 accent-[var(--gold)]"
-        />
-        <span>
-          <span className="block text-sm font-medium text-foreground">اقبل الحضور من المشاريع</span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            مطفأ يعني الحضور والانصراف الرسمي من المقر فقط — زيارات المشاريع تبقى شغّالة.
-          </span>
-        </span>
-      </label>
-
-      {/* ===== أيام الإجازة الأسبوعية ===== */}
-      <div className="space-y-2">
-        <span className="text-xs text-muted-foreground">أيام الإجازة الأسبوعية — تُستثنى من الغياب والحساب</span>
-        <div className="flex flex-wrap gap-1.5">
-          {WEEKDAY_CODES.map((code) => {
-            const on = weekend.has(code);
-            return (
-              <button
-                key={code}
-                type="button"
-                aria-pressed={on}
-                onClick={() => toggleWeekendDay(code)}
-                className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
-                  on
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {WEEKDAY_LABELS[code]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ===== «لم يداوم» ونداءات التحقق ===== */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">إشعار «لم يداوم» بعد (دقيقة من بداية دوامه)</span>
-          <input
-            value={noShow}
-            onChange={(e) => setNoShow(e.target.value)}
-            inputMode="numeric"
-            dir="ltr"
-            className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-          />
-        </label>
-      </div>
-
-      <div className="space-y-3 rounded-xl border border-border bg-secondary/50 p-3">
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={verifyOn}
-            onChange={(e) => setVerifyOn(e.target.checked)}
-            className="mt-0.5 size-4 accent-[var(--gold)]"
-          />
-          <span>
-            <span className="block text-sm font-medium text-foreground">نداءات التحقق العشوائية</span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              إشعارات «أكّد موقعك» أثناء دوام الموظف — الرد قراءة موقع واحدة يتحقق منها الخادم.
-            </span>
-          </span>
-        </label>
-        {verifyOn && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">عدد النداءات باليوم</span>
-              <input
-                value={verifyPerDay}
-                onChange={(e) => setVerifyPerDay(e.target.value)}
-                inputMode="numeric"
-                dir="ltr"
-                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">مهلة الرد (دقيقة)</span>
-              <input
-                value={verifyWindow}
-                onChange={(e) => setVerifyWindow(e.target.value)}
-                inputMode="numeric"
-                dir="ltr"
-                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">مهلة تأكيد الوصول للمشروع (دقيقة)</span>
-              <input
-                value={arrivalMinutes}
-                onChange={(e) => setArrivalMinutes(e.target.value)}
-                inputMode="numeric"
-                dir="ltr"
-                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </label>
-          </div>
-        )}
-      </div>
-
-      {/* ===== التحقق الذكي والأوضاع (الدفعة الرابعة) ===== */}
-      <div className="space-y-3 rounded-xl border border-border bg-secondary/50 p-3">
-        <span className="block text-sm font-medium text-foreground">التحقق الذكي وأوضاع اليوم</span>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <NumField label="نافذة الهدوء (دقيقة) — نشاط خلالها يلغي النداء" value={quietWindow} onChange={setQuietWindow} />
-          <NumField label="لا نداء بأول (دقيقة) من الدوام" value={startGuard} onChange={setStartGuard} />
-          <NumField label="ولا بآخر (دقيقة)" value={endGuard} onChange={setEndGuard} />
-          <NumField label="النداء الثاني بعد فوات الأول بـ(دقيقة)" value={escalationDelay} onChange={setEscalationDelay} />
-          <NumField label="فاصل الفحص الصامت (دقيقة)" value={silentInterval} onChange={setSilentInterval} />
-          <NumField label="سقف «عن بُعد» أسبوعيًا (٠ = بلا حد)" value={remoteCap} onChange={setRemoteCap} />
-        </div>
-        <label className="flex items-start gap-3">
-          <input type="checkbox" checked={leaveIntake} onChange={(e) => setLeaveIntake(e.target.checked)} className="mt-0.5 size-4 accent-[var(--gold)]" />
-          <span>
-            <span className="block text-sm font-medium text-foreground">الإجازة توقف استقبال العملاء تلقائيًا</span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">يرجع الاستقبال صباح يوم الرجوع بلا تدخل.</span>
-          </span>
-        </label>
-      </div>
-
-      {msg && <p className={`text-xs ${msg.ok ? "text-success" : "text-destructive"}`}>{msg.text}</p>}
-
-      {/* العنصر الذهبي الوحيد في هذا التبويب */}
-      <button
-        type="button"
-        onClick={save}
-        disabled={pending}
-        className="h-11 w-full rounded-xl bg-gold text-sm font-bold text-primary-foreground disabled:opacity-60 sm:w-auto sm:px-8"
-      >
-        {pending ? "جاري الحفظ…" : "حفظ الإعدادات"}
-      </button>
-
-      {/* ===== جهات الإذن بالخروج (الدفعة الثالثة) ===== */}
-      <AuthorizersSection />
-    </div>
-  );
-}
-
-/** حقل رقمي مضغوط لإعدادات الدفعة الرابعة. */
-function NumField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        inputMode="numeric"
-        dir="ltr"
-        className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-      />
-    </label>
-  );
-}
-
 /* ═══════════════════ جهات الإذن ═══════════════════ */
 
 type Authorizer = { id: string; label: string; isActive: boolean; sortOrder: number };
@@ -582,7 +297,7 @@ type Authorizer = { id: string; label: string; isActive: boolean; sortOrder: num
  * إدارة جهات الإذن بالخروج — قائمة شاشة «مين أذن لك؟» عند الموظف.
  * الحذف تعطيل لا مسحًا: سجلات التوقف تحمل نسخة نصية من الاسم فتبقى مقروءة.
  */
-function AuthorizersSection() {
+export function AuthorizersSection() {
   const [list, setList] = useState<Authorizer[] | null>(null);
   const [newLabel, setNewLabel] = useState("");
   const [busy, setBusy] = useState(false);

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarClock, ChevronDown, Search, ShieldQuestion, Trash2 } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
-import { hmLabel, minuteLabel, minutesToTime, timeToMinutes } from "@/lib/attendance-ui";
+import { hmLabel, minuteLabel, timeToMinutes } from "@/lib/attendance-ui";
 import { StationsLog } from "@/components/attendance/attendance-stations";
 import type { DayLogEntry, EmployeeFile } from "@/lib/data/attendance";
 import "./attendance.css";
@@ -148,46 +148,10 @@ function StatCell({ label, value, tone }: { label: string; value: string; tone?:
 /* ═══════════════════ دوامه المحدد ═══════════════════ */
 
 function ScheduleCard({ userId, schedule }: { userId: string; schedule: EmployeeFile["schedule"] }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [editing, setEditing] = useState(false);
-  const [startTime, setStartTime] = useState(minutesToTime(schedule.startMinutes));
-  const [windowEnd, setWindowEnd] = useState(
-    schedule.startWindowEndMinutes !== null ? minutesToTime(schedule.startWindowEndMinutes) : "",
-  );
-  const [hours, setHours] = useState(String(Math.round(schedule.shiftMinutes / 60)));
-  const [error, setError] = useState<string | null>(null);
-
-  const save = () => {
-    setError(null);
-    const s = timeToMinutes(startTime);
-    const h = Number(hours);
-    if (s === null || !Number.isFinite(h) || h < 1 || h > 16) {
-      setError("تأكد من وقت البداية وعدد الساعات (من ١ إلى ١٦)");
-      return;
-    }
-    // النافذة المرنة اختيارية — فارغة = وقت واحد (سلوك قديم).
-    const w = windowEnd ? timeToMinutes(windowEnd) : null;
-    if (windowEnd && (w === null || w <= s)) {
-      setError("نهاية نافذة البداية لازم تكون بعد بدايتها");
-      return;
-    }
-    start(async () => {
-      const res = await fetch(`/api/attendance/schedule/${userId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startMinutes: s, shiftMinutes: Math.round(h * 60), startWindowEndMinutes: w }),
-      });
-      const data = (await res.json()) as { ok: boolean; error?: string };
-      if (!data.ok) {
-        setError(data.error ?? "ما انحفظ");
-        return;
-      }
-      setEditing(false);
-      router.refresh();
-    });
-  };
-
+  /*
+   * عرض فقط (مركز التحكم — الدفعة أ): سطح التعديل الوحيد لوردية الموظف هو
+   * «ملف الموظف الحي» — إغلاق ازدواجية السطحين المرصودة في جرد المفاتيح.
+   */
   return (
     <section className="rounded-2xl border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
@@ -195,91 +159,31 @@ function ScheduleCard({ userId, schedule }: { userId: string; schedule: Employee
           <CalendarClock aria-hidden size={17} strokeWidth={1.8} className="text-muted-foreground" />
           <h2 className="text-sm font-bold text-foreground">دوامه المحدد</h2>
         </div>
-        {!editing && (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground"
-          >
-            تعديل
-          </button>
-        )}
+        <a
+          href={`/employees/${userId}`}
+          className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground hover:border-ring"
+        >
+          التعديل من ملف الموظف
+        </a>
       </div>
 
-      {!editing ? (
-        <p className="mt-2.5 text-sm text-muted-foreground">
-          {schedule.startWindowEndMinutes !== null ? (
-            <>
-              يبدأ بحرية بين <b className="font-bold text-foreground">{minuteLabel(schedule.startMinutes, toArabicDigits)}</b> و
-              <b className="font-bold text-foreground">{minuteLabel(schedule.startWindowEndMinutes, toArabicDigits)}</b>
-            </>
-          ) : (
-            <>
-              يبدأ <b className="font-bold text-foreground">{minuteLabel(schedule.startMinutes, toArabicDigits)}</b>
-            </>
-          )}{" "}
-          — <b className="font-bold text-foreground">{toArabicDigits(Math.round(schedule.shiftMinutes / 60))} ساعات</b>
-          {schedule.startWindowEndMinutes !== null && (
-            <span className="mr-2 text-xs">(التأخير بعد نهاية النافذة، والانصراف من بدايته الفعلية)</span>
-          )}
-          {schedule.isDefault && <span className="mr-2 text-xs">(الافتراضي — ما انضبط له دوام بعد)</span>}
-        </p>
-      ) : (
-        <div className="mt-3 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">بداية دوامه</span>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                dir="ltr"
-                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">نهاية نافذة البداية — اختياري</span>
-              <input
-                type="time"
-                value={windowEnd}
-                onChange={(e) => setWindowEnd(e.target.value)}
-                dir="ltr"
-                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">عدد الساعات</span>
-              <input
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                inputMode="numeric"
-                dir="ltr"
-                className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </label>
-          </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <div className="flex gap-2">
-            {/* العنصر الذهبي الوحيد في الصفحة */}
-            <button
-              type="button"
-              onClick={save}
-              disabled={pending}
-              className="h-10 rounded-xl bg-gold px-6 text-sm font-bold text-primary-foreground disabled:opacity-60"
-            >
-              {pending ? "جاري الحفظ…" : "حفظ دوامه"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              disabled={pending}
-              className="h-10 rounded-xl border border-border px-4 text-sm text-foreground disabled:opacity-60"
-            >
-              إلغاء
-            </button>
-          </div>
-        </div>
-      )}
+      <p className="mt-2.5 text-sm text-muted-foreground">
+        {schedule.startWindowEndMinutes !== null ? (
+          <>
+            يبدأ بحرية بين <b className="font-bold text-foreground">{minuteLabel(schedule.startMinutes, toArabicDigits)}</b> و
+            <b className="font-bold text-foreground">{minuteLabel(schedule.startWindowEndMinutes, toArabicDigits)}</b>
+          </>
+        ) : (
+          <>
+            يبدأ <b className="font-bold text-foreground">{minuteLabel(schedule.startMinutes, toArabicDigits)}</b>
+          </>
+        )}{" "}
+        — <b className="font-bold text-foreground">{toArabicDigits(Math.round(schedule.shiftMinutes / 60))} ساعات</b>
+        {schedule.startWindowEndMinutes !== null && (
+          <span className="mr-2 text-xs">(التأخير بعد نهاية النافذة، والانصراف من بدايته الفعلية)</span>
+        )}
+        {schedule.isDefault && <span className="mr-2 text-xs">(الافتراضي — ما انضبط له دوام بعد)</span>}
+      </p>
     </section>
   );
 }

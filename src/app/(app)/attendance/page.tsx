@@ -3,7 +3,6 @@ import { requireRole } from "@/lib/auth-guards";
 import { getSettings } from "@/lib/data/settings";
 import {
   getAllLocations,
-  getAttendanceSettings,
   getLiveBoard,
   getLocationRadar,
   getTeamSummary,
@@ -37,9 +36,8 @@ export default async function AttendancePage({
       : null;
 
   const month = currentMonthKSA();
-  const [locations, settings, live, teamRows, appSettings, radar] = await Promise.all([
+  const [locations, live, teamRows, appSettings, radar] = await Promise.all([
     getAllLocations(),
-    getAttendanceSettings(),
     getLiveBoard(range),
     getTeamSummary(month),
     getSettings(),
@@ -57,7 +55,6 @@ export default async function AttendancePage({
 
       <AttendanceAdmin
         locations={locations}
-        settings={settings}
         live={live}
         radar={radar}
         teamMonth={month}
