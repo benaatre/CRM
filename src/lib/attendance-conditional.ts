@@ -22,6 +22,47 @@ export type ConditionalReason = "HEARTBEAT_GAP" | "OUT_ZONE" | "SILENT_OUT" | "V
 
 const CAPPED: ConditionalReason[] = ["HEARTBEAT_GAP", "OUT_ZONE", "SILENT_OUT"];
 
+/* ═══════════ فلسفة النبض الحاكم — الدفعة أ ═══════════ */
+
+/**
+ * حصانة النبض (القاعدة الذهبية): آخر نبضة **محكومة** (inZone ليست null) كانت
+ * داخل النطاق وعمرها ≤ هذه الدقائق = إثبات حضور قائم — لا نداء آليًا فوقه.
+ * النداء اليدوي (trigger — قرار المالك المباشر) مستثنى عمدًا وينفذ دائمًا.
+ * تُعدَّل من هنا حصرًا.
+ */
+export const PULSE_IMMUNITY_MINUTES = 30;
+
+/**
+ * إيقاف جدولة النداءات العشوائية الجديدة (من العشوائي الأعمى إلى تنبيهات
+ * القرار): البنية كلها باقية — sendDueVerifications والتصعيد والرد — والمعلقة
+ * القائمة تنتهي طبيعيًا؛ فقط لا جدولة RANDOM جديدة عند البصم/البصم التلقائي.
+ */
+export const NEW_RANDOM_CALLS_DISABLED: boolean = true;
+
+/**
+ * «النداء التلقائي عند الخروج المؤكد» (م٣-٣): عند التفعيل، خروجٌ مؤكَّد مستمر
+ * ≥ settings.maxOutOfZoneMinutes يرسل نداءً تلقائيًا واحدًا (بسقوف اليوم
+ * القائمة) بدل تنبيه قرار المالك. لا حقل إعداد قائم يصلح له ولا حقل JSON في
+ * AttendanceSettings — فالوضع «إيقاف» ثابت هنا، ومفتاح المالك (تشغيل/إيقاف +
+ * المدة) يُستكمل في الدفعة ب بإضافة schema.
+ */
+export const AUTO_CALL_ON_SUSTAINED_OUTZONE: boolean = false;
+
+/**
+ * هل المستخدم محصون بنبضه الآن؟ آخر نبضة محكومة داخل النطاق وطازجة.
+ * (نبضة لاحقة خارج النطاق تُسقط الحصانة فورًا — فلا تُخنق نداءات الخروج.)
+ */
+export async function hasPulseImmunity(userId: string, now: Date): Promise<boolean> {
+  const last = await prisma.attendancePulse.findFirst({
+    where: { userId, inZone: { not: null } },
+    orderBy: { at: "desc" },
+    select: { inZone: true, at: true },
+  });
+  return (
+    last?.inZone === true && now.getTime() - last.at.getTime() <= PULSE_IMMUNITY_MINUTES * 60_000
+  );
+}
+
 export async function createConditionalCall(args: {
   userId: string;
   sessionId: string;
@@ -41,6 +82,10 @@ export async function createConditionalCall(args: {
     select: { id: true },
   });
   if (active) return false;
+
+  // القاعدة الذهبية (النبض الحاكم): نبضة داخل النطاق طازجة = لا نداء آليًا.
+  // OUT_ZONE/SILENT_OUT تمرّان طبيعيًا — آخر نبضة محكومة عندهما خارجية أصلًا.
+  if (await hasPulseImmunity(userId, now)) return false;
 
   const dayStart = dayStartKSA(now);
   if (CAPPED.includes(reason)) {
