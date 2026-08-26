@@ -6,7 +6,6 @@ import { DiwanNav } from "@/components/mobile/diwan-nav";
 import { AttendanceShellProvider } from "@/components/mobile/attendance-shell";
 import { PushRegistrar } from "@/components/mobile/push-registrar";
 import { Heartbeat } from "@/components/layout/heartbeat";
-import { DecisionGate } from "@/components/attendance/decision-gate";
 import { LocationPriming } from "@/components/attendance/location-priming";
 
 /**
@@ -46,13 +45,10 @@ export default async function MobileShellLayout({ children }: { children: React.
       {/* نبضة «آخر ظهور» — كانت بقشرة الويب فقط، فموظف التطبيق كان يظهر
           «غير متصل» بعد ٥ دقائق ويُستبعد من التوزيع التلقائي بعد distPresenceMin. */}
       <Heartbeat />
-      {/* شاشتا الحسم وتفعيل الموقع — صدّ تركيبي للمالك فوق الصدّ الخادمي القائم:
-          صفر مكوّنات موقع على جهازه، وينحذف معها استطلاع /decision الدوري.
-          ADMIN يبقى كما هو (مرصود). */}
+      {/* «بصمة فقط» (الدفعة أ): أُزيلت شاشة الحسم نهائيًا — الموظف يفتح فيصل
+          مباشرة لبطاقة البصمة. تمهيد الإذن باقٍ كما هو، والمالك مستثنى منه. */}
       {user.role !== "OWNER" && (
         <>
-          {/* شاشة الحسم الإجبارية (الدوام الواقعي) — الصد الخادمي (due:false) باقٍ خط الدفاع الأول. */}
-          <DecisionGate />
           {/* تفعيل الموقع (الحضور بالرادار) — بعد ثبوت الإفصاح v3 خادميًا. */}
           <LocationPriming />
         </>

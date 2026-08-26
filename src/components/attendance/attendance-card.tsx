@@ -112,14 +112,6 @@ const TONE_VAR: Record<FeedbackTone, string> = {
   info: "var(--att-teal)",
 };
 
-type Authorizer = { id: string; label: string };
-
-const LEAVE_TYPES = [
-  { key: "SICK", label: "مرضية" },
-  { key: "OFFICIAL", label: "رسمية" },
-  { key: "PERSONAL", label: "ظرف خاص" },
-] as const;
-
 /** خلفية باهتة من لون التوكن — color-mix يشتغل على var() بخلاف دمج النصوص. */
 const soft = (color: string, pct = 12) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
@@ -159,9 +151,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [sheet, setSheet] = useState<{ open: boolean; locations: NearbyLocation[] }>({ open: false, locations: [] });
   const lastPosRef = useRef<{ pos: GeolocationPosition; at: number } | null>(null);
-  // الدفعة الرابعة: تدفق أوضاع البداية + تأكيد الانصراف + نافذة التراجع.
-  const [modeFlow, setModeFlow] = useState<null | "remote" | "leave">(null);
-  const [authorizers, setAuthorizers] = useState<Authorizer[] | null>(null);
+  // الدفعة الرابعة: تأكيد الانصراف + نافذة التراجع («بصمة فقط»: لا أوضاع بداية).
   const [confirmOut, setConfirmOut] = useState(false);
   const [undoUntil, setUndoUntil] = useState<number | null>(null);
   const silentBusyRef = useRef(false);
@@ -462,16 +452,6 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
   };
 
   /** جهات الإذن — تُجلب عند أول حاجة (عن بُعد/إجازة). */
-  const loadAuthorizers = useCallback(async () => {
-    if (authorizers !== null) return;
-    try {
-      const res = await fetch("/api/attendance/authorizers", { cache: "no-store" });
-      const data = (await res.json()) as { ok: boolean; authorizers?: Authorizer[] };
-      setAuthorizers(data.ok && data.authorizers ? data.authorizers : []);
-    } catch {
-      setAuthorizers([]);
-    }
-  }, [authorizers]);
 
   const working = busy !== null;
   const startedMs = status?.session?.startedAt ? new Date(status.session.startedAt).getTime() : null;
@@ -789,20 +769,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                     {/* ===== شرائح الأوضاع الثلاثة (v2) — الدمج المعتمد داخل `.att` ===== */}
                     {status.state === "none" && status.sessionsToday === 0 && (
                       <div style={{ marginBottom: 14 }}>
-                        <ModeChips
-                          diwan
-                          flow={modeFlow}
-                          setFlow={(f) => {
-                            setModeFlow(f);
-                            if (f) void loadAuthorizers();
-                          }}
-                          authorizers={authorizers}
-                          onDone={(msg, tone) => {
-                            setModeFlow(null);
-                            setFeedback({ tone, text: msg });
-                            void loadStatus();
-                          }}
-                        />
+                        <ModeChips diwan />
                       </div>
                     )}
 
@@ -1108,19 +1075,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
 
                 {/* ===== شرائح أوضاع بداية اليوم — قبل أول حضور فقط ===== */}
                 {status?.state === "none" && status.sessionsToday === 0 && (
-                  <ModeChips
-                    flow={modeFlow}
-                    setFlow={(f) => {
-                      setModeFlow(f);
-                      if (f) void loadAuthorizers();
-                    }}
-                    authorizers={authorizers}
-                    onDone={(msg, tone) => {
-                      setModeFlow(null);
-                      setFeedback({ tone, text: msg });
-                      void loadStatus();
-                    }}
-                  />
+                  <ModeChips />
                 )}
 
                 {/* ===== تأكيد الانصراف الناقص ===== */}
@@ -1617,160 +1572,23 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
   );
 }
 
-/* ═══════════════════ شرائح أوضاع بداية اليوم ═══════════════════ */
+/* ═══════════════════ شرائح بداية اليوم — «بصمة فقط» (الدفعة أ) ═══════════════════ */
 
-function ModeChips({
-  flow,
-  setFlow,
-  authorizers,
-  onDone,
-  diwan = false,
-}: {
-  flow: null | "remote" | "leave";
-  setFlow: (f: null | "remote" | "leave") => void;
-  authorizers: Authorizer[] | null;
-  onDone: (message: string, tone: FeedbackTone) => void;
-  /** كسوة الديوان (بطاقة الجوال): شرائح بمواصفات المرجع — المنطق نفسه حرفيًا. */
-  diwan?: boolean;
-}) {
+/**
+ * أُزيلت مداخل «بالطريق» و«عن بُعد» كليًا مع إلغاء شاشة الحسم: الموظف يدخل
+ * فيبصم مباشرة، والإجازة/المرضية/الاستئذان مدخلها الوحيد طلب في نظام
+ * الإجازات (/m/leaves) — الشريحة هنا مجرد بوابة له.
+ */
+function ModeChips({ diwan = false }: { diwan?: boolean }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [authorizerId, setAuthorizerId] = useState("");
-  const [leaveType, setLeaveType] = useState<(typeof LEAVE_TYPES)[number]["key"]>("SICK");
-  const [duration, setDuration] = useState<"1" | "2" | "3" | "custom">("1");
-  const [fromKey, setFromKey] = useState("");
-  const [toKey, setToKey] = useState("");
-  const [pauseIntake, setPauseIntake] = useState(true);
-
-  const todayKey = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
-  const addDays = (key: string, n: number) =>
-    new Date(new Date(`${key}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
-
-  const submitRemote = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/attendance/day/mode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ authorizerId }),
-      });
-      const data = (await res.json()) as { ok: boolean; message?: string };
-      if (data.ok) onDone("سجّلنا يومك «عن بُعد» — موفق", "success");
-      else setError(data.message ?? "ما قدرنا نسجّل");
-    } catch {
-      setError("تعذّر الاتصال — حاول مرة ثانية");
-    }
-    setBusy(false);
-  };
-
-  const submitLeave = async () => {
-    setBusy(true);
-    setError(null);
-    const from = duration === "custom" ? fromKey : todayKey;
-    const to =
-      duration === "custom" ? toKey : duration === "1" ? todayKey : addDays(todayKey, duration === "2" ? 1 : 2);
-    try {
-      const res = await fetch("/api/attendance/day/leave", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leaveType, fromKey: from, toKey: to, authorizerId, pauseIntake }),
-      });
-      const data = (await res.json()) as { ok: boolean; message?: string };
-      if (data.ok) onDone(data.message ?? "سجّلنا إجازتك", "success");
-      else setError(data.message ?? "ما قدرنا نسجّل");
-    } catch {
-      setError("تعذّر الاتصال — حاول مرة ثانية");
-    }
-    setBusy(false);
-  };
-
   return (
-    <div className="relative flex flex-col gap-2.5">
-      {/* الشرائح الثلاث — «في الموقع» الافتراضي */}
-      <div className="flex gap-1.5">
-        <Chip diwan={diwan} active={flow === null} onClick={() => setFlow(null)} icon={<MapPin aria-hidden size={14} strokeWidth={1.5} />}>
-          في الموقع
-        </Chip>
-        <Chip diwan={diwan} active={flow === "remote"} onClick={() => setFlow("remote")} icon={<Laptop aria-hidden size={14} strokeWidth={1.5} />}>
-          عن بُعد
-        </Chip>
-        <Chip diwan={diwan} active={false} onClick={() => router.push("/m/leaves?new=1")} icon={<CalendarDays aria-hidden size={14} strokeWidth={1.5} />}>
-          إجازة
-        </Chip>
-      </div>
-
-      {flow !== null && (
-        <div className="flex flex-col gap-2.5 rounded-xl border border-[var(--att-esp-line)] bg-[var(--att-esp-card)] p-3">
-          {flow === "leave" && (
-            <>
-              <div className="flex gap-1.5">
-                {LEAVE_TYPES.map((t) => (
-                  <Chip key={t.key} diwan={diwan} active={leaveType === t.key} onClick={() => setLeaveType(t.key)}>
-                    {t.label}
-                  </Chip>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Chip diwan={diwan} active={duration === "1"} onClick={() => setDuration("1")}>اليوم فقط</Chip>
-                <Chip diwan={diwan} active={duration === "2"} onClick={() => setDuration("2")}>يومان</Chip>
-                <Chip diwan={diwan} active={duration === "3"} onClick={() => setDuration("3")}>٣ أيام</Chip>
-                <Chip diwan={diwan} active={duration === "custom"} onClick={() => setDuration("custom")}>تحديد تاريخ</Chip>
-              </div>
-              {duration === "custom" && (
-                <div className="flex gap-2">
-                  <label className="flex-1 text-[10.5px] text-[var(--att-esp-muted)]">
-                    من
-                    <input type="date" value={fromKey} onChange={(e) => setFromKey(e.target.value)} dir="ltr" className="mt-1 h-9 w-full rounded-lg border px-2 text-[12px]" style={{ borderColor: "var(--att-esp-line)", background: "transparent", color: "var(--att-esp-text)" }} />
-                  </label>
-                  <label className="flex-1 text-[10.5px] text-[var(--att-esp-muted)]">
-                    إلى
-                    <input type="date" value={toKey} onChange={(e) => setToKey(e.target.value)} dir="ltr" className="mt-1 h-9 w-full rounded-lg border px-2 text-[12px]" style={{ borderColor: "var(--att-esp-line)", background: "transparent", color: "var(--att-esp-text)" }} />
-                  </label>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* جهة الإذن — إلزامية للوضعين */}
-          <div>
-            <p className="mb-1.5 text-[10.5px] text-[var(--att-esp-muted)]">
-              {flow === "remote" ? "مين أذن لك تشتغل عن بُعد؟" : "مين أذن لك بالإجازة؟"}
-            </p>
-            {authorizers === null ? (
-              <p className="py-1 text-[11.5px] text-[var(--att-esp-muted)]">جاري تحميل الجهات…</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {authorizers.map((a) => (
-                  <Chip key={a.id} diwan={diwan} active={authorizerId === a.id} onClick={() => setAuthorizerId(a.id)}>
-                    {a.label}
-                  </Chip>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {flow === "leave" && (
-            <label className="flex items-center gap-2 text-[11.5px] text-[var(--att-esp-muted)]">
-              <input type="checkbox" checked={pauseIntake} onChange={(e) => setPauseIntake(e.target.checked)} className="size-4 accent-[var(--att-gold)]" />
-              إيقاف استقبال العملاء الجدد طوال الإجازة (يرجع تلقائيًا)
-            </label>
-          )}
-
-          {error && <p className="text-[11.5px]" style={{ color: "var(--att-miss)" }}>{error}</p>}
-
-          <button
-            type="button"
-            disabled={busy || !authorizerId || (flow === "leave" && duration === "custom" && (!fromKey || !toKey))}
-            onClick={() => void (flow === "remote" ? submitRemote() : submitLeave())}
-            className="min-h-11 rounded-xl border-0 text-[13.5px] font-extrabold disabled:opacity-50"
-            style={{ background: "var(--att-gold)", color: "var(--att-on-gold)" }}
-          >
-            {busy ? "جاري التسجيل…" : flow === "remote" ? "تسجيل يوم عن بُعد" : "تسجيل الإجازة"}
-          </button>
-        </div>
-      )}
+    <div className="flex gap-1.5">
+      <Chip diwan={diwan} active onClick={() => {}} icon={<MapPin aria-hidden size={14} strokeWidth={1.5} />}>
+        في الموقع
+      </Chip>
+      <Chip diwan={diwan} active={false} onClick={() => router.push("/m/leaves?new=1")} icon={<CalendarDays aria-hidden size={14} strokeWidth={1.5} />}>
+        طلب إجازة
+      </Chip>
     </div>
   );
 }
