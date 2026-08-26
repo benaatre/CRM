@@ -160,6 +160,85 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, endedAtIso: closeMoment.toISOString(), workedMinutes });
   }
 
+  /* ═══════════ RESUME — استئناف الدوام (فلسفة النبض الحاكم — الدفعة أ) ═══════════
+   * جلسة أُقفلت آليًا اليوم (closedBy=AUTO — الإقفال القانوني، ومنه مسار «نداء
+   * فائت → توقف بلا رد → إقفال آلي») يستأنفها المالك بجلسة **متصلة جديدة** من
+   * وقت يحدده بين لحظة الإقفال والآن — الجلسة الأصلية ودقائقها لا تُمسّان،
+   * وقفل اليوم (إن وُجد) يُفكّ لأن قرار الاستئناف أعلى منه. سبب إلزامي + تدقيق.
+   */
+  if (raw.op === "RESUME") {
+    if (!session.endedAt) return NextResponse.json({ ok: false, error: "الجلسة مفتوحة أصلًا" });
+    if (ksaDayKey(session.endedAt) !== ksaDayKey(now)) {
+      return NextResponse.json({ ok: false, error: "الاستئناف لجلسة أُقفلت اليوم فقط" });
+    }
+    // TARGET مستثناة عمدًا: الهدف مكتمل والكرون سيعيد إقفالها فورًا بصفر دقائق.
+    if (session.closedBy !== "AUTO") {
+      return NextResponse.json({ ok: false, error: "الاستئناف للجلسات المقفلة آليًا فقط — لغيرها استخدم التعديل" });
+    }
+    const openNow = await prisma.attendanceSession.findFirst({
+      where: { userId: session.userId, endedAt: null, voided: false },
+      select: { id: true },
+    });
+    if (openNow) return NextResponse.json({ ok: false, error: "عنده جلسة مفتوحة الآن — ما فيه شي يُستأنف" });
+
+    const resumeAt = parseIso(raw.atIso) ?? session.endedAt;
+    if (resumeAt.getTime() < session.endedAt.getTime() || resumeAt.getTime() > now.getTime()) {
+      return NextResponse.json({ ok: false, error: "وقت الاستئناف لازم يكون بين لحظة الإقفال والآن" });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const day = await ensureAttendanceDay(tx, session.userId, ksaDayKey(now));
+      const hadLock = day.lockedAt !== null;
+      if (hadLock) await tx.attendanceDay.update({ where: { id: day.id }, data: { lockedAt: null } });
+      // حدث ربط بنمط بصمة النيابة (manual-checkin) حرفيًا — checkInEventId إلزامي بالمخطط.
+      const event = await tx.attendanceEvent.create({
+        data: {
+          userId: session.userId,
+          locationId: null,
+          type: "CHECK_IN",
+          timestamp: resumeAt,
+          lat: 0,
+          lng: 0,
+          accuracy: 0,
+          distanceMeters: 0,
+          source: "OWNER",
+          isMock: false,
+          outOfZone: false,
+          isLate: false,
+        },
+      });
+      const created = await tx.attendanceSession.create({
+        // استئناف لا حضور جديد: بلا وسم تأخير، وإثبات الحياة من لحظته.
+        data: {
+          userId: session.userId, dayId: day.id, checkInEventId: event.id,
+          startedAt: resumeAt, wasLate: false, lastAliveAt: resumeAt,
+        },
+      });
+      await recordAuditEvent(tx, {
+        actorId: guard.userId,
+        actorRole: "OWNER",
+        action: "SESSION_RESUME",
+        resourceType: "attendance_session",
+        resourceId: session.userId,
+        before: {
+          sessionId: session.id,
+          endedAt: session.endedAt!.toISOString(),
+          closedBy: session.closedBy,
+          workedMinutes: session.workedMinutes,
+        },
+        after: {
+          resumedSessionId: created.id,
+          startedAt: resumeAt.toISOString(),
+          dayLockCleared: hadLock,
+        },
+        reason,
+        ipAddress: ip,
+      });
+      return created;
+    });
+    return NextResponse.json({ ok: true, sessionId: result.id, startedAtIso: result.startedAt.toISOString() });
+  }
+
   /* ═══════════ EDIT — تعديل بداية/نهاية بإعادة حساب آلية ═══════════ */
   if (raw.op === "EDIT") {
     const newStart = parseIso(raw.startIso) ?? session.startedAt;

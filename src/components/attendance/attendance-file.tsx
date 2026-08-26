@@ -744,7 +744,7 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [mode, setMode] = useState<"CLOSE" | "EDIT" | "VOID">("CLOSE");
+  const [mode, setMode] = useState<"CLOSE" | "EDIT" | "VOID" | "RESUME">("CLOSE");
   const [atLocal, setAtLocal] = useState("");
   const [startLocal, setStartLocal] = useState("");
   const [endLocal, setEndLocal] = useState("");
@@ -755,12 +755,13 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
   if (sessions.length === 0) return null;
   const stuck = sessions.filter((s) => s.open && !s.voided);
 
-  const begin = (s: EmployeeFile["repairSessions"][number], m: "CLOSE" | "EDIT" | "VOID") => {
+  const begin = (s: EmployeeFile["repairSessions"][number], m: "CLOSE" | "EDIT" | "VOID" | "RESUME") => {
     setActiveId(s.id);
     setMode(m);
     setMsg(null);
     setReason("");
-    setAtLocal(s.lastAliveLocal ?? "");
+    // الاستئناف يقترح لحظة الإقفال نفسها (اتصال كامل) — والمالك يعدّلها حتى الآن.
+    setAtLocal(m === "RESUME" ? (s.endedLocal ?? "") : (s.lastAliveLocal ?? ""));
     setStartLocal(s.startedLocal);
     setEndLocal(s.endedLocal ?? "");
   };
@@ -770,7 +771,7 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
     setMsg(null);
     try {
       const body: Record<string, unknown> = { op: mode, sessionId: s.id, reason };
-      if (mode === "CLOSE" && atLocal) body.atIso = atLocal;
+      if ((mode === "CLOSE" || mode === "RESUME") && atLocal) body.atIso = atLocal;
       if (mode === "EDIT") {
         body.startIso = startLocal;
         if (endLocal) body.endIso = endLocal;
@@ -787,7 +788,9 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
           text:
             mode === "VOID"
               ? "أُبطلت الجلسة — ما عادت تُحسب بالتقارير"
-              : `تم — الدقائق المعاد حسابها: ${hmLabel(data.workedMinutes ?? 0, toArabicDigits)}`,
+              : mode === "RESUME"
+                ? "استؤنف دوامه — فُتحت جلسة متصلة من الوقت المحدد"
+                : `تم — الدقائق المعاد حسابها: ${hmLabel(data.workedMinutes ?? 0, toArabicDigits)}`,
         });
         setActiveId(null);
         router.refresh();
@@ -860,6 +863,11 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
                           قفل
                         </button>
                       )}
+                      {!s.open && s.closedBy === "AUTO" && (
+                        <button type="button" onClick={() => begin(s, "RESUME")} className="h-8 rounded-lg border border-success/40 px-2.5 text-[11px] font-bold text-success">
+                          استئناف الدوام
+                        </button>
+                      )}
                       <button type="button" onClick={() => begin(s, "EDIT")} className="h-8 rounded-lg border border-border px-2.5 text-[11px] font-bold text-foreground">
                         تعديل
                       </button>
@@ -898,6 +906,15 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
                         اختبار/بالغلط). ما له تراجع من الواجهة.
                       </p>
                     )}
+                    {mode === "RESUME" && (
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          وقت الاستئناف — بين لحظة الإقفال ({s.endedText ?? "—"}) والآن؛ تُفتح جلسة متصلة جديدة
+                          والجلسة المقفلة ودقائقها لا تُمسّان
+                        </span>
+                        <input type="datetime-local" value={atLocal} onChange={(e) => setAtLocal(e.target.value)} dir="ltr" className={inputCls} />
+                      </label>
+                    )}
                     <label className="flex flex-col gap-1.5">
                       <span className="text-xs text-muted-foreground">السبب — إلزامي</span>
                       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="جلسة عالقة بلا انصراف / بصمة خاطئة…" className={inputCls} />
@@ -909,7 +926,7 @@ function SessionRepairSection({ sessions }: { sessions: EmployeeFile["repairSess
                         disabled={busy || !reason.trim() || (mode === "EDIT" && !startLocal)}
                         className="h-9 rounded-xl border border-border px-4 text-xs font-bold text-foreground disabled:opacity-50"
                       >
-                        {busy ? "جاري التنفيذ…" : mode === "CLOSE" ? "قفل الجلسة" : mode === "EDIT" ? "حفظ التعديل" : "تأكيد الإبطال"}
+                        {busy ? "جاري التنفيذ…" : mode === "CLOSE" ? "قفل الجلسة" : mode === "EDIT" ? "حفظ التعديل" : mode === "RESUME" ? "استئناف الدوام" : "تأكيد الإبطال"}
                       </button>
                       <button type="button" onClick={() => setActiveId(null)} className="h-9 px-3 text-xs text-muted-foreground">
                         إلغاء
