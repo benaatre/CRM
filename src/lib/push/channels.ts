@@ -156,6 +156,8 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.decision": "staff",
   // الإقفال الآلي القانوني — للمالك.
   "attendance.auto_closed": "staff",
+  // تنبيه قرار النبض (فلسفة النبض الحاكم) — للمالك: خارج النطاق/منقطع.
+  "attendance.pulse_alert": "staff",
 };
 
 /**
@@ -204,6 +206,7 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "attendance.verify": "نداء تحقق (للموظف)",
   "attendance.pause_reminder": "تذكير الموقوف (للموظف)",
   "attendance.punch_reminder": "تذكير الحضور (للموظف)",
+  "attendance.pulse_alert": "تنبيه قرار النبض (للمالك)",
 };
 
 /**

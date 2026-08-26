@@ -12,6 +12,7 @@ import {
   type EffectiveDay,
 } from "@/lib/attendance-logic";
 import { dayDateOf, ensureAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
+import { NEW_RANDOM_CALLS_DISABLED } from "@/lib/attendance-conditional";
 import { mergeConfig } from "@/lib/attendance-config";
 import { notify, ownerIds } from "@/lib/notify";
 
@@ -193,7 +194,8 @@ export async function tryAutoPunch(args: {
     });
 
     // جدولة النداءات — نفس قواعد punch حرفيًا (السقف والحرسان)، بنداءات الموظف المخصصة.
-    if (settings.verificationEnabled && !eff.isWeekend) {
+    // فلسفة النبض الحاكم (الدفعة أ): معطَّلة بثابت NEW_RANDOM_CALLS_DISABLED الموثق.
+    if (!NEW_RANDOM_CALLS_DISABLED && settings.verificationEnabled && !eff.isWeekend) {
       const dailyCap = Math.min(config.verificationPerDay, 2);
       const alreadyToday = await tx.attendanceVerification.count({
         where: { userId, kind: "RANDOM", scheduledAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) } },

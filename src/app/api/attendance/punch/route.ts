@@ -27,6 +27,7 @@ import {
   resumedCheckInText,
 } from "@/lib/attendance-notify";
 import { daySessionsOf, ensureAttendanceDay } from "@/lib/data/attendance";
+import { NEW_RANDOM_CALLS_DISABLED } from "@/lib/attendance-conditional";
 import { mergeConfig } from "@/lib/attendance-config";
 import { notify, ownerIds } from "@/lib/notify";
 
@@ -419,7 +420,9 @@ export async function POST(req: Request) {
        * يوم إجازة أسبوعية. عند الاستئناف تُجدول داخل **المتبقي من هدف اليوم**
        * وبما لا يتجاوز السقف اليومي مع نداءات اليوم السابقة.
        */
-      if (settings.verificationEnabled && config.enforced && !eff.isWeekend) {
+      // فلسفة النبض الحاكم (الدفعة أ): لا جدولة نداءات عشوائية جديدة — البنية
+      // باقية والمعلقة تنتهي طبيعيًا؛ الثابت موثق في attendance-conditional.
+      if (!NEW_RANDOM_CALLS_DISABLED && settings.verificationEnabled && config.enforced && !eff.isWeekend) {
         const dailyCap = Math.min(config.verificationPerDay, 2);
         const alreadyToday = await tx.attendanceVerification.count({
           where: {

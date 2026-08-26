@@ -23,7 +23,11 @@ import {
   verifyMissedText,
 } from "@/lib/attendance-notify";
 import { dayDateOf, ensureAttendanceDay } from "@/lib/data/attendance";
-import { createConditionalCall } from "@/lib/attendance-conditional";
+import {
+  AUTO_CALL_ON_SUSTAINED_OUTZONE,
+  createConditionalCall,
+  hasPulseImmunity,
+} from "@/lib/attendance-conditional";
 import { notify, ownerIds } from "@/lib/notify";
 import { TRACKED_ROLES } from "@/lib/auth-guards";
 
@@ -41,6 +45,9 @@ export const dynamic = "force-dynamic";
  *   ٤) إقفال الجلسات المنسية (autoClosed) عند نهاية نافذة الشركة/الدوام الشخصي.
  *   ٥) تذكير الموقوف «لا زلت مستأذنًا — رجعت؟» بعد ساعة، ومرة ثانية أخيرة بعد ساعة إضافية.
  *   +) تذكير البصم (دفعة الختام): فتحت نافذته ولا بصمة ولا قرار → push «تذكير الحضور» مرة باليوم.
+ *   +) فلسفة النبض الحاكم (الدفعة أ): حصانة النبض تُسقط كل نداء آلي لمن نبضته
+ *      داخل النطاق طازجة (عدّاد pulseImmunity بالرد)، وتنبيهات قرار المالك
+ *      (attendance.pulse_alert) بدل النداء العشوائي المعطَّل.
  *
  * الحماية: هيدر `x-cron-secret` يطابق CRON_SECRET (حسب التصميم المعتمد)،
  * ويُقبل أيضًا `Authorization: Bearer` كبقية مسارات الكرون في الريبو.
@@ -57,12 +64,15 @@ function authorized(req: Request): boolean {
 
 type Settings = Awaited<ReturnType<typeof getAttendanceSettings>>;
 
+/** عدّاد مشترك لتخطيات القاعدة الذهبية — يظهر في رد الكرون بمفتاح pulseImmunity. */
+type ImmunityCounter = { count: number };
+
 /**
  * ١) إرسال النداءات التي حان وقتها — فقط لمن ما زال مداومًا، **ولا نداء لموظف
  * في حالة توقف** (عدّاده واقف أصلًا — يبقى النداء معلّقًا حتى يرجع).
  * نداء الوصول (ARRIVAL) له نصّه الخاص «وصلت المشروع؟».
  */
-async function sendDueVerifications(now: Date, settings: Settings): Promise<number> {
+async function sendDueVerifications(now: Date, settings: Settings, immunity: ImmunityCounter): Promise<number> {
   const due = await prisma.attendanceVerification.findMany({
     where: { status: "PENDING", scheduledAt: { lte: now } },
   });
@@ -113,6 +123,16 @@ async function sendDueVerifications(now: Date, settings: Settings): Promise<numb
     }
     // موقوف — يبقى PENDING ويُرسل بعد رجوعه في نداء الكرون التالي.
     if (paused.has(v.userId)) continue;
+
+    /*
+     * القاعدة الذهبية (النبض الحاكم): نبضة داخل النطاق طازجة = إثبات حضور —
+     * النداء يُتخطى (يبقى PENDING لدورة قادمة؛ منطق نهاية النافذة يحذفه إن
+     * فات). اليدوي MANUAL مستثنى عمدًا — قرار المالك المباشر ينفذ دائمًا.
+     */
+    if (v.kind !== "MANUAL" && (await hasPulseImmunity(v.userId, now))) {
+      immunity.count++;
+      continue;
+    }
 
     /*
      * ===== التحقق الذكي (الدفعة الرابعة) — للنداء العشوائي فقط =====
@@ -188,7 +208,7 @@ async function hasRecentActivity(userId: string, since: Date, countCrm: boolean)
 }
 
 /** ٢) النداءات التي فاتت مهلتها → MISSED + إشعار المالك بآخر موقع معروف. */
-async function expireMissedVerifications(now: Date): Promise<number> {
+async function expireMissedVerifications(now: Date, immunity: ImmunityCounter): Promise<number> {
   const expired = await prisma.attendanceVerification.findMany({
     where: { status: "SENT", deadlineAt: { lt: now } },
     include: { user: { select: { name: true } } },
@@ -215,6 +235,11 @@ async function expireMissedVerifications(now: Date): Promise<number> {
         where: { userId: v.userId, endedAt: null },
         select: { id: true },
       });
+      // القاعدة الذهبية: نبضة داخل النطاق طازجة تُسقط التصعيد — الحضور مثبت.
+      if (stillOn && (await hasPulseImmunity(v.userId, now))) {
+        immunity.count++;
+        continue;
+      }
       if (stillOn) {
         const settings = await getAttendanceSettings();
         await prisma.attendanceVerification.create({
@@ -522,6 +547,106 @@ async function remindPunchIn(now: Date, settings: Settings): Promise<number> {
 }
 
 /**
+ * ١١) تنبيهات القرار (فلسفة النبض الحاكم — الدفعة أ): بدل العشوائي الأعمى،
+ * المالك يُنبَّه عند حالتين لموظف مداوم غير محصون بنبضه:
+ *   أ) خروج مؤكَّد مستمر: آخر نبضة محكومة خارج النطاق + مضى على آخر إثبات
+ *      موقع ≥ settings.maxOutOfZoneMinutes.
+ *   ب) انقطاع إثبات ≥ settings.heartbeatGapMinutes لجلسة مفتوحة.
+ * الإشعار يفتح `/attendance/{userId}` حيث زر «أرسل نداء تحقق الآن» = زر القرار.
+ * تهدئة: تنبيه واحد لكل موظف/حالة كل ٦٠ دقيقة (صف الإشعار نفسه — نمط «لم يداوم»).
+ * ومع مفتاح «النداء التلقائي عند الخروج المؤكد» (م٣-٣، إيقاف حاليًا): الحالة أ
+ * ترسل نداءً تلقائيًا واحدًا بدل التنبيه.
+ */
+async function alertOwnerDecisions(now: Date, settings: Settings): Promise<number> {
+  const open = await prisma.attendanceSession.findMany({
+    where: { endedAt: null, voided: false },
+    include: { pauses: { where: { endedAt: null }, select: { id: true } } },
+  });
+  if (open.length === 0) return 0;
+
+  const todayKey = ksaDayKey(now);
+  const offSite = new Set(
+    (
+      await prisma.attendanceDay.findMany({
+        where: { date: dayDateOf(todayKey), mode: { not: "ONSITE" } },
+        select: { userId: true },
+      })
+    ).map((d) => d.userId),
+  );
+  const userIds = [...new Set(open.map((s) => s.userId))];
+  const configs = await effectiveConfigsFor(userIds, now);
+  const names = new Map(
+    (
+      await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+    ).map((u) => [u.id, u.name]),
+  );
+  const owners = await ownerIds(prisma);
+
+  let acted = 0;
+  for (const s of open) {
+    if (s.pauses.length > 0) continue; // موقوف — عدّاده واقف، حالته معروضة أصلًا
+    if (offSite.has(s.userId)) continue;
+    if (configs.get(s.userId)?.enforced === false) continue;
+    if (await hasPulseImmunity(s.userId, now)) continue; // محصون — القاعدة الذهبية
+
+    const lastJudged = await prisma.attendancePulse.findFirst({
+      where: { userId: s.userId, inZone: { not: null } },
+      orderBy: { at: "desc" },
+      select: { inZone: true, at: true },
+    });
+    const outMinutes = Math.round((now.getTime() - (s.lastZoneProofAt ?? s.startedAt).getTime()) / 60_000);
+    const gapMinutes = Math.round((now.getTime() - (s.lastAliveAt ?? s.startedAt).getTime()) / 60_000);
+
+    const state: "out" | "gap" | null =
+      lastJudged?.inZone === false && outMinutes >= settings.maxOutOfZoneMinutes
+        ? "out"
+        : gapMinutes >= settings.heartbeatGapMinutes
+          ? "gap"
+          : null;
+    if (!state) continue;
+
+    // م٣-٣: عند تفعيل النداء التلقائي للخروج المؤكد — نداء واحد بسقوف اليوم بدل التنبيه.
+    if (state === "out" && AUTO_CALL_ON_SUSTAINED_OUTZONE) {
+      const sent = await createConditionalCall({
+        userId: s.userId,
+        sessionId: s.id,
+        reason: "OUT_ZONE",
+        now,
+        windowMinutes: settings.conditionalWindowMinutes,
+        cooldownMinutes: settings.conditionalCooldownMinutes,
+        maxPerDay: settings.maxConditionalPerDay,
+        title: `لسه خارج النطاق من ${durationArabic(outMinutes)}؟ أكّد موقعك`,
+        body: `رد خلال ${durationArabic(settings.conditionalWindowMinutes)}`,
+      });
+      if (sent) acted++;
+      continue;
+    }
+
+    const name = names.get(s.userId) ?? "موظف";
+    const marker = state === "out" ? "خارج النطاق" : "منقطع";
+    const title =
+      state === "out"
+        ? `نبض ${name} خارج النطاق من ${durationArabic(outMinutes)}`
+        : `نبض ${name} منقطع من ${durationArabic(gapMinutes)}`;
+
+    const already = await prisma.notification.findFirst({
+      where: {
+        type: "attendance.pulse_alert",
+        link: `/attendance/${s.userId}`,
+        title: { contains: marker },
+        createdAt: { gte: new Date(now.getTime() - 60 * 60_000) },
+      },
+      select: { id: true },
+    });
+    if (already) continue;
+
+    await notify(prisma, owners, "attendance.pulse_alert", title, undefined, `/attendance/${s.userId}`);
+    acted++;
+  }
+  return acted;
+}
+
+/**
  * ٧) توقف العدّاد عند اكتمال الهدف (الدوام الواقعي — قرار ٧): مجموع اليوم بلغ
  * الهدف → تُقفل الجلسة **بأثر رجعي عند لحظة البلوغ الرياضية** (البداية +
  * المتبقي، مزاحةً بالتوقفات) بـ`closedBy: TARGET` — فتأخر الكرون ≤٥ دقائق لا
@@ -761,7 +886,7 @@ async function remindPaused(now: Date): Promise<number> {
  * مؤكَّد من آخر إثبات موقع (فرع CONDITIONAL أعلاه). داخل نافذة الشركة فقط —
  * بعدها الإغلاق القانوني هو الحاكم.
  */
-async function checkHeartbeatGaps(now: Date, settings: Settings): Promise<number> {
+async function checkHeartbeatGaps(now: Date, settings: Settings, immunity: ImmunityCounter): Promise<number> {
   const open = await prisma.attendanceSession.findMany({
     where: { endedAt: null, voided: false },
     include: { pauses: { where: { endedAt: null }, select: { id: true } } },
@@ -790,6 +915,12 @@ async function checkHeartbeatGaps(now: Date, settings: Settings): Promise<number
     const lastProof = s.lastAliveAt ?? s.startedAt;
     if (now.getTime() - lastProof.getTime() < settings.heartbeatGapMinutes * 60_000) continue;
 
+    // القاعدة الذهبية — يُعدّ التخطي هنا (الحارس داخل createConditionalCall احتياط).
+    if (await hasPulseImmunity(s.userId, now)) {
+      immunity.count++;
+      continue;
+    }
+
     const sent = await createConditionalCall({
       userId: s.userId,
       sessionId: s.id,
@@ -813,7 +944,7 @@ async function checkHeartbeatGaps(now: Date, settings: Settings): Promise<number
  *   ب) لا إثبات موقع من visitReverifyMinutes → نداء تحقق CONDITIONAL
  *      (VISIT_STALE) بإيقاعه الخاص — خارج سقف/تهدئة GAP عمدًا.
  */
-async function watchVisits(now: Date, settings: Settings): Promise<number> {
+async function watchVisits(now: Date, settings: Settings, immunity: ImmunityCounter): Promise<number> {
   const open = await prisma.attendanceSession.findMany({
     where: { endedAt: null, voided: false },
     include: { pauses: { where: { endedAt: null }, select: { id: true } } },
@@ -876,6 +1007,12 @@ async function watchVisits(now: Date, settings: Settings): Promise<number> {
     });
     if (recentStale) continue;
 
+    // القاعدة الذهبية — نبضة داخل النطاق طازجة تغني عن نداء الزيارة.
+    if (await hasPulseImmunity(s.userId, now)) {
+      immunity.count++;
+      continue;
+    }
+
     const sent = await createConditionalCall({
       userId: s.userId,
       sessionId: s.id,
@@ -909,22 +1046,25 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const settings = await getAttendanceSettings();
+  // عدّاد القاعدة الذهبية المشترك — كل تخطٍّ بسبب نبضة حية يُحصى هنا.
+  const immunity: ImmunityCounter = { count: 0 };
 
   // نعزل فشل كل مهمة ونبلّغ عنه بدل ابتلاعه — نفس نمط notify-scheduled.
   const results = await Promise.allSettled([
-    sendDueVerifications(now, settings),
-    expireMissedVerifications(now),
+    sendDueVerifications(now, settings, immunity),
+    expireMissedVerifications(now, immunity),
     checkNoShows(now, settings),
     remindPunchIn(now, settings),
+    alertOwnerDecisions(now, settings),
     closeCompletedTargets(now, settings),
     autoCloseForgotten(now, settings),
-    checkHeartbeatGaps(now, settings),
-    watchVisits(now, settings),
+    checkHeartbeatGaps(now, settings, immunity),
+    watchVisits(now, settings, immunity),
     remindPaused(now),
     cleanOldPulses(now),
   ]);
-  const names = ["verifySent", "verifyMissed", "noShow", "punchReminders", "targetClosed", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
-  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, punchReminders: 0, targetClosed: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
+  const names = ["verifySent", "verifyMissed", "noShow", "punchReminders", "decisionAlerts", "targetClosed", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
+  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, punchReminders: 0, decisionAlerts: 0, targetClosed: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
   const failed: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") counts[names[i]] = r.value;
@@ -935,7 +1075,7 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json(
-    { ok: failed.length === 0, ...counts, ...(failed.length ? { failed } : {}) },
+    { ok: failed.length === 0, ...counts, pulseImmunity: immunity.count, ...(failed.length ? { failed } : {}) },
     { status: failed.length ? 500 : 200 },
   );
 }
