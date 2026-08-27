@@ -60,6 +60,28 @@ function toWebPosition(p: NativePosition): GeolocationPosition {
 }
 
 /**
+ * سباق مهلة صلبة حول وعد بلجن قد لا يُحل أبدًا (إصلاح تجميد البصمة —
+ * ‏iOS لا يفرض `timeout` الممرر للبلجن بنفسه): انقضاء المهلة يرفض بـ
+ * `Error("timeout")` فيصنّفه `toWebError` القائم `code: 3` (TIMEOUT) —
+ * fail-open: المستدعي يعرض رسالة الفشل المعتادة ويعود حيًا.
+ */
+function raceTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timeout")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
  * تطبيع خطأ أصلي إلى شكل GeolocationPositionError — `code === 1` هو ما تبني
  * عليه ذاكرة المنحة قرار المسح، فنستنطق checkPermissions لنعرف أهو رفض إذن
  * فعلًا أم مجرد تعذّر تثبيت.
@@ -68,7 +90,8 @@ async function toWebError(err: unknown, geo: NativeGeo): Promise<GeolocationPosi
   const message = err instanceof Error ? err.message : String(err ?? "");
   let code = 2; // POSITION_UNAVAILABLE
   try {
-    const st = await geo.checkPermissions();
+    // حارس ~3ث: checkPermissions نفسها قد تعلق — انقضاؤه يرمي فنسقط للتصنيف بالنص.
+    const st = await raceTimeout(geo.checkPermissions(), 3_000);
     if (st.location === "denied") code = 1;
     else if (/timeout|timed out/i.test(message)) code = 3;
   } catch {
@@ -159,24 +182,52 @@ export function onGeoPermissionChange(cb: (state: GeoPermState) => void): () => 
   return () => status?.removeEventListener("change", handler);
 }
 
+/**
+ * القفل الأحادي للقراءات الأصلية (إصلاح تجميد البصمة): قراءتان أصليتان
+ * متزامنتان (بصمة يدوية أثناء النبضة الأولى مثلًا) تُسقطان رد بلجن iOS —
+ * فالقراءة الجارية يتشاركها كل المستدعين بدل فتح ثانية موازية. يُنظَّف في
+ * الحالتين (نجاح/فشل) فلا يعلق قفلًا، والمسار الويبي خارجه كليًا.
+ */
+let nativeReadInFlight: Promise<GeolocationPosition> | null = null;
+
+function singleFlightNativeRead(start: () => Promise<GeolocationPosition>): Promise<GeolocationPosition> {
+  if (!nativeReadInFlight) {
+    const p = start();
+    nativeReadInFlight = p;
+    const clear = () => {
+      if (nativeReadInFlight === p) nativeReadInFlight = null;
+    };
+    p.then(clear, clear);
+  }
+  return nativeReadInFlight;
+}
+
 /** قراءة موقع واحدة — للنبض و«أنا موجود بالموقع». عالية الدقة للطلب الصريح. */
 export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
   const geo = await nativeGeo();
   if (geo) {
-    try {
-      const pos = await geo.getCurrentPosition({
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 12_000,
-        ...opts,
-      });
-      rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
-      return toWebPosition(pos);
-    } catch (err) {
-      const e = await toWebError(err, geo);
-      if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
-      throw e;
-    }
+    return singleFlightNativeRead(async () => {
+      const timeoutMs = opts?.timeout ?? 12_000;
+      try {
+        // المهلة الصلبة: البلجن على iOS لا يفرض timeout — السباق يضمن الحسم
+        // خلال (المهلة + ٢ث) مهما حدث، برفض يصنَّف TIMEOUT (code 3).
+        const pos = await raceTimeout(
+          geo.getCurrentPosition({
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: timeoutMs,
+            ...opts,
+          }),
+          timeoutMs + 2_000,
+        );
+        rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
+        return toWebPosition(pos);
+      } catch (err) {
+        const e = await toWebError(err, geo);
+        if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
+        throw e;
+      }
+    });
   }
   return readPositionOnceWeb(opts);
 }
@@ -222,7 +273,9 @@ export async function readBestPosition(opts?: {
   const targetAccuracy = opts?.targetAccuracy ?? 50;
   const timeoutMs = opts?.timeoutMs ?? 12_000;
   const geo = await nativeGeo();
-  if (geo) return readBestPositionNative(geo, targetAccuracy, timeoutMs);
+  // نفس القفل الأحادي — النبضة الأولى والبصمة لا تفتحان قراءتين أصليتين أبدًا:
+  // الجارية تُشارَك أيًا كان مطلقها (مؤقت النسخة الأصلية يضمن حسمها دائمًا).
+  if (geo) return singleFlightNativeRead(() => readBestPositionNative(geo, targetAccuracy, timeoutMs));
   return readBestPositionWeb(targetAccuracy, timeoutMs);
 }
 
