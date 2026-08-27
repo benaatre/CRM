@@ -27,12 +27,26 @@ type Authorizer = { id: string; label: string };
 
 type RespondResult = { ok: boolean; status?: string; message?: string; reason?: string };
 
-/** قراءة موقع واحدة — نفس ضبط البطاقة حرفيًا، عبر الطبقة الموحّدة (المسار الأصلي على التطبيق). */
+/** مهلة المستدعي القصوى — الضمانة الأخيرة فوق مهل مكتبة الموقع (نفس نمط البطاقة). */
+const CALLER_GEO_TIMEOUT_MS = 20_000;
+
+/** خطأ مهلة المستدعي — رسالته الموسومة «(٢)» دليل ميداني أن النسخة الجديدة وصلت. */
+class CallerGeoTimeoutError extends Error {}
+
+/** قراءة موقع واحدة — نفس ضبط البطاقة حرفيًا، عبر الطبقة الموحّدة وخلف سباق ٢٠ثانية. */
 function readPosition(): Promise<GeolocationPosition> {
-  return readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  return Promise.race([
+    readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new CallerGeoTimeoutError("caller-geo-timeout")), CALLER_GEO_TIMEOUT_MS),
+    ),
+  ]);
 }
 
 function geoErrorMessage(err: unknown): string {
+  if (err instanceof CallerGeoTimeoutError) {
+    return "ما قدرنا نحدد موقعك — حاول ثانية أو استخدم المتصفح مؤقتًا — جرّب من جديد (٢)";
+  }
   const code = (err as GeolocationPositionError | undefined)?.code;
   if (code === 1) return "لازم تسمح بالوصول للموقع عشان نأكد مكانك";
   if (code === 3) return "طوّلنا وما وصلتنا إشارة — حاول مرة ثانية بمكان مفتوح";
@@ -112,21 +126,25 @@ export function VerifyModal({
   const respondWithLocation = async (answer: "HERE" | "CHECKOUT") => {
     setBusy(true);
     setError(null);
-    let pos: GeolocationPosition;
+    // نفس ضمانة البطاقة: أي مسار — حتى غير المتوقع — ينتهي بإرجاع الأزرار.
     try {
-      pos = await readPosition();
-    } catch (err) {
-      setError(geoErrorMessage(err));
+      let pos: GeolocationPosition;
+      try {
+        pos = await readPosition();
+      } catch (err) {
+        setError(geoErrorMessage(err));
+        return;
+      }
+      await respond({
+        answer,
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        isMock: false,
+      });
+    } finally {
       setBusy(false);
-      return;
     }
-    await respond({
-      answer,
-      lat: pos.coords.latitude,
-      lng: pos.coords.longitude,
-      accuracy: pos.coords.accuracy,
-      isMock: false,
-    });
   };
 
   /** فتح شاشة الجهة — تُجلب القائمة عندها فقط. */

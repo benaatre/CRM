@@ -115,16 +115,32 @@ const TONE_VAR: Record<FeedbackTone, string> = {
 /** خلفية باهتة من لون التوكن — color-mix يشتغل على var() بخلاف دمج النصوص. */
 const soft = (color: string, pct = 12) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
+/** مهلة المستدعي القصوى — الضمانة الأخيرة فوق مهل مكتبة الموقع كلها. */
+const CALLER_GEO_TIMEOUT_MS = 20_000;
+
+/** خطأ مهلة المستدعي — رسالته الموسومة «(٢)» دليل ميداني أن النسخة الجديدة وصلت الجهاز. */
+class CallerGeoTimeoutError extends Error {}
+
 /**
- * قراءة موقع واحدة بأعلى دقة متاحة — بلا كاش (maximumAge:0) ومهلة ١٥ ثانية.
- * عبر الطبقة الموحّدة: المسار الأصلي (CoreLocation) على التطبيق + ذاكرة المنحة.
+ * قراءة موقع واحدة بأعلى دقة متاحة — بلا كاش (maximumAge:0) ومهلة ١٥ ثانية،
+ * عبر الطبقة الموحّدة (المسار الأصلي + ذاكرة المنحة)، وخلف سباق ٢٠ ثانية عند
+ * المستدعي: لو خذلتنا المكتبة كليًا يُحسم الوعد هنا مهما حدث.
  */
 function readPosition(): Promise<GeolocationPosition> {
-  return readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  return Promise.race([
+    readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new CallerGeoTimeoutError("caller-geo-timeout")), CALLER_GEO_TIMEOUT_MS),
+    ),
+  ]);
 }
 
 /** رسالة خطأ الموقع بلهجة واضحة — الرفض له نصّه الخاص. */
 function geoErrorMessage(err: unknown): string {
+  // مهلة المستدعي — نص موسوم «(٢)» يميّز نسخة التحصين عن أي حزمة قديمة عالقة.
+  if (err instanceof CallerGeoTimeoutError) {
+    return "ما قدرنا نحدد موقعك — حاول ثانية أو استخدم المتصفح مؤقتًا — جرّب من جديد (٢)";
+  }
   const code = (err as GeolocationPositionError | undefined)?.code;
   if (code === 1) return "لازم تسمح بالوصول للموقع عشان تسجّل حضورك";
   if (code === 3) return "طوّلنا وما وصلتنا إشارة — حاول مرة ثانية بمكان مفتوح";
@@ -353,56 +369,61 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
     setConfirmOut(false);
     setFeedback({ tone: "info", text: "جاري تحديد موقعك…" });
 
-    let pos: GeolocationPosition;
+    /*
+     * الضمانة التي لا تخذل (التحصين الثلاثي): الجسم كله داخل try/finally —
+     * أي مسار (نجاح/فشل/استثناء غير متوقع/رفض بشكل غريب) ينتهي بإرجاع الزر.
+     */
     try {
-      pos = presetPos ?? (await readPosition());
-    } catch (err) {
-      setFeedback({ tone: "danger", text: geoErrorMessage(err) });
-      setBusy(null);
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/attendance/punch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          isMock: false,
-          source: Capacitor.isNativePlatform() ? "NATIVE" : "WEB",
-          intent,
-          ...(targetLocationId ? { targetLocationId } : {}),
-        }),
-      });
-
-      if (res.status === 401) {
-        setFeedback({ tone: "danger", text: "انتهت جلستك — سجّل دخولك مرة ثانية" });
-        setBusy(null);
+      let pos: GeolocationPosition;
+      try {
+        pos = presetPos ?? (await readPosition());
+      } catch (err) {
+        setFeedback({ tone: "danger", text: geoErrorMessage(err) });
         return;
       }
 
-      const data = (await res.json()) as PunchResult;
-
-      if (!data.ok) {
-        const tone: FeedbackTone = data.reason === "out_of_zone" ? "danger" : "warning";
-        setFeedback({ tone, text: data.message ?? "ما قدرنا نسجّل البصمة — حاول مرة ثانية" });
-      } else {
-        setFeedback({
-          tone: data.outOfZone ? "warning" : data.isLate ? "warning" : "success",
-          text: successText(data),
+      try {
+        const res = await fetch("/api/attendance/punch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            isMock: false,
+            source: Capacitor.isNativePlatform() ? "NATIVE" : "WEB",
+            intent,
+            ...(targetLocationId ? { targetLocationId } : {}),
+          }),
         });
-        if (data.type === "CHECK_OUT" && data.undoUntilIso) {
-          setUndoUntil(new Date(data.undoUntilIso).getTime());
+
+        if (res.status === 401) {
+          setFeedback({ tone: "danger", text: "انتهت جلستك — سجّل دخولك مرة ثانية" });
+          return;
         }
-        await loadStatus();
-        void loadVerification();
+
+        const data = (await res.json()) as PunchResult;
+
+        if (!data.ok) {
+          const tone: FeedbackTone = data.reason === "out_of_zone" ? "danger" : "warning";
+          setFeedback({ tone, text: data.message ?? "ما قدرنا نسجّل البصمة — حاول مرة ثانية" });
+        } else {
+          setFeedback({
+            tone: data.outOfZone ? "warning" : data.isLate ? "warning" : "success",
+            text: successText(data),
+          });
+          if (data.type === "CHECK_OUT" && data.undoUntilIso) {
+            setUndoUntil(new Date(data.undoUntilIso).getTime());
+          }
+          await loadStatus();
+          void loadVerification();
+        }
+      } catch {
+        setFeedback({ tone: "danger", text: "تعذّر الاتصال — تأكد من الإنترنت وحاول مرة ثانية" });
       }
-    } catch {
-      setFeedback({ tone: "danger", text: "تعذّر الاتصال — تأكد من الإنترنت وحاول مرة ثانية" });
+    } finally {
+      setBusy(null);
     }
-    setBusy(null);
   };
 
   /** «تراجع» — يلغي الانصراف الحديث ويعيد الجلسة كما كانت. */
