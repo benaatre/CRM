@@ -16,6 +16,44 @@
 
 export type GeoPermState = "granted" | "prompt" | "denied" | "unavailable";
 
+/** مرحلة التشخيص المعروضة في شاشة التفعيل — تفصل الصمت عن أسبابه. */
+export type GeoDiagPhase = "idle" | "awaiting-dialog" | "reading" | "timeout" | "settled";
+
+export type GeoDiagnostics = {
+  /** منصّة أصلية (تطبيق Capacitor)؟ */
+  native: boolean;
+  /** قيمة `isPluginAvailable("Geolocation")` الفعلية كما يراها الجهاز — null = لم تُفحص بعد. */
+  pluginAvailable: boolean | null;
+  phase: GeoDiagPhase;
+};
+
+let diag: GeoDiagnostics = { native: false, pluginAvailable: null, phase: "idle" };
+const diagSubs = new Set<(d: GeoDiagnostics) => void>();
+
+function emitDiag(patch: Partial<GeoDiagnostics>): void {
+  diag = { ...diag, ...patch };
+  diagSubs.forEach((cb) => {
+    try {
+      cb(diag);
+    } catch {
+      /* مشترك مكسور لا يوقف الباقي */
+    }
+  });
+}
+
+/** لقطة التشخيص الحالية — للسطر التشخيصي في شاشة التفعيل. */
+export function getGeoDiagnostics(): GeoDiagnostics {
+  return diag;
+}
+
+/** اشتراك على تغيّر التشخيص — يرجّع دالة إلغاء. */
+export function onGeoDiagnostics(cb: (d: GeoDiagnostics) => void): () => void {
+  diagSubs.add(cb);
+  return () => {
+    diagSubs.delete(cb);
+  };
+}
+
 type NativeGeo = typeof import("@capacitor/geolocation").Geolocation;
 type NativePosition = import("@capacitor/geolocation").Position;
 
@@ -30,10 +68,16 @@ function nativeGeo(): Promise<NativeGeo | null> {
   nativeGeoPromise ??= (async () => {
     try {
       const { Capacitor } = await import("@capacitor/core");
-      if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable("Geolocation")) return null;
+      const native = Capacitor.isNativePlatform();
+      // القيمة الفعلية كما يراها الجهاز — تُعرض في السطر التشخيصي بلا تخمين.
+      const pluginAvailable = native ? Capacitor.isPluginAvailable("Geolocation") : null;
+      emitDiag({ native, pluginAvailable });
+      if (!native || pluginAvailable !== true) return null;
       const { Geolocation } = await import("@capacitor/geolocation");
       return Geolocation;
     } catch {
+      // فشل تحميل الوحدة (chunk مفقود مثلًا) — يُعامل كعدم توفّر، ويُرصد.
+      emitDiag({ pluginAvailable: false });
       return null;
     }
   })();
@@ -203,14 +247,51 @@ function singleFlightOnceRead(start: () => Promise<GeolocationPosition>): Promis
   return onceReadInFlight;
 }
 
+const REQUEST_PERMISSIONS_TIMEOUT_MS = 15_000;
+
+/**
+ * يضمن ألا تصل `getCurrentPosition` والحالة `notDetermined`.
+ *
+ * لماذا: في تلك الحالة يحفظ البلجن النداء (`saveCall`) ثم يسقط على
+ * `default: break` بلا حسم ولا رفض (GeolocationPlugin.swift) — ومهلته الداخلية
+ * لا تبدأ إلا بعد المنح، فحتى سباق المهلة القائم لا يفعل غير تحويل الصمت إلى
+ * فشل. الحل أن يُطلق الطلب الرسمي أولًا فتُحسم الحالة قبل القراءة.
+ *
+ * الحالة المحسومة سلفًا (granted/denied) ترجع فورًا بلا حوار، وأي تعذّر يمضي
+ * للقراءة فتحسم هي — لا يحجب هذا الضامنُ قراءةً أبدًا.
+ */
+async function ensureNativeAuthorisation(geo: NativeGeo): Promise<void> {
+  let current: string;
+  try {
+    // نفس حارس الـ٣ث المستعمل في toWebError — checkPermissions ذاتها قد تعلّق.
+    current = (await raceTimeout(geo.checkPermissions(), 3_000)).location;
+  } catch {
+    return; // خدمات الموقع مطفأة نظاميًا أو تعليق — القراءة أدناه تحسم
+  }
+  if (current !== "prompt" && current !== "prompt-with-rationale") return;
+
+  emitDiag({ phase: "awaiting-dialog" });
+  try {
+    // الطلب الرسمي عبر CoreLocation — حوار iOS الحقيقي، بمهلة فوقه فلا يعلّق.
+    await raceTimeout(geo.requestPermissions({ permissions: ["location"] }), REQUEST_PERMISSIONS_TIMEOUT_MS);
+  } catch (err) {
+    // مهلة أو رفض — القراءة أدناه تحسم على كل حال (fail-open كما في الطبقة كلها).
+    if (/timeout|timed out/i.test(err instanceof Error ? err.message : "")) emitDiag({ phase: "timeout" });
+  }
+}
+
 /** قراءة موقع واحدة — للنبض و«أنا موجود بالموقع». عالية الدقة للطلب الصريح. */
 export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
   const geo = await nativeGeo();
   if (geo) {
     // قراءة مباشرة واحدة (getCurrentPosition) — خارج أي مشاركة مع مسار watch.
     return singleFlightOnceRead(async () => {
+      // لا نطلب موقعًا والحالة `prompt` — الطلب الرسمي أولًا، داخل القفل القائم
+      // فلا ينشأ قفل ثانٍ ولا يتزامن حواران.
+      await ensureNativeAuthorisation(geo);
       const timeoutMs = opts?.timeout ?? 12_000;
       try {
+        emitDiag({ phase: "reading" });
         // المهلة الصلبة: البلجن على iOS لا يفرض timeout — السباق يضمن الحسم
         // خلال (المهلة + ٢ث) مهما حدث، برفض يصنَّف TIMEOUT (code 3).
         const pos = await raceTimeout(
@@ -223,9 +304,11 @@ export async function readPositionOnce(opts?: PositionOptions): Promise<Geolocat
           timeoutMs + 2_000,
         );
         rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
+        emitDiag({ phase: "settled" });
         return toWebPosition(pos);
       } catch (err) {
         const e = await toWebError(err, geo);
+        emitDiag({ phase: e.code === 3 ? "timeout" : "settled" });
         if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
         throw e;
       }
@@ -277,6 +360,7 @@ export async function readBestPosition(opts?: {
   const geo = await nativeGeo();
   // مسار الـwatch مستقل عن قفل البصمة (طوارئ 27/08) — سلوك النشرة ٦ حرفيًا؛
   // مؤقته الداخلي يضمن الحسم وclearWatch على كل مسارات النهاية.
+  // قرار 29/08: ensureNativeAuthorisation لا يُركَّب هنا — عزل الطوارئ يبقى حرفيًا، وبعد أول منح عبر مسار البصمة لا تعود الحالة `prompt` أصلًا.
   if (geo) return readBestPositionNative(geo, targetAccuracy, timeoutMs);
   return readBestPositionWeb(targetAccuracy, timeoutMs);
 }
@@ -392,7 +476,8 @@ export async function requestGeoPermission(): Promise<GeoPermState> {
   if (geo) {
     try {
       // الطلب الرسمي عبر CoreLocation — حوار iOS الحقيقي لا استنتاج WebView.
-      const st = await geo.requestPermissions({ permissions: ["location"] });
+      // بمهلة فوقه (١٥ث): انقضاؤها يرمي فيسقط للسلوك التأكيدي أدناه بدل التعليق.
+      const st = await raceTimeout(geo.requestPermissions({ permissions: ["location"] }), REQUEST_PERMISSIONS_TIMEOUT_MS);
       if (st.location === "denied") {
         rememberGrant(false);
         return "denied";

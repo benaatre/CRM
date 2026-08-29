@@ -10,7 +10,10 @@ import {
   onGeoPermissionChange,
   canOpenLocationSettings,
   openLocationSettings,
+  getGeoDiagnostics,
+  onGeoDiagnostics,
   type GeoPermState,
+  type GeoDiagnostics,
 } from "@/lib/geolocation-permission";
 import "./attendance.css";
 
@@ -46,6 +49,31 @@ function RegaLine() {
   );
 }
 
+/**
+ * سطر الحالة التشخيصي (T20) — يفصل الصمت عن أسبابه بدل التخمين:
+ * «البلجن غير متاح» (الإضافة الأصلية غير محمّلة فالمسار سقط للويب) · «بانتظار
+ * حوار الإذن» (الطلب الرسمي مُطلق ولم يُحسم بعد) · «انتهت المهلة» (الوعد الأصلي
+ * علّق وحسمه السباق). يعرض قيمة `isPluginAvailable("Geolocation")` الفعلية.
+ * داخل التطبيق فقط — المتصفح لا يراه.
+ */
+function DiagLine({ d }: { d: GeoDiagnostics }) {
+  if (!d.native) return null;
+  const availability = d.pluginAvailable === null ? "قيد الفحص" : d.pluginAvailable ? "متاحة" : "غير متاحة";
+  const state =
+    d.pluginAvailable === false
+      ? "البلجن غير متاح"
+      : d.phase === "awaiting-dialog"
+        ? "بانتظار حوار الإذن"
+        : d.phase === "timeout"
+          ? "انتهت المهلة"
+          : null;
+  return (
+    <p className="mt-3 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
+      {state ? `${state} · ` : ""}الإضافة الأصلية: {availability}
+    </p>
+  );
+}
+
 export function LocationPriming() {
   const [perm, setPerm] = useState<GeoPermState | null>(null);
   // الموافقة خادمية الحقيقة: null = غير محسومة (لا عرض) — لا اعتماد على كاش الجهاز
@@ -55,6 +83,8 @@ export function LocationPriming() {
   const [busy, setBusy] = useState(false);
   // زر «افتح الإعدادات» — داخل التطبيق على iOS فقط (AppLauncher app-settings:).
   const [canOpenSettings, setCanOpenSettings] = useState(false);
+  // تشخيص طبقة الموقع — لقطة + اشتراك، فالسطر يتابع الطلب لحظيًا.
+  const [diag, setDiag] = useState<GeoDiagnostics>(getGeoDiagnostics);
 
   useEffect(() => {
     try {
@@ -77,17 +107,23 @@ export function LocationPriming() {
     };
     document.addEventListener("visibilitychange", onVisible);
     const unsub = onGeoPermissionChange(setPerm);
+    setDiag(getGeoDiagnostics()); // الكاشف قد يكون حسم قبل التركيب
+    const unsubDiag = onGeoDiagnostics(setDiag);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       unsub();
+      unsubDiag();
     };
   }, []);
 
   const activate = useCallback(async () => {
     setBusy(true);
-    const next = await requestGeoPermission();
-    setPerm(next);
-    setBusy(false);
+    try {
+      const next = await requestGeoPermission();
+      setPerm(next);
+    } finally {
+      setBusy(false); // لا يبقى الزر مقفولًا مهما جرى
+    }
   }, []);
 
   const snooze = useCallback(() => {
@@ -211,6 +247,7 @@ export function LocationPriming() {
           >
             لاحقًا
           </button>
+          <DiagLine d={diag} />
           <RegaLine />
         </div>
       </div>
