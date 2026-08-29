@@ -67,9 +67,12 @@ function DiagLine({ d }: { d: GeoDiagnostics }) {
         : d.phase === "timeout"
           ? "انتهت المهلة"
           : null;
+  // المسار الفائز بآخر قراءة (المظلة الويبية 29/08) — يكشف من لقطة شاشة أي مسار يعمل فعليًا.
+  const winner = d.winner === "native" ? "أصلي" : d.winner === "web" ? "ويب داخل التطبيق" : null;
   return (
     <p className="mt-3 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
       {state ? `${state} · ` : ""}الإضافة الأصلية: {availability}
+      {winner ? ` · المسار: ${winner}` : ""}
     </p>
   );
 }

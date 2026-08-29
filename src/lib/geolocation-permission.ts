@@ -25,9 +25,11 @@ export type GeoDiagnostics = {
   /** قيمة `isPluginAvailable("Geolocation")` الفعلية كما يراها الجهاز — null = لم تُفحص بعد. */
   pluginAvailable: boolean | null;
   phase: GeoDiagPhase;
+  /** المسار الفائز بآخر قراءة ناجحة (المظلة الويبية): أصلي أم ويب داخل التطبيق. */
+  winner: "native" | "web" | null;
 };
 
-let diag: GeoDiagnostics = { native: false, pluginAvailable: null, phase: "idle" };
+let diag: GeoDiagnostics = { native: false, pluginAvailable: null, phase: "idle", winner: null };
 const diagSubs = new Set<(d: GeoDiagnostics) => void>();
 
 function emitDiag(patch: Partial<GeoDiagnostics>): void {
@@ -304,13 +306,25 @@ export async function readPositionOnce(opts?: PositionOptions): Promise<Geolocat
           timeoutMs + 2_000,
         );
         rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
-        emitDiag({ phase: "settled" });
+        emitDiag({ phase: "settled", winner: "native" });
         return toWebPosition(pos);
       } catch (err) {
         const e = await toWebError(err, geo);
         emitDiag({ phase: e.code === 3 ? "timeout" : "settled" });
         if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
-        throw e;
+        /*
+         * المظلة الويبية (29/08): علة البلجن الأصلي (تعليق notDetermined —
+         * ‏Issue #2023) بلا إصلاح رسمي، وWeb Geolocation موثوق داخل WKWebView
+         * مع server.url بعيد (سياق آمن https). أي خذلان أصلي → محاولة ويبية
+         * فورية بنفس المهلة قبل رمي الخطأ؛ حوار إذن WKWebView أول مرة مقبول.
+         */
+        try {
+          const pos = await readPositionOnceWeb(opts);
+          emitDiag({ phase: "settled", winner: "web" });
+          return pos;
+        } catch {
+          throw e; // خطأ المسار الأصلي أبلغ تشخيصيًا (يحمل code·message البلجن)
+        }
       }
     });
   }
@@ -361,7 +375,22 @@ export async function readBestPosition(opts?: {
   // مسار الـwatch مستقل عن قفل البصمة (طوارئ 27/08) — سلوك النشرة ٦ حرفيًا؛
   // مؤقته الداخلي يضمن الحسم وclearWatch على كل مسارات النهاية.
   // قرار 29/08: ensureNativeAuthorisation لا يُركَّب هنا — عزل الطوارئ يبقى حرفيًا، وبعد أول منح عبر مسار البصمة لا تعود الحالة `prompt` أصلًا.
-  if (geo) return readBestPositionNative(geo, targetAccuracy, timeoutMs);
+  if (geo) {
+    try {
+      const pos = await readBestPositionNative(geo, targetAccuracy, timeoutMs);
+      emitDiag({ winner: "native" });
+      return pos;
+    } catch (nativeErr) {
+      // المظلة الويبية (29/08) — نفس نمط readPositionOnce، وعزل الطوارئ بلا مساس.
+      try {
+        const pos = await readBestPositionWeb(targetAccuracy, timeoutMs);
+        emitDiag({ winner: "web" });
+        return pos;
+      } catch {
+        throw nativeErr; // خطأ المسار الأصلي أبلغ تشخيصيًا
+      }
+    }
+  }
   return readBestPositionWeb(targetAccuracy, timeoutMs);
 }
 
@@ -483,7 +512,18 @@ export async function requestGeoPermission(): Promise<GeoPermState> {
         return "denied";
       }
     } catch {
-      // خدمات مطفأة أو رفض — القراءة التأكيدية أدناه تحسم.
+      /*
+       * المظلة الويبية (29/08): مهلة طلب البلجن (علّة notDetermined) → قراءة
+       * ويبية قصيرة تُطلق حوار إذن WKWebView نفسه — نجاحها = granted فعلي.
+       * فشلها لا يضر: القراءة التأكيدية أدناه تحسم كالسابق.
+       */
+      try {
+        await readPositionOnceWeb({ enableHighAccuracy: true, timeout: 8_000 });
+        emitDiag({ phase: "settled", winner: "web" });
+        return "granted";
+      } catch {
+        // خدمات مطفأة أو رفض — القراءة التأكيدية أدناه تحسم.
+      }
     }
   }
   // قراءة تأكيدية — مشتركة بين المسارين (readPositionOnce توجّه بنفسها).
