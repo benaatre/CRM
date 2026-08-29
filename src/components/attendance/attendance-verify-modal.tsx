@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DoorOpen, Loader2, MapPin, Route, UserRoundCheck } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
 import { readPositionOnce } from "@/lib/geolocation-permission";
+import { geoDiag } from "@/lib/geo-diag";
 import "./attendance.css";
 
 /**
@@ -35,10 +36,25 @@ class CallerGeoTimeoutError extends Error {}
 
 /** قراءة موقع واحدة — نفس ضبط البطاقة حرفيًا، عبر الطبقة الموحّدة وخلف سباق ٢٠ثانية. */
 function readPosition(): Promise<GeolocationPosition> {
+  geoDiag("modal:readPosition:start", { timeout: 15000, race: CALLER_GEO_TIMEOUT_MS });
+  let settled = false;
+  const read = readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }).then(
+    (p) => {
+      settled = true;
+      return p;
+    },
+    (e: unknown) => {
+      settled = true;
+      throw e;
+    },
+  );
   return Promise.race([
-    readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }),
+    read,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new CallerGeoTimeoutError("caller-geo-timeout")), CALLER_GEO_TIMEOUT_MS),
+      setTimeout(() => {
+        if (!settled) geoDiag("modal:race:timeout", { ms: CALLER_GEO_TIMEOUT_MS });
+        reject(new CallerGeoTimeoutError("caller-geo-timeout"));
+      }, CALLER_GEO_TIMEOUT_MS),
     ),
   ]);
 }

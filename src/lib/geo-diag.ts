@@ -10,6 +10,18 @@ let nativeKnown: boolean | null = null;
 
 async function isNative(): Promise<boolean> {
   if (nativeKnown !== null) return nativeKnown;
+  // الفحص المتزامن أولًا عبر window.Capacitor — لا يعتمد على import ديناميكي
+  // قد يعلق (chunk قديم/مفقود): التشخيص يجب أن يصل حتى لو علّة الاستيراد نفسها
+  // هي المشتبه به.
+  try {
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+    if (cap?.isNativePlatform) {
+      nativeKnown = cap.isNativePlatform();
+      return nativeKnown;
+    }
+  } catch {
+    /* نسقط للاستيراد */
+  }
   try {
     const { Capacitor } = await import("@capacitor/core");
     nativeKnown = Capacitor.isNativePlatform();

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { hmLabel, type AttendanceTheme } from "@/lib/attendance-ui";
 import { readPositionOnce } from "@/lib/geolocation-permission";
+import { geoDiag } from "@/lib/geo-diag";
 import { toArabicDigits } from "@/lib/format";
 import { DayLine, StationsLog, type StationDto, type VerificationDto } from "@/components/attendance/attendance-stations";
 import { LocationSheet, type NearbyLocation } from "@/components/attendance/location-sheet";
@@ -127,10 +128,26 @@ class CallerGeoTimeoutError extends Error {}
  * المستدعي: لو خذلتنا المكتبة كليًا يُحسم الوعد هنا مهما حدث.
  */
 function readPosition(): Promise<GeolocationPosition> {
+  geoDiag("card:readPosition:start", { timeout: 15000, race: CALLER_GEO_TIMEOUT_MS });
+  // وسم «استقر» للتشخيص فقط: هل انفجر سباق المستدعي حول وعدٍ لم يُحسم أصلًا؟
+  let settled = false;
+  const read = readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }).then(
+    (p) => {
+      settled = true;
+      return p;
+    },
+    (e: unknown) => {
+      settled = true;
+      throw e;
+    },
+  );
   return Promise.race([
-    readPositionOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }),
+    read,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new CallerGeoTimeoutError("caller-geo-timeout")), CALLER_GEO_TIMEOUT_MS),
+      setTimeout(() => {
+        if (!settled) geoDiag("card:race:timeout", { ms: CALLER_GEO_TIMEOUT_MS });
+        reject(new CallerGeoTimeoutError("caller-geo-timeout"));
+      }, CALLER_GEO_TIMEOUT_MS),
     ),
   ]);
 }
@@ -290,6 +307,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
       });
       const data = (await res.json()) as { ok: boolean; due?: boolean };
       if (data.due) {
+        geoDiag("card:silentCheck:read"); // الفحص الصامت يشارك نفس الغلاف
         const pos = await readPosition();
         await fetch("/api/attendance/silent-check", {
           method: "POST",
@@ -377,6 +395,8 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
 
   /** بصمة حضور/انصراف أو تغيير موقع — كلها نفس المسار والخادم يحكم. */
   const punch = async (intent: Intent, targetLocationId?: string, presetPos?: GeolocationPosition) => {
+    // الصندوق الأسود: أول سطر داخل punch — وصولنا هنا يثبت أن الضغطة مرّت من كل حراس الأزرار.
+    geoDiag("punch:pressed", { intent, busy: busy ?? "none", state: status?.state ?? "?", preset: !!presetPos });
     setBusy(intent);
     setConfirmOut(false);
     setFeedback({ tone: "info", text: "جاري تحديد موقعك…" });
@@ -388,9 +408,23 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
     try {
       let pos: GeolocationPosition;
       try {
-        pos = presetPos ?? (await readPosition());
+        if (presetPos) {
+          geoDiag("punch:guard:preset-position"); // قراءة جاهزة من الشيت — لا نداء للغلاف
+          pos = presetPos;
+        } else {
+          geoDiag("punch:readPosition:call", { timeout: 15000 });
+          pos = await readPosition();
+          geoDiag("punch:readPosition:ok", { acc: Math.round(pos.coords.accuracy) });
+        }
       } catch (err) {
-        setFeedback({ tone: "danger", text: geoErrorMessage(err) });
+        geoDiag("punch:readPosition:error", {
+          name: (err as Error | undefined)?.name,
+          code: (err as GeolocationPositionError | undefined)?.code,
+          message: (err as Error | undefined)?.message,
+        });
+        const text = geoErrorMessage(err);
+        geoDiag("punch:feedback", text);
+        setFeedback({ tone: "danger", text });
         return;
       }
 
@@ -410,6 +444,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
         });
 
         if (res.status === 401) {
+          geoDiag("punch:guard:401");
           setFeedback({ tone: "danger", text: "انتهت جلستك — سجّل دخولك مرة ثانية" });
           return;
         }
@@ -431,6 +466,7 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
           void loadVerification();
         }
       } catch {
+        geoDiag("punch:feedback", "تعذّر الاتصال");
         setFeedback({ tone: "danger", text: "تعذّر الاتصال — تأكد من الإنترنت وحاول مرة ثانية" });
       }
     } finally {
