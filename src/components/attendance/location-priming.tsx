@@ -12,6 +12,7 @@ import {
   openLocationSettings,
   getGeoDiagnostics,
   onGeoDiagnostics,
+  WEB_FIRST_ON_NATIVE,
   type GeoPermState,
   type GeoDiagnostics,
 } from "@/lib/geolocation-permission";
@@ -67,8 +68,13 @@ function DiagLine({ d }: { d: GeoDiagnostics }) {
         : d.phase === "timeout"
           ? "انتهت المهلة"
           : null;
-  // المسار الفائز بآخر قراءة (المظلة الويبية 29/08) — يكشف من لقطة شاشة أي مسار يعمل فعليًا.
-  const winner = d.winner === "native" ? "أصلي" : d.winner === "web" ? "ويب داخل التطبيق" : null;
+  // المسار الفائز بآخر قراءة (web-first 29/08) — يكشف من لقطة شاشة أي مسار يعمل فعليًا.
+  const winner =
+    d.winner === "web"
+      ? WEB_FIRST_ON_NATIVE ? "ويب (أساسي)" : "ويب داخل التطبيق"
+      : d.winner === "native"
+        ? WEB_FIRST_ON_NATIVE ? "أصلي (احتياط)" : "أصلي"
+        : null;
   return (
     <p className="mt-3 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
       {state ? `${state} · ` : ""}الإضافة الأصلية: {availability}

@@ -252,6 +252,17 @@ function singleFlightOnceRead(start: () => Promise<GeolocationPosition>): Promis
 const REQUEST_PERMISSIONS_TIMEOUT_MS = 15_000;
 
 /**
+ * الويبي أولًا على المنصة الأصلية (إصلاح حاسم 29/08): البلجن الأصلي معطوب
+ * رسميًا (تعليق notDetermined — Issue #2023 بلا إصلاح) وكان يستهلك ~١٧ث من
+ * سباق المستدعي (٢٠ث) قبل أن تأخذ المظلة الويبية فرصتها — فتنفجر المهلة
+ * الخارجية (T20) والويب لم يُجرَّب. Web Geolocation داخل WKWebView مع
+ * server.url بعيد (سياق آمن) موثوق — فهو **الأساس** بكامل المهلة الممررة،
+ * والبلجن الأصلي احتياط فقط عند فشله.
+ * يُطفأ مع نزول بلجن SultanGeo المخصص في Build 5 — عندها SultanGeo أولًا.
+ */
+export const WEB_FIRST_ON_NATIVE: boolean = true;
+
+/**
  * يضمن ألا تصل `getCurrentPosition` والحالة `notDetermined`.
  *
  * لماذا: في تلك الحالة يحفظ البلجن النداء (`saveCall`) ثم يسقط على
@@ -282,51 +293,75 @@ async function ensureNativeAuthorisation(geo: NativeGeo): Promise<void> {
   }
 }
 
+/**
+ * المحاولة الأصلية الخام (بلا مظلة داخلية): التفويض المسبق + قراءة واحدة خلف
+ * المهلة الصلبة، داخل القفل الأحادي القائم — فشلها يُرمى مصنَّفًا للمستدعي
+ * الذي يقرر ترتيب المظلات (web-first أو native-first).
+ */
+function nativeReadOnceAttempt(geo: NativeGeo, opts?: PositionOptions): Promise<GeolocationPosition> {
+  return singleFlightOnceRead(async () => {
+    // لا نطلب موقعًا والحالة `prompt` — الطلب الرسمي أولًا، داخل القفل القائم
+    // فلا ينشأ قفل ثانٍ ولا يتزامن حواران.
+    await ensureNativeAuthorisation(geo);
+    const timeoutMs = opts?.timeout ?? 12_000;
+    try {
+      emitDiag({ phase: "reading" });
+      // المهلة الصلبة: البلجن على iOS لا يفرض timeout — السباق يضمن الحسم
+      // خلال (المهلة + ٢ث) مهما حدث، برفض يصنَّف TIMEOUT (code 3).
+      const pos = await raceTimeout(
+        geo.getCurrentPosition({
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: timeoutMs,
+          ...opts,
+        }),
+        timeoutMs + 2_000,
+      );
+      rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
+      emitDiag({ phase: "settled", winner: "native" });
+      return toWebPosition(pos);
+    } catch (err) {
+      const e = await toWebError(err, geo);
+      emitDiag({ phase: e.code === 3 ? "timeout" : "settled" });
+      if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
+      throw e;
+    }
+  });
+}
+
 /** قراءة موقع واحدة — للنبض و«أنا موجود بالموقع». عالية الدقة للطلب الصريح. */
 export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
   const geo = await nativeGeo();
   if (geo) {
-    // قراءة مباشرة واحدة (getCurrentPosition) — خارج أي مشاركة مع مسار watch.
-    return singleFlightOnceRead(async () => {
-      // لا نطلب موقعًا والحالة `prompt` — الطلب الرسمي أولًا، داخل القفل القائم
-      // فلا ينشأ قفل ثانٍ ولا يتزامن حواران.
-      await ensureNativeAuthorisation(geo);
-      const timeoutMs = opts?.timeout ?? 12_000;
+    if (WEB_FIRST_ON_NATIVE) {
+      /*
+       * الويبي أولًا (الإصلاح الحاسم): كامل المهلة الممررة للمسار الموثوق،
+       * والبلجن المعطوب احتياط فقط — ميزانية سباق المستدعي ما عادت تُستهلك عبثًا.
+       */
       try {
-        emitDiag({ phase: "reading" });
-        // المهلة الصلبة: البلجن على iOS لا يفرض timeout — السباق يضمن الحسم
-        // خلال (المهلة + ٢ث) مهما حدث، برفض يصنَّف TIMEOUT (code 3).
-        const pos = await raceTimeout(
-          geo.getCurrentPosition({
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: timeoutMs,
-            ...opts,
-          }),
-          timeoutMs + 2_000,
-        );
-        rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
-        emitDiag({ phase: "settled", winner: "native" });
-        return toWebPosition(pos);
-      } catch (err) {
-        const e = await toWebError(err, geo);
-        emitDiag({ phase: e.code === 3 ? "timeout" : "settled" });
-        if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
-        /*
-         * المظلة الويبية (29/08): علة البلجن الأصلي (تعليق notDetermined —
-         * ‏Issue #2023) بلا إصلاح رسمي، وWeb Geolocation موثوق داخل WKWebView
-         * مع server.url بعيد (سياق آمن https). أي خذلان أصلي → محاولة ويبية
-         * فورية بنفس المهلة قبل رمي الخطأ؛ حوار إذن WKWebView أول مرة مقبول.
-         */
+        const pos = await readPositionOnceWeb(opts);
+        emitDiag({ phase: "settled", winner: "web" });
+        return pos;
+      } catch (webErr) {
         try {
-          const pos = await readPositionOnceWeb(opts);
-          emitDiag({ phase: "settled", winner: "web" });
-          return pos;
+          return await nativeReadOnceAttempt(geo, opts);
         } catch {
-          throw e; // خطأ المسار الأصلي أبلغ تشخيصيًا (يحمل code·message البلجن)
+          throw webErr; // خطأ المسار الأساسي (الويبي) هو الأبلغ الآن
         }
       }
-    });
+    }
+    // الترتيب الأصلي أولًا (عند إطفاء الثابت — SultanGeo مستقبلًا) بمظلته الويبية.
+    try {
+      return await nativeReadOnceAttempt(geo, opts);
+    } catch (nativeErr) {
+      try {
+        const pos = await readPositionOnceWeb(opts);
+        emitDiag({ phase: "settled", winner: "web" });
+        return pos;
+      } catch {
+        throw nativeErr; // خطأ المسار الأصلي أبلغ تشخيصيًا (يحمل code·message البلجن)
+      }
+    }
   }
   return readPositionOnceWeb(opts);
 }
@@ -376,6 +411,22 @@ export async function readBestPosition(opts?: {
   // مؤقته الداخلي يضمن الحسم وclearWatch على كل مسارات النهاية.
   // قرار 29/08: ensureNativeAuthorisation لا يُركَّب هنا — عزل الطوارئ يبقى حرفيًا، وبعد أول منح عبر مسار البصمة لا تعود الحالة `prompt` أصلًا.
   if (geo) {
+    if (WEB_FIRST_ON_NATIVE) {
+      // الويبي أولًا (الإصلاح الحاسم) — البلجن المعطوب احتياط فقط.
+      try {
+        const pos = await readBestPositionWeb(targetAccuracy, timeoutMs);
+        emitDiag({ winner: "web" });
+        return pos;
+      } catch (webErr) {
+        try {
+          const pos = await readBestPositionNative(geo, targetAccuracy, timeoutMs);
+          emitDiag({ winner: "native" });
+          return pos;
+        } catch {
+          throw webErr; // خطأ المسار الأساسي (الويبي) هو الأبلغ الآن
+        }
+      }
+    }
     try {
       const pos = await readBestPositionNative(geo, targetAccuracy, timeoutMs);
       emitDiag({ winner: "native" });
@@ -502,6 +553,23 @@ function readBestPositionWeb(targetAccuracy: number, timeoutMs: number): Promise
  */
 export async function requestGeoPermission(): Promise<GeoPermState> {
   const geo = await nativeGeo();
+  if (geo && WEB_FIRST_ON_NATIVE) {
+    /*
+     * الويبي أولًا: القراءة تُطلق حوار إذن WKWebView وتأخذ وقتها كاملًا —
+     * ‏١٥ث تكفي الحوار + ضغطة المستخدم + قراءة GPS. رفض صريح = denied؛
+     * غير ذلك يسقط للمسار الأصلي القائم أدناه (fail-open).
+     */
+    try {
+      await readPositionOnceWeb({ enableHighAccuracy: true, timeout: 15_000 });
+      emitDiag({ phase: "settled", winner: "web" });
+      return "granted";
+    } catch (err) {
+      if ((err as GeolocationPositionError | undefined)?.code === 1) {
+        rememberGrant(false);
+        return "denied";
+      }
+    }
+  }
   if (geo) {
     try {
       // الطلب الرسمي عبر CoreLocation — حوار iOS الحقيقي لا استنتاج WebView.
