@@ -915,8 +915,6 @@ model AttendanceSettings {
   verificationWindowMinutes Int     @default(15)
   /// مهلة تأكيد الوصول للمشروع بعد ردّ «ذاهب لمشروع»
   arrivalConfirmMinutes     Int     @default(30)
-  /// إظهار خيار «غادرت موقع العمل» في النداء الإجباري (لم يعد مستخدمًا)
-  allowLeftOption           Boolean @default(true)
   // ===== الدفعة الرابعة: التحقق الذكي والأوضاع =====
   /// نافذة الهدوء: نشاط خلالها يلغي النداء العشوائي
   verificationQuietWindowMinutes Int     @default(90)
@@ -928,8 +926,6 @@ model AttendanceSettings {
   escalationDelayMinutes         Int     @default(20)
   /// أدنى فاصل بين فحصين صامتين
   silentCheckIntervalMinutes     Int     @default(20)
-  /// الإجازة الذاتية تحتاج موافقة قبل السريان (افتراضيًا تسري فورًا)
-  leaveNeedsApproval             Boolean @default(false)
   /// سقف أيام «عن بُعد» أسبوعيًا — 0 = بلا حد
   remoteWeeklyCap                Int     @default(0)
   /// الإجازة توقف توزيع الليدات تلقائيًا
@@ -944,22 +940,14 @@ model AttendanceSettings {
   conditionalCooldownMinutes Int     @default(60)
   /// سقف النداءات المشروطة يوميًا (منفصل عن العشوائية)
   maxConditionalPerDay       Int     @default(4)
-  /// سماحية فحص صامت خارج النطاق قبل النداء
-  outZoneGraceMinutes        Int     @default(20)
   /// محطة «خارج النطاق» القصوى قبل النداء
   maxOutOfZoneMinutes        Int     @default(30)
   /// إعادة التحقق الدورية بزيارة المشروع (قرار الدوام الواقعي ١٠: كل ٢٠ دقيقة)
   visitReverifyMinutes       Int     @default(20)
-  /// الزيارة القصوى قبل نداء إجباري
-  maxVisitMinutes            Int     @default(240)
-  /// نبض حي + صفر نشاط CRM قبل نداء «الجهاز المهجور»
-  idleDeviceMinutes          Int     @default(60)
   /// سماحية بعد آخر إثبات حياة قبل الإقفال التلقائي
   autoCloseAliveGraceMinutes Int     @default(30)
   /// هل نشاط CRM الرقمي يؤجل النداءات (افتراضيًا لا — الرقمي لا يعوّض الجسدي)
   quietWindowCountsCrm       Boolean @default(false)
-  /// المدة الافتراضية للاستئذان غير محدد المدة
-  excuseDefaultMinutes       Int     @default(60)
   /// نافذة اعتبار النبضة «حية» لرادار المواقع (الحضور بالرادار) — نبض الدقيقة
   radarFreshMinutes          Int     @default(3)
 
@@ -970,6 +958,16 @@ model AttendanceSettings {
   notifyAutoPunchOwner       Boolean @default(true)
   /// هامش السماح فوق مدة «بالطريق» المعلنة قبل عودة شاشة الحسم
   arrivalMarginMinutes       Int     @default(5)
+
+  // ===== الدفعة ب (يوم الإغلاق 29/08) =====
+  /// سقف أمان مدة الجلسة الواحدة بعد الاحتساب الحر (١٤ ساعة) — تجاوُزه إقفال قانوني بوسم مميز
+  maxSessionMinutes          Int     @default(840)
+  /// حصانة النبض (القاعدة الذهبية) — كانت ثابت كود PULSE_IMMUNITY_MINUTES
+  pulseImmunityMinutes       Int     @default(30)
+  /// نداء تلقائي عند الخروج المؤكد بدل تنبيه القرار — كان ثابت كود
+  autoCallOnSustainedOutZone Boolean @default(false)
+  /// توزيع التنبيهات: خريطة نوع التنبيه ← قائمة userIds مستلمة — null = الافتراضي (المالك)
+  alertRouting               Json?
 
   updatedAt              DateTime @updatedAt
 }
@@ -1094,6 +1092,16 @@ model AttendanceSchedule {
   watchToMinutes      Int?
   /// «مراقبة فقط»: تنبيه المالك عند أول ظهور لليوم
   watchAlertFirstSeen Boolean?
+
+  // ===== الدفعة ب (يوم الإغلاق 29/08) =====
+  /// حد تأخيره الشخصي بالدقائق — null = العام
+  lateThresholdMinutes Int?
+  /// نداء انقطاع الإثبات (GAP) — null = مفعّل (العام)
+  gapCallEnabled       Boolean?
+  /// تذكير البصم الصباحي — null = مفعّل (العام)
+  punchReminderEnabled Boolean?
+  /// وضع الاستثناء الإخباري: صفر نداءات وتذكيرات، والرصد وملخص النبض للمالك باقيان
+  quietMode            Boolean  @default(false)
 
   updatedAt    DateTime @updatedAt
 }

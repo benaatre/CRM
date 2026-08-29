@@ -92,7 +92,6 @@ export type EFBundle = {
     verificationPerDay: number;
     verificationEnabled: boolean;
     weekendDays: string;
-    outZoneGraceMinutes: number;
     maxOutOfZoneMinutes: number;
     heartbeatSeconds: number;
   };

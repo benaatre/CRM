@@ -623,7 +623,6 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
       verificationPerDay: settings.verificationPerDay,
       verificationEnabled: settings.verificationEnabled,
       weekendDays: settings.weekendDays,
-      outZoneGraceMinutes: settings.outZoneGraceMinutes,
       maxOutOfZoneMinutes: settings.maxOutOfZoneMinutes,
       heartbeatSeconds: 60,
     },
