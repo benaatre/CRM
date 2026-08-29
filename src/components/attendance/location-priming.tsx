@@ -13,6 +13,9 @@ import {
   getGeoDiagnostics,
   onGeoDiagnostics,
   WEB_FIRST_ON_NATIVE,
+} from "@/lib/geolocation-permission";
+import { geoDiag } from "@/lib/geo-diag";
+import {
   type GeoPermState,
   type GeoDiagnostics,
 } from "@/lib/geolocation-permission";
@@ -57,6 +60,55 @@ function RegaLine() {
  * علّق وحسمه السباق). يعرض قيمة `isPluginAvailable("Geolocation")` الفعلية.
  * داخل التطبيق فقط — المتصفح لا يراه.
  */
+/**
+ * الفحوصات الخام (الصندوق الأسود — 29/08): لحظة فتح الشاشة على native نسجّل
+ * حقائق البيئة كما هي بلا أي طبقة وسيطة — لنرى من السيرفر أين يموت الطلب.
+ * تعمل مرة لكل تركيب، وgeoDiag نفسها تضمن ألا يرسل الويب العادي شيئًا.
+ */
+let rawProbesRan = false;
+async function runRawProbes(): Promise<void> {
+  if (rawProbesRan || typeof window === "undefined") return;
+  rawProbesRan = true;
+  type CapWindow = {
+    Capacitor?: {
+      isNativePlatform?: () => boolean;
+      Plugins?: Record<string, { checkPermissions?: () => Promise<unknown> }>;
+    };
+  };
+  const Cap = (window as unknown as CapWindow).Capacitor;
+  if (!Cap?.isNativePlatform?.()) return; // الفحوصات لأجهزة التطبيق حصرًا
+
+  geoDiag("probe:navigator.geolocation", typeof navigator.geolocation);
+  geoDiag("probe:isNativePlatform", "true");
+  geoDiag("probe:plugins", Cap.Plugins ? Object.keys(Cap.Plugins).join(",") : "none");
+
+  if (navigator.permissions?.query) {
+    try {
+      const st = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+      geoDiag("probe:permissions.query", st.state);
+    } catch (e) {
+      geoDiag("probe:permissions.query", "fail:" + (e instanceof Error ? e.message : String(e)));
+    }
+  } else {
+    geoDiag("probe:permissions.query", "unsupported");
+  }
+
+  const rawGeo = Cap.Plugins?.Geolocation;
+  if (rawGeo?.checkPermissions) {
+    try {
+      const r = await Promise.race([
+        rawGeo.checkPermissions(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("silent")), 5_000)),
+      ]);
+      geoDiag("probe:raw-checkPermissions", JSON.stringify(r)?.slice(0, 200));
+    } catch (e) {
+      geoDiag("probe:raw-checkPermissions", e instanceof Error ? e.message : String(e));
+    }
+  } else {
+    geoDiag("probe:raw-checkPermissions", "no-plugin-method");
+  }
+}
+
 function DiagLine({ d }: { d: GeoDiagnostics }) {
   if (!d.native) return null;
   const availability = d.pluginAvailable === null ? "قيد الفحص" : d.pluginAvailable ? "متاحة" : "غير متاحة";
@@ -109,7 +161,11 @@ export function LocationPriming() {
       })
       .catch(() => setConsented(false));
     void canOpenLocationSettings().then(setCanOpenSettings);
-    void queryGeoPermission().then(setPerm);
+    void runRawProbes(); // الصندوق الأسود: الفحوصات الخام لحظة فتح الشاشة (native فقط)
+    void queryGeoPermission().then((p) => {
+      geoDiag("priming:perm", p);
+      setPerm(p);
+    });
     // يُعاد الفحص عند رجوع التطبيق للمقدمة (قد يمنح الإذن من الإعدادات).
     const onVisible = () => {
       if (document.visibilityState === "visible") void queryGeoPermission().then(setPerm);
@@ -126,9 +182,11 @@ export function LocationPriming() {
   }, []);
 
   const activate = useCallback(async () => {
+    geoDiag("priming:activate:press");
     setBusy(true);
     try {
       const next = await requestGeoPermission();
+      geoDiag("priming:activate:result", next);
       setPerm(next);
     } finally {
       setBusy(false); // لا يبقى الزر مقفولًا مهما جرى

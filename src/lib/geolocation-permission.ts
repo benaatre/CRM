@@ -14,6 +14,8 @@
  * الرسمي يُطلق من زر صريح (شاشة التفعيل / «أنا موجود بالموقع») لا من النبض.
  */
 
+import { geoDiag } from "@/lib/geo-diag";
+
 export type GeoPermState = "granted" | "prompt" | "denied" | "unavailable";
 
 /** مرحلة التشخيص المعروضة في شاشة التفعيل — تفصل الصمت عن أسبابه. */
@@ -111,9 +113,12 @@ function toWebPosition(p: NativePosition): GeolocationPosition {
  * `Error("timeout")` فيصنّفه `toWebError` القائم `code: 3` (TIMEOUT) —
  * fail-open: المستدعي يعرض رسالة الفشل المعتادة ويعود حيًا.
  */
-function raceTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+function raceTimeout<T>(p: Promise<T>, ms: number, label = "?"): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("timeout")), ms);
+    const t = setTimeout(() => {
+      geoDiag("timeout:" + label, { ms });
+      reject(new Error("timeout"));
+    }, ms);
     p.then(
       (v) => {
         clearTimeout(t);
@@ -137,7 +142,7 @@ async function toWebError(err: unknown, geo: NativeGeo): Promise<GeolocationPosi
   let code = 2; // POSITION_UNAVAILABLE
   try {
     // حارس ~3ث: checkPermissions نفسها قد تعلق — انقضاؤه يرمي فنسقط للتصنيف بالنص.
-    const st = await raceTimeout(geo.checkPermissions(), 3_000);
+    const st = await raceTimeout(geo.checkPermissions(), 3_000, "toWebError:checkPermissions");
     if (st.location === "denied") code = 1;
     else if (/timeout|timed out/i.test(message)) code = 3;
   } catch {
@@ -277,7 +282,8 @@ async function ensureNativeAuthorisation(geo: NativeGeo): Promise<void> {
   let current: string;
   try {
     // نفس حارس الـ٣ث المستعمل في toWebError — checkPermissions ذاتها قد تعلّق.
-    current = (await raceTimeout(geo.checkPermissions(), 3_000)).location;
+    current = (await raceTimeout(geo.checkPermissions(), 3_000, "ensure:checkPermissions")).location;
+    geoDiag("native:checkPermissions", current);
   } catch {
     return; // خدمات الموقع مطفأة نظاميًا أو تعليق — القراءة أدناه تحسم
   }
@@ -286,7 +292,8 @@ async function ensureNativeAuthorisation(geo: NativeGeo): Promise<void> {
   emitDiag({ phase: "awaiting-dialog" });
   try {
     // الطلب الرسمي عبر CoreLocation — حوار iOS الحقيقي، بمهلة فوقه فلا يعلّق.
-    await raceTimeout(geo.requestPermissions({ permissions: ["location"] }), REQUEST_PERMISSIONS_TIMEOUT_MS);
+    const req = await raceTimeout(geo.requestPermissions({ permissions: ["location"] }), REQUEST_PERMISSIONS_TIMEOUT_MS, "ensure:requestPermissions");
+    geoDiag("native:requestPermissions", req.location);
   } catch (err) {
     // مهلة أو رفض — القراءة أدناه تحسم على كل حال (fail-open كما في الطبقة كلها).
     if (/timeout|timed out/i.test(err instanceof Error ? err.message : "")) emitDiag({ phase: "timeout" });
@@ -302,10 +309,12 @@ function nativeReadOnceAttempt(geo: NativeGeo, opts?: PositionOptions): Promise<
   return singleFlightOnceRead(async () => {
     // لا نطلب موقعًا والحالة `prompt` — الطلب الرسمي أولًا، داخل القفل القائم
     // فلا ينشأ قفل ثانٍ ولا يتزامن حواران.
+    geoDiag("native:attempt:start", { timeout: opts?.timeout ?? 12_000 });
     await ensureNativeAuthorisation(geo);
     const timeoutMs = opts?.timeout ?? 12_000;
     try {
       emitDiag({ phase: "reading" });
+      geoDiag("native:getCurrentPosition:call", { timeout: timeoutMs });
       // المهلة الصلبة: البلجن على iOS لا يفرض timeout — السباق يضمن الحسم
       // خلال (المهلة + ٢ث) مهما حدث، برفض يصنَّف TIMEOUT (code 3).
       const pos = await raceTimeout(
@@ -316,12 +325,15 @@ function nativeReadOnceAttempt(geo: NativeGeo, opts?: PositionOptions): Promise<
           ...opts,
         }),
         timeoutMs + 2_000,
+        "native:getCurrentPosition",
       );
+      geoDiag("native:success", { acc: Math.round(pos.coords.accuracy) });
       rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
       emitDiag({ phase: "settled", winner: "native" });
       return toWebPosition(pos);
     } catch (err) {
       const e = await toWebError(err, geo);
+      geoDiag("native:error", { code: e.code, message: e.message.slice(0, 80) });
       emitDiag({ phase: e.code === 3 ? "timeout" : "settled" });
       if (e.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
       throw e;
@@ -332,6 +344,7 @@ function nativeReadOnceAttempt(geo: NativeGeo, opts?: PositionOptions): Promise<
 /** قراءة موقع واحدة — للنبض و«أنا موجود بالموقع». عالية الدقة للطلب الصريح. */
 export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
   const geo = await nativeGeo();
+  geoDiag("readPositionOnce:start", { native: !!geo, webFirst: WEB_FIRST_ON_NATIVE, timeout: opts?.timeout ?? 12_000 });
   if (geo) {
     if (WEB_FIRST_ON_NATIVE) {
       /*
@@ -343,9 +356,11 @@ export async function readPositionOnce(opts?: PositionOptions): Promise<Geolocat
         emitDiag({ phase: "settled", winner: "web" });
         return pos;
       } catch (webErr) {
+        geoDiag("fallback:web-to-native");
         try {
           return await nativeReadOnceAttempt(geo, opts);
         } catch {
+          geoDiag("readPositionOnce:both-failed");
           throw webErr; // خطأ المسار الأساسي (الويبي) هو الأبلغ الآن
         }
       }
@@ -354,11 +369,13 @@ export async function readPositionOnce(opts?: PositionOptions): Promise<Geolocat
     try {
       return await nativeReadOnceAttempt(geo, opts);
     } catch (nativeErr) {
+      geoDiag("fallback:native-to-web");
       try {
         const pos = await readPositionOnceWeb(opts);
         emitDiag({ phase: "settled", winner: "web" });
         return pos;
       } catch {
+        geoDiag("readPositionOnce:both-failed");
         throw nativeErr; // خطأ المسار الأصلي أبلغ تشخيصيًا (يحمل code·message البلجن)
       }
     }
@@ -369,15 +386,19 @@ export async function readPositionOnce(opts?: PositionOptions): Promise<Geolocat
 function readPositionOnceWeb(opts?: PositionOptions): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
+      geoDiag("web:unavailable");
       reject(new Error("unavailable"));
       return;
     }
+    geoDiag("web:getCurrentPosition:call", { timeout: opts?.timeout ?? 12_000 });
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        geoDiag("web:success", { acc: Math.round(pos.coords.accuracy) });
         rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
         resolve(pos);
       },
       (err) => {
+        geoDiag("web:error", { code: err?.code, message: err?.message });
         if (err?.code === 1) rememberGrant(false); // رفض صريح — سحب الإذن يُنسي الذاكرة
         reject(err);
       },
@@ -407,6 +428,7 @@ export async function readBestPosition(opts?: {
   const targetAccuracy = opts?.targetAccuracy ?? 50;
   const timeoutMs = opts?.timeoutMs ?? 12_000;
   const geo = await nativeGeo();
+  geoDiag("readBestPosition:start", { native: !!geo, webFirst: WEB_FIRST_ON_NATIVE, timeoutMs });
   // مسار الـwatch مستقل عن قفل البصمة (طوارئ 27/08) — سلوك النشرة ٦ حرفيًا؛
   // مؤقته الداخلي يضمن الحسم وclearWatch على كل مسارات النهاية.
   // قرار 29/08: ensureNativeAuthorisation لا يُركَّب هنا — عزل الطوارئ يبقى حرفيًا، وبعد أول منح عبر مسار البصمة لا تعود الحالة `prompt` أصلًا.
@@ -418,11 +440,13 @@ export async function readBestPosition(opts?: {
         emitDiag({ winner: "web" });
         return pos;
       } catch (webErr) {
+        geoDiag("best:fallback:web-to-native");
         try {
           const pos = await readBestPositionNative(geo, targetAccuracy, timeoutMs);
           emitDiag({ winner: "native" });
           return pos;
         } catch {
+          geoDiag("readBestPosition:both-failed");
           throw webErr; // خطأ المسار الأساسي (الويبي) هو الأبلغ الآن
         }
       }
@@ -553,6 +577,7 @@ function readBestPositionWeb(targetAccuracy: number, timeoutMs: number): Promise
  */
 export async function requestGeoPermission(): Promise<GeoPermState> {
   const geo = await nativeGeo();
+  geoDiag("requestGeoPermission:start", { native: !!geo, webFirst: WEB_FIRST_ON_NATIVE });
   if (geo && WEB_FIRST_ON_NATIVE) {
     /*
      * الويبي أولًا: القراءة تُطلق حوار إذن WKWebView وتأخذ وقتها كاملًا —
@@ -562,19 +587,23 @@ export async function requestGeoPermission(): Promise<GeoPermState> {
     try {
       await readPositionOnceWeb({ enableHighAccuracy: true, timeout: 15_000 });
       emitDiag({ phase: "settled", winner: "web" });
+      geoDiag("requestGeoPermission:web-granted");
       return "granted";
     } catch (err) {
       if ((err as GeolocationPositionError | undefined)?.code === 1) {
+        geoDiag("requestGeoPermission:web-denied");
         rememberGrant(false);
         return "denied";
       }
+      geoDiag("requestGeoPermission:web-inconclusive-to-native");
     }
   }
   if (geo) {
     try {
       // الطلب الرسمي عبر CoreLocation — حوار iOS الحقيقي لا استنتاج WebView.
       // بمهلة فوقه (١٥ث): انقضاؤها يرمي فيسقط للسلوك التأكيدي أدناه بدل التعليق.
-      const st = await raceTimeout(geo.requestPermissions({ permissions: ["location"] }), REQUEST_PERMISSIONS_TIMEOUT_MS);
+      const st = await raceTimeout(geo.requestPermissions({ permissions: ["location"] }), REQUEST_PERMISSIONS_TIMEOUT_MS, "request:requestPermissions");
+      geoDiag("request:requestPermissions", st.location);
       if (st.location === "denied") {
         rememberGrant(false);
         return "denied";
