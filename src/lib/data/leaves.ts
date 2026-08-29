@@ -5,7 +5,8 @@ import { ksaDayKey } from "@/lib/ksa-time";
 import { dayDateOf, getAttendanceSettings } from "@/lib/data/attendance";
 import { recordAuditEvent } from "@/lib/audit-event";
 import { createFullDayLeaveException } from "@/lib/attendance-leave-exception";
-import { notify } from "@/lib/notify";
+import { notify, ownerIds } from "@/lib/notify";
+import { alertRecipients } from "@/lib/attendance-notify";
 
 /**
  * منطق نظام الإجازة (م١) — طلب/عرض/قرار/رصيد. المصدر الوحيد المشترك بين المسارات.
@@ -82,7 +83,23 @@ export async function createLeaveRequest(
     resourceId: created.id,
     after: { type, fromKey, toKey, days: calendarDays(fromKey, toKey) },
   });
-  return { ok: true, id: created.id };
+    // توزيع التنبيهات (الدفعة ب): إشعار المختصين بالطلب الجديد — قائمة alertRouting أو المالك.
+  {
+    const [settings, who] = await Promise.all([
+      getAttendanceSettings(),
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+    ]);
+    await notify(
+      prisma,
+      alertRecipients(settings.alertRouting, "leave.requested", await ownerIds(prisma)),
+      "leave.requested",
+      `${who?.name ?? "موظف"} قدّم طلب إجازة (${LEAVE_LABEL[type] ?? type} · ${fromKey} → ${toKey})`,
+      undefined,
+      "/m/leaves",
+    ).catch(() => {});
+  }
+
+return { ok: true, id: created.id };
 }
 
 /** طلبات الموظف نفسه — الأحدث أولًا (بلا أي عرض رصيد). */

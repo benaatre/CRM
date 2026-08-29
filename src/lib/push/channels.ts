@@ -162,6 +162,8 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.late": "staff",
   // ملخص النبض الإخباري (quietMode — الدفعة ب): للمالك كل نصف ساعة.
   "attendance.quiet_pulse": "staff",
+  // طلب إجازة جديد — للمختصين حسب توزيع التنبيهات.
+  "leave.requested": "staff",
 };
 
 /**
@@ -213,6 +215,7 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "attendance.pulse_alert": "تنبيه قرار النبض (للمالك)",
   "attendance.late": "تأخر عن ورديته",
   "attendance.quiet_pulse": "ملخص النبض الإخباري (للمالك)",
+  "leave.requested": "طلب إجازة جديد (للمختصين)",
 };
 
 /**

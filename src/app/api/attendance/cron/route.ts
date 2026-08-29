@@ -15,6 +15,7 @@ import {
 import { effectiveConfigsFor, mergeConfig } from "@/lib/attendance-config";
 import {
   PAUSE_REMINDER_TEXT,
+  alertRecipients,
   arrivalMissedText,
   durationArabic,
   noResponseStopText,
@@ -416,7 +417,7 @@ async function checkNoShows(now: Date, settings: Settings): Promise<number> {
 
   const scheduleByUser = new Map(schedules.map((s) => [s.userId, s]));
   const attended = new Set(sessions.map((s) => s.userId));
-  const owners = await ownerIds(prisma);
+  const owners = alertRecipients(settings.alertRouting, "attendance.no_show", await ownerIds(prisma));
 
   // أوضاع اليوم (الدفعة الرابعة): «عن بُعد» و«إجازة» لا يُنذَر عنهما «لم يداوم».
   const dayRows = await prisma.attendanceDay.findMany({
@@ -587,7 +588,7 @@ async function alertOwnerDecisions(now: Date, settings: Settings): Promise<numbe
       await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
     ).map((u) => [u.id, u.name]),
   );
-  const owners = await ownerIds(prisma);
+  const owners = alertRecipients(settings.alertRouting, "attendance.pulse_alert", await ownerIds(prisma));
 
   let acted = 0;
   for (const s of open) {

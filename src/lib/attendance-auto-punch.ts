@@ -4,7 +4,7 @@ import { AttendanceEventType, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
-import { lateAlertText } from "@/lib/attendance-notify";
+import { alertRecipients, lateAlertText } from "@/lib/attendance-notify";
 import {
   effectiveDay,
   isLateCheckIn,
@@ -250,7 +250,7 @@ export async function tryAutoPunch(args: {
         const who = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
         await notify(
           prisma,
-          await ownerIds(prisma),
+          alertRecipients(settings.alertRouting, "attendance.late", await ownerIds(prisma)),
           "attendance.late",
           lateAlertText(who?.name ?? "موظف", Math.max(1, nowMinutes - eff.accountStartMinutes), minutesToHM(eff.accountStartMinutes)),
           undefined,
@@ -262,7 +262,7 @@ export async function tryAutoPunch(args: {
       const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
       await notify(
         prisma,
-        await ownerIds(prisma),
+        alertRecipients(settings.alertRouting, "attendance.auto_punch", await ownerIds(prisma)),
         "attendance.checked_in",
         `${me?.name ?? "موظف"}: حضر تلقائيًا · ${args.locationName ?? "—"} · ${formatTime(now)}`,
         undefined,

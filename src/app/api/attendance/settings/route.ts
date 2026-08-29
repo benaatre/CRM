@@ -83,6 +83,26 @@ export async function PATCH(req: Request) {
   if (typeof raw.notifyAutoPunchOwner === "boolean") {
     data.notifyAutoPunchOwner = raw.notifyAutoPunchOwner;
   }
+  // توزيع التنبيهات (الدفعة ب): خريطة {نوع: [userIds]} — تحقق شكلي صارم.
+  let alertRouting: Record<string, string[]> | undefined;
+  if (raw.alertRouting !== undefined) {
+    if (raw.alertRouting === null) alertRouting = {};
+    else if (typeof raw.alertRouting === "object" && !Array.isArray(raw.alertRouting)) {
+      const entries = Object.entries(raw.alertRouting as Record<string, unknown>);
+      if (entries.length > 10) return NextResponse.json({ ok: false, error: "توزيع التنبيهات كبير جدًا" }, { status: 400 });
+      const map: Record<string, string[]> = {};
+      for (const [k, v] of entries) {
+        if (typeof k !== "string" || k.length > 64 || !Array.isArray(v)) {
+          return NextResponse.json({ ok: false, error: "توزيع التنبيهات غير صحيح" }, { status: 400 });
+        }
+        const ids = v.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 64).slice(0, 20);
+        map[k] = ids;
+      }
+      alertRouting = map;
+    } else {
+      return NextResponse.json({ ok: false, error: "توزيع التنبيهات غير صحيح" }, { status: 400 });
+    }
+  }
   // أيام الإجازة الأسبوعية — رموز معروفة فقط، وستة أيام إجازة كحد أقصى.
   let weekendDays: string | undefined;
   if (typeof raw.weekendDays === "string") {
@@ -95,7 +115,7 @@ export async function PATCH(req: Request) {
     }
     weekendDays = [...new Set(codes)].join(",");
   }
-  if (Object.keys(data).length === 0 && weekendDays === undefined) {
+  if (Object.keys(data).length === 0 && weekendDays === undefined && alertRouting === undefined) {
     return NextResponse.json({ ok: false, error: "ما فيه شي للتعديل" }, { status: 400 });
   }
 
@@ -112,7 +132,7 @@ export async function PATCH(req: Request) {
 
   const settings = await prisma.attendanceSettings.update({
     where: { id: "singleton" },
-    data: { ...data, ...(weekendDays !== undefined ? { weekendDays } : {}) },
+    data: { ...data, ...(weekendDays !== undefined ? { weekendDays } : {}), ...(alertRouting !== undefined ? { alertRouting } : {}) },
   });
   return NextResponse.json({ ok: true, settings });
 }

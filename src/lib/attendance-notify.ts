@@ -46,6 +46,26 @@ export function lateCheckInText(name: string, lateMinutes: number, locationName:
   return `تأخر ${name} عن دوامه ${durationArabic(lateMinutes)} — حضر الآن${locationName ? ` ${locationName}` : ""}`;
 }
 
+
+/**
+ * توزيع التنبيهات (الدفعة ب): يقرأ AttendanceSettings.alertRouting — خريطة
+ * {نوع التنبيه: [userIds]} — إن وُجدت قائمة غير فارغة للنوع أُرسل لها، وإلا
+ * الافتراضي القائم (المالك). نقي بلا أي IO — الحاكم واحد لكل نقاط الإرسال.
+ */
+export function alertRecipients(routing: unknown, key: string, fallback: string[]): string[] {
+  try {
+    const map = routing as Record<string, unknown> | null | undefined;
+    const list = map?.[key];
+    if (Array.isArray(list)) {
+      const ids = list.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 64);
+      if (ids.length > 0) return ids;
+    }
+  } catch {
+    /* شكل غير متوقع = الافتراضي */
+  }
+  return fallback;
+}
+
 /** «تأخر سعود ٢٥ دقيقة عن ورديته (بدايتها ٩:٠٠ ص)» — تنبيه attendance.late («بصمة فقط»). */
 export function lateAlertText(name: string, lateMinutes: number, shiftStartText: string): string {
   return `تأخر ${name} ${durationArabic(lateMinutes)} عن ورديته (بدايتها ${shiftStartText})`;

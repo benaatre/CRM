@@ -20,6 +20,7 @@ import {
   planVerificationTimes,
 } from "@/lib/attendance-logic";
 import {
+  alertRecipients,
   checkedInText,
   completedText,
   lateAlertText,
@@ -545,7 +546,7 @@ export async function POST(req: Request) {
         if (!already) {
           await notify(
             prisma,
-            await ownerIds(prisma),
+            alertRecipients(settings.alertRouting, "attendance.late", await ownerIds(prisma)),
             "attendance.late",
             lateAlertText(name, Math.max(1, nowMinutes - eff.accountStartMinutes), minutesToHM(eff.accountStartMinutes)),
             undefined,

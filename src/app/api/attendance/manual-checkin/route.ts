@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireOwnerApi } from "@/lib/attendance-guard";
 import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay, parseRiyadhLocal } from "@/lib/ksa-time";
 import { effectiveDay, isLateCheckIn, minutesToHM } from "@/lib/attendance-logic";
-import { lateAlertText } from "@/lib/attendance-notify";
+import { alertRecipients, lateAlertText } from "@/lib/attendance-notify";
 import { ensureAttendanceDay, getAttendanceSettings } from "@/lib/data/attendance";
 import { mergeConfig } from "@/lib/attendance-config";
 import { recordAuditEvent } from "@/lib/audit-event";
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
     if (!already) {
       await notify(
         prisma,
-        await ownerIds(prisma),
+        alertRecipients(settings.alertRouting, "attendance.late", await ownerIds(prisma)),
         "attendance.late",
         lateAlertText(user.name ?? "موظف", Math.max(1, ksaMinutesOfDay(at) - eff.accountStartMinutes), minutesToHM(eff.accountStartMinutes)),
         undefined,
