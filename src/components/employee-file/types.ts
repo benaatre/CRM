@@ -7,6 +7,8 @@ export type EFEvent = { t: string; c: string; b: string; s: string };
 export type EFDayCard = {
   key: string;
   bigHM: string;
+  /** الإضافي الذهبي — null حين لا تجاوز للهدف. */
+  overtimeHM: string | null;
   metaTop: string; // «من ٩:٠٠ س · مقفول ٤:٢٥ م»
   state: { cls: "" | "ok" | "bad" | "leave"; text: string; lock: boolean };
   window: { a: number; b: number } | null;

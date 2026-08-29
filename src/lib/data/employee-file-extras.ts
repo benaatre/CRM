@@ -3,7 +3,7 @@ import "server-only";
 import { FollowUpResult, LeadStage, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KSA_OFFSET_MS, DAY_MS, ksaDayKey } from "@/lib/ksa-time";
-import { currentMonthKSA } from "@/lib/attendance-logic";
+import { splitOvertime, currentMonthKSA } from "@/lib/attendance-logic";
 import { getEmployeeFile, getEmployeeDayTimeline, getAttendanceSettings, getAllLocations } from "@/lib/data/attendance";
 import { effectiveConfigFor } from "@/lib/attendance-config";
 import { getLeaveBalance, LEAVE_LABEL, calendarDays } from "@/lib/data/leaves";
@@ -341,7 +341,9 @@ function buildDayCard(
 
   const startText = hmAr(schedule.startMinutes) + (schedule.startMinutes < 720 ? " ص" : " م");
   let state: EFDayCard["state"];
-  const done = hmAr(day.workedMinutes);
+  // الإضافي الذهبي (الدفعة ب): الفصل بالدالة المشتركة حصرًا — لا حساب مكرر.
+  const ot = splitOvertime(day.workedMinutes, Math.max(1, day.targetMinutes));
+  const done = hmAr(ot.basicMinutes);
   const target = hmAr(day.targetMinutes);
   if (day.status === "OPEN") state = { cls: "ok", text: `جارٍ الآن — ${done} من ${target}`, lock: false };
   else if (day.status === "COMPLETED") state = { cls: "ok", text: `✓ أكمل دوامه — ${done} من ${target} · مقفول`, lock: false };
@@ -358,6 +360,7 @@ function buildDayCard(
   return {
     key: day.key,
     bigHM: done,
+    overtimeHM: ot.overtimeMinutes > 0 ? hmAr(ot.overtimeMinutes) : null,
     metaTop: `من ${startText}${day.checkOutText ? ` · آخر انصراف ${day.checkOutText}` : ""}`,
     state,
     window: {
