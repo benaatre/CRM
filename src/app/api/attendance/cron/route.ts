@@ -23,11 +23,7 @@ import {
   verifyMissedText,
 } from "@/lib/attendance-notify";
 import { dayDateOf, ensureAttendanceDay } from "@/lib/data/attendance";
-import {
-  AUTO_CALL_ON_SUSTAINED_OUTZONE,
-  createConditionalCall,
-  hasPulseImmunity,
-} from "@/lib/attendance-conditional";
+import { createConditionalCall, hasPulseImmunity } from "@/lib/attendance-conditional";
 import { notify, ownerIds } from "@/lib/notify";
 import { TRACKED_ROLES } from "@/lib/auth-guards";
 
@@ -133,7 +129,7 @@ async function sendDueVerifications(now: Date, settings: Settings, immunity: Imm
      * النداء يُتخطى (يبقى PENDING لدورة قادمة؛ منطق نهاية النافذة يحذفه إن
      * فات). اليدوي MANUAL مستثنى عمدًا — قرار المالك المباشر ينفذ دائمًا.
      */
-    if (v.kind !== "MANUAL" && (await hasPulseImmunity(v.userId, now))) {
+    if (v.kind !== "MANUAL" && (await hasPulseImmunity(v.userId, now, settings.pulseImmunityMinutes))) {
       immunity.count++;
       continue;
     }
@@ -212,7 +208,7 @@ async function hasRecentActivity(userId: string, since: Date, countCrm: boolean)
 }
 
 /** ٢) النداءات التي فاتت مهلتها → MISSED + إشعار المالك بآخر موقع معروف. */
-async function expireMissedVerifications(now: Date, immunity: ImmunityCounter): Promise<number> {
+async function expireMissedVerifications(now: Date, settings: Settings, immunity: ImmunityCounter): Promise<number> {
   const expired = await prisma.attendanceVerification.findMany({
     where: { status: "SENT", deadlineAt: { lt: now } },
     include: { user: { select: { name: true } } },
@@ -242,12 +238,11 @@ async function expireMissedVerifications(now: Date, immunity: ImmunityCounter): 
       // quietMode (الدفعة ب): لا تصعيد لموظف الوضع الإخباري.
       if (stillOn && expiredConfigs.get(v.userId)?.quietMode) continue;
       // القاعدة الذهبية: نبضة داخل النطاق طازجة تُسقط التصعيد — الحضور مثبت.
-      if (stillOn && (await hasPulseImmunity(v.userId, now))) {
+      if (stillOn && (await hasPulseImmunity(v.userId, now, settings.pulseImmunityMinutes))) {
         immunity.count++;
         continue;
       }
       if (stillOn) {
-        const settings = await getAttendanceSettings();
         await prisma.attendanceVerification.create({
           data: {
             userId: v.userId,
@@ -595,7 +590,7 @@ async function alertOwnerDecisions(now: Date, settings: Settings): Promise<numbe
     if (s.pauses.length > 0) continue; // موقوف — عدّاده واقف، حالته معروضة أصلًا
     if (offSite.has(s.userId)) continue;
     if (configs.get(s.userId)?.enforced === false) continue;
-    if (await hasPulseImmunity(s.userId, now)) continue; // محصون — القاعدة الذهبية
+    if (await hasPulseImmunity(s.userId, now, settings.pulseImmunityMinutes)) continue; // محصون — القاعدة الذهبية
 
     const lastJudged = await prisma.attendancePulse.findFirst({
       where: { userId: s.userId, inZone: { not: null } },
@@ -614,7 +609,7 @@ async function alertOwnerDecisions(now: Date, settings: Settings): Promise<numbe
     if (!state) continue;
 
     // م٣-٣: عند تفعيل النداء التلقائي للخروج المؤكد — نداء واحد بسقوف اليوم بدل التنبيه.
-    if (state === "out" && AUTO_CALL_ON_SUSTAINED_OUTZONE) {
+    if (state === "out" && settings.autoCallOnSustainedOutZone) {
       const sent = await createConditionalCall({
         userId: s.userId,
         sessionId: s.id,
@@ -623,6 +618,7 @@ async function alertOwnerDecisions(now: Date, settings: Settings): Promise<numbe
         windowMinutes: settings.conditionalWindowMinutes,
         cooldownMinutes: settings.conditionalCooldownMinutes,
         maxPerDay: settings.maxConditionalPerDay,
+      immunityMinutes: settings.pulseImmunityMinutes,
         title: `لسه خارج النطاق من ${durationArabic(outMinutes)}؟ أكّد موقعك`,
         body: `رد خلال ${durationArabic(settings.conditionalWindowMinutes)}`,
       });
@@ -981,7 +977,7 @@ async function checkHeartbeatGaps(now: Date, settings: Settings, immunity: Immun
     if (now.getTime() - lastProof.getTime() < settings.heartbeatGapMinutes * 60_000) continue;
 
     // القاعدة الذهبية — يُعدّ التخطي هنا (الحارس داخل createConditionalCall احتياط).
-    if (await hasPulseImmunity(s.userId, now)) {
+    if (await hasPulseImmunity(s.userId, now, settings.pulseImmunityMinutes)) {
       immunity.count++;
       continue;
     }
@@ -994,6 +990,7 @@ async function checkHeartbeatGaps(now: Date, settings: Settings, immunity: Immun
       windowMinutes: settings.conditionalWindowMinutes,
       cooldownMinutes: settings.conditionalCooldownMinutes,
       maxPerDay: settings.maxConditionalPerDay,
+      immunityMinutes: settings.pulseImmunityMinutes,
       title: "انقطع إثباتك — أكّد موقعك",
       body: `أكّد موقعك خلال ${durationArabic(settings.conditionalWindowMinutes)} عشان نكمّل دوامك`,
     });
@@ -1075,7 +1072,7 @@ async function watchVisits(now: Date, settings: Settings, immunity: ImmunityCoun
     if (recentStale) continue;
 
     // القاعدة الذهبية — نبضة داخل النطاق طازجة تغني عن نداء الزيارة.
-    if (await hasPulseImmunity(s.userId, now)) {
+    if (await hasPulseImmunity(s.userId, now, settings.pulseImmunityMinutes)) {
       immunity.count++;
       continue;
     }
@@ -1088,6 +1085,7 @@ async function watchVisits(now: Date, settings: Settings, immunity: ImmunityCoun
       windowMinutes: settings.conditionalWindowMinutes,
       cooldownMinutes: settings.conditionalCooldownMinutes,
       maxPerDay: settings.maxConditionalPerDay,
+      immunityMinutes: settings.pulseImmunityMinutes,
       title: `لسه بمشروع ${projectName}؟ أكّد موقعك`,
       body: `رد خلال ${durationArabic(settings.conditionalWindowMinutes)}`,
     });
@@ -1119,7 +1117,7 @@ export async function POST(req: Request) {
   // نعزل فشل كل مهمة ونبلّغ عنه بدل ابتلاعه — نفس نمط notify-scheduled.
   const results = await Promise.allSettled([
     sendDueVerifications(now, settings, immunity),
-    expireMissedVerifications(now, immunity),
+    expireMissedVerifications(now, settings, immunity),
     checkNoShows(now, settings),
     remindPunchIn(now, settings),
     alertOwnerDecisions(now, settings),

@@ -40,7 +40,7 @@ const VIEW_META: Record<View, { title: string; sub: string }> = {
   punch: { title: "البصم والمواقع", sub: "البصمة هي كل ما يراه الموظف" },
   pulse: { title: "النبض الحاكم", sub: "النبض يحكم — والنداء آخر دواء" },
   calls: { title: "النداءات والتحقق", sub: "تعمل فقط لمن سقطت حصانته" },
-  alerts: { title: "توزيع التنبيهات", sub: "من يستلم ماذا — التوزيع الكامل في الدفعة ب" },
+  alerts: { title: "توزيع التنبيهات", sub: "من يستلم ماذا — يسري فورًا بعد الحفظ" },
   emps: { title: "الموظفون", sub: "اضغط الاسم — ملف الموظف الحي بقسم إعداداته" },
 };
 
@@ -75,6 +75,11 @@ type Draft = {
   maxConditionalPerDay: number;
   visitReverifyMinutes: number;
   quietWindowCountsCrm: boolean;
+  // ===== الدفعة ب =====
+  pulseImmunityMinutes: number;
+  autoCallOnSustainedOutZone: boolean;
+  /** توزيع التنبيهات كسلسلة JSON — للمقارنة البسيطة في changedKeys. */
+  alertRoutingJson: string;
 };
 
 const draftOf = (s: AttendanceSettings): Draft => ({
@@ -103,16 +108,23 @@ const draftOf = (s: AttendanceSettings): Draft => ({
   maxConditionalPerDay: s.maxConditionalPerDay,
   visitReverifyMinutes: s.visitReverifyMinutes,
   quietWindowCountsCrm: s.quietWindowCountsCrm,
+  pulseImmunityMinutes: s.pulseImmunityMinutes,
+  autoCallOnSustainedOutZone: s.autoCallOnSustainedOutZone,
+  alertRoutingJson: JSON.stringify(s.alertRouting ?? {}),
 });
 
 export type ControlEmployee = { id: string; name: string; startMinutes: number | null; custom: boolean };
 
+export type ControlRoutee = { id: string; name: string; role: string };
+
 export function ControlCenter({
   settings,
   employees,
+  routees,
 }: {
   settings: AttendanceSettings;
   employees: ControlEmployee[];
+  routees: ControlRoutee[];
 }) {
   const router = useRouter();
   const [view, setView] = useState<View>("home");
@@ -135,7 +147,16 @@ export function ControlCenter({
     if (changedKeys.length === 0) return;
     setMsg(null);
     start(async () => {
-      const body = Object.fromEntries(changedKeys.map((k) => [k, draft[k]]));
+      const body: Record<string, unknown> = Object.fromEntries(
+        changedKeys.filter((k) => k !== "alertRoutingJson").map((k) => [k, draft[k]]),
+      );
+      if (changedKeys.includes("alertRoutingJson")) {
+        try {
+          body.alertRouting = JSON.parse(draft.alertRoutingJson);
+        } catch {
+          /* لن يحدث — نحن من نكتبها */
+        }
+      }
       const res = await fetch("/api/attendance/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -257,7 +278,7 @@ export function ControlCenter({
                 icon={<MessageSquare aria-hidden size={20} strokeWidth={1.6} />}
                 title="توزيع التنبيهات"
                 desc="من يستلم ماذا: التأخير والغياب وتنبيهات القرار."
-                status="عرض — الدفعة ب"
+                status={<>{(() => { const n = Object.keys(parseRouting(draft.alertRoutingJson)).length; return n > 0 ? <>موزَّع لـ<span className={zain.className}>{toArabicDigits(n)}</span> أنواع</> : "الافتراضي — المالك"; })()}</>}
                 onClick={() => setView("alerts")}
               />
             </div>
@@ -351,13 +372,9 @@ export function ControlCenter({
               القرار تصلك أنت بدل النداء الأعمى.
             </span>
           </div>
-          <Card gold title="النبض الحاكم" onReset={() => resetSection(["radarFreshMinutes", "heartbeatGapMinutes", "maxOutOfZoneMinutes"])}>
-            <Row
-              label="مدة حصانة النبض"
-              desc="آخر نبضة داخل النطاق أحدث من هذه المدة = صفر نداءات لصاحبها."
-              badge={<span className="rounded-lg border border-gold/30 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold">ثابتة ٣٠ دقيقة — تحكمها في الدفعة ب</span>}
-            >
-              <span className={`${zain.className} text-[17px] font-bold text-gold`}>{toArabicDigits(30)}</span>
+          <Card gold title="النبض الحاكم" onReset={() => resetSection(["radarFreshMinutes", "heartbeatGapMinutes", "maxOutOfZoneMinutes", "pulseImmunityMinutes", "autoCallOnSustainedOutZone"])}>
+            <Row label="مدة حصانة النبض" desc="آخر نبضة داخل النطاق أحدث من هذه المدة = صفر نداءات لصاحبها — القاعدة الذهبية.">
+              <Stepper value={draft.pulseImmunityMinutes} min={5} max={120} step={5} unit="دقيقة" onChange={(v) => set("pulseImmunityMinutes", v)} />
             </Row>
             <Row label="عتبة الرادار الحي" desc="بعدها بلا نبضة يُعتبر الإثبات «منقطعًا» في المواقع الحية.">
               <Stepper value={draft.radarFreshMinutes} min={1} max={15} step={1} unit="دقائق" onChange={(v) => set("radarFreshMinutes", v)} />
@@ -368,12 +385,8 @@ export function ControlCenter({
             <Row label="عتبة الخروج المؤكد" desc="نبض خارج النطاق مستمر لهذه المدة → تنبيه قرار باسمه ومدته.">
               <Stepper value={draft.maxOutOfZoneMinutes} min={10} max={120} step={5} unit="دقيقة" onChange={(v) => set("maxOutOfZoneMinutes", v)} />
             </Row>
-            <Row
-              label="نداء تلقائي عند الخروج المؤكد"
-              desc="مفعّل: الخروج المؤكد يُندّى بلا انتظارك. مطفأ: يصلك «أرسل نداء / تجاهل»."
-              badge={<span className="rounded-lg border border-border bg-secondary px-2 py-0.5 text-[10px] font-bold text-muted-foreground">يُستكمل تحكمه في الدفعة ب</span>}
-            >
-              <Toggle on={false} disabled />
+            <Row label="نداء تلقائي عند الخروج المؤكد" desc="مفعّل: الخروج المؤكد يُندّى بلا انتظارك (بسقوف اليوم). مطفأ: يصلك «أرسل نداء / تجاهل».">
+              <Toggle on={draft.autoCallOnSustainedOutZone} onChange={(v) => set("autoCallOnSustainedOutZone", v)} />
             </Row>
           </Card>
         </div>
@@ -435,39 +448,51 @@ export function ControlCenter({
 
       {/* ═══════════ ٥ · توزيع التنبيهات (عرض) ═══════════ */}
       {view === "alerts" && (
-        <Card title="كل تنبيه — ولمن يصل">
+        <Card title="كل تنبيه — ولمن يصل" onReset={() => resetSection(["alertRoutingJson"])}>
           <p className="px-4 pt-3 text-xs leading-relaxed text-muted-foreground">
-            <span className="ml-2 rounded-lg border border-gold/30 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold">التوزيع الكامل في الدفعة ب</span>
-            لا تخزين لكل مستلم بعد — الوضع الحالي: كل تنبيهات الحوكمة تصل المالك.
+            علّم مستلمي كل نوع — <b className="text-foreground">قائمة فارغة = الافتراضي (المالك)</b>. التوزيع يسري
+            فورًا على نقاط الإرسال الخمس بعد الحفظ.
           </p>
           <div className="overflow-x-auto px-4 pb-4 pt-2">
             <table className="w-full min-w-[420px] border-collapse text-center">
               <thead>
                 <tr>
                   <th className="py-2.5 pr-1 text-right text-xs font-semibold text-muted-foreground">التنبيه</th>
-                  <th className="py-2.5 text-[11px] font-semibold text-muted-foreground">المالك</th>
-                  <th className="py-2.5 text-[11px] font-semibold text-muted-foreground">الإدارة</th>
-                  <th className="py-2.5 text-[11px] font-semibold text-muted-foreground">الموارد</th>
+                  {routees.map((r) => (
+                    <th key={r.id} className="py-2.5 text-[11px] font-semibold text-muted-foreground">
+                      {r.name}
+                      <span className="block text-[9px] font-normal">{r.role === "OWNER" ? "المالك" : "الإدارة"}</span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {[
-                  ["تأخر عن الوردية", "بعد حد التأخير من بداية وردية الموظف"],
-                  ["لم يداوم", `إنذار الغياب بعد ${toArabicDigits(settings.noShowAfterMinutes)} دقيقة`],
-                  ["تنبيهات القرار", "خروج مؤكد أو انقطاع نبض"],
-                  ["بصم تلقائي", "«بصمنا لفلان» لحظة حدوثه"],
-                  ["طلبات الإجازة والاستئذان", "تصل القسم المختص للاعتماد"],
-                ].map(([t, sub]) => (
-                  <tr key={t} className="border-t border-border">
-                    <td className="py-3 pr-1 text-right text-[12.5px] font-semibold text-foreground">
-                      {t}
-                      <span className="mt-0.5 block text-[10.5px] font-normal text-muted-foreground">{sub}</span>
-                    </td>
-                    <td className="py-3 text-[13px] font-bold text-success">يصل</td>
-                    <td className="py-3 text-muted-foreground">—</td>
-                    <td className="py-3 text-muted-foreground">—</td>
-                  </tr>
-                ))}
+                {ROUTED_ALERTS.map(([key, label, sub]) => {
+                  const routing = parseRouting(draft.alertRoutingJson);
+                  const list = routing[key] ?? [];
+                  return (
+                    <tr key={key} className="border-t border-border">
+                      <td className="py-3 pr-1 text-right text-[12.5px] font-semibold text-foreground">
+                        {label}
+                        <span className="mt-0.5 block text-[10.5px] font-normal text-muted-foreground">
+                          {list.length === 0 ? "الافتراضي — المالك" : sub}
+                        </span>
+                      </td>
+                      {routees.map((r) => (
+                        <td key={r.id} className="py-3">
+                          <Toggle
+                            on={list.includes(r.id)}
+                            onChange={(on) => {
+                              const next = { ...routing, [key]: on ? [...list, r.id] : list.filter((x) => x !== r.id) };
+                              if (next[key].length === 0) delete next[key];
+                              set("alertRoutingJson", JSON.stringify(next));
+                            }}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -508,6 +533,32 @@ export function ControlCenter({
       )}
     </div>
   );
+}
+
+
+/** أنواع التنبيهات الموزعة (الدفعة ب) — [المفتاح، التسمية، الوصف الموجز]. */
+const ROUTED_ALERTS: [string, string, string][] = [
+  ["attendance.late", "تأخر عن الوردية", "بعد حد التأخير من بداية وردية الموظف"],
+  ["attendance.no_show", "لم يداوم", "إنذار الغياب"],
+  ["attendance.pulse_alert", "تنبيهات القرار", "خروج مؤكد أو انقطاع نبض"],
+  ["attendance.auto_punch", "بصم تلقائي", "«بصمنا لفلان» لحظة حدوثه"],
+  ["leave.requested", "طلبات الإجازة", "طلب جديد للاعتماد"],
+];
+
+function parseRouting(json: string): Record<string, string[]> {
+  try {
+    const v = JSON.parse(json) as unknown;
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const out: Record<string, string[]> = {};
+      for (const [k, arr] of Object.entries(v as Record<string, unknown>)) {
+        if (Array.isArray(arr)) out[k] = arr.filter((x): x is string => typeof x === "string");
+      }
+      return out;
+    }
+  } catch {
+    /* سلسلة معطوبة = خريطة فارغة */
+  }
+  return {};
 }
 
 /* ═══════════ لبنات العرض ═══════════ */

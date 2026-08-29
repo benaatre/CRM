@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function ControlCenterPage() {
   await requireRole(Role.OWNER);
 
-  const [settings, users, schedules] = await Promise.all([
+  const [settings, users, schedules, routees] = await Promise.all([
     getAttendanceSettings(),
     prisma.user.findMany({
       where: { role: { in: TRACKED_ROLES }, active: true },
@@ -22,6 +22,12 @@ export default async function ControlCenterPage() {
       orderBy: { name: "asc" },
     }),
     prisma.attendanceSchedule.findMany(),
+    // مرشحو توزيع التنبيهات (الدفعة ب): المالك والإدارة النشطون.
+    prisma.user.findMany({
+      where: { role: { in: [Role.OWNER, Role.ADMIN] }, active: true },
+      select: { id: true, name: true, role: true },
+      orderBy: { role: "asc" },
+    }),
   ]);
 
   const rowByUser = new Map(schedules.map((s) => [s.userId, s]));
@@ -42,5 +48,5 @@ export default async function ControlCenterPage() {
     return { id: u.id, name: u.name, startMinutes: s?.startMinutes ?? null, custom };
   });
 
-  return <ControlCenter settings={settings} employees={employees} />;
+  return <ControlCenter settings={settings} employees={employees} routees={routees} />;
 }

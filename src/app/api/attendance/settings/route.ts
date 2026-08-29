@@ -32,6 +32,9 @@ const RANGES: Record<string, [number, number]> = {
   visitReverifyMinutes: [5, 120],
   autoCloseAliveGraceMinutes: [5, 120],
   radarFreshMinutes: [1, 15],
+  // ===== الدفعة ب =====
+  pulseImmunityMinutes: [5, 120],
+  maxSessionMinutes: [480, 1440],
 };
 
 /** رموز أيام الأسبوع المقبولة في weekendDays. */
@@ -82,6 +85,9 @@ export async function PATCH(req: Request) {
   }
   if (typeof raw.notifyAutoPunchOwner === "boolean") {
     data.notifyAutoPunchOwner = raw.notifyAutoPunchOwner;
+  }
+  if (typeof raw.autoCallOnSustainedOutZone === "boolean") {
+    data.autoCallOnSustainedOutZone = raw.autoCallOnSustainedOutZone;
   }
   // توزيع التنبيهات (الدفعة ب): خريطة {نوع: [userIds]} — تحقق شكلي صارم.
   let alertRouting: Record<string, string[]> | undefined;

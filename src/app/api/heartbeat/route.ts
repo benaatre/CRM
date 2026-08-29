@@ -181,6 +181,7 @@ export async function POST(req: Request) {
         windowMinutes: settings.conditionalWindowMinutes,
         cooldownMinutes: settings.conditionalCooldownMinutes,
         maxPerDay: settings.maxConditionalPerDay,
+        immunityMinutes: settings.pulseImmunityMinutes,
         title: `طلعت من ${prev.location?.name ?? "موقع العمل"} — وين رايح؟`,
         body: "أكّد وضعك: بالموقع / ذاهب لمشروع / استئذان — أو سجّل انصرافك",
       }).catch(() => {});
