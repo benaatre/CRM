@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOwnerApi } from "@/lib/attendance-guard";
 import { getAttendanceSettings } from "@/lib/data/attendance";
+import { recordAuditEvent } from "@/lib/audit-event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -136,9 +137,22 @@ export async function PATCH(req: Request) {
     );
   }
 
+  const patch = { ...data, ...(weekendDays !== undefined ? { weekendDays } : {}), ...(alertRouting !== undefined ? { alertRouting } : {}) };
   const settings = await prisma.attendanceSettings.update({
     where: { id: "singleton" },
-    data: { ...data, ...(weekendDays !== undefined ? { weekendDays } : {}), ...(alertRouting !== undefined ? { alertRouting } : {}) },
+    data: patch,
   });
+  // سجل التدقيق (دفعة إكمال الواجهات): بنمط بقية البوابات — المفاتيح المتغيرة فقط قبل/بعد.
+  const changedKeys = Object.keys(patch);
+  await recordAuditEvent(prisma, {
+    actorId: guard.userId,
+    actorRole: "OWNER",
+    action: "ATTENDANCE_SETTINGS_UPDATE",
+    resourceType: "attendance_settings",
+    resourceId: "singleton",
+    before: Object.fromEntries(changedKeys.map((k) => [k, (current as Record<string, unknown>)[k] ?? null])),
+    after: Object.fromEntries(changedKeys.map((k) => [k, (settings as Record<string, unknown>)[k] ?? null])),
+    ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+  }).catch(() => {});
   return NextResponse.json({ ok: true, settings });
 }
