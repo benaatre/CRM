@@ -10,15 +10,9 @@ import {
   onGeoPermissionChange,
   canOpenLocationSettings,
   openLocationSettings,
-  getGeoDiagnostics,
-  onGeoDiagnostics,
-  WEB_FIRST_ON_NATIVE,
+  type GeoPermState,
 } from "@/lib/geolocation-permission";
 import { geoDiag } from "@/lib/geo-diag";
-import {
-  type GeoPermState,
-  type GeoDiagnostics,
-} from "@/lib/geolocation-permission";
 import "./attendance.css";
 
 /**
@@ -53,13 +47,6 @@ function RegaLine() {
   );
 }
 
-/**
- * سطر الحالة التشخيصي (T20) — يفصل الصمت عن أسبابه بدل التخمين:
- * «البلجن غير متاح» (الإضافة الأصلية غير محمّلة فالمسار سقط للويب) · «بانتظار
- * حوار الإذن» (الطلب الرسمي مُطلق ولم يُحسم بعد) · «انتهت المهلة» (الوعد الأصلي
- * علّق وحسمه السباق). يعرض قيمة `isPluginAvailable("Geolocation")` الفعلية.
- * داخل التطبيق فقط — المتصفح لا يراه.
- */
 /**
  * الفحوصات الخام (الصندوق الأسود — 29/08): لحظة فتح الشاشة على native نسجّل
  * حقائق البيئة كما هي بلا أي طبقة وسيطة — لنرى من السيرفر أين يموت الطلب.
@@ -109,28 +96,14 @@ async function runRawProbes(): Promise<void> {
   }
 }
 
-function DiagLine({ d }: { d: GeoDiagnostics }) {
-  if (!d.native) return null;
-  const availability = d.pluginAvailable === null ? "قيد الفحص" : d.pluginAvailable ? "متاحة" : "غير متاحة";
-  const state =
-    d.pluginAvailable === false
-      ? "البلجن غير متاح"
-      : d.phase === "awaiting-dialog"
-        ? "بانتظار حوار الإذن"
-        : d.phase === "timeout"
-          ? "انتهت المهلة"
-          : null;
-  // المسار الفائز بآخر قراءة (web-first 29/08) — يكشف من لقطة شاشة أي مسار يعمل فعليًا.
-  const winner =
-    d.winner === "web"
-      ? WEB_FIRST_ON_NATIVE ? "ويب (أساسي)" : "ويب داخل التطبيق"
-      : d.winner === "native"
-        ? WEB_FIRST_ON_NATIVE ? "أصلي (احتياط)" : "أصلي"
-        : null;
+/** سطر الحالة المبسط (يوم الإغلاق): المسار الويبي الوحيد — الحالة من الإذن مباشرة. */
+function DiagLine({ perm }: { perm: GeoPermState | null }) {
+  const label =
+    perm === "granted" ? "جاهز" : perm === "denied" ? "مرفوض" : perm === "prompt" ? "بانتظار الإذن" : null;
+  if (!label) return null;
   return (
     <p className="mt-3 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
-      {state ? `${state} · ` : ""}الإضافة الأصلية: {availability}
-      {winner ? ` · المسار: ${winner}` : ""}
+      الموقع: {label}
     </p>
   );
 }
@@ -144,8 +117,6 @@ export function LocationPriming() {
   const [busy, setBusy] = useState(false);
   // زر «افتح الإعدادات» — داخل التطبيق على iOS فقط (AppLauncher app-settings:).
   const [canOpenSettings, setCanOpenSettings] = useState(false);
-  // تشخيص طبقة الموقع — لقطة + اشتراك، فالسطر يتابع الطلب لحظيًا.
-  const [diag, setDiag] = useState<GeoDiagnostics>(getGeoDiagnostics);
 
   useEffect(() => {
     try {
@@ -172,12 +143,9 @@ export function LocationPriming() {
     };
     document.addEventListener("visibilitychange", onVisible);
     const unsub = onGeoPermissionChange(setPerm);
-    setDiag(getGeoDiagnostics()); // الكاشف قد يكون حسم قبل التركيب
-    const unsubDiag = onGeoDiagnostics(setDiag);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       unsub();
-      unsubDiag();
     };
   }, []);
 
@@ -314,7 +282,7 @@ export function LocationPriming() {
           >
             لاحقًا
           </button>
-          <DiagLine d={diag} />
+          <DiagLine perm={perm} />
           <RegaLine />
         </div>
       </div>
