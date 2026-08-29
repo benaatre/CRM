@@ -468,12 +468,16 @@ function toStationEvent(e: {
   timestamp: Date;
   locationId: string | null;
   outOfZone: boolean;
+  lat?: number;
+  lng?: number;
   location: { name: string; type: "HQ" | "PROJECT" } | null;
 }): StationEvent {
   return {
     type: e.type,
     timestamp: e.timestamp,
     locationId: e.locationId,
+    lat: e.lat,
+    lng: e.lng,
     locationName: e.location?.name ?? null,
     locationType: e.location?.type ?? null,
     outOfZone: e.outOfZone,

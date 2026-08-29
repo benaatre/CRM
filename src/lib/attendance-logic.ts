@@ -391,6 +391,9 @@ export type StationEvent = {
   type: "CHECK_IN" | "CHECK_OUT" | "PROJECT_IN" | "PROJECT_OUT" | "LOCATION_CHANGE";
   timestamp: Date;
   locationId: string | null;
+  /** إحداثيات الحدث — بصمة النيابة (0,0 بلا موقع) تُصنَّف UNKNOWN لا OUT (الدفعة ب). */
+  lat?: number;
+  lng?: number;
   locationName: string | null;
   /** HQ | PROJECT — من جدول المواقع؛ null لبصمة خارج النطاق */
   locationType: "HQ" | "PROJECT" | null;
@@ -398,7 +401,7 @@ export type StationEvent = {
 };
 
 /** نوع مقطع المحطة في خط اليوم — ذهبي للمقر، سماوي للمشروع، أحمر خارج النطاق. */
-export type StationKind = "HQ" | "PROJECT" | "OUT";
+export type StationKind = "HQ" | "PROJECT" | "OUT" | "UNKNOWN";
 
 /** محطة واحدة داخل الجلسة: من ← إلى (null = المحطة الحالية). */
 export type Station = {
@@ -427,11 +430,16 @@ export function buildStations(events: StationEvent[]): Station[] {
   let beforeProject: { kind: StationKind; locationId: string | null; name: string } | null = null;
 
   const open = (e: StationEvent): Station => {
-    const kind: StationKind = e.outOfZone || !e.locationId ? "OUT" : (e.locationType ?? "PROJECT");
+    /*
+     * علاج بصمة النيابة (الدفعة ب): بلا موقع وبلا إحداثيات (0,0) وليست خروجًا
+     * فعليًا → «موقع غير معروف — بصمة نيابة» لا «خارج النطاق» المضلل.
+     */
+    const proxy = !e.outOfZone && !e.locationId && (e.lat ?? 0) === 0 && (e.lng ?? 0) === 0;
+    const kind: StationKind = proxy ? "UNKNOWN" : e.outOfZone || !e.locationId ? "OUT" : (e.locationType ?? "PROJECT");
     return {
       kind,
       locationId: e.outOfZone ? null : e.locationId,
-      name: kind === "OUT" ? "خارج النطاق" : (e.locationName ?? "موقع غير معروف"),
+      name: kind === "UNKNOWN" ? "موقع غير معروف — بصمة نيابة" : kind === "OUT" ? "خارج النطاق" : (e.locationName ?? "موقع غير معروف"),
       from: e.timestamp,
       to: null,
     };

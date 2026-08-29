@@ -14,7 +14,7 @@ import "./attendance.css";
  */
 
 export type StationDto = {
-  kind: "HQ" | "PROJECT" | "OUT";
+  kind: "HQ" | "PROJECT" | "OUT" | "UNKNOWN";
   name: string;
   fromIso: string;
   fromText: string;
@@ -32,6 +32,8 @@ const SEG_VAR: Record<StationDto["kind"], string> = {
   HQ: "var(--att-seg-hq)",
   PROJECT: "var(--att-seg-project)",
   OUT: "var(--att-seg-out)",
+  // بصمة نيابة بلا موقع (الدفعة ب) — محايد لا أحمر مضلل.
+  UNKNOWN: "var(--att-esp-muted, var(--m-text3))",
 };
 
 /* ═══════════════════ خط اليوم ═══════════════════ */
