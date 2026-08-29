@@ -76,7 +76,14 @@ function DayCardView({ card }: { card: EFDayCard | null }) {
   return (
     <div className="dayline">
       <div className="dl-top">
-        <div className="dl-big num">{card.bigHM}</div>
+        <div className="dl-big num">
+          {card.bigHM}
+          {card.overtimeHM && (
+            <span className="num" style={{ color: "var(--gold)", fontSize: "0.55em", marginInlineStart: 8 }}>
+              + {card.overtimeHM} إضافي
+            </span>
+          )}
+        </div>
         <div className="dl-meta">
           {card.metaTop}
           <br />
@@ -488,33 +495,7 @@ export function EmployeeFileView({
                           {overrides.notifyMissedCall && <button type="button" className="resetbtn" onClick={() => resetToGlobal("notifyMissedCall")}>إرجاع للعام</button>}
                         </div>
                         <button type="button" className={`tog ${cfg.notifyMissedCall ? "on" : ""}`} onClick={() => { markCustom("notifyMissedCall"); patchCfg("notifyMissedCall", !cfg.notifyMissedCall); }} aria-label="إشعار فوات النداء" />
-                        <div className="frow">
-                        <div>
-                          نداء انقطاع الإثبات
-                          <span className={`srcbadge ${overrides.gapCallEnabled ? "c" : "g"}`}>{overrides.gapCallEnabled ? "مخصص" : "عام"}</span>
-                          {overrides.gapCallEnabled && <button type="button" className="resetbtn" onClick={() => resetToGlobal("gapCallEnabled")}>إرجاع للعام</button>}
-                          <div className="d">جلسته مفتوحة ونبضه منقطع — يُندّى أم لا</div>
-                        </div>
-                        <button type="button" className={`tog ${cfg.gapCallEnabled ? "on" : ""}`} onClick={() => { markCustom("gapCallEnabled"); patchCfg("gapCallEnabled", !cfg.gapCallEnabled); }} aria-label="نداء انقطاع الإثبات" />
                       </div>
-                      <div className="frow">
-                        <div>
-                          تذكير البصم الصباحي
-                          <span className={`srcbadge ${overrides.punchReminderEnabled ? "c" : "g"}`}>{overrides.punchReminderEnabled ? "مخصص" : "عام"}</span>
-                          {overrides.punchReminderEnabled && <button type="button" className="resetbtn" onClick={() => resetToGlobal("punchReminderEnabled")}>إرجاع للعام</button>}
-                          <div className="d">«دوامك بدأ — افتح التطبيق» عند فوات نافذته</div>
-                        </div>
-                        <button type="button" className={`tog ${cfg.punchReminderEnabled ? "on" : ""}`} onClick={() => { markCustom("punchReminderEnabled"); patchCfg("punchReminderEnabled", !cfg.punchReminderEnabled); }} aria-label="تذكير البصم" />
-                      </div>
-                      <div className="frow">
-                        <div>
-                          وضع الاستثناء الإخباري
-                          <span className={`srcbadge ${cfg.quietMode ? "c" : "g"}`}>{cfg.quietMode ? "مفعّل" : "مطفأ"}</span>
-                          <div className="d">صفر نداءات وتذكيرات — الرصد باقٍ ويصلك ملخص نبضه كل نصف ساعة</div>
-                        </div>
-                        <button type="button" className={`tog ${cfg.quietMode ? "on" : ""}`} onClick={() => patchCfg("quietMode", !cfg.quietMode)} aria-label="الوضع الإخباري" />
-                      </div>
-                    </div>
                       <div className="frow">
                         <div>
                           نداء انقطاع الإثبات
@@ -544,7 +525,6 @@ export function EmployeeFileView({
                     </div>
                   </div>
                 )}
-
                 {cfg.mode === "WATCH_ONLY" && (
                   <div className="subgrid">
                     <div className="fld sub2">
