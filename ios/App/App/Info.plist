@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Sultan CRM</string>
+	<string>سلطان CRM</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>نحتاج موقعك لحظة تسجيل الحضور فقط للتأكد أنك داخل موقع العمل. لا نتتبع موقعك خارج ذلك.</string>
+	<string>نحتاج موقعك لتسجيل حضورك تلقائيًا عند وصولك مقر الشركة أو المشاريع، ولتوثيق زياراتك الميدانية أثناء الدوام.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
