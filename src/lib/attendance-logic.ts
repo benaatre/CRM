@@ -295,6 +295,22 @@ export function planVerificationTimes(
   return times;
 }
 
+/* ═══════════ الإضافي الذهبي (الاحتساب الحر — الدفعة ب) ═══════════ */
+
+/**
+ * تقسيم دقائق العمل على وردية الموظف — **الدالة المشتركة الوحيدة** لكل عرض
+ * أساسي/إضافي: الأساسي يتوقف عند الهدف، والفائض إضافي يُعرض ذهبيًا.
+ */
+export function splitOvertime(
+  workedMinutes: number,
+  shiftMinutes: number,
+): { basicMinutes: number; overtimeMinutes: number } {
+  return {
+    basicMinutes: Math.min(workedMinutes, shiftMinutes),
+    overtimeMinutes: Math.max(0, workedMinutes - shiftMinutes),
+  };
+}
+
 /* ═══════════ الساعات النشطة — خصم التوقف (الدفعة الثالثة) ═══════════ */
 
 /** الشكل الأدنى لفترة التوقف — endedAt=null يعني التوقف جارٍ الآن. */

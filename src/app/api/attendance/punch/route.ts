@@ -332,10 +332,7 @@ export async function POST(req: Request) {
         `الشركة مقفلة الحين — الدوام من ${minutesToHM(settings.workStartMinutes)} إلى ${minutesToHM(settings.workEndMinutes)}`,
       );
     }
-    // الهدف مكتمل (قرار ٧): لا وقت إضافي يُحسب — «أكمل دوامه ✓».
-    if (dayBaseMinutes >= eff.targetMinutes) {
-      return refuse("target_done", "أكملت دوامك اليوم ✓ — ما فيه وقت إضافي يُحسب بعد الهدف");
-    }
+    // الاحتساب الحر (الدفعة ب): لا رفض بعد الهدف — الإضافي يُحسب ويُعرض ذهبيًا.
   }
   // «مراقبة فقط»/«معفى»: البصم يُسجَّل لكن بلا احتساب تأخير (لا إلزام).
   const isLate =

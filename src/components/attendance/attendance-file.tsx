@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarClock, ChevronDown, Search, ShieldQuestion, Trash2 } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
 import { hmLabel, minuteLabel, timeToMinutes } from "@/lib/attendance-ui";
+import { splitOvertime } from "@/lib/attendance-logic";
 import { StationsLog } from "@/components/attendance/attendance-stations";
 import type { DayLogEntry, EmployeeFile } from "@/lib/data/attendance";
 import "./attendance.css";
@@ -326,7 +327,13 @@ function DayRow({ d }: { d: DayLogEntry }) {
           {d.locationName && <span>{d.locationName}</span>}
           {d.workedMinutes > 0 && (
             <span className="tabular-nums">
-              {hmLabel(d.workedMinutes, toArabicDigits)} من {hmLabel(d.targetMinutes, toArabicDigits)}
+              {hmLabel(splitOvertime(d.workedMinutes, Math.max(1, d.targetMinutes)).basicMinutes, toArabicDigits)} من{" "}
+              {hmLabel(d.targetMinutes, toArabicDigits)}
+              {splitOvertime(d.workedMinutes, Math.max(1, d.targetMinutes)).overtimeMinutes > 0 && (
+                <b className="font-bold" style={{ color: "var(--gold, #cba45e)" }}>
+                  {" "}+ {hmLabel(splitOvertime(d.workedMinutes, Math.max(1, d.targetMinutes)).overtimeMinutes, toArabicDigits)} إضافي
+                </b>
+              )}
             </span>
           )}
           {d.visitNames.length > 0 && <span>زار: {d.visitNames.join("، ")}</span>}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Building2, CalendarRange, MapPin } from "lucide-react";
 import { toArabicDigits } from "@/lib/format";
 import { hmLabel } from "@/lib/attendance-ui";
+import { splitOvertime } from "@/lib/attendance-logic";
 import type { LiveBoardPayload, LiveBoardRow, LocationRadar as LocationRadarData, RangeBoardRow, TileState } from "@/lib/data/attendance";
 import { LocationRadar } from "@/components/attendance/location-radar";
 import { DayTimeline, type TimelineTokens } from "@/components/attendance/day-timeline";
@@ -629,7 +630,17 @@ function OnBody({ row, now }: { row: LiveBoardRow; now: number }) {
         </div>
         <p className="mt-1.5 flex items-center justify-between text-[11px] text-[var(--att-muted)]">
           <span>
-            أنجز <b className="font-bold text-[var(--att-text)]">{hmLabel(elapsed, toArabicDigits)}</b> من {targetLabel(row.targetMinutes)}
+            {(() => {
+              const ot = splitOvertime(elapsed, target);
+              return (
+                <>
+                  أنجز <b className="font-bold text-[var(--att-text)]">{hmLabel(ot.basicMinutes, toArabicDigits)}</b> من {targetLabel(row.targetMinutes)}
+                  {ot.overtimeMinutes > 0 && (
+                    <b className="font-bold" style={{ color: "var(--att-gold)" }}> + {hmLabel(ot.overtimeMinutes, toArabicDigits)} إضافي</b>
+                  )}
+                </>
+              );
+            })()}
           </span>
           <span className="tabular-nums">{toArabicDigits(pct)}٪</span>
         </p>
@@ -725,7 +736,17 @@ function DoneBody({ row }: { row: LiveBoardRow }) {
       </div>
       <p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-[var(--att-muted)]">
         <span>
-          أنجز <b className="font-bold text-[var(--att-text)]">{toArabicDigits(pct)}٪</b> من هدفه
+          {(() => {
+            const ot = splitOvertime(row.doneMinutes, Math.max(1, row.targetMinutes));
+            return (
+              <>
+                أنجز <b className="font-bold text-[var(--att-text)]">{toArabicDigits(pct)}٪</b> من هدفه
+                {ot.overtimeMinutes > 0 && (
+                  <b className="font-bold" style={{ color: "var(--att-gold)" }}> + {hmLabel(ot.overtimeMinutes, toArabicDigits)} إضافي</b>
+                )}
+              </>
+            );
+          })()}
         </span>
         {row.unconfirmedMinutes > 0 && (
           <span>

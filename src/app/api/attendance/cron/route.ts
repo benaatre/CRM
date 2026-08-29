@@ -16,7 +16,6 @@ import { effectiveConfigsFor, mergeConfig } from "@/lib/attendance-config";
 import {
   PAUSE_REMINDER_TEXT,
   arrivalMissedText,
-  completedText,
   durationArabic,
   noResponseStopText,
   noShowText,
@@ -45,6 +44,8 @@ export const dynamic = "force-dynamic";
  *   ٤) إقفال الجلسات المنسية (autoClosed) عند نهاية نافذة الشركة/الدوام الشخصي.
  *   ٥) تذكير الموقوف «لا زلت مستأذنًا — رجعت؟» بعد ساعة، ومرة ثانية أخيرة بعد ساعة إضافية.
  *   +) تذكير البصم (دفعة الختام): فتحت نافذته ولا بصمة ولا قرار → push «تذكير الحضور» مرة باليوم.
+ *   +) الاحتساب الحر (الدفعة ب): قصّ الهدف أُلغي — الإضافي يُحسب، وسقف أمان
+ *      الجلسة الوحيد maxSessionMinutes بإقفال MAX_CAP.
  *   +) فلسفة النبض الحاكم (الدفعة أ): حصانة النبض تُسقط كل نداء آلي لمن نبضته
  *      داخل النطاق طازجة (عدّاد pulseImmunity بالرد)، وتنبيهات قرار المالك
  *      (attendance.pulse_alert) بدل النداء العشوائي المعطَّل.
@@ -647,90 +648,85 @@ async function alertOwnerDecisions(now: Date, settings: Settings): Promise<numbe
 }
 
 /**
- * ٧) توقف العدّاد عند اكتمال الهدف (الدوام الواقعي — قرار ٧): مجموع اليوم بلغ
- * الهدف → تُقفل الجلسة **بأثر رجعي عند لحظة البلوغ الرياضية** (البداية +
- * المتبقي، مزاحةً بالتوقفات) بـ`closedBy: TARGET` — فتأخر الكرون ≤٥ دقائق لا
- * يسرّب دقيقة، وحالة «مداوم ٨:٠٣/٨» تستحيل. الموقوف مستثنى (عدّاده واقف).
+ * ٧) سقف أمان الجلسة (الاحتساب الحر — الدفعة ب): قصّ الهدف أُلغي — الجلسة
+ * تستمر بعد الهدف ويُحسب الإضافي ذهبيًا. الحارس الوحيد: جلسة تجاوز نشاطُها
+ * settings.maxSessionMinutes → إقفال بنمط الإقفال القانوني حرفيًا (آخر إثبات
+ * حياة + السماحية، بسقف لحظة بلوغ السقف رياضيًا) بوسم closedBy="MAX_CAP".
  */
-async function closeCompletedTargets(now: Date, settings: Settings): Promise<number> {
+async function enforceMaxSession(now: Date, settings: Settings): Promise<number> {
   const open = await prisma.attendanceSession.findMany({
     where: { endedAt: null, voided: false },
     include: { pauses: true },
   });
   if (open.length === 0) return 0;
 
-  const scheduleByUser = new Map(
-    (
-      await prisma.attendanceSchedule.findMany({
-        where: { userId: { in: [...new Set(open.map((s) => s.userId))] } },
-      })
-    ).map((s) => [s.userId, s]),
-  );
-
+  const capConfigs = await effectiveConfigsFor([...new Set(open.map((s) => s.userId))], now);
   let closed = 0;
   for (const s of open) {
-    if (s.pauses.some((p) => p.endedAt === null)) continue; // موقوف — الهدف لا يتقدم
+    const activePauses = s.pauses.map((p) => ({ startedAt: p.startedAt, endedAt: p.endedAt }));
+    const live = activeWorkedMinutes(s.startedAt, now, activePauses, now);
+    if (live < settings.maxSessionMinutes) continue;
 
+    // لحظة بلوغ السقف رياضيًا — مزاحة بالتوقفات المغلقة (نفس momentOfActiveTarget).
+    const capMoment = momentOfActiveTarget(
+      s.startedAt,
+      activePauses,
+      settings.maxSessionMinutes,
+    ).getTime();
+    const lastProof = s.lastAliveAt ?? s.startedAt;
+    const graceEnd = Math.max(s.startedAt.getTime(), lastProof.getTime() + settings.autoCloseAliveGraceMinutes * 60_000);
+    const closeAt = Math.min(capMoment, graceEnd, now.getTime());
+
+    const openPause = s.pauses.find((p) => p.endedAt === null) ?? null;
+    const closeMoment = openPause ? Math.min(closeAt, openPause.startedAt.getTime()) : closeAt;
+    const endDate = new Date(closeMoment);
     const dayKey = ksaDayKey(s.startedAt);
-    const exceptions = await prisma.attendanceException.findMany({
-      where: {
-        userId: s.userId,
-        dateFrom: { lte: new Date(`${dayKey}T00:00:00Z`) },
-        dateTo: { gte: new Date(`${dayKey}T00:00:00Z`) },
-      },
-    });
-    const cfg = mergeConfig(settings, scheduleByUser.get(s.userId) ?? null, now);
-    const eff = effectiveDay(scheduleByUser.get(s.userId), exceptions, dayKey, ksaDayOfWeek(s.startedAt), cfg.weekendSet);
 
-    // أساس اليوم من الجلسات المغلقة السابقة — نفس تعريف الحساب اليومي.
-    const dayStart = new Date(`${dayKey}T00:00:00+03:00`);
-    const earlier = await prisma.attendanceSession.findMany({
-      where: { userId: s.userId, voided: false, startedAt: { gte: dayStart, lt: s.startedAt }, endedAt: { not: null } },
-      select: { workedMinutes: true },
-    });
-    const dayBase = earlier.reduce((sum, x) => sum + (x.workedMinutes ?? 0), 0);
-    const remaining = eff.targetMinutes - dayBase;
-    if (remaining <= 0) {
-      // الهدف مكتمل قبل هذي الجلسة أصلًا — بصمة زائدة، تُقفل عند بدايتها بصفر دقائق.
-      await prisma.attendanceSession.update({
-        where: { id: s.id },
-        data: { endedAt: s.startedAt, workedMinutes: 0, closedBy: "TARGET" },
-      });
-      closed++;
-      continue;
-    }
-
-    const live = activeWorkedMinutes(
-      s.startedAt,
-      now,
-      s.pauses.map((p) => ({ startedAt: p.startedAt, endedAt: p.endedAt })),
-      now,
-    );
-    if (live < remaining) continue;
-
-    const targetMoment = momentOfActiveTarget(
-      s.startedAt,
-      s.pauses.map((p) => ({ startedAt: p.startedAt, endedAt: p.endedAt })),
-      remaining,
-    );
     await prisma.$transaction(async (tx) => {
+      if (openPause) {
+        await tx.attendancePause.update({
+          where: { id: openPause.id },
+          data: { endedAt: openPause.startedAt, autoClosed: true },
+        });
+      }
       await tx.attendanceSession.update({
         where: { id: s.id },
-        data: { endedAt: targetMoment, workedMinutes: remaining, closedBy: "TARGET" },
+        data: {
+          endedAt: endDate,
+          workedMinutes: activeWorkedMinutes(
+            s.startedAt,
+            endDate,
+            s.pauses
+              .filter((p) => p.endedAt !== null)
+              .map((p) => ({ startedAt: p.startedAt, endedAt: p.endedAt })),
+            endDate,
+          ),
+          autoClosed: true,
+          closedBy: "MAX_CAP",
+        },
       });
-      await tx.attendanceVerification.deleteMany({ where: { userId: s.userId, status: "PENDING" } });
-      // «قفل اليوم نهائيًا» المفعّل: اكتمال الهدف يقفل اليوم (بصمة جديدة تُرفض).
-      if (cfg.dayLockEnabled) {
+      const zoneProof = s.lastZoneProofAt?.getTime() ?? null;
+      const unconfirmed = zoneProof !== null ? Math.max(0, Math.round((closeMoment - zoneProof) / 60_000)) : 0;
+      if (unconfirmed > 0) {
         const day = await ensureAttendanceDay(tx, s.userId, dayKey);
-        if (!day.lockedAt) await tx.attendanceDay.update({ where: { id: day.id }, data: { lockedAt: targetMoment } });
+        await tx.attendanceDay.update({
+          where: { id: day.id },
+          data: { unconfirmedMinutes: day.unconfirmedMinutes + unconfirmed },
+        });
+      }
+      await tx.attendanceVerification.deleteMany({ where: { userId: s.userId, status: "PENDING" } });
+      if (capConfigs.get(s.userId)?.dayLockEnabled) {
+        const day = await ensureAttendanceDay(tx, s.userId, dayKey);
+        if (!day.lockedAt) await tx.attendanceDay.update({ where: { id: day.id }, data: { lockedAt: endDate } });
       }
     });
+
     const me = await prisma.user.findUnique({ where: { id: s.userId }, select: { name: true } });
     await notify(
       prisma,
       await ownerIds(prisma),
-      "attendance.completed",
-      completedText(me?.name ?? "موظف", eff.targetMinutes, null),
+      "attendance.auto_closed",
+      `${me?.name ?? "موظف"}: بلغت جلسته سقف الأمان (${durationArabic(settings.maxSessionMinutes)}) فأُقفلت آليًا`,
       undefined,
       `/attendance/${s.userId}`,
     ).catch(() => {});
@@ -1056,15 +1052,15 @@ export async function POST(req: Request) {
     checkNoShows(now, settings),
     remindPunchIn(now, settings),
     alertOwnerDecisions(now, settings),
-    closeCompletedTargets(now, settings),
+    enforceMaxSession(now, settings),
     autoCloseForgotten(now, settings),
     checkHeartbeatGaps(now, settings, immunity),
     watchVisits(now, settings, immunity),
     remindPaused(now),
     cleanOldPulses(now),
   ]);
-  const names = ["verifySent", "verifyMissed", "noShow", "punchReminders", "decisionAlerts", "targetClosed", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
-  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, punchReminders: 0, decisionAlerts: 0, targetClosed: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
+  const names = ["verifySent", "verifyMissed", "noShow", "punchReminders", "decisionAlerts", "maxSession", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
+  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, punchReminders: 0, decisionAlerts: 0, maxSession: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
   const failed: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") counts[names[i]] = r.value;

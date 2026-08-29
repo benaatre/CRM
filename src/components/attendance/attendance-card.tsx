@@ -795,6 +795,11 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                             "جاهز للبدء"
                           )}
                         </div>
+                        {dayBase > targetMinutes && (
+                          <div className={zain.className} style={{ fontSize: 12.5, fontWeight: 800, color: "var(--m-gold)", marginTop: 4 }}>
+                            إضافي +{hmLabel(dayBase - targetMinutes, toArabicDigits)}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -842,15 +847,16 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                       </div>
                     )}
 
-                    {/* ===== `.aacts` — الزر الذهبي الكبير (يختفي بعد اكتمال الهدف — قرار ٧) ===== */}
-                    {status.state === "out" && dayBase >= targetMinutes ? (
+                    {/* ===== `.aacts` — الاحتساب الحر (الدفعة ب): الزر يبقى بعد الهدف والإضافي يُحسب ===== */}
+                    {status.state === "out" && dayBase >= targetMinutes && (
                       <p
-                        className="flex items-center justify-center"
-                        style={{ gap: 7, borderRadius: 13, padding: "13px 0", fontSize: 13, fontWeight: 700, background: soft("var(--att-on)", 12), color: "var(--att-on)" }}
+                        className="mb-2 flex items-center justify-center"
+                        style={{ gap: 7, borderRadius: 13, padding: "10px 0", fontSize: 12.5, fontWeight: 700, background: soft("var(--att-on)", 12), color: "var(--att-on)" }}
                       >
-                        أكملت دوامك اليوم <Check aria-hidden size={13} strokeWidth={2.4} style={{ maxWidth: 22, maxHeight: 22 }} /> — يعطيك العافية
+                        أكملت هدفك <Check aria-hidden size={13} strokeWidth={2.4} style={{ maxWidth: 22, maxHeight: 22 }} /> — وأي دوام إضافي يُحسب لك بالذهبي
                       </p>
-                    ) : (
+                    )}
+                    {(
                       <div className="flex" style={{ gap: 9 }}>
                         <button
                           type="button"
@@ -1070,6 +1076,12 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                       done={targetDone}
                       paused={paused}
                     />
+                    {/* الإضافي الذهبي (الاحتساب الحر): بعد اكتمال الهدف العداد يواصل ذهبيًا */}
+                    {targetDone && elapsedMinutes > targetMinutes && (
+                      <p className="text-center text-[13px] font-extrabold" style={{ color: "var(--att-gold)" }}>
+                        إضافي +<span className={zain.className}>{hmLabel(elapsedMinutes - targetMinutes, toArabicDigits)}</span>
+                      </p>
+                    )}
 
                     {status.sessionsToday > 1 && (
                       <p className="text-center text-[10.5px] text-[var(--att-esp-muted)]">
@@ -1138,7 +1150,13 @@ export function AttendanceCard({ theme = "web" }: { theme?: AttendanceTheme }) {
                 {status?.state === "out" && dayBase > 0 && (
                   <p className="relative text-[11.5px] text-[var(--att-esp-muted)]">
                     أنجزت اليوم <b className="font-bold text-[var(--att-esp-text)]">{hmLabel(dayBase, toArabicDigits)}</b> من{" "}
-                    {targetLabel(targetMinutes)} — تقدر تكمل بأي وقت
+                    {targetLabel(targetMinutes)}
+                    {dayBase > targetMinutes && (
+                      <b className="font-bold" style={{ color: "var(--att-gold)" }}>
+                        {" "}— إضافي +{hmLabel(dayBase - targetMinutes, toArabicDigits)}
+                      </b>
+                    )}{" "}
+                    — تقدر تكمل بأي وقت
                   </p>
                 )}
 
