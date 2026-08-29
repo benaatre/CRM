@@ -32,6 +32,15 @@ export type EffectiveAttendanceConfig = {
   watchFromMinutes: number;
   watchToMinutes: number;
   watchAlertFirstSeen: boolean;
+  // ===== الدفعة ب (يوم الإغلاق) =====
+  /// حد التأخير الفعلي — الشخصي إن وُجد وإلا العام
+  lateThresholdMinutes: number;
+  /// نداء انقطاع الإثبات (GAP)
+  gapCallEnabled: boolean;
+  /// تذكير البصم الصباحي
+  punchReminderEnabled: boolean;
+  /// وضع الاستثناء الإخباري: صفر نداءات/تذكيرات — الرصد وملخص النبض باقيان
+  quietMode: boolean;
   /** أعلام «مخصّص» للواجهة — أي حقل تخصيص غير null. */
   custom: {
     verificationPerDay: boolean;
@@ -39,6 +48,9 @@ export type EffectiveAttendanceConfig = {
     outZoneCallEnabled: boolean;
     dayLockEnabled: boolean;
     notifyMissedCall: boolean;
+    lateThresholdMinutes: boolean;
+    gapCallEnabled: boolean;
+    punchReminderEnabled: boolean;
   };
   /** الإلزام فعّال (نداءات/غياب/تأخر/شاشة الحسم) — STRICT فقط. */
   enforced: boolean;
@@ -67,12 +79,19 @@ export function mergeConfig(
     watchFromMinutes: row?.watchFromMinutes ?? 480,
     watchToMinutes: row?.watchToMinutes ?? 1320,
     watchAlertFirstSeen: row?.watchAlertFirstSeen ?? false,
+    lateThresholdMinutes: row?.lateThresholdMinutes ?? settings.lateThresholdMinutes,
+    gapCallEnabled: row?.gapCallEnabled ?? true,
+    punchReminderEnabled: row?.punchReminderEnabled ?? true,
+    quietMode: row?.quietMode ?? false,
     custom: {
       verificationPerDay: row?.verificationPerDay != null,
       weekendDays: row?.weekendDays != null,
       outZoneCallEnabled: row?.outZoneCallEnabled != null,
       dayLockEnabled: row?.dayLockEnabled != null,
       notifyMissedCall: row?.notifyMissedCall != null,
+      lateThresholdMinutes: row?.lateThresholdMinutes != null,
+      gapCallEnabled: row?.gapCallEnabled != null,
+      punchReminderEnabled: row?.punchReminderEnabled != null,
     },
     enforced: mode === "STRICT",
   };

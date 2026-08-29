@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   const eff = effectiveDay(schedule, exceptions, todayKey, ksaDayOfWeek(at), config.weekendSet);
   if (eff.onLeave) return NextResponse.json({ ok: false, error: "عنده إجازة اليوم — ما فيه تسجيل حضور" }, { status: 409 });
 
-  const isLate = config.enforced && isLateCheckIn(ksaMinutesOfDay(at), eff, settings.lateThresholdMinutes);
+  const isLate = config.enforced && isLateCheckIn(ksaMinutesOfDay(at), eff, config.lateThresholdMinutes);
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
   const sessionId = await prisma.$transaction(async (tx) => {

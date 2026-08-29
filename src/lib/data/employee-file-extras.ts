@@ -271,6 +271,10 @@ export async function getConfigView(userId: string, now = new Date()) {
     watchFromMinutes: c.watchFromMinutes,
     watchToMinutes: c.watchToMinutes,
     watchAlertFirstSeen: c.watchAlertFirstSeen,
+    lateThresholdMinutes: c.lateThresholdMinutes,
+    gapCallEnabled: c.gapCallEnabled,
+    punchReminderEnabled: c.punchReminderEnabled,
+    quietMode: c.quietMode,
     custom: c.custom,
   };
 }
@@ -624,6 +628,7 @@ export async function buildEmployeeFileBundle(userId: string, q: BundleQuery): P
       verificationEnabled: settings.verificationEnabled,
       weekendDays: settings.weekendDays,
       maxOutOfZoneMinutes: settings.maxOutOfZoneMinutes,
+      lateThresholdMinutes: settings.lateThresholdMinutes,
       heartbeatSeconds: 60,
     },
     radar: { state: timeline.radar.state, locationName: timeline.radar.locationName },

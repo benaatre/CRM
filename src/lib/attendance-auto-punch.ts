@@ -138,11 +138,11 @@ export async function tryAutoPunch(args: {
     if (!prevInZone) return { punched: false };
   }
 
-  const isLate = isLateCheckIn(nowMinutes, eff, settings.lateThresholdMinutes);
-
-  // إعدادات الموظف الفعلية — للنداءات المخصصة، والمُستدعي يضمن STRICT أصلًا.
+  // إعدادات الموظف الفعلية — للنداءات المخصصة وحد تأخيره الشخصي (الدفعة ب).
   const schedRow = await prisma.attendanceSchedule.findUnique({ where: { userId } });
   const config = mergeConfig(settings, schedRow, now);
+
+  const isLate = isLateCheckIn(nowMinutes, eff, config.lateThresholdMinutes);
 
   const punched = await prisma.$transaction(async (tx) => {
     /*
@@ -196,7 +196,7 @@ export async function tryAutoPunch(args: {
 
     // جدولة النداءات — نفس قواعد punch حرفيًا (السقف والحرسان)، بنداءات الموظف المخصصة.
     // مفتاح العشوائي الموحّد (مركز التحكم): verificationEnabled وحده يحكم.
-    if (settings.verificationEnabled && !eff.isWeekend) {
+    if (settings.verificationEnabled && !config.quietMode && !eff.isWeekend) {
       const dailyCap = Math.min(config.verificationPerDay, 2);
       const alreadyToday = await tx.attendanceVerification.count({
         where: { userId, kind: "RANDOM", scheduledAt: { gte: new Date(`${todayKey}T00:00:00+03:00`) } },

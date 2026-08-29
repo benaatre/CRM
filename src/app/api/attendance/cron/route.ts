@@ -112,8 +112,10 @@ async function sendDueVerifications(now: Date, settings: Settings, immunity: Imm
 
   let sent = 0;
   for (const v of due) {
-    // بدّله المالك لوضع بلا إلزام بعد الجدولة — النداءات المعلقة تُحذف.
-    if (configs.get(v.userId)?.enforced === false) {
+    // بدّله المالك لوضع بلا إلزام — أو وضع الاستثناء الإخباري (quietMode):
+    // النداءات المعلقة تُحذف (الدفعة ب: صفر نداءات للهادئ، والرصد باقٍ).
+    const vCfg = configs.get(v.userId);
+    if (vCfg?.enforced === false || vCfg?.quietMode) {
       await prisma.attendanceVerification.delete({ where: { id: v.id } });
       continue;
     }
@@ -236,6 +238,8 @@ async function expireMissedVerifications(now: Date, immunity: ImmunityCounter): 
         where: { userId: v.userId, endedAt: null },
         select: { id: true },
       });
+      // quietMode (الدفعة ب): لا تصعيد لموظف الوضع الإخباري.
+      if (stillOn && expiredConfigs.get(v.userId)?.quietMode) continue;
       // القاعدة الذهبية: نبضة داخل النطاق طازجة تُسقط التصعيد — الحضور مثبت.
       if (stillOn && (await hasPulseImmunity(v.userId, now))) {
         immunity.count++;
@@ -514,6 +518,8 @@ async function remindPunchIn(now: Date, settings: Settings): Promise<number> {
     // «مراقبة/معفى» بلا تذكير — التذكير يعد ببصم تلقائي وهو لSTRICT حصرًا.
     const cfg = mergeConfig(settings, scheduleByUser.get(u.id) ?? null, now);
     if (!cfg.enforced) continue;
+    if (cfg.quietMode) continue; // الوضع الإخباري — صفر تذكيرات (الدفعة ب)
+    if (!cfg.punchReminderEnabled) continue; // مفتاح التذكير الفردي (الدفعة ب)
     const eff = effectiveDay(
       scheduleByUser.get(u.id),
       exceptions.filter((e) => e.userId === u.id),
@@ -645,6 +651,65 @@ async function alertOwnerDecisions(now: Date, settings: Settings): Promise<numbe
     acted++;
   }
   return acted;
+}
+
+/**
+ * ١٢) ملخص النبض الإخباري (quietMode — الدفعة ب): لكل موظف بوضع الاستثناء
+ * الإخباري وجلسة مفتوحة — إشعار للمالك كل ٣٠ دقيقة «فلان — نبض HH:MM ·
+ * داخل/خارج الموقع» بقناة attendance.quiet_pulse. dedup بصف الإشعار (٣٠د).
+ */
+async function quietPulseDigest(now: Date): Promise<number> {
+  const quietRows = await prisma.attendanceSchedule.findMany({
+    where: { quietMode: true },
+    select: { userId: true },
+  });
+  if (quietRows.length === 0) return 0;
+  const quietIds = quietRows.map((r) => r.userId);
+
+  const open = await prisma.attendanceSession.findMany({
+    where: { endedAt: null, voided: false, userId: { in: quietIds } },
+    select: { userId: true },
+  });
+  if (open.length === 0) return 0;
+
+  const names = new Map(
+    (
+      await prisma.user.findMany({ where: { id: { in: open.map((s) => s.userId) } }, select: { id: true, name: true } })
+    ).map((u) => [u.id, u.name]),
+  );
+  const owners = await ownerIds(prisma);
+
+  let sent = 0;
+  for (const s of open) {
+    const already = await prisma.notification.findFirst({
+      where: {
+        type: "attendance.quiet_pulse",
+        link: `/attendance/${s.userId}`,
+        createdAt: { gte: new Date(now.getTime() - 30 * 60_000) },
+      },
+      select: { id: true },
+    });
+    if (already) continue;
+
+    const lastPulse = await prisma.attendancePulse.findFirst({
+      where: { userId: s.userId },
+      orderBy: { at: "desc" },
+      select: { at: true, inZone: true },
+    });
+    const zoneText = lastPulse
+      ? `نبض ${formatTime(lastPulse.at)} · ${lastPulse.inZone === true ? "داخل الموقع" : lastPulse.inZone === false ? "خارج الموقع" : "بلا حكم موقع"}`
+      : "لا نبض بعد";
+    await notify(
+      prisma,
+      owners,
+      "attendance.quiet_pulse",
+      `${names.get(s.userId) ?? "موظف"} — ${zoneText}`,
+      undefined,
+      `/attendance/${s.userId}`,
+    ).catch(() => {});
+    sent++;
+  }
+  return sent;
 }
 
 /**
@@ -904,7 +969,10 @@ async function checkHeartbeatGaps(now: Date, settings: Settings, immunity: Immun
   for (const s of open) {
     if (s.pauses.length > 0) continue; // موقوف/مستأذن — عدّاده واقف أصلًا
     if (offSite.has(s.userId)) continue;
-    if (gapConfigs.get(s.userId)?.enforced === false) continue; // مراقبة/معفى — بلا نداءات
+    const gCfg = gapConfigs.get(s.userId);
+    if (gCfg?.enforced === false) continue; // مراقبة/معفى — بلا نداءات
+    if (gCfg?.quietMode) continue; // الوضع الإخباري — صفر نداءات (الدفعة ب)
+    if (gCfg?.gapCallEnabled === false) continue; // مفتاح نداء الانقطاع الفردي (الدفعة ب)
     const companyEnd = minutesToDate(ksaDayKey(s.startedAt), settings.workEndMinutes).getTime();
     if (now.getTime() >= companyEnd) continue;
 
@@ -951,7 +1019,9 @@ async function watchVisits(now: Date, settings: Settings, immunity: ImmunityCoun
   let acted = 0;
   for (const s of open) {
     if (s.pauses.length > 0) continue;
-    if (visitConfigs.get(s.userId)?.enforced === false) continue; // مراقبة/معفى — بلا تذكير ولا نداء
+    const vwCfg = visitConfigs.get(s.userId);
+    if (vwCfg?.enforced === false) continue; // مراقبة/معفى — بلا تذكير ولا نداء
+    if (vwCfg?.quietMode) continue; // الوضع الإخباري (الدفعة ب)
 
     // محطة المشروع الجارية = آخر حدث موقعي للجلسة على دائرة PROJECT داخل النطاق.
     const lastLocEvent = await prisma.attendanceEvent.findFirst({
@@ -1057,10 +1127,11 @@ export async function POST(req: Request) {
     checkHeartbeatGaps(now, settings, immunity),
     watchVisits(now, settings, immunity),
     remindPaused(now),
+    quietPulseDigest(now),
     cleanOldPulses(now),
   ]);
-  const names = ["verifySent", "verifyMissed", "noShow", "punchReminders", "decisionAlerts", "maxSession", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "pulsesCleaned"] as const;
-  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, punchReminders: 0, decisionAlerts: 0, maxSession: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, pulsesCleaned: 0 };
+  const names = ["verifySent", "verifyMissed", "noShow", "punchReminders", "decisionAlerts", "maxSession", "autoClosed", "gapCalls", "visitWatch", "pauseReminders", "quietDigests", "pulsesCleaned"] as const;
+  const counts = { verifySent: 0, verifyMissed: 0, noShow: 0, punchReminders: 0, decisionAlerts: 0, maxSession: 0, autoClosed: 0, gapCalls: 0, visitWatch: 0, pauseReminders: 0, quietDigests: 0, pulsesCleaned: 0 };
   const failed: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") counts[names[i]] = r.value;

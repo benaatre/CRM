@@ -80,12 +80,19 @@ export type EFBundle = {
     watchFromMinutes: number;
     watchToMinutes: number;
     watchAlertFirstSeen: boolean;
+    lateThresholdMinutes: number;
+    gapCallEnabled: boolean;
+    punchReminderEnabled: boolean;
+    quietMode: boolean;
     custom: {
       verificationPerDay: boolean;
       weekendDays: boolean;
       outZoneCallEnabled: boolean;
       dayLockEnabled: boolean;
       notifyMissedCall: boolean;
+      lateThresholdMinutes: boolean;
+      gapCallEnabled: boolean;
+      punchReminderEnabled: boolean;
     };
   };
   globalView: {
@@ -93,6 +100,7 @@ export type EFBundle = {
     verificationEnabled: boolean;
     weekendDays: string;
     maxOutOfZoneMinutes: number;
+    lateThresholdMinutes: number;
     heartbeatSeconds: number;
   };
   todayLocked: boolean;

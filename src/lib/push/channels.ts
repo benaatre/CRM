@@ -160,6 +160,8 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.pulse_alert": "staff",
   // تأخر عن ورديته («بصمة فقط» — الدفعة أ): للمسؤولين، مرة باليوم لكل موظف.
   "attendance.late": "staff",
+  // ملخص النبض الإخباري (quietMode — الدفعة ب): للمالك كل نصف ساعة.
+  "attendance.quiet_pulse": "staff",
 };
 
 /**
@@ -210,6 +212,7 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "attendance.punch_reminder": "تذكير الحضور (للموظف)",
   "attendance.pulse_alert": "تنبيه قرار النبض (للمالك)",
   "attendance.late": "تأخر عن ورديته",
+  "attendance.quiet_pulse": "ملخص النبض الإخباري (للمالك)",
 };
 
 /**

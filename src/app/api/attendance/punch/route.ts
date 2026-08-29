@@ -339,7 +339,7 @@ export async function POST(req: Request) {
     body.intent === AttendanceEventType.CHECK_IN &&
     !isResume &&
     config.enforced &&
-    isLateCheckIn(nowMinutes, eff, settings.lateThresholdMinutes);
+    isLateCheckIn(nowMinutes, eff, config.lateThresholdMinutes);
 
   const location = candidates.find((l) => l.id === match.id) ?? null;
 
@@ -419,7 +419,7 @@ export async function POST(req: Request) {
        */
       // مفتاح العشوائي الموحّد الصادق (مركز التحكم — الدفعة أ): verificationEnabled
       // وحده يحكم الجدولة — إطفاؤه من المركز يوقف العشوائي الجديد كليًا.
-      if (settings.verificationEnabled && config.enforced && !eff.isWeekend) {
+      if (settings.verificationEnabled && config.enforced && !config.quietMode && !eff.isWeekend) {
         const dailyCap = Math.min(config.verificationPerDay, 2);
         const alreadyToday = await tx.attendanceVerification.count({
           where: {

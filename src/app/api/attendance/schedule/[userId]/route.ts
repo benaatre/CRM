@@ -99,10 +99,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
       patch.weekendDays = [...new Set(codes)].join(",");
     } else return err("أيام العطلة غير صحيحة");
   }
-  for (const key of ["outZoneCallEnabled", "dayLockEnabled", "notifyMissedCall", "watchAlertFirstSeen"] as const) {
+  for (const key of ["outZoneCallEnabled", "dayLockEnabled", "notifyMissedCall", "watchAlertFirstSeen", "gapCallEnabled", "punchReminderEnabled"] as const) {
     if (raw[key] !== undefined) {
       if (raw[key] !== null && typeof raw[key] !== "boolean") return err("قيمة مفتاح غير صحيحة");
       patch[key] = raw[key];
+    }
+  }
+  // ===== الدفعة ب =====
+  if (raw.quietMode !== undefined) {
+    if (typeof raw.quietMode !== "boolean") return err("قيمة الوضع الإخباري غير صحيحة");
+    patch.quietMode = raw.quietMode;
+  }
+  if (raw.lateThresholdMinutes !== undefined) {
+    if (raw.lateThresholdMinutes === null) patch.lateThresholdMinutes = null;
+    else {
+      const n = Math.round(Number(raw.lateThresholdMinutes));
+      if (!Number.isFinite(n) || n < 0 || n > 240) return err("حد التأخير من ٠ إلى ٢٤٠ دقيقة");
+      patch.lateThresholdMinutes = n;
     }
   }
   if (raw.watchFromMinutes !== undefined || raw.watchToMinutes !== undefined) {
@@ -125,6 +138,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
   const CONFIG_KEYS = [
     "enforcementMode", "exemptUntil", "exemptReason", "verificationPerDay", "weekendDays",
     "outZoneCallEnabled", "dayLockEnabled", "notifyMissedCall", "watchFromMinutes", "watchToMinutes", "watchAlertFirstSeen",
+    "lateThresholdMinutes", "gapCallEnabled", "punchReminderEnabled", "quietMode",
   ];
   const touchesConfig = CONFIG_KEYS.some((k) => k in patch);
 

@@ -172,7 +172,7 @@ export async function POST(req: Request) {
         include: { location: { select: { name: true } } },
       })
       .catch(() => null);
-    if (prev?.inZone === true && config.enforced && config.outZoneCallEnabled) {
+    if (prev?.inZone === true && config.enforced && config.outZoneCallEnabled && !config.quietMode) {
       await createConditionalCall({
         userId,
         sessionId: openSession.id,
