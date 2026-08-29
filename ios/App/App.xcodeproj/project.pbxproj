@@ -10,8 +10,8 @@
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		9C2B8D042FF3C10200D1E2F1 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9C2B8D032FF3C10200D1E2F1 /* InfoPlist.strings */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
-		9B1A7C022FF2B00100C1D2E1 /* SultanGeoPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1A7C012FF2B00100C1D2E1 /* SultanGeoPlugin.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -40,6 +40,7 @@
 		6EBA08E130278D9400C962FD /* notif_whisper.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6EBA08CC30278D9400C962FD /* notif_whisper.wav */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		9A7C4E022FF1A00300B1C2D3 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9A7C4E012FF1A00300B1C2D3 /* GoogleService-Info.plist */; };
+		9B1A7C022FF2B00100C1D2E1 /* SultanGeoPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1A7C012FF2B00100C1D2E1 /* SultanGeoPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,9 +76,11 @@
 		6EBA08CB30278D9400C962FD /* notif_urgent.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = notif_urgent.wav; sourceTree = "<group>"; };
 		6EBA08CC30278D9400C962FD /* notif_whisper.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = notif_whisper.wav; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
-		9B1A7C012FF2B00100C1D2E1 /* SultanGeoPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SultanGeoPlugin.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		9A7C4E012FF1A00300B1C2D3 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		9C2B8D012FF3C10200D1E2F1 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		9C2B8D022FF3C10200D1E2F1 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		9B1A7C012FF2B00100C1D2E1 /* SultanGeoPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SultanGeoPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +146,7 @@
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				9C2B8D032FF3C10200D1E2F1 /* InfoPlist.strings */,
 				9A7C4E012FF1A00300B1C2D3 /* GoogleService-Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
@@ -197,6 +201,7 @@
 			knownRegions = (
 				en,
 				Base,
+				ar,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
 			packageReferences = (
@@ -242,6 +247,7 @@
 				6EBA08E130278D9400C962FD /* notif_whisper.wav in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
+				9C2B8D042FF3C10200D1E2F1 /* InfoPlist.strings in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
 				9A7C4E022FF1A00300B1C2D3 /* GoogleService-Info.plist in Resources */,
@@ -264,6 +270,15 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
+		9C2B8D032FF3C10200D1E2F1 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				9C2B8D022FF3C10200D1E2F1 /* en */,
+				9C2B8D012FF3C10200D1E2F1 /* ar */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -400,7 +415,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 2QTJUD45N6;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -425,7 +440,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 2QTJUD45N6;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;

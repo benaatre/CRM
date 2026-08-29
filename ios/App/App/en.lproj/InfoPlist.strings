@@ -1,0 +1,5 @@
+/* App name under the icon — default/English devices */
+"CFBundleDisplayName" = "Sultan CRM";
+
+/* Location permission dialog copy */
+"NSLocationWhenInUseUsageDescription" = "We need your location to automatically record your attendance when you arrive at company premises or projects, and to document your field visits during work hours.";
