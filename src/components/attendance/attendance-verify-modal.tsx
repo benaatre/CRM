@@ -43,14 +43,26 @@ function readPosition(): Promise<GeolocationPosition> {
   ]);
 }
 
+/** وسم تشخيصي مختصر — code/message البلجن الفعليان (نفس نمط البطاقة). */
+function geoErrTag(err: unknown): string {
+  if (err instanceof CallerGeoTimeoutError) return "T20";
+  const e = err as Partial<GeolocationPositionError> | undefined;
+  const code = typeof e?.code === "number" ? String(e.code) : "؟";
+  const msg = typeof e?.message === "string" && e.message ? e.message.slice(0, 40) : "";
+  return msg ? `${code}·${msg}` : code;
+}
+
 function geoErrorMessage(err: unknown): string {
-  if (err instanceof CallerGeoTimeoutError) {
-    return "ما قدرنا نحدد موقعك — حاول ثانية أو استخدم المتصفح مؤقتًا — جرّب من جديد (٢)";
-  }
-  const code = (err as GeolocationPositionError | undefined)?.code;
-  if (code === 1) return "لازم تسمح بالوصول للموقع عشان نأكد مكانك";
-  if (code === 3) return "طوّلنا وما وصلتنا إشارة — حاول مرة ثانية بمكان مفتوح";
-  return "ما قدرنا نحدد موقعك — تأكد أن خدمة الموقع مشغّلة وحاول مرة ثانية";
+  const base =
+    err instanceof CallerGeoTimeoutError
+      ? "ما قدرنا نحدد موقعك — حاول ثانية أو استخدم المتصفح مؤقتًا — جرّب من جديد (٢)"
+      : (() => {
+          const code = (err as GeolocationPositionError | undefined)?.code;
+          if (code === 1) return "لازم تسمح بالوصول للموقع عشان نأكد مكانك";
+          if (code === 3) return "طوّلنا وما وصلتنا إشارة — حاول مرة ثانية بمكان مفتوح";
+          return "ما قدرنا نحدد موقعك — تأكد أن خدمة الموقع مشغّلة وحاول مرة ثانية";
+        })();
+  return `${base} (${geoErrTag(err)})`;
 }
 
 export function VerifyModal({

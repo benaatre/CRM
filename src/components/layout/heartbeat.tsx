@@ -21,6 +21,16 @@ import { queryGeoPermission, readBestPosition } from "@/lib/geolocation-permissi
  * ملاحظة: القراءة الحالية لقطة واحدة خفيفة؛ watchPosition + قرار الدقة
  * والهامش تأتي في ر٢ (الحضور بالرادار).
  */
+/**
+ * تعطيل «النبضة الأولى بالموقع» (طوارئ 2026-08-27 — تراجع جراحي لسلوك النشرة ٦):
+ * فتح watchPosition عند كل فتحة/رجوع للمقدمة (a0c25ae) تزامن مع تسمم قراءات
+ * getCurrentPosition على عدة أجهزة iOS (البلجن يتوقف عن الرد والويب سليم) —
+ * ساعات مراقبة يتيمة محتملة على CLLocationManager تتراكم عبر الفتحات.
+ * true = نبضة الفتح بلا قراءة موقع كما في 30122ad (آخر سلوك native مؤكد العمل
+ * 25/08)؛ النبض الدوري ومسار wantGeo يبقيان كما هما. الكود نفسه محفوظ أدناه.
+ */
+const FIRST_BEAT_COORDS_DISABLED: boolean = true;
+
 export function Heartbeat() {
   const busyRef = useRef(false);
 
@@ -77,7 +87,7 @@ export function Heartbeat() {
       }
       busyRef.current = true;
       try {
-        const coords = firstOfForeground ? await firstBeatCoords() : null;
+        const coords = !FIRST_BEAT_COORDS_DISABLED && firstOfForeground ? await firstBeatCoords() : null;
         const res = await fetch("/api/heartbeat", {
           method: "POST",
           ...(coords

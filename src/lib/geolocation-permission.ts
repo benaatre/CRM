@@ -183,30 +183,32 @@ export function onGeoPermissionChange(cb: (state: GeoPermState) => void): () => 
 }
 
 /**
- * القفل الأحادي للقراءات الأصلية (إصلاح تجميد البصمة): قراءتان أصليتان
- * متزامنتان (بصمة يدوية أثناء النبضة الأولى مثلًا) تُسقطان رد بلجن iOS —
- * فالقراءة الجارية يتشاركها كل المستدعين بدل فتح ثانية موازية. يُنظَّف في
- * الحالتين (نجاح/فشل) فلا يعلق قفلًا، والمسار الويبي خارجه كليًا.
+ * القفل الأحادي لقراءات getCurrentPosition الأصلية **حصرًا** (طوارئ 27/08):
+ * كان مشتركًا مع مسار watch (readBestPosition) فورث مستدعي البصمة وعودًا
+ * أنشأها مسار الـwatch بسلوك مختلف — الآن مسار البصمة قراءة مباشرة معزولة
+ * كسلوك النشرة ٦ المعروف العمل، والقفل يمنع فقط تزامن getCurrentPosition
+ * مع نفسها. يُنظَّف في الحالتين فلا يعلق، والمسار الويبي خارجه كليًا.
  */
-let nativeReadInFlight: Promise<GeolocationPosition> | null = null;
+let onceReadInFlight: Promise<GeolocationPosition> | null = null;
 
-function singleFlightNativeRead(start: () => Promise<GeolocationPosition>): Promise<GeolocationPosition> {
-  if (!nativeReadInFlight) {
+function singleFlightOnceRead(start: () => Promise<GeolocationPosition>): Promise<GeolocationPosition> {
+  if (!onceReadInFlight) {
     const p = start();
-    nativeReadInFlight = p;
+    onceReadInFlight = p;
     const clear = () => {
-      if (nativeReadInFlight === p) nativeReadInFlight = null;
+      if (onceReadInFlight === p) onceReadInFlight = null;
     };
     p.then(clear, clear);
   }
-  return nativeReadInFlight;
+  return onceReadInFlight;
 }
 
 /** قراءة موقع واحدة — للنبض و«أنا موجود بالموقع». عالية الدقة للطلب الصريح. */
 export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
   const geo = await nativeGeo();
   if (geo) {
-    return singleFlightNativeRead(async () => {
+    // قراءة مباشرة واحدة (getCurrentPosition) — خارج أي مشاركة مع مسار watch.
+    return singleFlightOnceRead(async () => {
       const timeoutMs = opts?.timeout ?? 12_000;
       try {
         // المهلة الصلبة: البلجن على iOS لا يفرض timeout — السباق يضمن الحسم
@@ -273,9 +275,9 @@ export async function readBestPosition(opts?: {
   const targetAccuracy = opts?.targetAccuracy ?? 50;
   const timeoutMs = opts?.timeoutMs ?? 12_000;
   const geo = await nativeGeo();
-  // نفس القفل الأحادي — النبضة الأولى والبصمة لا تفتحان قراءتين أصليتين أبدًا:
-  // الجارية تُشارَك أيًا كان مطلقها (مؤقت النسخة الأصلية يضمن حسمها دائمًا).
-  if (geo) return singleFlightNativeRead(() => readBestPositionNative(geo, targetAccuracy, timeoutMs));
+  // مسار الـwatch مستقل عن قفل البصمة (طوارئ 27/08) — سلوك النشرة ٦ حرفيًا؛
+  // مؤقته الداخلي يضمن الحسم وclearWatch على كل مسارات النهاية.
+  if (geo) return readBestPositionNative(geo, targetAccuracy, timeoutMs);
   return readBestPositionWeb(targetAccuracy, timeoutMs);
 }
 
