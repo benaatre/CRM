@@ -76,6 +76,7 @@ type Draft = {
   visitReverifyMinutes: number;
   quietWindowCountsCrm: boolean;
   // ===== الدفعة ب =====
+  maxSessionMinutes: number;
   pulseImmunityMinutes: number;
   autoCallOnSustainedOutZone: boolean;
   /** توزيع التنبيهات كسلسلة JSON — للمقارنة البسيطة في changedKeys. */
@@ -108,6 +109,7 @@ const draftOf = (s: AttendanceSettings): Draft => ({
   maxConditionalPerDay: s.maxConditionalPerDay,
   visitReverifyMinutes: s.visitReverifyMinutes,
   quietWindowCountsCrm: s.quietWindowCountsCrm,
+  maxSessionMinutes: s.maxSessionMinutes,
   pulseImmunityMinutes: s.pulseImmunityMinutes,
   autoCallOnSustainedOutZone: s.autoCallOnSustainedOutZone,
   alertRoutingJson: JSON.stringify(s.alertRouting ?? {}),
@@ -318,7 +320,7 @@ export function ControlCenter({
             </p>
           </Card>
 
-          <Card title="التأخير والعطلة والضبط الدقيق" onReset={() => resetSection(["lateThresholdMinutes", "weekendDays", "cooldownSeconds", "autoCloseAliveGraceMinutes"])}>
+          <Card title="التأخير والعطلة والضبط الدقيق" onReset={() => resetSection(["lateThresholdMinutes", "weekendDays", "cooldownSeconds", "autoCloseAliveGraceMinutes", "maxSessionMinutes"])}>
             <Row label="حد التأخير" desc="يُقاس على بداية وردية كل موظف — المتأخر يبصم ويدخل عادي، والتنبيه يصل المسؤولين." badge={<CustomBadge />}>
               <Stepper value={draft.lateThresholdMinutes} min={0} max={240} step={5} unit="دقيقة" onChange={(v) => set("lateThresholdMinutes", v)} />
             </Row>
@@ -330,6 +332,16 @@ export function ControlCenter({
             </Row>
             <Row label="سماحية الإقفال التلقائي" desc="عند الإقفال القسري تُحتسب هذه المدة بعد آخر إثبات حياة.">
               <Stepper value={draft.autoCloseAliveGraceMinutes} min={5} max={120} step={5} unit="دقيقة" onChange={(v) => set("autoCloseAliveGraceMinutes", v)} />
+            </Row>
+            <Row label="أقصى مدة جلسة" desc="جلسة تتجاوز هذا السقف تُقفل تلقائيًا عند آخر إثبات حياة — صمام أمان الاحتساب الحر.">
+              <Stepper
+                value={Math.round(draft.maxSessionMinutes / 60)}
+                min={8}
+                max={24}
+                step={1}
+                unit="ساعة"
+                onChange={(v) => set("maxSessionMinutes", v * 60)}
+              />
             </Row>
           </Card>
         </div>
