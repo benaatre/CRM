@@ -61,31 +61,37 @@ export function onGeoDiagnostics(cb: (d: GeoDiagnostics) => void): () => void {
 type NativeGeo = typeof import("@capacitor/geolocation").Geolocation;
 type NativePosition = import("@capacitor/geolocation").Position;
 
-/**
- * كاشف المسار الأصلي — تحميل كسول مرّة واحدة (الوعد نفسه مُخبّأ فلا سباق).
- * `isPluginAvailable` شرط جوهري: تطبيق قديم مبني قبل هذه الدفعة لا يحمل
- * الإضافة، فيسقط للمسار الويبي بلا كسر.
- */
-let nativeGeoPromise: Promise<NativeGeo | null> | null = null;
+/** شكل window.Capacitor العام كما يحقنه الجسر الأصلي قبل تحميل الصفحة. */
+type CapacitorGlobal = {
+  isNativePlatform?: () => boolean;
+  getPlatform?: () => string;
+  Plugins?: Record<string, unknown>;
+};
 
-function nativeGeo(): Promise<NativeGeo | null> {
-  nativeGeoPromise ??= (async () => {
-    try {
-      const { Capacitor } = await import("@capacitor/core");
-      const native = Capacitor.isNativePlatform();
-      // القيمة الفعلية كما يراها الجهاز — تُعرض في السطر التشخيصي بلا تخمين.
-      const pluginAvailable = native ? Capacitor.isPluginAvailable("Geolocation") : null;
-      emitDiag({ native, pluginAvailable });
-      if (!native || pluginAvailable !== true) return null;
-      const { Geolocation } = await import("@capacitor/geolocation");
-      return Geolocation;
-    } catch {
-      // فشل تحميل الوحدة (chunk مفقود مثلًا) — يُعامل كعدم توفّر، ويُرصد.
-      emitDiag({ pluginAvailable: false });
-      return null;
-    }
-  })();
-  return nativeGeoPromise;
+function capGlobal(): CapacitorGlobal | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { Capacitor?: CapacitorGlobal }).Capacitor;
+}
+
+/**
+ * كاشف المسار الأصلي — **متزامن كليًا** (إصلاح القاتل المُسمى 29/08):
+ * ‏import("@capacitor/core") الديناميكي كان يعلق للأبد على WKWebView (طلب
+ * chunk لا يصل — أثبته الصندوق الأسود: card:readPosition:start ثم صمت ٢٠ث
+ * بلا أي زرعة من الـ17، بينما فحوصات window.Capacitor المتزامنة نجحت كلها).
+ * الجسر الأصلي يحقن window.Capacitor وPlugins قبل تحميل الصفحة — فالوصول
+ * المتزامن إليه هو نمط الفحوصات الناجحة حرفيًا: صفر await قبل أول عمل حقيقي.
+ */
+function nativeGeo(): NativeGeo | null {
+  try {
+    const cap = capGlobal();
+    const native = cap?.isNativePlatform?.() === true;
+    const plugin = native ? ((cap?.Plugins?.Geolocation as NativeGeo | undefined) ?? null) : null;
+    emitDiag({ native, pluginAvailable: native ? plugin !== null : null });
+    return plugin;
+  } catch {
+    emitDiag({ pluginAvailable: false });
+    return null;
+  }
 }
 
 /** تطبيع تثبيت أصلي إلى شكل GeolocationPosition — المستهلكون لا يفرّقون. */
@@ -185,7 +191,7 @@ function hasRememberedGrant(): boolean {
 
 /** حالة الإذن الحالية — بلا إطلاق أي طلب. `unavailable` = لا API إطلاقًا. */
 export async function queryGeoPermission(): Promise<GeoPermState> {
-  const geo = await nativeGeo();
+  const geo = nativeGeo(); // متزامن — صفر انتظار قبل العمل
   if (geo) {
     try {
       const st = await geo.checkPermissions();
@@ -343,7 +349,7 @@ function nativeReadOnceAttempt(geo: NativeGeo, opts?: PositionOptions): Promise<
 
 /** قراءة موقع واحدة — للنبض و«أنا موجود بالموقع». عالية الدقة للطلب الصريح. */
 export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
-  const geo = await nativeGeo();
+  const geo = nativeGeo(); // متزامن — صفر انتظار قبل العمل
   geoDiag("readPositionOnce:start", { native: !!geo, webFirst: WEB_FIRST_ON_NATIVE, timeout: opts?.timeout ?? 12_000 });
   if (geo) {
     if (WEB_FIRST_ON_NATIVE) {
@@ -427,7 +433,7 @@ export async function readBestPosition(opts?: {
 }): Promise<GeolocationPosition> {
   const targetAccuracy = opts?.targetAccuracy ?? 50;
   const timeoutMs = opts?.timeoutMs ?? 12_000;
-  const geo = await nativeGeo();
+  const geo = nativeGeo(); // متزامن — صفر انتظار قبل العمل
   geoDiag("readBestPosition:start", { native: !!geo, webFirst: WEB_FIRST_ON_NATIVE, timeoutMs });
   // مسار الـwatch مستقل عن قفل البصمة (طوارئ 27/08) — سلوك النشرة ٦ حرفيًا؛
   // مؤقته الداخلي يضمن الحسم وclearWatch على كل مسارات النهاية.
@@ -576,7 +582,7 @@ function readBestPositionWeb(targetAccuracy: number, timeoutMs: number): Promise
  * (قد يكون منح مع فشل تثبيت مؤقت).
  */
 export async function requestGeoPermission(): Promise<GeoPermState> {
-  const geo = await nativeGeo();
+  const geo = nativeGeo(); // متزامن — صفر انتظار قبل العمل
   geoDiag("requestGeoPermission:start", { native: !!geo, webFirst: WEB_FIRST_ON_NATIVE });
   if (geo && WEB_FIRST_ON_NATIVE) {
     /*
@@ -636,8 +642,9 @@ export async function requestGeoPermission(): Promise<GeoPermState> {
 /** هل نقدر نفتح إعدادات النظام؟ iOS داخل التطبيق فقط (app-settings:). */
 export async function canOpenLocationSettings(): Promise<boolean> {
   try {
-    const { Capacitor } = await import("@capacitor/core");
-    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
+    // متزامن عبر window.Capacitor — نفس علاج القاتل (لا استيراد ديناميكيًا).
+    const cap = capGlobal();
+    return cap?.isNativePlatform?.() === true && cap?.getPlatform?.() === "ios";
   } catch {
     return false;
   }
@@ -650,10 +657,12 @@ export async function canOpenLocationSettings(): Promise<boolean> {
  */
 export async function openLocationSettings(): Promise<boolean> {
   try {
-    const { Capacitor } = await import("@capacitor/core");
-    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return false;
-    const { AppLauncher } = await import("@capacitor/app-launcher");
-    await AppLauncher.openUrl({ url: "app-settings:" });
+    // متزامن عبر window.Capacitor.Plugins — نفس علاج القاتل (لا استيراد ديناميكيًا).
+    const cap = capGlobal();
+    if (cap?.isNativePlatform?.() !== true || cap?.getPlatform?.() !== "ios") return false;
+    const launcher = cap.Plugins?.AppLauncher as { openUrl?: (o: { url: string }) => Promise<unknown> } | undefined;
+    if (!launcher?.openUrl) return false;
+    await launcher.openUrl({ url: "app-settings:" });
     return true;
   } catch {
     return false;
