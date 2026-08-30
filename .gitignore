@@ -58,6 +58,13 @@ AUDIT-FULL-2026-07-04.md
 public/sw.js
 public/sw.js.map
 
+# توقيع أندرويد — المخزن وكلمته وملف التوثيق لا يدخلون git أبدًا
+*.keystore
+*.jks
+android/keystore.properties
+KEYSTORE-NOT-COMMITTED.md
+public/sultan-crm.apk
+
 # vercel
 .vercel
 
