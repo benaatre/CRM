@@ -22,6 +22,25 @@ import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 import { bookingStageOrder } from "@/lib/labels";
 import { leadStageForBookings } from "@/lib/booking-finance";
+import type { Prisma } from "@prisma/client";
+
+/**
+ * الحارس الموحّد لمرحلة العميل (سد الفجوة ١): يعيد حسابها من حجوزاته الحية
+ * الفعلية في القاعدة — يُستدعى بعد أي كتابة تغيّر حالة حجز (إنشاء/إلغاء/نقل
+ * مرحلة) داخل نفس الـtransaction، فلا موضع يعيّن المرحلة مباشرة بعد الآن.
+ * أي حجز مباع (SOLD/DELIVERED — المنطق القائم) ⇒ CLOSED_WON · أي حجز قائم ⇒
+ * RESERVED · صفر حجوزات ⇒ الإرجاع القائم (تفاوض + فك الأرشفة).
+ */
+async function recomputeClientStage(
+  tx: Prisma.TransactionClient,
+  leadId: string,
+): Promise<{ stage: "CLOSED_WON" | "RESERVED" | null; count: number }> {
+  const stages = (await tx.booking.findMany({ where: { leadId }, select: { stage: true } })).map((b) => b.stage);
+  const stage = leadStageForBookings(stages);
+  if (stage) await tx.lead.update({ where: { id: leadId }, data: { stage, isArchived: true } });
+  else await tx.lead.update({ where: { id: leadId }, data: { stage: "NEGOTIATION", isArchived: false } });
+  return { stage, count: stages.length };
+}
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -238,10 +257,8 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
         },
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });
-      // مرحلة العميل = أعلى حجوزاته (البند ٤): حجز إضافي لعميل مقفول-بيع لا يُنزله لـ«محجوز».
-      const others = await tx.booking.findMany({ where: { leadId, id: { not: booking.id } }, select: { stage: true } });
-      const leadStage = leadStageForBookings([immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION, ...others.map((b) => b.stage)])!;
-      await tx.lead.update({ where: { id: leadId }, data: { stage: leadStage, isArchived: true } });
+      // الحارس الموحّد (سد الفجوة ١): المرحلة من الحجوزات الحية بعد الإنشاء — لا تعيين مباشر.
+      const leadStage = (await recomputeClientStage(tx, leadId)).stage!;
       // آخر خطوة في تايملاين متابعات العميل: «تم الحجز» — وبها تتوقّف المتابعات.
       await tx.followUp.create({
         data: {
@@ -403,10 +420,6 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
     const createdUnits: string[] = [];
 
     await prisma.$transaction(async (tx) => {
-      // مرحلة العميل من أعلى حجوزاته (البند ٤): القائمة قبل السلة + السلة نفسها.
-      const existing = await tx.booking.findMany({ where: { leadId }, select: { stage: true } });
-      const newLeadStage = leadStageForBookings([stage, ...existing.map((b) => b.stage)])!;
-
       for (const item of items) {
         const u = unitById.get(item.unitId)!;
         // إعادة فحص التوفر داخل الـtransaction — وقيد unitId الفريد شبكة الأمان النهائية.
@@ -467,10 +480,8 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
         createdUnits.push(u.number);
       }
 
-      await tx.lead.update({
-        where: { id: leadId },
-        data: { stage: newLeadStage, isArchived: true },
-      });
+      // الحارس الموحّد (سد الفجوة ١): المرحلة من الحجوزات الحية بعد السلة كلها.
+      const newLeadStage = (await recomputeClientStage(tx, leadId)).stage!;
       await tx.followUp.create({
         data: {
           leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
@@ -717,7 +728,8 @@ export async function createCashSales(formData: FormData): Promise<ActionResult>
           data: { bookingId: booking.id, userId: user.id, toStage: BookingStage.SOLD, note: "تم الشراء (كاش فوري)" },
         });
       }
-      await tx.lead.update({ where: { id: leadId }, data: { stage: "CLOSED_WON", isArchived: true } });
+      // الحارس الموحّد (سد الفجوة ١) — النتيجة هنا CLOSED_WON دائمًا (كلها مباعة).
+      await recomputeClientStage(tx, leadId);
       await tx.followUp.create({
         data: {
           leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
@@ -755,32 +767,24 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
 
     await prisma.$transaction(async (tx) => {
       await tx.unit.update({ where: { id: booking.unitId }, data: { status: "AVAILABLE" } });
-      // مرحلة العميل من أعلى حجوزاته المتبقية (البند ٤): إلغاء حجز واحد لا يُخرج العميل
-      // من «تم الحجز/الشراء» ما دام غيره قائمًا — آخر حجز يُلغى يعيده لتفاوض بالمنطق القائم.
-      const remaining = await tx.booking.findMany({
-        where: { leadId: booking.leadId, id: { not: bookingId } },
-        select: { stage: true },
-      });
-      const remainingStage = leadStageForBookings(remaining.map((b) => b.stage));
-      if (remainingStage) {
-        await tx.lead.update({ where: { id: booking.leadId }, data: { stage: remainingStage } });
-      } else {
-        await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "NEGOTIATION", isArchived: false } });
-      }
+      await tx.booking.delete({ where: { id: bookingId } }); // يحذف أحداث الحجز تلقائيًا (cascade)
+      // الحارس الموحّد (سد الفجوة ١): المرحلة من الحجوزات المتبقية بعد الحذف — إلغاء
+      // حجز واحد لا يُخرج العميل من «تم الحجز/الشراء» ما دام غيره قائمًا، وآخر حجز
+      // يُلغى يعيده لتفاوض بالمنطق القائم.
+      const { stage: remainingStage, count: remainingCount } = await recomputeClientStage(tx, booking.leadId);
       // سطر في تايملاين متابعات العميل: «تم إلغاء الحجز + السبب».
       await tx.followUp.create({
         data: {
           leadId: booking.leadId, createdBy: user.id,
           type: FollowUpType.OTHER, result: FollowUpResult.NEGOTIATING,
           section: FollowUpSection.INTERESTED, stageAfter: remainingStage ?? "NEGOTIATION",
-          note: `تم إلغاء الحجز — وحدة ${booking.unit.number}${booking.unit.project?.name ? ` (${booking.unit.project.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}${remainingStage ? ` — وبقي له ${remaining.length > 1 ? `${remaining.length} حجوزات قائمة` : "حجز قائم"}` : ""}`,
+          note: `تم إلغاء الحجز — وحدة ${booking.unit.number}${booking.unit.project?.name ? ` (${booking.unit.project.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}${remainingStage ? ` — وبقي له ${remainingCount > 1 ? `${remainingCount} حجوزات قائمة` : "حجز قائم"}` : ""}`,
         },
       });
       await logAudit(tx, {
         userId: user.id, action: "booking.cancelled", entity: "unit", entityId: booking.unitId,
         summary: `ألغى حجز وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}${reason ? ` — السبب: ${reason}` : ""} · العميل=${booking.leadId}`,
       });
-      await tx.booking.delete({ where: { id: bookingId } }); // يحذف أحداث الحجز تلقائيًا (cascade)
     });
 
     await notify(prisma, await activeUserIds(prisma), "booking.cancelled", "تم إلغاء حجز", `وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}`);
@@ -820,17 +824,13 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
         data: { bookingId, userId: user.id, fromStage: booking.stage, toStage: stage },
       });
       if (stage === BookingStage.SOLD || stage === BookingStage.DELIVERED) {
-        // بيع/تسليم: الوحدة مباعة والعميل مقفول-بيع (أعلى الحجوزات بالتعريف).
         await tx.unit.update({ where: { id: booking.unitId }, data: { status: "SOLD" } });
-        await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "CLOSED_WON" } });
       } else {
         await tx.unit.update({ where: { id: booking.unitId }, data: { status: "RESERVED" } });
-        // رجوع من مباع (مالك): مرحلة العميل تُعاد من أعلى حجوزاته بعد هذا التغيير (البند ٤) —
-        // حجز آخر مباع يُبقيه CLOSED_WON، وإلا RESERVED (كان لا يُلمس فيبقى مقفولًا خطأً).
-        const all = await tx.booking.findMany({ where: { leadId: booking.leadId, id: { not: bookingId } }, select: { stage: true } });
-        const leadStage = leadStageForBookings([stage, ...all.map((b) => b.stage)])!;
-        await tx.lead.update({ where: { id: booking.leadId }, data: { stage: leadStage } });
       }
+      // الحارس الموحّد (سد الفجوة ١): المرحلة من الحجوزات الحية بعد التغيير — بيع/تسليم
+      // يقفل، ورجوع المالك من مباع لا يُبقيه مقفولًا إلا إن بقي له حجز مباع آخر.
+      await recomputeClientStage(tx, booking.leadId);
       // تم الاستلام: سجل في تايملاين العميل (Activity) — مع اسم الموظف والوقت تلقائيًا.
       if (stage === BookingStage.DELIVERED) {
         await tx.activity.create({
