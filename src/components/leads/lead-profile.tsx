@@ -45,8 +45,9 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
   // تبويب «سجل التحويلات» للمالك فقط (transferHistory != null يعني مالك — الصلاحية من الخادم).
   const tabs: [Tab, string][] = [["data", "بيانات"], ["followups", "المتابعة والزيارات"], ["ai", "مساعد كلود"]];
   if (transferHistory) tabs.push(["transfers", "سجل التحويلات"]);
-  // «✦ إتمام» (قرار 2026-08-22): بدل الشريط السفلي الثابت — نفس شرط ظهوره القديم (عميل غير مؤرشف).
-  if (!detail.isArchived) tabs.push(["deal", "إتمام"]);
+  // «✦ إتمام» (قرار 2026-08-22): بدل الشريط السفلي الثابت. تعدد الحجوزات (2026-09-05):
+  // يظهر دائمًا — العميل المحجوز له يضيف حجزًا آخر، وحارس الوحدة الواحدة يبقى على الخادم.
+  tabs.push(["deal", "إتمام"]);
   const [reserveMode, setReserveMode] = useState<"reserve" | "instant" | null>(null);
   const { items, systemEvents, loading, reload } = useFollowUps(detail.id);
 
@@ -244,15 +245,19 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
       {tab === "transfers" && transferHistory && <TransferHistorySection data={transferHistory} />}
 
       {/* ===== ✦ إتمام — الزران القديمان بنفس مساريهما حرفيًا (BookingForm) + صف البركة للمالك/المدير ===== */}
-      {tab === "deal" && !detail.isArchived && (
+      {tab === "deal" && (
         <section className="glass space-y-4 rounded-2xl p-5">
           <div className="flex items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
               <DealIcon className="size-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-foreground">إتمام الصفقة</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">سجّل حجز العميل أو شراءه الفوري — يفتح نموذج الحجز الكامل (الوحدة والأسعار والدفعات).</p>
+              <h2 className="text-base font-bold text-foreground">{detail.isArchived ? "حجز إضافي" : "إتمام الصفقة"}</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {detail.isArchived
+                  ? "العميل عنده حجز قائم — سجّل له حجزًا أو شراءً إضافيًا لوحدة ثانية."
+                  : "سجّل حجز العميل أو شراءه الفوري — يفتح نموذج الحجز الكامل (الوحدة والأسعار والدفعات)."}
+              </p>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
