@@ -57,8 +57,8 @@ export type OwnerExtras = {
   transfers: { id: string; fromName: string | null; toName: string | null; reason: string; createdAt: Date }[] | null;
   /** كل المتابعات بنصّها وكاتبها (من نفس السجل) — لأقسام «متابعات كل موظف». */
   allFollowUps: { id: string; result: FollowUpResult; type: FollowUpType; note: string | null; authorName: string | null; createdAt: Date }[] | null;
-  /** الحجز النشط — بطاقة التحصيل وزر «+ دفعة» (OWNER فقط بالواجهة). */
-  booking: { id: string; unit: string; collected: number; remaining: number } | null;
+  /** حجوزات العميل (تعدد الحجوزات — البند ٣): بطاقة تحصيل وزر «+ دفعة» لكل حجز. */
+  bookings: { id: string; unit: string; collected: number; remaining: number }[];
   canAddPayment: boolean;
   channelText: string;
 };
@@ -254,9 +254,21 @@ export function LeadProfileV3({
       {/* ===== شريط «بيانات العميل» — الحقول المسجّلة فعليًا فقط؛ يُخفى كله إن كانت فارغة ===== */}
       <DataStrip lead={lead} />
 
-      {/* بطاقة الحجز النشط + «+ دفعة» — للمالك (الخادم يحرس addBookingPayment أصلًا) */}
-      {owner && ownerExtras?.booking && (
-        <BookingCard booking={ownerExtras.booking} canAddPayment={ownerExtras.canAddPayment} />
+      {/* بطاقات الحجوزات + «+ دفعة» لكل حجز — للمالك (الخادم يحرس addBookingPayment أصلًا) */}
+      {owner && (ownerExtras?.bookings?.length ?? 0) > 0 && (
+        <>
+          {(ownerExtras?.bookings?.length ?? 0) > 1 && (
+            <div className="flex items-center justify-between rounded-2xl px-4 py-2.5" style={{ background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.25)", fontSize: 12.5 }}>
+              <span style={{ color: SOP.tx2 }}>إجمالي تحصيل {toArabicDigits(ownerExtras!.bookings.length)} حجوزات</span>
+              <span style={{ color: SOP.gold, fontWeight: 700 }}>
+                {toArabicDigits(ownerExtras!.bookings.reduce((s, b) => s + b.collected, 0))} / {toArabicDigits(ownerExtras!.bookings.reduce((s, b) => s + b.collected + b.remaining, 0))}
+              </span>
+            </div>
+          )}
+          {ownerExtras!.bookings.map((b) => (
+            <BookingCard key={b.id} booking={b} canAddPayment={ownerExtras!.canAddPayment} />
+          ))}
+        </>
       )}
 
       {/* ===== التبويبات (٣ للموظف/الأدمن · ٤ للمالك بسجل التحويلات — شبكة ٢×٢) + «✦ إتمام» أخيرًا ===== */}
@@ -465,7 +477,7 @@ function DealTab({ falLicense, onBooked }: { falLicense: string | null; onBooked
 /* ===================== إضافات المالك (المرحلة هـ) ===================== */
 
 /** بطاقة الحجز النشط: شريط التحصيل + «+ دفعة» عبر addBookingPayment القائم. */
-function BookingCard({ booking, canAddPayment }: { booking: NonNullable<OwnerExtras["booking"]>; canAddPayment: boolean }) {
+function BookingCard({ booking, canAddPayment }: { booking: OwnerExtras["bookings"][number]; canAddPayment: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");

@@ -114,11 +114,12 @@ export function LeadDrawer({
     });
   }
 
-  function cancelLeadBooking() {
-    if (!lead?.bookingId) return;
-    if (!confirm("متأكد تبي تلغي حجز هذا العميل؟ الوحدة بترجع «متاحة».")) return;
+  // تعدد الحجوزات (البند ٣): الإلغاء لكل حجز على حدة — الوحدة ترجع «متاحة»،
+  // ومرحلة العميل لا تتغير إلا مع إلغاء آخر حجوزاته (منطق الخادم).
+  function cancelLeadBooking(bookingId: string, unitLabel: string) {
+    if (!confirm(`متأكد تبي تلغي حجز ${unitLabel}؟ الوحدة بترجع «متاحة».`)) return;
     const reason = prompt("سبب الإلغاء (اختياري):") ?? undefined;
-    startTransition(async () => { await cancelBooking(lead.bookingId!, reason || undefined); refresh(); });
+    startTransition(async () => { await cancelBooking(bookingId, reason || undefined); refresh(); });
   }
 
   async function analyze() {
@@ -280,8 +281,14 @@ export function LeadDrawer({
                     </DField>
                   </div>
 
-                  {lead.bookingId && (
-                    <button type="button" onClick={cancelLeadBooking} disabled={pending} className="w-full rounded-lg border border-destructive/40 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50">إلغاء الحجز</button>
+                  {lead.bookings.length > 0 && (
+                    <div className="space-y-1.5">
+                      {lead.bookings.map((b) => (
+                        <button key={b.id} type="button" onClick={() => cancelLeadBooking(b.id, `وحدة ${b.unitNumber}${b.projectName ? ` (${b.projectName})` : ""}`)} disabled={pending} className="w-full rounded-lg border border-destructive/40 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50">
+                          إلغاء حجز وحدة {b.unitNumber}{b.projectName ? ` — ${b.projectName}` : ""}
+                        </button>
+                      ))}
+                    </div>
                   )}
                   <button type="submit" disabled={pending} className="w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "جارٍ الحفظ…" : "حفظ البيانات"}</button>
                 </form>

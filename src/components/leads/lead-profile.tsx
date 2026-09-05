@@ -7,7 +7,7 @@ import type { PurchaseGoal, PurchaseMethod } from "@prisma/client";
 import {
   purchaseGoalLabels, purchaseMethodLabels, purchaseMethodOptions, stageLabels, stageColor,
   paymentMethodLabels, bankLabels, nationalityLabels, cashPaymentTypeLabels,
-  followUpResultLabels, followUpTypeLabels,
+  followUpResultLabels, followUpTypeLabels, bookingStageLabels,
 } from "@/lib/labels";
 import { waPhone } from "@/lib/value-normalize";
 import { updateLeadIntake, updateLeadIdentity, toggleRevealHistory } from "@/lib/actions/leads";
@@ -193,7 +193,21 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
         <div className="space-y-5">
           {detail.isArchived ? (
             <section className="glass space-y-3 rounded-2xl p-5">
-              <h2 className="font-semibold text-foreground">تفاصيل الحجز</h2>
+              <h2 className="font-semibold text-foreground">
+                {detail.bookings.length > 1 ? `حجوزات العميل (${toArabicDigits(detail.bookings.length)})` : "تفاصيل الحجز"}
+              </h2>
+              {/* التحصيل الإجمالي للعميل = مجموع حجوزاته (تعدد الحجوزات — البند ٣) */}
+              {detail.bookings.length > 1 && detail.booking && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gold/30 bg-gold/5 px-4 py-2.5 text-sm">
+                  <span className="text-muted-foreground">إجمالي التحصيل عبر كل الحجوزات</span>
+                  <span>
+                    <span className="font-bold text-success">{formatCurrencyFull(detail.booking.collected)}</span>
+                    <span className="text-muted-foreground"> محصّل · </span>
+                    <span className="font-bold text-foreground">{formatCurrencyFull(detail.booking.remaining)}</span>
+                    <span className="text-muted-foreground"> متبقّي</span>
+                  </span>
+                </div>
+              )}
               {detail.bookings.length === 0 ? (
                 <p className="text-sm text-muted-foreground">لا توجد تفاصيل حجز.</p>
               ) : detail.bookings.map((b) => (
@@ -201,6 +215,10 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
                   {b.discountExceeded && (
                     <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">تم تجاوز الخصم المسموح — تحذير للمدير.</p>
                   )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">حالة الحجز</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${b.stage === "SOLD" || b.stage === "DELIVERED" ? "bg-success/15 text-success" : "bg-gold/15 text-gold"}`}>{bookingStageLabels[b.stage]}</span>
+                  </div>
                   <BRow label="المشروع" value={b.projectName ?? "—"} />
                   <BRow label="الوحدة" value={b.unitNumber} ltr />
                   <BRow label="الدور" value={b.floor ?? "—"} />
@@ -214,6 +232,13 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
                   {(b.taxAmount ?? b.vatAmount) != null && <BRow label="ضريبة" value={formatCurrencyFull(b.taxAmount ?? b.vatAmount)} />}
                   {(b.taxAmount ?? b.vatAmount) != null && <BRow label="الإجمالي مع الضريبة" value={formatCurrencyFull((b.finalPrice ?? 0) + (b.taxAmount ?? b.vatAmount ?? 0))} strong />}
                   <BRow label="العربون" value={b.deposit != null ? formatCurrencyFull(b.deposit) : "—"} />
+                  {/* تحصيل هذا الحجز وحده — bookingCollection لكل حجز (تعدد الحجوزات — البند ٣) */}
+                  {b.collected != null && (
+                    <>
+                      <BRow label="المحصّل" value={formatCurrencyFull(b.collected)} strong />
+                      <BRow label="المتبقّي" value={formatCurrencyFull(b.remaining ?? 0)} />
+                    </>
+                  )}
                   <div className="my-1 border-t border-border" />
                   <BRow label="طريقة الدفع" value={b.paymentMethod ? `${paymentMethodLabels[b.paymentMethod]}${b.bankName ? ` · ${bankLabels[b.bankName]}` : ""}` : "—"} />
                   {b.cashPaymentType && <BRow label="دفع الكاش" value={`${cashPaymentTypeLabels[b.cashPaymentType]}${b.installmentsCount ? ` (${b.installmentsCount} دفعة)` : ""}`} />}

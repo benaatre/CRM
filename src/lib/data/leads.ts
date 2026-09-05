@@ -62,8 +62,10 @@ export type LeadRow = {
   firstContactStage: FirstContactStage | null;
   firstContactDate: Date | null;
   isArchived: boolean;
-  // الحجز النشط (لعرض المحصّل/المتبقي في بطاقة الكانبان)
+  // تحصيل العميل الإجمالي = مجموع حجوزاته المرئية للمشاهد (تعدد الحجوزات — البند ٣).
   booking: { collected: number; remaining: number } | null;
+  // عدد حجوزات العميل — لشارة العدد ولتفريق «إلغاء مباشر» عن «يُدار من الملف».
+  bookingsCount: number;
   // عميل محوّل يحتاج اهتمام: أُعيد توجيهه (reassignCount>0) وما فيه متابعة بعد آخر إسناد (نجمة ⭐).
   isTransferred: boolean;
   // §٦: محوّل بسبب استنفاد المحاولات (آخر سحب reason=no_response_exhausted) → أيقونة حمراء بدل النجمة.
@@ -177,6 +179,10 @@ export type BookingSummary = {
   taxAmount: number | null;
   discountExceeded: boolean;
   sellerName: string | null;
+  // تعدد الحجوزات (البند ٣): مرحلة كل حجز + محصّله/متبقّيه (bookingCollection) لبطاقته المستقلة.
+  stage: BookingStage;
+  collected: number | null;
+  remaining: number | null;
 };
 
 // ===== التحجيم حسب الدور (الصلاحية على الخادم) =====
@@ -306,12 +312,19 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     firstContactDate: hidden ? null : l.firstContactDate,
     isArchived: l.isArchived,
     // المحصّل/المتبقّي يظهر فقط للبائع أو المدير — وإلا يُحجب (null).
+    // تعدد الحجوزات (البند ٣): التحصيل الإجمالي = مجموع حجوزات العميل المرئية للمشاهد.
     booking: (() => {
-      const bk = l.bookings?.[0];
-      if (!bk) return null;
-      const mine = ctx.manager || bk.sellerId === ctx.userId;
-      return mine ? bookingCollection(bk.stage, bk.finalPrice.toNumber(), bk.collectedAmount.toNumber()) : null;
+      const mine = (l.bookings ?? []).filter((bk) => ctx.manager || bk.sellerId === ctx.userId);
+      if (!mine.length) return null;
+      return mine.reduce(
+        (acc, bk) => {
+          const c = bookingCollection(bk.stage, bk.finalPrice.toNumber(), bk.collectedAmount.toNumber());
+          return { collected: acc.collected + c.collected, remaining: acc.remaining + c.remaining };
+        },
+        { collected: 0, remaining: 0 },
+      );
     })(),
+    bookingsCount: l.bookings?.length ?? 0,
     // نجمة العميل المحوّل: أُعيد توجيهه ولم يُسجّل أي متابعة بعد آخر إسناد (تختفي أول متابعة).
     // المحوَّل «كجديد» المخفي سجلّه: النجمة نفسها تفضح أن له ماضيًا — لا تظهر له إطلاقًا
     // (المالك/المدير يرونها كاملة — hidden للموظف حصرًا).
@@ -386,7 +399,8 @@ const rowInclude = {
   // آخر ٥ سجلات تحويل (بلا فلتر) — منها آخر سحب (toUserId=null → نجمة/أيقونة §٦)
   // وآخر إسناد فعلي (toUserId≠null → لاحقة _fresh لقرار الإخفاء).
   reassignments: { orderBy: { createdAt: "desc" }, take: 5, select: { reason: true, toUserId: true } },
-  bookings: { select: { stage: true, finalPrice: true, collectedAmount: true, sellerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
+  // تعدد الحجوزات (البند ٣): كل حجوزات العميل — للتحصيل الإجمالي وعدّاد الحجوزات.
+  bookings: { select: { stage: true, finalPrice: true, collectedAmount: true, sellerId: true }, orderBy: { createdAt: "desc" } },
 } as const;
 
 export type LeadTab = "working" | "archived" | "hidden" | "unassigned" | "all";
@@ -716,6 +730,10 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
         taxAmount: mineBooking && b.taxAmount ? b.taxAmount.toNumber() : null,
         discountExceeded: b.discountExceeded,
         sellerName: b.seller?.name ?? null,
+        // تعدد الحجوزات (البند ٣): بطاقة مستقلة لكل حجز — مرحلته وتحصيله المحسوب.
+        stage: b.stage,
+        collected: mineBooking ? bookingCollection(b.stage, b.finalPrice.toNumber(), b.collectedAmount.toNumber()).collected : null,
+        remaining: mineBooking ? bookingCollection(b.stage, b.finalPrice.toNumber(), b.collectedAmount.toNumber()).remaining : null,
       };
     }),
     activities: visibleActivities.map((a) => ({

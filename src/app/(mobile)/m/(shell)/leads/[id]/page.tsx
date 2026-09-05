@@ -79,16 +79,15 @@ export default async function MobileLeadProfile({
       employees,
       transfers: history?.transfers ?? null,
       allFollowUps: history?.followUps ?? null,
-      booking: lead.booking && lead.bookingId
-        ? {
-            id: lead.bookingId,
-            unit: lead.bookings[0]
-              ? `${lead.bookings[0].projectName ?? "وحدة"} — ${lead.bookings[0].unitNumber}`
-              : "الحجز النشط",
-            collected: lead.booking.collected,
-            remaining: lead.booking.remaining,
-          }
-        : null,
+      // تعدد الحجوزات (البند ٣): بطاقة تحصيل مستقلة لكل حجز — المبالغ من bookingCollection لكل حجز.
+      bookings: lead.bookings
+        .filter((b) => b.collected != null)
+        .map((b) => ({
+          id: b.id,
+          unit: `${b.projectName ?? "وحدة"} — ${b.unitNumber}`,
+          collected: b.collected ?? 0,
+          remaining: b.remaining ?? 0,
+        })),
       canAddPayment: user.role === "OWNER",
       channelText: channelLabel(lead.channel),
     };
