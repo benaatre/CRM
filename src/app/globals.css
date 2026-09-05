@@ -27,6 +27,13 @@
   --gold: #cba45e;
   --gold-light: #e2c078;
   --gold-dark: #9c7c3c;
+  /* شفافيات الذهب (غرفة القيادة — لوحة الأسبوع): مشتقة من --gold فتتبع الثيم تلقائيًا */
+  --gold-a03: color-mix(in srgb, var(--gold) 3%, transparent);
+  --gold-a06: color-mix(in srgb, var(--gold) 6%, transparent);
+  --gold-a12: color-mix(in srgb, var(--gold) 12%, transparent);
+  --gold-a20: color-mix(in srgb, var(--gold) 20%, transparent);
+  --gold-a35: color-mix(in srgb, var(--gold) 35%, transparent);
+  --gold-a60: color-mix(in srgb, var(--gold) 60%, transparent);
 
   /* ثانوي / خافت / تمييز */
   --secondary: #1c1c20;
