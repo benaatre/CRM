@@ -277,6 +277,15 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
         body: `وحدة ${unit.number} في ${unit.project?.name ?? "—"}${lead?.name ? ` — ${lead.name}` : ""}`,
         link: `/leads/${leadId}`,
       });
+      // الشفافية (البند ٨): بيعة سُجّلت باسم موظف بواسطة غيره (المالي) — يُشعر فورًا.
+      if (sellerId !== user.id) {
+        await notify(
+          prisma, [sellerId], "booking.on_behalf",
+          "سُجّلت بيعة باسمك",
+          `وحدة ${unit.number} في ${unit.project?.name ?? "—"} للعميل ${lead?.name ?? "—"} — سجّلها ${user.name ?? "المدير المالي"}`,
+          "/bookings",
+        );
+      }
       // تجاوز الخصم المقرر: إشعار للمالك (OWNER) — يظهر في جرس الهيدر.
       if (discountOverage > 0) {
         await notify(
@@ -498,6 +507,15 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
           `تجاوز خصم: ${user.name ?? "موظف"} — ${overages.map((o) => `وحدة ${o.number}${o.projectName ? ` (${o.projectName})` : ""} بتجاوز ${o.overage.toLocaleString("en-US")} ر.س`).join(" · ")}`,
         );
       }
+      // الشفافية (البند ٨): سلة سُجّلت باسم موظف بواسطة غيره (المالي) — يُشعر فورًا.
+      if (sellerId !== user.id) {
+        await notify(
+          prisma, [sellerId], "booking.on_behalf",
+          "سُجّلت بيعة باسمك",
+          `${createdUnits.length > 1 ? `${createdUnits.length} وحدات (${createdUnits.join("، ")})` : `وحدة ${createdUnits[0]}`} للعميل ${lead.name ?? "—"} — سجّلها ${user.name ?? "المدير المالي"}`,
+          "/bookings",
+        );
+      }
     });
 
     revalidateBookings();
@@ -521,7 +539,12 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
 
     const existing = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { sellerId: true, unitId: true, collectedAmount: true, leadId: true },
+      select: {
+        sellerId: true, unitId: true, collectedAmount: true, leadId: true,
+        // الشفافية (البند ٨): القيم قبل التعديل — لسطر التدقيق قبل/بعد ولإشعار البائع.
+        price: true, discount: true, finalPrice: true, deposit: true, paymentMethod: true,
+        unit: { select: { number: true } }, lead: { select: { name: true } },
+      },
     });
     if (!existing) return { ok: false, error: "الحجز غير موجود" };
 
@@ -606,11 +629,28 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
       });
     });
 
+    // الشفافية (البند ٨): سطر تدقيق بالمتغيّر فقط قبل/بعد (من، ماذا) + إشعار البائع لو عدّله غيره.
+    const fmtN = (v: number) => v.toLocaleString("en-US");
+    const changes: string[] = [];
+    if (existing.price.toNumber() !== price) changes.push(`السعر ${fmtN(existing.price.toNumber())}→${fmtN(price)}`);
+    if (existing.discount.toNumber() !== discount) changes.push(`الخصم ${fmtN(existing.discount.toNumber())}→${fmtN(discount)}`);
+    if ((existing.deposit?.toNumber() ?? 0) !== (deposit ?? 0)) changes.push(`العربون ${fmtN(existing.deposit?.toNumber() ?? 0)}→${fmtN(deposit ?? 0)}`);
+    if (existing.paymentMethod !== paymentMethod) changes.push(`طريقة الدفع ${existing.paymentMethod}→${paymentMethod}`);
+    if (unitChanged) changes.push(`تبديل وحدة`);
     await notifyBestEffort("booking.update", () =>
       logAudit(prisma, {
         userId: user.id, action: "booking.update", entity: "booking", entityId: bookingId,
-        summary: `عدّل بيانات الحجز${unitChanged ? " (تبديل وحدة)" : ""} · العميل=${existing.leadId}`,
+        summary: `عدّل حجز وحدة ${existing.unit?.number ?? "—"}${changes.length ? ` — ${changes.join(" · ")}` : ""} · العميل=${existing.leadId}`,
       }));
+    if (existing.sellerId && existing.sellerId !== user.id) {
+      await notifyBestEffort("booking.update.seller", () =>
+        notify(
+          prisma, [existing.sellerId], "booking.updated_by_other",
+          "عُدّل حجز من حجوزاتك",
+          `وحدة ${existing.unit?.number ?? "—"} للعميل ${existing.lead?.name ?? "—"} — عدّله ${user.name ?? "الإدارة"}${changes.length ? `: ${changes.join(" · ")}` : ""}`,
+          "/bookings",
+        ));
+    }
 
     revalidateBookings();
     return { ok: true };
@@ -744,6 +784,16 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
     });
 
     await notify(prisma, await activeUserIds(prisma), "booking.cancelled", "تم إلغاء حجز", `وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}`);
+    // الشفافية (البند ٨): إلغاءٌ من غير البائع (المالي/الإدارة) — إشعار موجّه للبائع بمن ألغى.
+    if (booking.sellerId && booking.sellerId !== user.id) {
+      await notifyBestEffort("booking.cancel.seller", () =>
+        notify(
+          prisma, [booking.sellerId], "booking.cancelled_by_other",
+          "أُلغي حجز من حجوزاتك",
+          `وحدة ${booking.unit.number} للعميل ${booking.lead?.name ?? "—"} — ألغاه ${user.name ?? "الإدارة"}${reason ? ` — السبب: ${reason}` : ""}`,
+          "/bookings",
+        ));
+    }
     revalidateBookings();
     return { ok: true };
   } catch (e) {
@@ -795,6 +845,16 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
       });
     });
 
+    // الشفافية (البند ٨): تأكيد استلام من غير البائع (المالي) — البائع يُشعر فورًا.
+    if (stage === BookingStage.DELIVERED && booking.sellerId && booking.sellerId !== user.id) {
+      await notifyBestEffort("booking.delivered.seller", () =>
+        notify(
+          prisma, [booking.sellerId], "booking.delivered_by_other",
+          "تم تأكيد استلام وحدة من بيعاتك",
+          `وحدة ${booking.unit.number} للعميل ${booking.lead?.name ?? "—"} — أكّده ${user.name ?? "الإدارة"}`,
+          "/bookings",
+        ));
+    }
     revalidateBookings();
     return { ok: true };
   } catch (e) {

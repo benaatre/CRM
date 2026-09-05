@@ -164,6 +164,11 @@ const CATEGORY_BY_EVENT: Record<string, PushCategory> = {
   "attendance.quiet_pulse": "staff",
   // طلب إجازة جديد — للمختصين حسب توزيع التنبيهات.
   "leave.requested": "staff",
+  // ===== شفافية سلطة المالي (البند ٨) — إشعارات البائع عن عمليات غيره على حجوزاته =====
+  "booking.on_behalf": "achievement",
+  "booking.updated_by_other": "reassigned",
+  "booking.cancelled_by_other": "reassigned",
+  "booking.delivered_by_other": "achievement",
 };
 
 /**
@@ -197,6 +202,10 @@ export const DIRECT_EVENT_LABELS: Record<string, string> = {
   "availability.paused": "إيقاف استقبال موظف",
   "availability.resumed": "رجوع موظف للاستقبال",
   "booking.cancelled": "إلغاء حجز",
+  "booking.on_behalf": "بيعة سُجّلت باسمك",
+  "booking.updated_by_other": "تعديل حجز من حجوزاتك",
+  "booking.cancelled_by_other": "إلغاء حجز من حجوزاتك",
+  "booking.delivered_by_other": "تأكيد استلام من بيعاتك",
   "discount.exceeded": "تجاوز خصم",
   "attendance.checked_in": "داوم موظف",
   "attendance.completed": "موظف أكمل دوامه",
