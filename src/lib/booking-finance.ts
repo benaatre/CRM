@@ -19,3 +19,13 @@ export function bookingCollection(
   if (stage === "DELIVERED") return { collected: afterDiscount, remaining: 0 };
   return { collected: collectedAmount, remaining: Math.max(0, afterDiscount - collectedAmount) };
 }
+
+/**
+ * مرحلة العميل من أعلى حجوزاته (تعدد الحجوزات — البند ٤):
+ * أي حجز مباع (SOLD/DELIVERED) ⇒ CLOSED_WON · أي حجز قائم ⇒ RESERVED ·
+ * بلا حجوزات ⇒ null (يقرر المستدعي — إلغاء آخر حجز يعيده لتفاوض بالمنطق القائم).
+ */
+export function leadStageForBookings(stages: BookingStage[]): "CLOSED_WON" | "RESERVED" | null {
+  if (stages.length === 0) return null;
+  return stages.some((s) => SOLD_STAGES.includes(s)) ? "CLOSED_WON" : "RESERVED";
+}

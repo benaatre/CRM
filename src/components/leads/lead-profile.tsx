@@ -62,7 +62,7 @@ export function LeadProfile({ detail, projects, transferHistory, isManager, init
   function cancel(bookingId: string) {
     const reason = window.prompt("سبب إلغاء الحجز (اختياري):");
     if (reason === null) return;
-    if (!window.confirm("متأكد من إلغاء الحجز؟ الوحدة بترجع «متاحة» والعميل يرجع لمرحلة «تفاوض».")) return;
+    if (!window.confirm("متأكد من إلغاء الحجز؟ الوحدة بترجع «متاحة» — ولو كان آخر حجوزات العميل يرجع لمرحلة «تفاوض».")) return;
     startTransition(async () => {
       const r = await cancelBooking(bookingId, reason.trim() || undefined);
       if (!r.ok && r.error) alert(r.error);

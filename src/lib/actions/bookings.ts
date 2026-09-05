@@ -21,6 +21,7 @@ import { notify, activeUserIds, ownerIds } from "@/lib/notify";
 import { emitNotification, notifyBestEffort } from "@/lib/notifications/emit";
 import { getProjectsWithAvailableUnits, type ProjectWithUnits } from "@/lib/data/bookings";
 import { bookingStageOrder } from "@/lib/labels";
+import { leadStageForBookings } from "@/lib/booking-finance";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -214,12 +215,15 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
         },
       });
       await tx.unit.update({ where: { id: unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });
-      await tx.lead.update({ where: { id: leadId }, data: { stage: immediateSale ? "CLOSED_WON" : "RESERVED", isArchived: true } });
+      // مرحلة العميل = أعلى حجوزاته (البند ٤): حجز إضافي لعميل مقفول-بيع لا يُنزله لـ«محجوز».
+      const others = await tx.booking.findMany({ where: { leadId, id: { not: booking.id } }, select: { stage: true } });
+      const leadStage = leadStageForBookings([immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION, ...others.map((b) => b.stage)])!;
+      await tx.lead.update({ where: { id: leadId }, data: { stage: leadStage, isArchived: true } });
       // آخر خطوة في تايملاين متابعات العميل: «تم الحجز» — وبها تتوقّف المتابعات.
       await tx.followUp.create({
         data: {
           leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
-          section: FollowUpSection.INTERESTED, stageAfter: immediateSale ? "CLOSED_WON" : "RESERVED",
+          section: FollowUpSection.INTERESTED, stageAfter: leadStage,
           note: immediateSale ? "تم الشراء (كاش فوري)" : "تم الحجز",
         },
       });
@@ -368,9 +372,9 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
     const createdUnits: string[] = [];
 
     await prisma.$transaction(async (tx) => {
-      // مرحلة العميل من أعلى حجوزاته: القائمة قبل السلة + السلة نفسها.
+      // مرحلة العميل من أعلى حجوزاته (البند ٤): القائمة قبل السلة + السلة نفسها.
       const existing = await tx.booking.findMany({ where: { leadId }, select: { stage: true } });
-      const anySold = immediateSale || existing.some((b) => (["SOLD", "DELIVERED"] as BookingStage[]).includes(b.stage));
+      const newLeadStage = leadStageForBookings([stage, ...existing.map((b) => b.stage)])!;
 
       for (const item of items) {
         const u = unitById.get(item.unitId)!;
@@ -434,12 +438,12 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
 
       await tx.lead.update({
         where: { id: leadId },
-        data: { stage: anySold ? "CLOSED_WON" : "RESERVED", isArchived: true },
+        data: { stage: newLeadStage, isArchived: true },
       });
       await tx.followUp.create({
         data: {
           leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
-          section: FollowUpSection.INTERESTED, stageAfter: anySold ? "CLOSED_WON" : "RESERVED",
+          section: FollowUpSection.INTERESTED, stageAfter: newLeadStage,
           note: `${immediateSale ? "تم الشراء (كاش فوري)" : "تم الحجز"} — ${items.length > 1 ? `${items.length} وحدات: ` : "وحدة "}${createdUnits.join("، ")}`,
         },
       });
@@ -686,14 +690,25 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
 
     await prisma.$transaction(async (tx) => {
       await tx.unit.update({ where: { id: booking.unitId }, data: { status: "AVAILABLE" } });
-      await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "NEGOTIATION", isArchived: false } });
+      // مرحلة العميل من أعلى حجوزاته المتبقية (البند ٤): إلغاء حجز واحد لا يُخرج العميل
+      // من «تم الحجز/الشراء» ما دام غيره قائمًا — آخر حجز يُلغى يعيده لتفاوض بالمنطق القائم.
+      const remaining = await tx.booking.findMany({
+        where: { leadId: booking.leadId, id: { not: bookingId } },
+        select: { stage: true },
+      });
+      const remainingStage = leadStageForBookings(remaining.map((b) => b.stage));
+      if (remainingStage) {
+        await tx.lead.update({ where: { id: booking.leadId }, data: { stage: remainingStage } });
+      } else {
+        await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "NEGOTIATION", isArchived: false } });
+      }
       // سطر في تايملاين متابعات العميل: «تم إلغاء الحجز + السبب».
       await tx.followUp.create({
         data: {
           leadId: booking.leadId, createdBy: user.id,
           type: FollowUpType.OTHER, result: FollowUpResult.NEGOTIATING,
-          section: FollowUpSection.INTERESTED, stageAfter: "NEGOTIATION",
-          note: `تم إلغاء الحجز — وحدة ${booking.unit.number}${booking.unit.project?.name ? ` (${booking.unit.project.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}`,
+          section: FollowUpSection.INTERESTED, stageAfter: remainingStage ?? "NEGOTIATION",
+          note: `تم إلغاء الحجز — وحدة ${booking.unit.number}${booking.unit.project?.name ? ` (${booking.unit.project.name})` : ""}${reason ? ` — السبب: ${reason}` : ""}${remainingStage ? ` — وبقي له ${remaining.length > 1 ? `${remaining.length} حجوزات قائمة` : "حجز قائم"}` : ""}`,
         },
       });
       await logAudit(tx, {
@@ -730,11 +745,16 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
         data: { bookingId, userId: user.id, fromStage: booking.stage, toStage: stage },
       });
       if (stage === BookingStage.SOLD || stage === BookingStage.DELIVERED) {
-        // بيع/تسليم: الوحدة مباعة والعميل مقفول-بيع.
+        // بيع/تسليم: الوحدة مباعة والعميل مقفول-بيع (أعلى الحجوزات بالتعريف).
         await tx.unit.update({ where: { id: booking.unitId }, data: { status: "SOLD" } });
         await tx.lead.update({ where: { id: booking.leadId }, data: { stage: "CLOSED_WON" } });
       } else {
         await tx.unit.update({ where: { id: booking.unitId }, data: { status: "RESERVED" } });
+        // رجوع من مباع (مالك): مرحلة العميل تُعاد من أعلى حجوزاته بعد هذا التغيير (البند ٤) —
+        // حجز آخر مباع يُبقيه CLOSED_WON، وإلا RESERVED (كان لا يُلمس فيبقى مقفولًا خطأً).
+        const all = await tx.booking.findMany({ where: { leadId: booking.leadId, id: { not: bookingId } }, select: { stage: true } });
+        const leadStage = leadStageForBookings([stage, ...all.map((b) => b.stage)])!;
+        await tx.lead.update({ where: { id: booking.leadId }, data: { stage: leadStage } });
       }
       // تم الاستلام: سجل في تايملاين العميل (Activity) — مع اسم الموظف والوقت تلقائيًا.
       if (stage === BookingStage.DELIVERED) {
