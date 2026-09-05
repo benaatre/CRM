@@ -9,6 +9,7 @@ import { ksaTodayStart } from "@/lib/auto-distribute";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { weekStartKSA } from "@/lib/ksa-time";
 import { VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
+import { SOLD_STAGES } from "@/lib/booking-finance";
 
 const VISIT_TYPES = [FollowUpType.VISIT_PROJECT, FollowUpType.VISIT_OFFICE];
 // المتوقّع من اللمسات (متابعات) لكل عميل عند حساب نسبة النشاط.
@@ -278,9 +279,10 @@ export async function getDashboard(period: Period): Promise<DashboardData> {
     manager ? prisma.lead.count({ where: unassignedWhere }) : Promise.resolve(0),
     prisma.booking.count({ where: { ...bookingScope, ...periodFilter } }),
     prisma.followUp.count({ where: { type: { in: VISIT_TYPES }, ...fuVisitScope, ...periodFilter } }),
-    // م-٣: «صفقات مقفولة» تُفلتر بوقت الإقفال (updatedAt كوكيل — نفس عرف دورة البيع
-    // في التحليلات) لا بتاريخ إنشاء العميل — صفقة اليوم لعميل عمره شهر تظهر في «٢٤ ساعة».
-    prisma.lead.count({ where: { ...where, stage: "CLOSED_WON", ...(inPeriod ? { updatedAt: inPeriod } : {}) } }),
+    // م-٣: «صفقات مقفولة» تُفلتر بوقت الإقفال (updatedAt كوكيل — نفس عرف دورة البيع).
+    // تعدد الحجوزات: العدّ من جدول الحجوزات (SOLD/DELIVERED) لا من مراحل العملاء —
+    // عميل بثلاث وحدات مباعة = ثلاث صفقات (كان يُحسب واحدة عبر lead.stage).
+    prisma.booking.count({ where: { ...bookingScope, stage: { in: SOLD_STAGES }, ...(inPeriod ? { updatedAt: inPeriod } : {}) } }),
   ]);
 
   // م-٣: «تحويل الزيارات إلى حجوزات» — الصيغة الموحّدة الوحيدة في النظام: الحجوزات ÷ الزيارات.

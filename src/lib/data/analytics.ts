@@ -115,7 +115,9 @@ export async function getAnalytics(): Promise<AnalyticsData> {
         _count: { _all: true },
       }),
       prisma.user.findMany({ where: { role: { in: SELLER_ROLES }, active: true }, select: { id: true, name: true, targetDeals: true } }),
-      prisma.lead.groupBy({ by: ["assignedToId"], where: { stage: "CLOSED_WON" }, _count: { _all: true } }),
+      // «صفقات مقفولة» لكل موظف — من جدول الحجوزات (SOLD/DELIVERED) لا من مراحل العملاء
+      // (تعدد الحجوزات: عميل بثلاث وحدات مباعة = ثلاث صفقات، والهدف targetDeals هدف صفقات).
+      prisma.booking.groupBy({ by: ["sellerId"], where: { stage: { in: SOLD_STAGES } }, _count: { _all: true } }),
       prisma.booking.groupBy({ by: ["sellerId"], _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["purchaseMethod"], where: { purchaseMethod: { not: null } }, _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["purchaseGoal"], where: { purchaseGoal: { not: null } }, _count: { _all: true } }),
@@ -217,7 +219,7 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     .sort((a, b) => b.count - a.count);
 
   // ===== الفريق =====
-  const closedMap = new Map(closedByEmp.map((r) => [r.assignedToId, r._count._all]));
+  const closedMap = new Map(closedByEmp.map((r) => [r.sellerId, r._count._all]));
   const bookMap = new Map(bookingsByEmp.map((r) => [r.sellerId, r._count._all]));
   const assignedMap = new Map(assignedByEmp.map((r) => [r.assignedToId, r._count._all]));
   const followUpsMap = new Map(followUpsByEmp.map((r) => [r.createdBy, r._count._all]));

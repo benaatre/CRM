@@ -9,6 +9,7 @@ import { formatTime, formatDate, lastSeenAgo, ONLINE_THRESHOLD_MS } from "@/lib/
 import { getAuditLog, inferFollowupLeads, resolveAuditNames } from "@/lib/data/audit";
 import { channelLabel } from "@/lib/labels";
 import { ksaDayKey } from "@/lib/ksa-time";
+import { SOLD_STAGES } from "@/lib/booking-finance";
 
 /**
  * طبقة بيانات «لوحة المالك» (المرجع owner-final-structure.html).
@@ -135,7 +136,8 @@ async function windowCounts(gte: Date, lt: Date, dupIds: Set<string>) {
     prisma.booking.count({ where: createdIn }),
     prisma.followUp.count({ where: { type: { in: VISIT_TYPES }, ...createdIn } }),
     // «صفقات مقفولة» بوقت الإقفال (updatedAt كوكيل) — نفس عرف dashboard.ts.
-    prisma.lead.count({ where: { stage: "CLOSED_WON", updatedAt: { gte, lt } } }),
+    // تعدد الحجوزات: العدّ من جدول الحجوزات (SOLD/DELIVERED) لا من مراحل العملاء.
+    prisma.booking.count({ where: { stage: { in: SOLD_STAGES }, updatedAt: { gte, lt } } }),
   ]);
   const conversion = visits > 0 ? Math.round((bookings / visits) * 100) : 0;
   return { total, unassigned, bookings, visits, closedWon, conversion };
