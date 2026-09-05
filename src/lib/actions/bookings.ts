@@ -71,6 +71,29 @@ const bookingDateOf = (raw: string): Date | null => {
  * يتحقق أن الحجز ضمن صلاحية المستخدم (بائعه أو مدير) — الصلاحية على الخادم لا إخفاء الواجهة.
  * يرجّع المستخدم والحجز (بالحقول التي تحتاجها إجراءات الحجز) أو يرمي خطأً يلتقطه try/catch.
  */
+/**
+ * البائع الفعلي للحجز (سلطة المالي — البند ٧): المالي يمتلك الإنشاء لكن البيعة
+ * تُنسب إلزاميًا لموظف مختار (sellerId من الفورم، نشط)؛ غير المالي: نفسه —
+ * بعد حارس الملكية القائم (موظف = عملاؤه فقط، مدير/مالك = الكل).
+ */
+async function resolveBookingSeller(
+  user: { id: string; role: string },
+  leadAssignedToId: string | null,
+  formData: FormData,
+): Promise<string | ActionResult> {
+  if (user.role === "FINANCE") {
+    const chosen = String(formData.get("sellerId") ?? "");
+    if (!chosen) return { ok: false, error: "اختر الموظف البائع — البيعة تنسب لموظف" };
+    const seller = await prisma.user.findFirst({ where: { id: chosen, active: true }, select: { id: true } });
+    if (!seller) return { ok: false, error: "الموظف البائع غير صالح" };
+    return chosen;
+  }
+  if (!isManager(user.role as Parameters<typeof isManager>[0]) && leadAssignedToId !== user.id) {
+    return { ok: false, error: "ما عندك صلاحية على هذا العميل" };
+  }
+  return user.id;
+}
+
 async function assertBookingAccess(bookingId: string) {
   const user = await requireUser();
   const booking = await prisma.booking.findUnique({
@@ -181,9 +204,9 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     });
     if (!lead) return { ok: false, error: "العميل غير موجود" };
     // الموظف يحجز/يبيع لعملائه فقط (الصلاحية على الخادم — لا نعتمد على إخفاء الواجهة).
-    if (!isManager(user.role) && lead.assignedToId !== user.id) {
-      return { ok: false, error: "ما عندك صلاحية على هذا العميل" };
-    }
+    // سلطة المالي (البند ٧): FINANCE يُنشئ الحجز وينسب البيعة لموظف مختار إلزاميًا.
+    const sellerId = await resolveBookingSeller(user, lead.assignedToId, formData);
+    if (typeof sellerId !== "string") return sellerId;
 
     const nationalityRaw = String(formData.get("nationality") ?? "");
     const nationality = parseEnum(Nationality, nationalityRaw) ?? lead?.nationality ?? null;
@@ -191,7 +214,7 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
     await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.create({
         data: {
-          leadId, unitId, sellerId: user.id,
+          leadId, unitId, sellerId,
           nationality,
           nationalId: String(formData.get("nationalId") ?? "").trim() || lead?.nationalId || null,
           phone: lead?.phone ?? null,
@@ -349,10 +372,9 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
       select: { name: true, phone: true, nationality: true, nationalId: true, assignedToId: true },
     });
     if (!lead) return { ok: false, error: "العميل غير موجود" };
-    // نفس حارس createBooking حرفيًا — الموظف يحجز لعملائه فقط (الصلاحية على الخادم).
-    if (!isManager(user.role) && lead.assignedToId !== user.id) {
-      return { ok: false, error: "ما عندك صلاحية على هذا العميل" };
-    }
+    // نفس حارس createBooking حرفيًا — والمالي ينسب البيعة لموظف مختار (البند ٧).
+    const sellerId = await resolveBookingSeller(user, lead.assignedToId, formData);
+    if (typeof sellerId !== "string") return sellerId;
     const nationality = parseEnum(Nationality, String(formData.get("nationality") ?? "")) ?? lead.nationality ?? null;
     const nationalId = String(formData.get("nationalId") ?? "").trim() || lead.nationalId || null;
 
@@ -407,7 +429,7 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
 
         const booking = await tx.booking.create({
           data: {
-            leadId, unitId: item.unitId, sellerId: user.id,
+            leadId, unitId: item.unitId, sellerId,
             nationality, nationalId, phone: lead.phone ?? null,
             paymentMethod: item.paymentMethod, bankName: item.bankName,
             deposit: item.deposit, price: item.price, discount: item.discount, finalPrice,
@@ -504,10 +526,13 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
     if (!existing) return { ok: false, error: "الحجز غير موجود" };
 
     // الحارس المزدوج على الخادم (لا نعتمد على إخفاء الواجهة).
+    // سلطة المالي (البند ٧): FINANCE يعدّل شروط أي حجز — حتى ذي المحصّل (مع المالك).
     const collected = existing.collectedAmount.toNumber();
     if (collected > 0) {
-      if (user.role !== "OWNER") return { ok: false, error: "ما يمكن تعديل حجز فيه دفعات محصّلة إلا من المالك" };
-    } else if (!isManager(user.role) && existing.sellerId !== user.id) {
+      if (user.role !== "OWNER" && user.role !== "FINANCE") {
+        return { ok: false, error: "ما يمكن تعديل حجز فيه دفعات محصّلة إلا من المالك أو المدير المالي" };
+      }
+    } else if (!isManager(user.role) && user.role !== "FINANCE" && existing.sellerId !== user.id) {
       return { ok: false, error: "ما عندك صلاحية على هذا الحجز" };
     }
 

@@ -38,7 +38,7 @@ function unitBasePrice(u: UnitLite, mode: "before" | "after"): number | null {
 }
 
 export function BookingForm({
-  open, onClose, leadId, leadName, onDone, presetUnitId, immediateSale = false, booking,
+  open, onClose, leadId, leadName, onDone, presetUnitId, immediateSale = false, booking, sellers,
 }: {
   open: boolean;
   onClose: () => void;
@@ -48,6 +48,8 @@ export function BookingForm({
   presetUnitId?: string;
   immediateSale?: boolean;
   booking?: BookingCard; // مُرّر = وضع تعديل (يُهيّئ الفورم بقيم الحجز)
+  /** سلطة المالي (البند ٧): قائمة الموظفين — يُلزم المالي باختيار البائع الذي تُنسب له البيعة. */
+  sellers?: { id: string; name: string }[];
 }) {
   const editing = !!booking;
   const router = useRouter();
@@ -282,6 +284,16 @@ export function BookingForm({
               <input name="secondaryPhone" defaultValue={booking?.secondaryPhone ?? ""} inputMode="numeric" dir="ltr" className="select-base" placeholder="05xxxxxxxx" />
             </label>
           </div>
+
+          {/* الموظف البائع — للمالي حصرًا (البيعة تنسب لموظف؛ الخادم يلزم به FINANCE) */}
+          {!editing && sellers && sellers.length > 0 && (
+            <Field label="الموظف البائع *">
+              <select name="sellerId" required defaultValue="" className="select-base">
+                <option value="" disabled>اختر الموظف الذي تنسب له البيعة</option>
+                {sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </Field>
+          )}
 
           {/* المشروع */}
           <Field label="المشروع *">

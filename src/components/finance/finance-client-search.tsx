@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Search, UserPlus, UserCheck } from "lucide-react";
+import { Search, UserPlus, UserCheck, Handshake } from "lucide-react";
 import {
   financePhoneLookup, financeRegisterLead, type FinanceLookupMatch,
 } from "@/lib/actions/finance-clients";
+import { BookingForm } from "@/components/bookings/booking-form";
 
 /**
  * شاشة بحث المالي برقم الجوال (سلطة المالي — البند ٦):
@@ -21,6 +22,8 @@ export function FinanceClientSearch({ sellers }: { sellers: { id: string; name: 
   const [name, setName] = useState("");
   const [assignedToId, setAssignedToId] = useState("");
   const [registered, setRegistered] = useState<{ leadId: string; name: string; employeeName: string } | null>(null);
+  // سلطة المالي (البند ٧): فتح نموذج الحجز لعميل موجود بالبحث أو مسجَّل للتو.
+  const [bookingFor, setBookingFor] = useState<{ leadId: string; leadName: string } | null>(null);
 
   function search() {
     setError(null); setMatches(null); setRegistered(null); setSearched(null);
@@ -73,9 +76,14 @@ export function FinanceClientSearch({ sellers }: { sellers: { id: string; name: 
         <section className="glass space-y-2 rounded-2xl p-5">
           <h2 className="flex items-center gap-2 font-semibold text-foreground"><UserCheck className="size-4 text-gold" /> العميل مسجل في النظام</h2>
           {matches.map((m) => (
-            <div key={m.leadId} className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
-              <span className="font-medium text-foreground">{m.name}</span>
-              <span className="text-sm text-muted-foreground">{m.employeeName ? `لدى: ${m.employeeName}` : "غير موزّع"}</span>
+            <div key={m.leadId} className="flex items-center justify-between gap-2 rounded-xl border border-border px-4 py-3">
+              <div className="min-w-0">
+                <span className="font-medium text-foreground">{m.name}</span>
+                <span className="block text-sm text-muted-foreground">{m.employeeName ? `لدى: ${m.employeeName}` : "غير موزّع"}</span>
+              </div>
+              <button onClick={() => setBookingFor({ leadId: m.leadId, leadName: m.name })} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gold/50 bg-gold/10 px-3 py-2 text-xs font-medium text-gold hover:bg-gold/20">
+                <Handshake className="size-3.5" /> سجّل حجزًا
+              </button>
             </div>
           ))}
         </section>
@@ -109,11 +117,26 @@ export function FinanceClientSearch({ sellers }: { sellers: { id: string; name: 
       )}
 
       {registered && (
-        <section className="glass rounded-2xl p-5">
+        <section className="glass space-y-3 rounded-2xl p-5">
           <p className="rounded-xl border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">
             سُجّل «{registered.name}» وأُسند لـ{registered.employeeName} — ووصله إشعار بذلك.
           </p>
+          <button onClick={() => setBookingFor({ leadId: registered.leadId, leadName: registered.name })} className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-gold/50 bg-gold/10 text-sm font-semibold text-gold hover:bg-gold/20">
+            <Handshake className="size-4" /> سجّل حجزًا له الآن
+          </button>
         </section>
+      )}
+
+      {/* نموذج الحجز — البيعة تُنسب إلزاميًا لموظف من القائمة (الخادم يلزم FINANCE به) */}
+      {bookingFor && (
+        <BookingForm
+          open={!!bookingFor}
+          leadId={bookingFor.leadId}
+          leadName={bookingFor.leadName}
+          sellers={sellers}
+          onClose={() => setBookingFor(null)}
+          onDone={() => { setBookingFor(null); setMatches(null); setRegistered(null); setSearched(null); setPhone(""); }}
+        />
       )}
     </div>
   );

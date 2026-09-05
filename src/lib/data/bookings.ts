@@ -73,6 +73,8 @@ export type BookingCard = {
 export type BookingsData = {
   manager: boolean;
   isOwner: boolean;
+  /** سلطة المالي (البند ٧): FINANCE يعدّل شروط أي حجز حتى ذي المحصّل (الخادم يفرضها). */
+  isFinance: boolean;
   currentUserId: string;
   kpis: { total: number; inProgress: number; sold: number; deposits: number; salesValue: number };
   cards: BookingCard[];
@@ -165,6 +167,7 @@ export async function getBookings(): Promise<BookingsData> {
   return {
     manager,
     isOwner: user.role === "OWNER",
+    isFinance: user.role === "FINANCE",
     currentUserId: user.id,
     kpis: {
       total: cards.length,

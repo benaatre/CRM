@@ -82,14 +82,14 @@ export function BookingsList({ data }: { data: BookingsData }) {
         <p className="py-12 text-center text-muted-foreground">ما فيه حجوزات{filter === "mine" ? " لك" : ""} بعد.</p>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
-          {cards.map((b) => <BookingCardView key={b.id} b={b} manager={data.manager} isOwner={data.isOwner} currentUserId={data.currentUserId} />)}
+          {cards.map((b) => <BookingCardView key={b.id} b={b} manager={data.manager} isOwner={data.isOwner} isFinance={data.isFinance} currentUserId={data.currentUserId} />)}
         </div>
       )}
     </div>
   );
 }
 
-function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCard; manager: boolean; isOwner: boolean; currentUserId: string }) {
+function BookingCardView({ b, manager, isOwner, isFinance, currentUserId }: { b: BookingCard; manager: boolean; isOwner: boolean; isFinance: boolean; currentUserId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -101,8 +101,9 @@ function BookingCardView({ b, manager, isOwner, currentUserId }: { b: BookingCar
   const [editing, setEditing] = useState(false);
   // من يملك التحكم: بائع الحجز أو المدير/المالك (يطابق assertBookingAccess على الخادم).
   const canManage = manager || b.sellerId === currentUserId;
-  // تعديل الحجز: بلا محصّل → بائع/مدير؛ فيه محصّل → المالك فقط (الخادم يفرضها فعلاً — هذا دفاع أمامي).
-  const canEdit = (b.collectedAmount ?? 0) > 0 ? isOwner : canManage;
+  // تعديل الحجز: بلا محصّل → بائع/مدير/مالي؛ فيه محصّل → المالك أو المالي (سلطة المالي —
+  // البند ٧؛ الخادم يفرضها فعلاً — هذا دفاع أمامي).
+  const canEdit = (b.collectedAmount ?? 0) > 0 ? (isOwner || isFinance) : canManage;
   const isSold = b.stage === "SOLD" || b.stage === "DELIVERED";
   const soldPending = b.stage === "SOLD";      // مباع بانتظار التسليم (كهرماني)
   const delivered = b.stage === "DELIVERED";   // تم الاستلام (أخضر)
