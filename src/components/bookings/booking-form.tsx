@@ -1,15 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PaymentMethod } from "@prisma/client";
 import { bankLabels, paymentMethodLabels } from "@/lib/labels";
 import { formatCurrencyFull, toArabicDigits } from "@/lib/format";
-import { createBooking, updateBooking, fetchProjectsWithUnits } from "@/lib/actions/bookings";
+import { createBooking, createBookings, updateBooking, fetchProjectsWithUnits } from "@/lib/actions/bookings";
 import type { ProjectWithUnits, BookingCard } from "@/lib/data/bookings";
 
 type CashType = "CHECK" | "TRANSFER" | "INSTALLMENTS";
 type UnitLite = ProjectWithUnits["units"][number];
+
+/** بطاقة وحدة داخل سلة الحجز المتزامن — لقطة مالية مستقلة (تعدد الحجوزات — البند ٢). */
+type BasketEntry = {
+  unitId: string;
+  unitNumber: string;
+  projectName: string;
+  price: number;
+  discount: number;
+  deposit: number | null;
+  paymentMethod: PaymentMethod;
+  bankName: string | null;
+  cashAmount: number | null;
+  cashPaymentType: CashType | null;
+  expectedCheckDate: string | null;
+  expectedTransferDate: string | null;
+  installments: { amount: number; date: string }[] | null;
+  includesVAT: boolean;
+};
 
 /** السعر الأساسي للوحدة حسب الوضع: «قبل الخصم» = السعر، «بعد الخصم» = discountedPrice أو محسوب من النسبة. */
 function unitBasePrice(u: UnitLite, mode: "before" | "after"): number | null {
@@ -49,6 +67,9 @@ export function BookingForm({
   const [bookingDate, setBookingDate] = useState(""); // تاريخ حجز يدوي اختياري (بيعات قديمة)
   const [instRows, setInstRows] = useState<{ amount: string; date: string }[]>([{ amount: "", date: "" }]);
   const [error, setError] = useState<string | null>(null);
+  // سلة الحجز المتزامن: أكثر من وحدة قبل التأكيد، كل وحدة ببطاقتها المالية المستقلة.
+  const [basket, setBasket] = useState<BasketEntry[]>([]);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +106,11 @@ export function BookingForm({
     }
   }, [open, booking]);
 
-  const units = useMemo(() => projects.find((p) => p.id === projectId)?.units ?? [], [projects, projectId]);
+  // الوحدات المتاحة — مطروحًا منها ما دخل السلة (الوحدة لا تُضاف مرتين بجلسة واحدة).
+  const units = useMemo(() => {
+    const inBasket = new Set(basket.map((b) => b.unitId));
+    return (projects.find((p) => p.id === projectId)?.units ?? []).filter((u) => !inBasket.has(u.id));
+  }, [projects, projectId, basket]);
 
   // تعبئة الوحدة المحدّدة مسبقًا (من شبكة المشروع)
   useEffect(() => {
@@ -130,6 +155,57 @@ export function BookingForm({
 
   if (!open) return null;
 
+  /** لقطة البطاقة الحالية (الحقول الحرّة تُقرأ من الفورم — البنك والتواريخ غير مضبوطة React). */
+  function currentCardEntry(): BasketEntry | { error: string } {
+    if (!unitId) return { error: "اختر الوحدة أول" };
+    if (!priceNum) return { error: "اكتب سعر الشقة" };
+    const fd = formRef.current ? new FormData(formRef.current) : new FormData();
+    const bank = String(fd.get("bankName") ?? "") || null;
+    if (showFinance && !bank) return { error: "اختر البنك" };
+    const rows = showCash && cashType === "INSTALLMENTS"
+      ? instRows.filter((r) => r.amount).map((r) => ({ amount: Number(r.amount.replace(/\D/g, "")) || 0, date: r.date }))
+      : null;
+    return {
+      unitId,
+      unitNumber: selUnit?.number ?? "—",
+      projectName: selProject?.name ?? "—",
+      price: priceNum,
+      discount: discountNum,
+      deposit: depositNum || null,
+      paymentMethod: method,
+      bankName: showFinance ? bank : null,
+      cashAmount: method === "CASH_AND_FINANCE" ? (Number(String(fd.get("cashAmount") ?? "").replace(/\D/g, "")) || null) : null,
+      cashPaymentType: showCash ? cashType : null,
+      expectedCheckDate: showCash && cashType === "CHECK" ? (String(fd.get("expectedCheckDate") ?? "") || null) : null,
+      expectedTransferDate: showCash && cashType === "TRANSFER" ? (String(fd.get("expectedTransferDate") ?? "") || null) : null,
+      installments: rows && rows.length ? rows : null,
+      includesVAT: vatIncluded,
+    };
+  }
+
+  /** يفرغ حقول البطاقة الحالية (الوحدة وماليتها) — الحقول المشتركة (الهوية/التاريخ) تبقى. */
+  function resetCardFields() {
+    setUnitId(""); setPrice(""); setDiscount(""); setDeposit("");
+    setMethod("CASH"); setCashType("CHECK"); setVatIncluded(false); setPriceMode("after");
+    setInstRows([{ amount: "", date: "" }]);
+    const form = formRef.current;
+    if (form) {
+      for (const name of ["bankName", "cashAmount", "expectedCheckDate", "expectedTransferDate"]) {
+        const el = form.elements.namedItem(name);
+        if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement) el.value = "";
+      }
+    }
+  }
+
+  /** يضيف البطاقة الحالية للسلة ويجهّز الفورم لوحدة ثانية. */
+  function addToBasket() {
+    setError(null);
+    const entry = currentCardEntry();
+    if ("error" in entry) { setError(entry.error); return; }
+    setBasket((b) => [...b, entry]);
+    resetCardFields();
+  }
+
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -149,6 +225,17 @@ export function BookingForm({
       if (editing && booking) {
         fd.set("bookingId", booking.id);
         res = await updateBooking(fd);
+      } else if (basket.length > 0) {
+        // سلة متزامنة: البطاقات المضافة + البطاقة الحالية إن اكتملت — transaction واحدة على الخادم.
+        const entries: BasketEntry[] = [...basket];
+        if (unitId) {
+          const current = currentCardEntry();
+          if ("error" in current) { setError(current.error); return; }
+          entries.push(current);
+        }
+        fd.set("immediateSale", immediateSale ? "yes" : "no");
+        fd.set("items", JSON.stringify(entries.map(({ unitNumber: _n, projectName: _p, ...item }) => item)));
+        res = await createBookings(fd);
       } else {
         // الشراء الفوري = نفس فورم الحجز، لكن الوحدة تُباع والعميل يُقفل (داخل createBooking).
         fd.set("immediateSale", immediateSale ? "yes" : "no");
@@ -174,7 +261,7 @@ export function BookingForm({
           <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-secondary">إغلاق</button>
         </div>
 
-        <form onSubmit={submit} className="space-y-4">
+        <form ref={formRef} onSubmit={submit} className="space-y-4">
           {/* جنسية العميل + الهوية/الإقامة */}
           <div className="rounded-xl border border-border p-3">
             <div className="mb-2 text-xs font-medium text-muted-foreground">جنسية العميل</div>
@@ -206,7 +293,7 @@ export function BookingForm({
 
           {/* الوحدة (متاحة فقط) */}
           <Field label="الوحدة *">
-            <select name="unitId" value={unitId} onChange={(e) => { const id = e.target.value; setUnitId(id); const u = units.find((x) => x.id === id); if (u) { setPriceMode("after"); const bp = unitBasePrice(u, "after"); if (bp != null) setPrice(String(bp)); } }} required disabled={!projectId} className="select-base">
+            <select name="unitId" value={unitId} onChange={(e) => { const id = e.target.value; setUnitId(id); const u = units.find((x) => x.id === id); if (u) { setPriceMode("after"); const bp = unitBasePrice(u, "after"); if (bp != null) setPrice(String(bp)); } }} required={basket.length === 0} disabled={!projectId} className="select-base">
               <option value="" disabled>{projectId ? (units.length ? "اختر الوحدة" : "ما فيه وحدات متاحة") : "اختر المشروع أول"}</option>
               {units.map((u) => <option key={u.id} value={u.id}>{u.number}{u.price ? ` — ${toArabicDigits(u.price.toLocaleString("en-US"))} ر.س` : ""}</option>)}
             </select>
@@ -233,7 +320,7 @@ export function BookingForm({
 
           {/* المبالغ — عمود واحد على الجوال */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label="سعر الشقة *"><input name="price" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} required inputMode="numeric" dir="ltr" className="select-base" /></Field>
+            <Field label="سعر الشقة *"><input name="price" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} required={basket.length === 0} inputMode="numeric" dir="ltr" className="select-base" /></Field>
             <Field label="الخصم"><input name="discount" value={discount} onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
             <Field label="العربون"><input name="deposit" value={deposit} onChange={(e) => setDeposit(e.target.value.replace(/\D/g, ""))} inputMode="numeric" dir="ltr" className="select-base" /></Field>
           </div>
@@ -335,12 +422,49 @@ export function BookingForm({
             </div>
           )}
 
+          {/* ===== سلة الحجز المتزامن (تعدد الحجوزات — البند ٢): وحدات متعددة بجلسة واحدة ===== */}
+          {!editing && (
+            <div className="space-y-2 rounded-xl border border-gold/30 bg-gold/5 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gold">سلة الحجز {basket.length > 0 && `(${toArabicDigits(basket.length + (unitId ? 1 : 0))} وحدات)`}</span>
+                <button type="button" onClick={addToBasket} disabled={!unitId || !priceNum} className="rounded-lg border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 disabled:opacity-40">
+                  + أضف للسلة واختر وحدة ثانية
+                </button>
+              </div>
+              {basket.length === 0 ? (
+                <p className="text-[0.7rem] text-muted-foreground">لوحدة واحدة سجّل مباشرة. لأكثر من وحدة: عبّئ بيانات الوحدة ثم «أضف للسلة» — كل وحدة ببطاقتها المالية، والتسجيل النهائي كله دفعة واحدة (الكل أو لا شيء).</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {basket.map((b, i) => (
+                    <div key={b.unitId} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs">
+                      <div className="min-w-0">
+                        <span className="font-medium text-foreground">{b.projectName} — وحدة {b.unitNumber}</span>
+                        <span className="text-muted-foreground"> · {paymentMethodLabels[b.paymentMethod]} · {formatCurrencyFull(b.price - b.discount)}{b.deposit ? ` · عربون ${formatCurrencyFull(b.deposit)}` : ""}</span>
+                      </div>
+                      <button type="button" onClick={() => setBasket((arr) => arr.filter((_, j) => j !== i))} className="shrink-0 text-destructive hover:underline">حذف</button>
+                    </div>
+                  ))}
+                  <div className="flex justify-between px-1 pt-1 text-xs">
+                    <span className="text-muted-foreground">إجمالي السلة{unitId && priceNum ? " (مع البطاقة الحالية)" : ""}</span>
+                    <span className="font-bold text-gold">{formatCurrencyFull(basket.reduce((s, b) => s + (b.price - b.discount), 0) + (unitId ? finalPrice : 0))}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">{error}</p>}
 
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="min-h-12 flex-1 rounded-xl border border-border px-4 text-sm text-muted-foreground sm:flex-none">إلغاء</button>
             <button type="submit" disabled={pending} className="min-h-12 flex-1 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-              {pending ? "جارٍ…" : editing ? "حفظ التعديلات" : immediateSale ? "سجّل الشراء" : "سجّل الحجز"}
+              {pending
+                ? "جارٍ…"
+                : editing
+                  ? "حفظ التعديلات"
+                  : basket.length > 0
+                    ? `${immediateSale ? "سجّل شراء" : "سجّل حجز"} ${toArabicDigits(basket.length + (unitId ? 1 : 0))} وحدات`
+                    : immediateSale ? "سجّل الشراء" : "سجّل الحجز"}
             </button>
           </div>
         </form>

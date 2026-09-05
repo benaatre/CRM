@@ -269,6 +269,218 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
   }
 }
 
+/** عنصر سلة الحجز المتزامن — بطاقة مالية مستقلة لكل وحدة (تعدد الحجوزات 2026-09-05). */
+type BasketItem = {
+  unitId: string;
+  price: number;
+  discount: number;
+  deposit: number | null;
+  paymentMethod: PaymentMethod;
+  bankName: SaudiBank | null;
+  cashAmount: number | null;
+  cashPaymentType: CashPaymentType | null;
+  expectedCheckDate: string | null;
+  expectedTransferDate: string | null;
+  installments: { amount: number; date: string }[] | null;
+  includesVAT: boolean;
+};
+
+/** يفكّ عناصر السلة من JSON بتحقق شكلي صارم — يرمي رسالة عربية عند أي خلل. */
+function parseBasketItems(raw: string): BasketItem[] {
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("بيانات السلة غير صالحة"); }
+  if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("السلة فاضية");
+  if (parsed.length > 20) throw new Error("السلة كبيرة جدًا — ٢٠ وحدة كحد أقصى");
+  return parsed.map((x) => {
+    const o = x as Record<string, unknown>;
+    const unitId = String(o.unitId ?? "");
+    const price = Number(o.price);
+    const discount = Number(o.discount ?? 0);
+    if (!unitId) throw new Error("وحدة بلا معرّف في السلة");
+    if (!Number.isFinite(price) || price <= 0) throw new Error("سعر غير صحيح في السلة");
+    if (!Number.isFinite(discount) || discount < 0) throw new Error("خصم غير صحيح في السلة");
+    const paymentMethod = parseEnum(PaymentMethod, o.paymentMethod, PaymentMethod.CASH)!;
+    const bankName = parseEnum(SaudiBank, o.bankName);
+    if ((paymentMethod === "BANK_FINANCE" || paymentMethod === "CASH_AND_FINANCE") && !bankName) {
+      throw new Error("اختر البنك لكل وحدة تمويلها بنكي");
+    }
+    const deposit = o.deposit != null && Number.isFinite(Number(o.deposit)) ? Number(o.deposit) : null;
+    const cashAmount = o.cashAmount != null && Number.isFinite(Number(o.cashAmount)) ? Number(o.cashAmount) : null;
+    const installments = Array.isArray(o.installments) && o.installments.length
+      ? (o.installments as { amount: number; date: string }[]).map((r) => ({ amount: Number(r.amount) || 0, date: String(r.date ?? "") }))
+      : null;
+    return {
+      unitId, price: Math.round(price), discount: Math.round(discount), deposit,
+      paymentMethod, bankName,
+      cashAmount, cashPaymentType: parseEnum(CashPaymentType, o.cashPaymentType),
+      expectedCheckDate: o.expectedCheckDate ? String(o.expectedCheckDate) : null,
+      expectedTransferDate: o.expectedTransferDate ? String(o.expectedTransferDate) : null,
+      installments,
+      includesVAT: o.includesVAT === true,
+    };
+  });
+}
+
+/**
+ * سلة الحجز المتزامن (تعدد الحجوزات — البند ٢): عدة وحدات لعميل واحد بجلسة واحدة،
+ * كل وحدة ببطاقتها المالية المستقلة، والإنشاء transaction واحدة — كل الحجوزات أو لا شيء،
+ * مع إعادة فحص توفر كل وحدة داخلها. مرحلة العميل = أعلى حجوزاته (شراء فوري أو حجز
+ * قائم مباع سابقًا ⇒ CLOSED_WON، وإلا RESERVED) — لا تنزل مرحلة عميل مقفول-بيع.
+ */
+export async function createBookings(formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const leadId = String(formData.get("leadId") ?? "");
+    if (!leadId) return { ok: false, error: "العميل غير محدّد" };
+    const items = parseBasketItems(String(formData.get("items") ?? ""));
+    const unitIds = items.map((i) => i.unitId);
+    if (new Set(unitIds).size !== unitIds.length) return { ok: false, error: "وحدة مكررة في السلة" };
+
+    const immediateSale = String(formData.get("immediateSale") ?? "") === "yes";
+    const createdAt = bookingDateOf(String(formData.get("bookingDate") ?? ""));
+    const secondaryPhone = String(formData.get("secondaryPhone") ?? "").replace(/[^\d]/g, "") || null;
+
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { name: true, phone: true, nationality: true, nationalId: true, assignedToId: true },
+    });
+    if (!lead) return { ok: false, error: "العميل غير موجود" };
+    // نفس حارس createBooking حرفيًا — الموظف يحجز لعملائه فقط (الصلاحية على الخادم).
+    if (!isManager(user.role) && lead.assignedToId !== user.id) {
+      return { ok: false, error: "ما عندك صلاحية على هذا العميل" };
+    }
+    const nationality = parseEnum(Nationality, String(formData.get("nationality") ?? "")) ?? lead.nationality ?? null;
+    const nationalId = String(formData.get("nationalId") ?? "").trim() || lead.nationalId || null;
+
+    // بيانات الوحدات (السعر المخفّض وحدود خصم المشروع) — للتحقق ووسم التجاوز لكل وحدة.
+    const units = await prisma.unit.findMany({
+      where: { id: { in: unitIds } },
+      select: {
+        id: true, number: true, discountedPrice: true,
+        project: { select: { name: true, maxDiscountPercent: true, maxDiscountAmount: true } },
+      },
+    });
+    if (units.length !== unitIds.length) return { ok: false, error: "بعض الوحدات غير موجودة" };
+    const unitById = new Map(units.map((u) => [u.id, u]));
+
+    const stage = immediateSale ? BookingStage.SOLD : BookingStage.RESERVATION;
+    const overages: { number: string; projectName: string | null; overage: number }[] = [];
+    const createdUnits: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      // مرحلة العميل من أعلى حجوزاته: القائمة قبل السلة + السلة نفسها.
+      const existing = await tx.booking.findMany({ where: { leadId }, select: { stage: true } });
+      const anySold = immediateSale || existing.some((b) => (["SOLD", "DELIVERED"] as BookingStage[]).includes(b.stage));
+
+      for (const item of items) {
+        const u = unitById.get(item.unitId)!;
+        // إعادة فحص التوفر داخل الـtransaction — وقيد unitId الفريد شبكة الأمان النهائية.
+        const fresh = await tx.unit.findUnique({
+          where: { id: item.unitId },
+          select: { status: true, booking: { select: { id: true } } },
+        });
+        if (!fresh || fresh.booking || fresh.status !== "AVAILABLE") {
+          throw new Error(`الوحدة ${u.number} صارت محجوزة — احذفها من السلة وحاول من جديد`);
+        }
+
+        const finalPrice = item.price - item.discount;
+        const taxAmount = item.includesVAT ? Math.round(finalPrice * 0.05) : null;
+        const totalAfterDiscount = finalPrice + (taxAmount ?? 0);
+        const collectedAmount = immediateSale ? finalPrice : (item.deposit ?? 0);
+        const remainingAmount = totalAfterDiscount - collectedAmount;
+
+        // منطق تجاوز الخصم المقرر — نفس createBooking حرفيًا لكل وحدة على حدة.
+        const unitDiscounted = u.discountedPrice != null ? Number(u.discountedPrice) : null;
+        const projMaxAmount = u.project?.maxDiscountAmount != null ? Number(u.project.maxDiscountAmount) : null;
+        let discountOverage = 0;
+        if (unitDiscounted != null) {
+          if (finalPrice < unitDiscounted) discountOverage = Math.round(unitDiscounted - finalPrice);
+        } else if (projMaxAmount != null) {
+          if (item.discount > projMaxAmount) discountOverage = Math.round(item.discount - projMaxAmount);
+        }
+        if (discountOverage > 0) overages.push({ number: u.number, projectName: u.project?.name ?? null, overage: discountOverage });
+        const discountPct = item.price > 0 ? (item.discount / item.price) * 100 : 0;
+
+        const booking = await tx.booking.create({
+          data: {
+            leadId, unitId: item.unitId, sellerId: user.id,
+            nationality, nationalId, phone: lead.phone ?? null,
+            paymentMethod: item.paymentMethod, bankName: item.bankName,
+            deposit: item.deposit, price: item.price, discount: item.discount, finalPrice,
+            stage, stageIndex: immediateSale ? 5 : 0,
+            discountExceeded: discountOverage > 0,
+            discountOverage: discountOverage > 0 ? discountOverage : null,
+            discountPercentAtBooking: Math.round(discountPct * 100) / 100,
+            maxDiscountPercentAtBooking: u.project?.maxDiscountPercent != null ? Number(u.project.maxDiscountPercent) : null,
+            cashAmount: item.cashAmount,
+            expectedCheckDate: dateOf(item.expectedCheckDate ?? ""),
+            expectedTransferDate: dateOf(item.expectedTransferDate ?? ""),
+            cashPaymentType: item.cashPaymentType,
+            installmentsCount: item.installments?.length ?? null,
+            installments: item.installments ?? undefined,
+            subjectToTax: item.includesVAT, taxAmount,
+            includesVAT: false, vatAmount: null,
+            secondaryPhone,
+            collectedAmount, remainingAmount,
+            ...(createdAt ? { createdAt } : {}),
+          },
+        });
+        await tx.unit.update({ where: { id: item.unitId }, data: { status: immediateSale ? "SOLD" : "RESERVED" } });
+        await tx.bookingEvent.create({
+          data: { bookingId: booking.id, userId: user.id, toStage: stage, note: immediateSale ? "تم الشراء (كاش فوري)" : "تم إنشاء الحجز (سلة متزامنة)" },
+        });
+        createdUnits.push(u.number);
+      }
+
+      await tx.lead.update({
+        where: { id: leadId },
+        data: { stage: anySold ? "CLOSED_WON" : "RESERVED", isArchived: true },
+      });
+      await tx.followUp.create({
+        data: {
+          leadId, createdBy: user.id, type: FollowUpType.OTHER, result: FollowUpResult.BOOKED,
+          section: FollowUpSection.INTERESTED, stageAfter: anySold ? "CLOSED_WON" : "RESERVED",
+          note: `${immediateSale ? "تم الشراء (كاش فوري)" : "تم الحجز"} — ${items.length > 1 ? `${items.length} وحدات: ` : "وحدة "}${createdUnits.join("، ")}`,
+        },
+      });
+      await tx.activity.create({
+        data: {
+          leadId, userId: user.id, type: ActivityType.NOTE,
+          note: `${immediateSale ? "تم تسجيل شراء" : "تم تسجيل حجز"} ${items.length > 1 ? `${items.length} وحدات` : "وحدة"} — ${createdUnits.join("، ")}`,
+        },
+      });
+      await logAudit(tx, {
+        userId: user.id, action: "booking.created", entity: "lead", entityId: leadId,
+        summary: `${immediateSale ? "شراء" : "حجز"} ${items.length} وحدة (${createdUnits.join("، ")}) · العميل=${leadId}`,
+      });
+    });
+
+    // آثار جانبية بعد الـcommit — فشلها ما يُفشِل الحجوزات (#29).
+    await notifyBestEffort("bookings.created.notify", async () => {
+      await emitNotification({
+        eventKey: "unit_booked_sold",
+        title: immediateSale ? "تم بيع وحدات" : "وحدات اتحجزت",
+        body: `${createdUnits.length > 1 ? `${createdUnits.length} وحدات (${createdUnits.join("، ")})` : `وحدة ${createdUnits[0]}`}${lead.name ? ` — ${lead.name}` : ""}`,
+        link: `/leads/${leadId}`,
+      });
+      if (overages.length) {
+        await notify(
+          prisma,
+          await ownerIds(prisma),
+          "discount.exceeded",
+          "إشعار خصم",
+          `تجاوز خصم: ${user.name ?? "موظف"} — ${overages.map((o) => `وحدة ${o.number}${o.projectName ? ` (${o.projectName})` : ""} بتجاوز ${o.overage.toLocaleString("en-US")} ر.س`).join(" · ")}`,
+        );
+      }
+    });
+
+    revalidateBookings();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toUserError(e) };
+  }
+}
+
 /**
  * تعديل حجز موجود (بيانات الوحدة/المبالغ/الدفع/العميل) — لا يلمس stage/stageIndex.
  * الحارس المزدوج: بلا محصّل → البائع أو المدير/المالك؛ فيه محصّل → المالك فقط.
