@@ -91,6 +91,24 @@ const bookingDateOf = (raw: string): Date | null => {
  * يرجّع المستخدم والحجز (بالحقول التي تحتاجها إجراءات الحجز) أو يرمي خطأً يلتقطه try/catch.
  */
 /**
+ * إشعار الشفافية الموحّد (سد الفجوة ٣): يُعلم الموظف صاحب البيعة بأي عملية على
+ * حجوزاته نفّذها غيره (المالي/المالك) — تسجيل باسمه، تعديل، إلغاء، تأكيد استلام.
+ * يصمت تلقائيًا حين الفاعل هو البائع نفسه، وفشله لا يُفشِل العملية.
+ */
+async function notifyBookingChange(opts: {
+  sellerId: string | null;
+  actor: { id: string; name?: string | null };
+  type: string;
+  title: string;
+  body: string;
+}): Promise<void> {
+  const { sellerId } = opts;
+  if (!sellerId || sellerId === opts.actor.id) return;
+  await notifyBestEffort(`booking.change.${opts.type}`, () =>
+    notify(prisma, [sellerId], opts.type, opts.title, opts.body, "/bookings"));
+}
+
+/**
  * البائع الفعلي للحجز (سلطة المالي — البند ٧): المالي يمتلك الإنشاء لكن البيعة
  * تُنسب إلزاميًا لموظف مختار (sellerId من الفورم، نشط)؛ غير المالي: نفسه —
  * بعد حارس الملكية القائم (موظف = عملاؤه فقط، مدير/مالك = الكل).
@@ -294,15 +312,12 @@ export async function createBooking(formData: FormData): Promise<ActionResult> {
         body: `وحدة ${unit.number} في ${unit.project?.name ?? "—"}${lead?.name ? ` — ${lead.name}` : ""}`,
         link: `/leads/${leadId}`,
       });
-      // الشفافية (البند ٨): بيعة سُجّلت باسم موظف بواسطة غيره (المالي) — يُشعر فورًا.
-      if (sellerId !== user.id) {
-        await notify(
-          prisma, [sellerId], "booking.on_behalf",
-          "سُجّلت بيعة باسمك",
-          `وحدة ${unit.number} في ${unit.project?.name ?? "—"} للعميل ${lead?.name ?? "—"} — سجّلها ${user.name ?? "المدير المالي"}`,
-          "/bookings",
-        );
-      }
+      // الشفافية (البند ٨ + الفجوة ٣): بيعة سُجّلت باسم موظف بواسطة غيره — يُشعر فورًا.
+      await notifyBookingChange({
+        sellerId, actor: user, type: "booking.on_behalf",
+        title: "سُجّلت بيعة باسمك",
+        body: `وحدة ${unit.number} في ${unit.project?.name ?? "—"} للعميل ${lead?.name ?? "—"} — سجّلها ${user.name ?? "المدير المالي"}`,
+      });
       // تجاوز الخصم المقرر: إشعار للمالك (OWNER) — يظهر في جرس الهيدر.
       if (discountOverage > 0) {
         await notify(
@@ -518,15 +533,12 @@ export async function createBookings(formData: FormData): Promise<ActionResult> 
           `تجاوز خصم: ${user.name ?? "موظف"} — ${overages.map((o) => `وحدة ${o.number}${o.projectName ? ` (${o.projectName})` : ""} بتجاوز ${o.overage.toLocaleString("en-US")} ر.س`).join(" · ")}`,
         );
       }
-      // الشفافية (البند ٨): سلة سُجّلت باسم موظف بواسطة غيره (المالي) — يُشعر فورًا.
-      if (sellerId !== user.id) {
-        await notify(
-          prisma, [sellerId], "booking.on_behalf",
-          "سُجّلت بيعة باسمك",
-          `${createdUnits.length > 1 ? `${createdUnits.length} وحدات (${createdUnits.join("، ")})` : `وحدة ${createdUnits[0]}`} للعميل ${lead.name ?? "—"} — سجّلها ${user.name ?? "المدير المالي"}`,
-          "/bookings",
-        );
-      }
+      // الشفافية (البند ٨ + الفجوة ٣): سلة سُجّلت باسم موظف بواسطة غيره — يُشعر فورًا.
+      await notifyBookingChange({
+        sellerId, actor: user, type: "booking.on_behalf",
+        title: "سُجّلت بيعة باسمك",
+        body: `${createdUnits.length > 1 ? `${createdUnits.length} وحدات (${createdUnits.join("، ")})` : `وحدة ${createdUnits[0]}`} للعميل ${lead.name ?? "—"} — سجّلها ${user.name ?? "المدير المالي"}`,
+      });
     });
 
     revalidateBookings();
@@ -653,15 +665,11 @@ export async function updateBooking(formData: FormData): Promise<ActionResult> {
         userId: user.id, action: "booking.update", entity: "booking", entityId: bookingId,
         summary: `عدّل حجز وحدة ${existing.unit?.number ?? "—"}${changes.length ? ` — ${changes.join(" · ")}` : ""} · العميل=${existing.leadId}`,
       }));
-    if (existing.sellerId && existing.sellerId !== user.id) {
-      await notifyBestEffort("booking.update.seller", () =>
-        notify(
-          prisma, [existing.sellerId], "booking.updated_by_other",
-          "عُدّل حجز من حجوزاتك",
-          `وحدة ${existing.unit?.number ?? "—"} للعميل ${existing.lead?.name ?? "—"} — عدّله ${user.name ?? "الإدارة"}${changes.length ? `: ${changes.join(" · ")}` : ""}`,
-          "/bookings",
-        ));
-    }
+    await notifyBookingChange({
+      sellerId: existing.sellerId, actor: user, type: "booking.updated_by_other",
+      title: "عُدّل حجز من حجوزاتك",
+      body: `وحدة ${existing.unit?.number ?? "—"} للعميل ${existing.lead?.name ?? "—"} — عدّله ${user.name ?? "الإدارة"}${changes.length ? `: ${changes.join(" · ")}` : ""}`,
+    });
 
     revalidateBookings();
     return { ok: true };
@@ -788,16 +796,12 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
     });
 
     await notify(prisma, await activeUserIds(prisma), "booking.cancelled", "تم إلغاء حجز", `وحدة ${booking.unit.number} في ${booking.unit.project?.name ?? "—"}`);
-    // الشفافية (البند ٨): إلغاءٌ من غير البائع (المالي/الإدارة) — إشعار موجّه للبائع بمن ألغى.
-    if (booking.sellerId && booking.sellerId !== user.id) {
-      await notifyBestEffort("booking.cancel.seller", () =>
-        notify(
-          prisma, [booking.sellerId], "booking.cancelled_by_other",
-          "أُلغي حجز من حجوزاتك",
-          `وحدة ${booking.unit.number} للعميل ${booking.lead?.name ?? "—"} — ألغاه ${user.name ?? "الإدارة"}${reason ? ` — السبب: ${reason}` : ""}`,
-          "/bookings",
-        ));
-    }
+    // الشفافية (البند ٨ + الفجوة ٣): إلغاءٌ من غير البائع — إشعار موجّه للبائع بمن ألغى.
+    await notifyBookingChange({
+      sellerId: booking.sellerId, actor: user, type: "booking.cancelled_by_other",
+      title: "أُلغي حجز من حجوزاتك",
+      body: `وحدة ${booking.unit.number} للعميل ${booking.lead?.name ?? "—"} — ألغاه ${user.name ?? "الإدارة"}${reason ? ` — السبب: ${reason}` : ""}`,
+    });
     revalidateBookings();
     return { ok: true };
   } catch (e) {
@@ -845,15 +849,13 @@ export async function updateBookingStage(bookingId: string, stage: BookingStage)
       });
     });
 
-    // الشفافية (البند ٨): تأكيد استلام من غير البائع (المالي) — البائع يُشعر فورًا.
-    if (stage === BookingStage.DELIVERED && booking.sellerId && booking.sellerId !== user.id) {
-      await notifyBestEffort("booking.delivered.seller", () =>
-        notify(
-          prisma, [booking.sellerId], "booking.delivered_by_other",
-          "تم تأكيد استلام وحدة من بيعاتك",
-          `وحدة ${booking.unit.number} للعميل ${booking.lead?.name ?? "—"} — أكّده ${user.name ?? "الإدارة"}`,
-          "/bookings",
-        ));
+    // الشفافية (البند ٨ + الفجوة ٣): تأكيد استلام من غير البائع — البائع يُشعر فورًا.
+    if (stage === BookingStage.DELIVERED) {
+      await notifyBookingChange({
+        sellerId: booking.sellerId, actor: user, type: "booking.delivered_by_other",
+        title: "تم تأكيد استلام وحدة من بيعاتك",
+        body: `وحدة ${booking.unit.number} للعميل ${booking.lead?.name ?? "—"} — أكّده ${user.name ?? "الإدارة"}`,
+      });
     }
     revalidateBookings();
     return { ok: true };
