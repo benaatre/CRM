@@ -14,6 +14,7 @@ import {
   Trophy,
   History,
   MapPin,
+  Search,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -25,6 +26,8 @@ export type NavItem = {
   ownerOnly?: boolean;
   /** يظهر للموظف فقط (المالك/المدير لهم بديلهم الكامل — مثل «سجلّي» مقابل سجل التدقيق). */
   employeeOnly?: boolean;
+  /** باب المالي (سلطة المالي — البند ٦): للمدير المالي والمالك حصرًا. */
+  financeDoor?: boolean;
 };
 
 // عناصر التنقّل — مشتركة بين الشريط الجانبي (سطح المكتب) ودرج الجوال.
@@ -38,6 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/my-log", label: "سجلّي", icon: History, managerOnly: false, employeeOnly: true },
   { href: "/projects", label: "المشاريع", icon: Building2, managerOnly: false },
   { href: "/bookings", label: "خط المبيعات", icon: Handshake, managerOnly: false },
+  { href: "/finance/search", label: "بحث برقم الجوال", icon: Search, managerOnly: false, financeDoor: true },
   { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, managerOnly: false },
   { href: "/analytics", label: "التحليلات", icon: BarChart3, managerOnly: false },
   { href: "/admin", label: "الفريق", icon: Users2, managerOnly: true },
@@ -52,7 +56,9 @@ export const navForRole = (isManager: boolean, isOwner = false, role?: string): 
     (n) =>
       (!n.managerOnly || isManager || (n.href === "/attendance" && (role === "HR" || role === "FINANCE"))) &&
       (!n.ownerOnly || isOwner || (n.href === "/attendance" && (role === "HR" || role === "FINANCE"))) &&
-      (!n.employeeOnly || !isManager),
+      (!n.employeeOnly || !isManager) &&
+      // باب المالي: بحث الجوال للمدير المالي والمالك حصرًا (الخادم يصد غيرهما أصلًا).
+      (!n.financeDoor || role === "FINANCE" || isOwner),
   )
     // المدير المالي بلا عملاء نهائيًا (قرار 2026-08-20) — شاشات العملاء تُحذف من قوائمه.
     .filter((n) => role !== "FINANCE" || !["/leads", "/pipeline", "/my-log", "/leads/duplicates", "/no-response"].includes(n.href));
