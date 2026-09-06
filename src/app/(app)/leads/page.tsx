@@ -2,9 +2,10 @@ import { Zain } from "next/font/google";
 import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadCounts, getEmployees, getNotContactedCount, getWaitingCount, getBankCheckCount, getVisitStagesCount } from "@/lib/data/leads";
 import { getEmployeeLoads } from "@/lib/actions/team";
+import Link from "next/link";
+import { FileDown } from "lucide-react";
 import { parseLeadFilters, buildLeadsQuery } from "@/lib/lead-filters";
 import { LeadsView } from "@/components/leads/leads-view";
-import { AdExclusionDialog } from "@/components/leads/ad-exclusion-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -45,10 +46,15 @@ export default async function LeadsPage({
   return (
     // متغيّر خط Zain على غلاف الصفحة — تقرأه أرقام اللوح والجدول عبر var(--font-zain).
     <div className={zain.variable}>
-      {/* تصدير الاستبعاد الإعلاني — للمالك حصرًا (والأكشن يصد غيره server-side) */}
+      {/* تصدير الاستبعاد الإعلاني — رابط لمركز التصدير بشريحته مفتوحة (للمالك حصرًا) */}
       {user.role === "OWNER" && (
         <div className="mb-3 flex justify-end">
-          <AdExclusionDialog />
+          <Link
+            href="/exports?slice=ad_exclusion"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <FileDown className="size-3.5" strokeWidth={1.6} /> تصدير للاستبعاد الإعلاني
+          </Link>
         </div>
       )}
       <LeadsView

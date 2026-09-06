@@ -15,6 +15,7 @@ import {
   History,
   MapPin,
   Search,
+  FileDown,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -50,6 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/distribution", label: "التوزيع التلقائي", icon: Share2, managerOnly: true },
   { href: "/attendance", label: "حوكمة الدوام", icon: MapPin, managerOnly: true, ownerOnly: true },
   { href: "/audit", label: "سجل التدقيق", icon: ScrollText, managerOnly: true },
+  { href: "/exports", label: "مركز التصدير", icon: FileDown, managerOnly: true, ownerOnly: true },
   { href: "/settings", label: "الإعدادات", icon: SettingsIcon, managerOnly: true },
 ];
 
