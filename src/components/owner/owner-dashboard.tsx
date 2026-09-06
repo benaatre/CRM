@@ -9,6 +9,8 @@ import { OwnerAttendance } from "@/components/owner/owner-attendance";
 import { OwnerActivity } from "@/components/owner/owner-activity";
 import { OwnerDateFilter } from "@/components/owner/owner-date-filter";
 import { KpiCards } from "@/components/owner/kpi-cards";
+import { OwnerWeekCard } from "@/components/owner/owner-week-card";
+import { getLeaderboard } from "@/lib/data/leaderboard";
 import { OwnerFollowups } from "@/components/owner/owner-followups";
 import { OwnerAuditFeed } from "@/components/owner/owner-audit-feed";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -72,7 +74,7 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
   const empPeriod = normalizeOwnerPeriod(sp.ep);
   // فترة المنصّات الافتراضية «أسبوع» — عنوان المرجع: «مصدر العملاء هذا الأسبوع».
   const chPeriod = normalizeOwnerPeriod(sp.ap ?? "week");
-  const [kpis, followups, audit, channels, trend, teamFu, activity] = await Promise.all([
+  const [kpis, followups, audit, channels, trend, teamFu, activity, board] = await Promise.all([
     getOwnerKpis(period, sp.df, sp.dt),
     getOwnerFollowups(fuPeriod, sp.ff, sp.ft),
     getOwnerAudit(30),
@@ -80,6 +82,8 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
     getOwnerWeekTrend(),
     getOwnerTeamFollowups(empPeriod, sp.ef, sp.et),
     getOwnerActivity(),
+    // بطاقة جسر لوحة الأسبوع — نفس دالة اللوحة القائمة حرفيًا، لا استعلام جديد.
+    getLeaderboard(),
   ]);
 
   return (
@@ -107,6 +111,9 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
             <OwnerDateFilter period={kpis.range.period} fromKey={kpis.range.fromKey} toKey={kpis.range.toKey} allowAll />
           </SecHeader>
           <KpiCards kpis={kpis} />
+
+          {/* بطاقة جسر «لوحة الأسبوع» — عرض وتنقل فقط، البطاقة كلها تفتح /leaderboard */}
+          <OwnerWeekCard top={board.rows.slice(0, 3).map((r) => ({ id: r.id, name: r.name, score: r.score }))} />
 
           {/* ٢) متابعات اليوم + سجل التدقيق الحي — follow-layout من المرجع (1.5fr/1fr) */}
           <SecHeader

@@ -37,13 +37,15 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/leads/duplicates", label: "العملاء المكررون", icon: Copy, managerOnly: true, ownerOnly: true },
   { href: "/no-response", label: "لم يتم الرد", icon: PhoneMissed, managerOnly: true, ownerOnly: true },
   { href: "/pipeline", label: "مراحل العملاء", icon: KanbanSquare, managerOnly: false },
-  { href: "/leaderboard", label: "لوحة الأسبوع", icon: Trophy, managerOnly: false },
   { href: "/my-log", label: "سجلّي", icon: History, managerOnly: false, employeeOnly: true },
   { href: "/projects", label: "المشاريع", icon: Building2, managerOnly: false },
   { href: "/bookings", label: "خط المبيعات", icon: Handshake, managerOnly: false },
   { href: "/finance/search", label: "بحث برقم الجوال", icon: Search, managerOnly: false, financeDoor: true },
   { href: "/chat", label: "الشات الداخلي", icon: MessagesSquare, managerOnly: false },
   { href: "/analytics", label: "التحليلات", icon: BarChart3, managerOnly: false },
+  // لوحة الأسبوع بين التحليلات والفريق (نُقلت 2026-09-06 من موضعها بعد المراحل) —
+  // بنفس صلاحية الصفحة القائمة حرفيًا (requireUser: الكل يراها، الشفافية مقصودة).
+  { href: "/leaderboard", label: "لوحة الأسبوع", icon: Trophy, managerOnly: false },
   { href: "/admin", label: "الفريق", icon: Users2, managerOnly: true },
   { href: "/distribution", label: "التوزيع التلقائي", icon: Share2, managerOnly: true },
   { href: "/attendance", label: "حوكمة الدوام", icon: MapPin, managerOnly: true, ownerOnly: true },
