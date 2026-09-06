@@ -4,6 +4,7 @@ import { getLeadCounts, getEmployees, getNotContactedCount, getWaitingCount, get
 import { getEmployeeLoads } from "@/lib/actions/team";
 import { parseLeadFilters, buildLeadsQuery } from "@/lib/lead-filters";
 import { LeadsView } from "@/components/leads/leads-view";
+import { AdExclusionDialog } from "@/components/leads/ad-exclusion-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,12 @@ export default async function LeadsPage({
   return (
     // متغيّر خط Zain على غلاف الصفحة — تقرأه أرقام اللوح والجدول عبر var(--font-zain).
     <div className={zain.variable}>
+      {/* تصدير الاستبعاد الإعلاني — للمالك حصرًا (والأكشن يصد غيره server-side) */}
+      {user.role === "OWNER" && (
+        <div className="mb-3 flex justify-end">
+          <AdExclusionDialog />
+        </div>
+      )}
       <LeadsView
         query={query}
         counts={counts}
