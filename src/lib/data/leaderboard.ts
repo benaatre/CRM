@@ -11,6 +11,7 @@ import { SELLER_ROLES } from "@/lib/auth-guards";
 import { FollowUpResult } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPendingPullByEmployee } from "@/lib/data/no-response";
+import { MANUAL_TRANSFER_FULL } from "@/lib/transfer-mode";
 import { KEEP_STAGE_RESULTS, VISIT_APPOINTMENT_RESULTS } from "@/lib/labels";
 import { DAY_MS, ksaDayKey, weekStartKSA } from "@/lib/ksa-time";
 
@@ -171,7 +172,7 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
     // المستلمون هذا الأسبوع — لسرعة الاستجابة (أول تواصل منذ الإسناد).
     prisma.lead.findMany({
       where: { assignedAt: inWeek, assignedToId: { not: null } },
-      select: { assignedToId: true, assignedAt: true, firstContactAt: true },
+      select: { id: true, assignedToId: true, assignedAt: true, firstContactAt: true },
     }),
     // آخر سحب «لعدم الرد» لكل موظف — سلسلة الانضباط.
     prisma.reassignment.findMany({
@@ -207,8 +208,18 @@ export async function getLeaderboard(ref: Date = new Date()): Promise<Leaderboar
     const arr = prevByEmp.get(f.createdBy);
     if (arr) arr.push(f); else prevByEmp.set(f.createdBy, [f]);
   }
+  // إصلاح ثغرة السرعة (2026-09-07): المحوَّل يدويًا «ببياناته» يحمل firstContactAt
+  // قديمًا لا يُعاد كتابته، فكان يُحسب على المستلم «متجاهَلًا» للأبد — يُستثنى من
+  // المقام. المحوَّل «كجديد» يبقى داخل القياس (تصفيره سليم فيُقاس رد المستلم فعليًا).
+  const fullTransferredThisWeek = new Set(
+    (await prisma.reassignment.findMany({
+      where: { createdAt: inWeek, reason: MANUAL_TRANSFER_FULL, toUserId: { not: null } },
+      select: { leadId: true },
+    })).map((r) => r.leadId),
+  );
   const weekAssignedByEmp = new Map<string, { assignedAt: Date; firstContactAt: Date | null }[]>();
   for (const l of weekAssigned) {
+    if (fullTransferredThisWeek.has(l.id)) continue;
     const id = l.assignedToId as string;
     const arr = weekAssignedByEmp.get(id);
     const row = { assignedAt: l.assignedAt as Date, firstContactAt: l.firstContactAt };
