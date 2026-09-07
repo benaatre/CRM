@@ -27,6 +27,14 @@ export type ExportFilters = {
   includeArchived?: boolean;
   /** استثناء أصحاب المواعيد المستقبلية — مقفول-مفعّل إجباريًا بشريحة الاستبعاد. */
   excludeFutureNext?: boolean;
+  /**
+   * التفصيل الداخلي للشريحة (ترقية 2026-09-07): مفاتيح التصنيفات الفرعية المحددة —
+   * غياب الحقل = الكل. المفاتيح من SUB_OPTIONS لكل شريحة (أسباب عدم الاهتمام /
+   * فئات المهتم الخمس / نتيجتا الزيارة / مراحل الحجز).
+   */
+  sub?: string[];
+  /** فلتر فرعي ثانٍ لشرائح الحجوزات: طرق الدفع — غيابه = الكل. */
+  payments?: string[];
 };
 
 export type ColumnFamily = "lead" | "booking";
@@ -55,6 +63,7 @@ export const LEAD_COLUMNS: ExportColumnDef[] = [
   { key: "closed_at", header: "closed_at", label: "تاريخ الإقفال", family: "lead" },
   { key: "next_followup", header: "next_followup", label: "الموعد القادم", family: "lead" },
   { key: "visit_date", header: "visit_date", label: "تاريخ الزيارة", family: "lead" },
+  { key: "visit_result", header: "visit_result", label: "نتيجة الزيارة (الفئة الفرعية)", family: "lead" },
   { key: "project", header: "project", label: "المشروع", family: "lead" },
   { key: "budget", header: "budget", label: "الميزانية", family: "lead" },
   { key: "purchase_method", header: "purchase_method", label: "طريقة الشراء", family: "lead" },
@@ -91,6 +100,55 @@ export function groupKeys(group: ColumnGroup, family: ColumnFamily): string[] {
   if (group === "basic") return family === "booking" ? ["phone", "client_name"] : ["phone", "name"];
   return columnsOf(family).map((c) => c.key); // full (وmanual يُمرَّر صراحةً)
 }
+
+/**
+ * التصنيفات الفرعية لكل شريحة — مفاتيحها قيم النظام الفعلية (نتائج المتابعات /
+ * المراحل)، وأسماؤها مختصرة للرقائق. UNSPECIFIED = السجل القديم بلا سبب منظم.
+ */
+export const SUB_OPTIONS: Record<ExportSlice, { key: string; label: string }[]> = {
+  ad_exclusion: [
+    { key: "NOT_INTERESTED_FINAL", label: "نهائيًا" },
+    { key: "NOT_INTERESTED_PRICE", label: "السعر" },
+    { key: "NOT_INTERESTED_LOCATION", label: "الموقع" },
+    { key: "NOT_INTERESTED_SPACE", label: "المساحة" },
+    { key: "NOT_INTERESTED_MARKETER", label: "مسوّق عقاري" },
+    { key: "NOT_INTERESTED_VISITED", label: "زار وما ناسبه" },
+    { key: "NOT_INTERESTED_BANK", label: "حسبة البنك" },
+    { key: "NOT_INTERESTED_OTHER", label: "سبب آخر" },
+    { key: "UNSPECIFIED", label: "غير محدد" },
+  ],
+  interested: [
+    { key: "INTERESTED", label: "مهتم" },
+    { key: "FOLLOW_UP_LATER", label: "موعد لاحق" },
+    { key: "VISIT_SCHEDULED", label: "موعد زيارة" },
+    { key: "VIEWING", label: "زار" },
+    { key: "NEGOTIATION", label: "تفاوض" },
+  ],
+  visited: [
+    { key: "INTERESTED_VISITED", label: "زار وناسبه" },
+    { key: "NOT_INTERESTED_VISITED", label: "زار وما ناسبه" },
+  ],
+  bookings: [
+    { key: "RESERVATION", label: "حجز" },
+    { key: "PAPERWORK", label: "أوراق" },
+    { key: "VALUATION", label: "تقييم" },
+    { key: "SIGNING", label: "توقيع" },
+    { key: "TRANSFER", label: "إفراغ" },
+  ],
+  sales: [
+    { key: "SOLD", label: "مباع" },
+    { key: "DELIVERED", label: "مسلَّم" },
+  ],
+  all: [],
+  custom: [],
+};
+
+/** خيارات فلتر طريقة الدفع (شرائح الحجوزات) — قيم النظام الثلاث. */
+export const PAYMENT_OPTIONS: { key: string; label: string }[] = [
+  { key: "CASH", label: "كاش" },
+  { key: "BANK_FINANCE", label: "تمويل بنكي" },
+  { key: "CASH_AND_FINANCE", label: "كاش + تمويل" },
+];
 
 export const SLICE_META: Record<ExportSlice, { title: string; desc: string }> = {
   ad_exclusion: { title: "غير مهتمين — استبعاد إعلاني", desc: "مقفول-خسارة بكل أسبابه، بلا أصحاب المواعيد المستقبلية" },

@@ -5,7 +5,7 @@ import { FileDown, Filter } from "lucide-react";
 import type { Channel, LeadStage } from "@prisma/client";
 import { buildExport } from "@/lib/actions/exports";
 import {
-  SLICE_META, columnsOf, familyOf, groupKeys,
+  PAYMENT_OPTIONS, SLICE_META, SUB_OPTIONS, columnsOf, familyOf, groupKeys,
   type ColumnGroup, type ExportFilters, type ExportSlice,
 } from "@/lib/export-columns";
 import { stageLabels } from "@/lib/labels";
@@ -37,6 +37,11 @@ export function ExportsCenter({ zainClass, initialSlice, initialCounts, channels
   const [months, setMonths] = useState<0 | 3 | 6 | 12>(0);
   const [includeArchived, setIncludeArchived] = useState(true);
   const [excludeFuture, setExcludeFuture] = useState(false);
+  // التفصيل الداخلي للشريحة: التصنيفات الفرعية المحددة (الافتراضي الكل) + طرق الدفع.
+  const [sub, setSub] = useState<string[]>(SUB_OPTIONS[initialSlice].map((o) => o.key));
+  const [payments, setPayments] = useState<string[]>(PAYMENT_OPTIONS.map((o) => o.key));
+  const [subCounts, setSubCounts] = useState<Record<string, number>>({});
+  const [paymentCounts, setPaymentCounts] = useState<Record<string, number>>({});
   // الأعمدة.
   const [group, setGroup] = useState<ColumnGroup>("ads");
   const [manual, setManual] = useState<string[]>([]);
@@ -51,15 +56,26 @@ export function ExportsCenter({ zainClass, initialSlice, initialCounts, channels
   const defs = columnsOf(family);
   const isBooking = family === "booking";
   const lockedFuture = slice === "ad_exclusion"; // مقفول-مفعّل إجباريًا (الخادم يفرضه أيضًا)
+  const subOpts = SUB_OPTIONS[slice];
+
+  // تبديل الشريحة يعيد لوحها الفرعي لحالته الافتراضية: الكل محدد.
+  function selectSlice(s: ExportSlice) {
+    setSlice(s);
+    setSub(SUB_OPTIONS[s].map((o) => o.key));
+    setPayments(PAYMENT_OPTIONS.map((o) => o.key));
+  }
 
   const filters: ExportFilters = useMemo(() => ({
+    // الفلتر الفرعي يُرسل فقط حين يكون جزئيًا (الكل = بلا فلتر).
+    ...(subOpts.length && sub.length < subOpts.length ? { sub } : {}),
+    ...(isBooking && payments.length < PAYMENT_OPTIONS.length ? { payments } : {}),
     ...(slice === "custom" && stages.length ? { stages } : {}),
     ...(chSel.length && !isBooking ? { channels: chSel } : {}),
     ...(employeeId ? { employeeId } : {}),
     months,
     includeArchived,
     excludeFutureNext: lockedFuture ? true : excludeFuture,
-  }), [slice, stages, chSel, employeeId, months, includeArchived, excludeFuture, lockedFuture, isBooking]);
+  }), [slice, stages, chSel, employeeId, months, includeArchived, excludeFuture, lockedFuture, isBooking, sub, payments, subOpts]);
 
   // المعاينة الحية — نداء واحد (preview) يغطي العدّاد والعينة، مع كل تغيير.
   useEffect(() => {
@@ -70,6 +86,7 @@ export function ExportsCenter({ zainClass, initialSlice, initialCounts, channels
       if (!r.ok) { setError(r.error); return; }
       setCount(r.count); setSkipped(r.skippedInvalidPhone);
       setHeaders(r.headersAr ?? []); setSample(r.sample ?? []);
+      setSubCounts(r.subCounts ?? {}); setPaymentCounts(r.paymentCounts ?? {});
     });
     return () => { alive = false; };
   }, [slice, filters, group, manual]);
@@ -105,25 +122,52 @@ export function ExportsCenter({ zainClass, initialSlice, initialCounts, channels
         <section className="space-y-2">
           <StepTitle n="١" title="الشريحة" />
           {PREPARED.map((s) => (
-            <button
-              key={s}
-              onClick={() => setSlice(s)}
-              className="flex w-full items-center justify-between gap-2 rounded-xl border px-4 py-3 text-right transition-colors"
-              style={slice === s
-                ? { borderColor: "var(--gold-a60)", background: "var(--gold-a06)" }
-                : { borderColor: "var(--hairline)", background: "var(--card)" }}
-            >
-              <span className="min-w-0">
-                <span className={`block text-[13px] font-semibold ${slice === s ? "text-gold" : "text-foreground"}`}>{SLICE_META[s].title}</span>
-                <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground/70">{SLICE_META[s].desc}</span>
-              </span>
-              <b className={`${zainClass} shrink-0 text-[19px] font-extrabold ${slice === s ? "text-gold" : "text-muted-foreground"}`} style={NUM}>
-                {toArabicDigits(initialCounts[s] ?? 0)}
-              </b>
-            </button>
+            <div key={s}>
+              <button
+                onClick={() => selectSlice(s)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl border px-4 py-3 text-right transition-colors"
+                style={slice === s
+                  ? { borderColor: "var(--gold-a60)", background: "var(--gold-a06)" }
+                  : { borderColor: "var(--hairline)", background: "var(--card)" }}
+              >
+                <span className="min-w-0">
+                  <span className={`block text-[13px] font-semibold ${slice === s ? "text-gold" : "text-foreground"}`}>{SLICE_META[s].title}</span>
+                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground/70">{SLICE_META[s].desc}</span>
+                </span>
+                <b className={`${zainClass} shrink-0 text-[19px] font-extrabold ${slice === s ? "text-gold" : "text-muted-foreground"}`} style={NUM}>
+                  {toArabicDigits(initialCounts[s] ?? 0)}
+                </b>
+              </button>
+
+              {/* لوح التفصيل الداخلي — تحت البطاقة المختارة فقط: كل تصنيف تشيك مستقل بعدّه الحي */}
+              {slice === s && subOpts.length > 0 && (
+                <div className="mt-1.5 space-y-2 rounded-xl px-3 py-2.5" style={{ background: "var(--gold-a03)", border: "1px solid var(--gold-a20)" }}>
+                  <div className="text-[10.5px] text-muted-foreground">التصنيفات الفرعية — ألغِ ما لا تريده بالملف</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {subOpts.map((o) => (
+                      <Chip key={o.key} on={sub.includes(o.key)} onClick={() => setSub((a) => toggle(a, o.key))}>
+                        {o.label} <span style={NUM}>{toArabicDigits(subCounts[o.key] ?? 0)}</span>
+                      </Chip>
+                    ))}
+                  </div>
+                  {isBooking && (
+                    <>
+                      <div className="text-[10.5px] text-muted-foreground">طريقة الدفع</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {PAYMENT_OPTIONS.map((o) => (
+                          <Chip key={o.key} on={payments.includes(o.key)} onClick={() => setPayments((a) => toggle(a, o.key))}>
+                            {o.label} <span style={NUM}>{toArabicDigits(paymentCounts[o.key] ?? 0)}</span>
+                          </Chip>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           ))}
           <button
-            onClick={() => setSlice("custom")}
+            onClick={() => selectSlice("custom")}
             className="flex w-full items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-right text-[13px] font-semibold transition-colors"
             style={slice === "custom"
               ? { borderColor: "var(--gold-a60)", background: "var(--gold-a06)", color: "var(--gold)" }

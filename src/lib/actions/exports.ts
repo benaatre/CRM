@@ -13,7 +13,7 @@ import {
 import { INTEREST_UMBRELLA } from "@/lib/lead-filters";
 import { logAudit } from "@/lib/audit";
 import {
-  BOOKING_SLICES, SLICE_META, columnsOf, familyOf, groupKeys,
+  BOOKING_SLICES, PAYMENT_OPTIONS, SLICE_META, SUB_OPTIONS, columnsOf, familyOf, groupKeys,
   type ExportFilters, type ExportSlice,
 } from "@/lib/export-columns";
 
@@ -35,6 +35,10 @@ export type ExportResult =
       /** preview: رؤوس الأعمدة بالعربي + أول ٥ صفوف. */
       headersAr?: string[];
       sample?: string[][];
+      /** preview: عدّ التصنيفات الفرعية حيًا (قبل فلترها، بعد بقية الفلاتر) — لرقائق اللوح. */
+      subCounts?: Record<string, number>;
+      /** preview (حجوزات/صفقات): عدّ طرق الدفع حيًا. */
+      paymentCounts?: Record<string, number>;
       /** csv: الملف واسمه. */
       csv?: string;
       filename?: string;
@@ -69,6 +73,14 @@ function filtersText(slice: ExportSlice, f: ReturnType<typeof effectiveFilters>)
   parts.push(f.months === 0 ? "المدة: الكل" : `المدة: آخر ${f.months} أشهر`);
   if (!BOOKING_SLICES.includes(slice)) parts.push(`المؤرشفون: ${f.includeArchived ? "نعم" : "لا"}`);
   if (f.excludeFutureNext) parts.push("بلا مواعيد مستقبلية");
+  // التفصيل الفرعي (إن كان جزئيًا) — بأسمائه المختصرة من SUB_OPTIONS.
+  const subOpts = SUB_OPTIONS[slice];
+  if (f.sub && subOpts.length && f.sub.length < subOpts.length) {
+    parts.push(`تصنيفات: ${subOpts.filter((o) => f.sub!.includes(o.key)).map((o) => o.label).join("/")}`);
+  }
+  if (f.payments && f.payments.length < PAYMENT_OPTIONS.length) {
+    parts.push(`دفع: ${PAYMENT_OPTIONS.filter((o) => f.payments!.includes(o.key)).map((o) => o.label).join("/")}`);
+  }
   return parts.join(" · ");
 }
 
@@ -94,6 +106,12 @@ export async function buildExport(
 
     let skippedInvalidPhone = 0;
     const rows: string[][] = [];
+    // عدّ التصنيفات الفرعية حيًا: بعد كل الفلاتر الأخرى وقبل الفلتر الفرعي نفسه —
+    // فالرقاقة غير المحددة تحتفظ برقمها ويعرف المالك ما الذي سيضيفه تحديدها.
+    const subCounts: Record<string, number> = {};
+    const paymentCounts: Record<string, number> = {};
+    const subSet = f.sub ? new Set(f.sub) : null;
+    const paySet = f.payments ? new Set(f.payments) : null;
 
     if (family === "booking") {
       // ===== شرائح الحجوزات/الصفقات =====
@@ -114,6 +132,11 @@ export async function buildExport(
       for (const b of bookings) {
         const key = dedupeKey(b.phone ?? b.lead.phone);
         if (!key) { skippedInvalidPhone++; continue; }
+        // التفصيل الفرعي (مرحلة الحجز) + فلتر طريقة الدفع — العدّ قبل الفلترة.
+        subCounts[b.stage] = (subCounts[b.stage] ?? 0) + 1;
+        paymentCounts[b.paymentMethod] = (paymentCounts[b.paymentMethod] ?? 0) + 1;
+        if (subSet && !subSet.has(b.stage)) continue;
+        if (paySet && !paySet.has(b.paymentMethod)) continue;
         const c = bookingCollection(b.stage, b.finalPrice.toNumber(), b.collectedAmount.toNumber());
         const val: Record<string, string> = {
           phone: `+966${key}`,
@@ -171,10 +194,12 @@ export async function buildExport(
           })
         : [];
       const latest = new Map<string, { result: string; nextDate: Date | null }>();
-      const lastVisit = new Map<string, Date>();
+      const lastVisit = new Map<string, { at: Date; result: string }>();
       for (const fu of fus) {
         if (!latest.has(fu.leadId)) latest.set(fu.leadId, fu);
-        if (!lastVisit.has(fu.leadId) && (VISITED_RESULTS as readonly string[]).includes(fu.result)) lastVisit.set(fu.leadId, fu.createdAt);
+        if (!lastVisit.has(fu.leadId) && (VISITED_RESULTS as readonly string[]).includes(fu.result)) {
+          lastVisit.set(fu.leadId, { at: fu.createdAt, result: fu.result });
+        }
       }
 
       const now = Date.now();
@@ -185,6 +210,19 @@ export async function buildExport(
         if (f.excludeFutureNext && last?.nextDate && last.nextDate.getTime() > now) continue;
         const key = dedupeKey(l.phone);
         if (!key) { skippedInvalidPhone++; continue; }
+        // مفتاح التصنيف الفرعي لكل شريحة: سبب عدم الاهتمام / فئة المهتم (المرحلة) / نتيجة الزيارة.
+        const subKey =
+          slice === "ad_exclusion"
+            ? (last?.result?.startsWith("NOT_INTERESTED") ? last.result : "UNSPECIFIED")
+            : slice === "interested"
+              ? l.stage
+              : slice === "visited"
+                ? (lastVisit.get(l.id)?.result ?? "")
+                : null;
+        if (subKey !== null) {
+          subCounts[subKey] = (subCounts[subKey] ?? 0) + 1;
+          if (subSet && !subSet.has(subKey)) continue;
+        }
         const val: Record<string, string> = {
           phone: `+966${key}`,
           name: l.name,
@@ -199,7 +237,10 @@ export async function buildExport(
           last_contact: day(l.lastContact),
           closed_at: l.stage === "CLOSED_LOST" || l.stage === "CLOSED_WON" ? day(l.updatedAt) : "",
           next_followup: day(l.nextFollowup),
-          visit_date: day(lastVisit.get(l.id) ?? null),
+          visit_date: day(lastVisit.get(l.id)?.at ?? null),
+          visit_result: lastVisit.has(l.id)
+            ? ((followUpResultLabels as Record<string, string>)[lastVisit.get(l.id)!.result] ?? "")
+            : "",
           project: l.project?.name ?? "",
           budget: l.budget ? String(l.budget.toNumber()) : "",
           purchase_method: l.purchaseMethod ? purchaseMethodLabels[l.purchaseMethod] : "",
@@ -216,6 +257,8 @@ export async function buildExport(
         ok: true, count: rows.length, skippedInvalidPhone,
         headersAr: chosen.map((d) => d.label),
         sample: rows.slice(0, 5),
+        subCounts,
+        ...(family === "booking" ? { paymentCounts } : {}),
       };
     }
 
