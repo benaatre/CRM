@@ -15,7 +15,7 @@ import { requireUser, isManager, requireManagerAction, SELLER_ROLES } from "@/li
 import { logAudit } from "@/lib/audit";
 import { emitNotification, emitLeadAssignedBatch, notifyBestEffort } from "@/lib/notifications/emit";
 import { pickInitialAssignee, markContacted } from "@/lib/auto-distribute";
-import { assignLead, assignLeadsToEmployee, assignmentData, FRESH_RESET_DATA } from "@/lib/assignment";
+import { assignLead, assignLeadsToEmployee, assignmentData, FRESH_RESET_DATA, FULL_TRANSFER_DATA } from "@/lib/assignment";
 import { applyStageChange } from "@/lib/stage-change";
 import { latestRevealAction, shouldHideHistory, REVEAL_HISTORY_ACTION, HIDE_HISTORY_ACTION } from "@/lib/visibility";
 import { isRecentSameAdDuplicate, phoneHasExistingLead } from "@/lib/phone-dupe";
@@ -719,11 +719,12 @@ export async function transferLeads(
 
     await prisma.$transaction(async (tx) => {
       // م-١ + ح-٤: الإسناد عبر الدالة الموحّدة، والمتابعات لا تُحذف أبدًا (سجل تاريخي).
-      // «fresh» = المرحلة «جديد» + تصفير موعد المتابعة القادم فقط.
+      // كلا الوضعين يهبط «جديدًا» عند المستلم (سد فجوة التحويل): «fresh» ولادة كاملة،
+      // و«full» المرحلة NEW وتصفير الموعد فقط — التاريخ ظاهر كاملًا.
       await assignLeadsToEmployee(tx, ids, toUserId, {
         manual: true,
         reason: manualTransferReason(mode),
-        extraData: mode === "fresh" ? FRESH_RESET_DATA : {},
+        extraData: mode === "fresh" ? FRESH_RESET_DATA : FULL_TRANSFER_DATA,
       });
       await tx.activity.createMany({
         data: ids.map((leadId) => ({
@@ -804,10 +805,11 @@ export async function reassignLead(
     await prisma.$transaction(async (tx) => {
       // م-١: الإسناد عبر الدالة الموحّدة — أختام كاملة + سجل Reassignment.
       // ح-٤: المتابعات لا تُحذف في أي وضع — «كجديد» إخفاء عرضٍ عن الموظف لا حذفًا.
+      // كلا الوضعين يهبط «جديدًا» عند المستلم (سد فجوة التحويل) — «full» بتاريخ مكشوف.
       await assignLead(tx, leadId, toUserId, {
         manual: true,
         reason: manualTransferReason(mode),
-        extraData: mode === "fresh" ? FRESH_RESET_DATA : {},
+        extraData: mode === "fresh" ? FRESH_RESET_DATA : FULL_TRANSFER_DATA,
       });
       await tx.activity.create({
         data: {

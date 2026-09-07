@@ -24,6 +24,17 @@ export const FRESH_RESET_DATA: Prisma.LeadUpdateManyMutationInput = {
 };
 
 /**
+ * النقل اليدوي «ببياناته» (سد فجوة التحويل 2026-09-07): المحوَّل يهبط بتبويب
+ * «جديد» عند المستلم حتى أول متابعة منه — المرحلة NEW وتصفير الموعد القادم فقط،
+ * بلا مساس بحقول firstContact والأرشفة وvisitAt، والمتابعات ظاهرة كاملة للمستلم.
+ * السابقة القائمة: AUTO_REDISTRIBUTE_FULL يفعلها منذ الحزمة ب (transfer-mode:69).
+ */
+export const FULL_TRANSFER_DATA: Prisma.LeadUpdateManyMutationInput = {
+  stage: LeadStage.NEW,
+  nextFollowup: null,
+};
+
+/**
  * دالة الإسناد الموحّدة — كل مسار يُسند عميلًا لموظف يمرّ من هنا (م-١ من تدقيق 2026-07).
  * تضمن كتابة الأختام الثلاثة دائمًا بلا استثناء:
  *   assignedToId + assignedAt (يبدأ عدّاد المهلة) + تصفير contactedAt (تواصل السابق لا يُحتسب)
