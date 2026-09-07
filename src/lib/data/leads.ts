@@ -104,6 +104,12 @@ export type LeadRow = {
    * يظهر للموظف المستلم وللمالك/الأدمن. المحوّل «كجديد» (_fresh) بلا وسم لأحد عمدًا.
    */
   manualTransferred: boolean;
+  /**
+   * شارة «كان: X» (سد فجوة التحويل 2026-09-07): المرحلة السابقة للمحوَّل «ببياناته»
+   * وهو ما زال «جديدًا» عند المستلم — من stageAfter بأحدث متابعة قبل التحويل.
+   * تختفي بأول متابعة من المستلم (يغادر NEW أصلًا). null لغير هذه الحالة.
+   */
+  wasStage: LeadStage | null;
   /** آخر متابعة (المرئية للمستخدم) نتيجتها «حسبة البنك» — لفلتر bank=1. */
   bankCheck: boolean;
   /**
@@ -221,7 +227,7 @@ type LeadWithRels = {
   visitAt: Date | null;
   visitRescheduleCount: number;
   autoPoolAt: Date | null;
-  followUps?: { createdAt: Date; result: FollowUpResult; note: string | null }[];
+  followUps?: { createdAt: Date; result: FollowUpResult; note: string | null; stageAfter?: string | null }[];
   reassignments?: { reason: string; toUserId: string | null }[];
   bookings?: { stage: BookingStage; finalPrice: { toNumber(): number }; collectedAmount: { toNumber(): number }; sellerId: string | null }[];
 };
@@ -365,6 +371,11 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
       && interestedIdleDays(latestFuAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
     // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
     manualTransferred: lastAssignReason === MANUAL_TRANSFER_FULL,
+    // «كان: X»: محوَّل ببياناته وما زال NEW — مرحلته السابقة من أحدث stageAfter (المتابعات تنازلية).
+    wasStage:
+      lastAssignReason === MANUAL_TRANSFER_FULL && l.stage === "NEW"
+        ? (((l.followUps ?? []).find((f) => f.stageAfter && f.stageAfter !== "NEW")?.stageAfter ?? null) as LeadStage | null)
+        : null,
     // «حسبة البنك»: آخر متابعة مرئية (نفس نافذة الخصوصية أعلاه).
     bankCheck: latestVisibleFu?.result === "BANK_CHECK",
     // نص آخر متابعة مرئية — من نفس latestVisibleFu المحسوب أعلاه (بلا استعلام).
@@ -395,7 +406,7 @@ const rowInclude = {
   _count: { select: { activities: true, followUps: true } },
   // أحدث ٢٠ متابعة (وقت + نتيجة + نص) — لعدّاد ما بعد الإسناد (الإخفاء) وإحصاء «لم يرد»
   // وسبب «في الانتظار» بالشارة. نفس الاستعلام الواحد؛ >٢٠ متابعة بعد إسنادٍ واحد غير واقعي عمليًا.
-  followUps: { orderBy: { createdAt: "desc" }, take: 20, select: { createdAt: true, result: true, note: true } },
+  followUps: { orderBy: { createdAt: "desc" }, take: 20, select: { createdAt: true, result: true, note: true, stageAfter: true } },
   // آخر ٥ سجلات تحويل (بلا فلتر) — منها آخر سحب (toUserId=null → نجمة/أيقونة §٦)
   // وآخر إسناد فعلي (toUserId≠null → لاحقة _fresh لقرار الإخفاء).
   reassignments: { orderBy: { createdAt: "desc" }, take: 5, select: { reason: true, toUserId: true } },
@@ -653,7 +664,7 @@ export async function getLeadDetail(id: string): Promise<LeadDetail | null> {
       followUps: {
         orderBy: { createdAt: "desc" as const },
         take: 20,
-        select: { id: true, createdAt: true, result: true, note: true, nextDate: true, employee: { select: { name: true } } },
+        select: { id: true, createdAt: true, result: true, note: true, nextDate: true, stageAfter: true, employee: { select: { name: true } } },
       },
       leadSource: { select: { name: true } },
       bookings: {

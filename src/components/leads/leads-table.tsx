@@ -117,7 +117,7 @@ export function LeadsTable({
                       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
                         <span className="min-w-0 max-w-full truncate text-[16.5px] font-semibold text-foreground" title={l.name}>{l.name}</span>
                         <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
-                        <TransferBadge show={l.manualTransferred} />
+                        <TransferBadge show={l.manualTransferred} was={l.wasStage} />
                         <SweepCountdown info={l.sweepPull} manager={isManager} />
                         {!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}
                         {l.inAutoPool && <Tag tone="bg-gold/10 text-gold" title="داخل بركة التوزيع التلقائي">تلقائي</Tag>}

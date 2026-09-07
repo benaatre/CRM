@@ -353,7 +353,7 @@ export function LeadsView({
                     <input type="checkbox" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`تحديد ${l.name}`} className="size-5 shrink-0 accent-[var(--gold)]" />
                     <span className="font-medium text-foreground">{l.name}</span>
                     <TransferStar show={l.isTransferred} exhausted={l.transferredExhausted} />
-                    <TransferBadge show={l.manualTransferred} />
+                    <TransferBadge show={l.manualTransferred} was={l.wasStage} />
                     {/* حلقة مهلة السحب (أخضر→أصفر→أحمر نابض) — للموظف والمالك؛ عدّاد عدم الرد للموظف لما ما فيه حلقة سحب */}
                     <SweepCountdown info={l.sweepPull} manager={isManager} />
                     {!isManager && !l.sweepPull && <PullCountdown pull={l.pull} />}

@@ -400,6 +400,8 @@ export default async function MobileLeadsPage({
           lastContact: l.lastContact,
           assignedAt: l.assignedAt,
           manualTransferred: l.manualTransferred,
+          // «كان: X» يُعرّب هنا بالخادم (المكوّن يعرض النص كما هو).
+          wasStage: l.wasStage ? stageLabels[l.wasStage] : null,
           isTransferred: l.isTransferred,
           waiting: l.waiting,
           visitText: l.visitAt ? visitWhen(l.visitAt, now) : null,

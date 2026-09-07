@@ -45,6 +45,8 @@ export type MobileLeadRow = {
   assignedAt: Date | null;
   /** ⇄ «محوَّل» يدويًا بالبيانات (نفس وسم TransferBadge بالديسكتوب). */
   manualTransferred: boolean;
+  /** «كان: X» — مرحلته قبل التحويل وهو ما زال «جديدًا» (تختفي بأول متابعة). */
+  wasStage: string | null;
   /** مسترد/معاد توجيهه (نجمة التحويل بالديسكتوب). */
   isTransferred: boolean;
   /** «في الانتظار» (آخر متابعة لم يستجب) — نفس شارة الديسكتوب. */
@@ -285,6 +287,13 @@ export function MobileLeadsList({
                         <span className="flex flex-none items-center" title="محوَّل يدويًا بالبيانات"
                           style={{ boxSizing: "border-box", gap: 3, fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: MOBILE_COLORS.skyBg, color: SOP.blue }}>
                           <ArrowLeftRight size={10} strokeWidth={2.5} aria-hidden /> محوَّل
+                        </span>
+                      )}
+                      {/* «كان: X» — مرحلته قبل التحويل (وهو «جديد»؛ تختفي بأول متابعة) */}
+                      {l.wasStage && (
+                        <span className="flex-none" title="مرحلته عند موظفه السابق — تختفي بأول متابعة منك"
+                          style={{ boxSizing: "border-box", fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "rgba(212,175,55,0.12)", border: "1px solid rgba(212,175,55,0.3)", color: SOP.gold }}>
+                          كان: {l.wasStage}
                         </span>
                       )}
                       {!l.manualTransferred && l.isTransferred && (
