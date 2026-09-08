@@ -56,7 +56,7 @@ export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "d
 
   return (
     <div className="flex flex-wrap items-center gap-2" style={{ marginInlineStart: "auto" }}>
-      <div className={`flex gap-1 rounded-[20px] ${compact ? "p-1" : "p-[5px]"}`} style={{ background: compact ? "var(--od-raised2)" : "var(--od-raised)" }}>
+      <div className={`sop-inset flex gap-1 ${compact ? "p-1" : "p-[5px]"}`}>
         {PRESETS.filter((x) => allowAll || x.key !== "all").map((x) => {
           const on = x.key === period && !(x.key !== "custom" && open);
           return (
@@ -64,10 +64,8 @@ export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "d
               key={x.key}
               type="button"
               onClick={() => go(x.key)}
-              className={`whitespace-nowrap rounded-[18px] transition-colors ${compact ? "px-3.5 py-2 text-[12.5px]" : "px-[18px] py-2.5 text-sm"}`}
-              style={on || (x.key === "custom" && open)
-                ? { background: "var(--gold)", color: "#fff", fontWeight: 600 }
-                : { color: "var(--od-t2)" }}
+              className={`n-press whitespace-nowrap rounded-[9px] transition-colors ${compact ? "px-3.5 py-2 text-[12.5px]" : "px-[18px] py-2.5 text-sm"} ${on || (x.key === "custom" && open) ? "gold-on" : ""}`}
+              style={on || (x.key === "custom" && open) ? undefined : { color: "var(--tx2)" }}
             >
               {x.label}
             </button>
@@ -75,28 +73,27 @@ export function OwnerDateFilter({ period, fromKey, toKey, keys = ["dp", "df", "d
         })}
       </div>
       {open && (
-        <div className="flex items-center gap-1.5 rounded-[14px] px-2 py-1.5" style={{ background: "var(--od-raised)" }}>
+        <div className="sop-raise-sm flex items-center gap-1.5 px-2 py-1.5">
           <input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
             aria-label="من تاريخ"
-            className="rounded-lg bg-transparent px-2 py-1 text-xs text-foreground outline-none [color-scheme:dark]"
+            className="rounded-lg bg-transparent px-2 py-1 text-xs text-foreground outline-none"
           />
-          <span className="text-xs" style={{ color: "var(--od-t3)" }}>←</span>
+          <span className="text-xs" style={{ color: "var(--mut)" }}>←</span>
           <input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             aria-label="إلى تاريخ"
-            className="rounded-lg bg-transparent px-2 py-1 text-xs text-foreground outline-none [color-scheme:dark]"
+            className="rounded-lg bg-transparent px-2 py-1 text-xs text-foreground outline-none"
           />
           <button
             type="button"
             onClick={applyCustom}
             disabled={!from || !to}
-            className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-            style={{ background: "var(--gold)", color: "#fff" }}
+            className="gold-on n-press rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
           >
             طبّق
           </button>

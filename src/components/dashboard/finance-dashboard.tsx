@@ -6,7 +6,8 @@ import type { HrExtrasData } from "@/lib/data/finance-dashboard";
 import { formatCount, formatCurrency, toArabicDigits } from "@/lib/format";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
 import { OwnerAttendance } from "@/components/owner/owner-attendance";
-import { OD_TOKENS } from "@/components/owner/owner-dashboard";
+// عمود الدوام يقرأ توكنات od — الورقة تعرّفها بالثيمين (بديل جزيرة OD_TOKENS الملغاة).
+import "@/components/owner/owner-sop.css";
 
 /**
  * داشبورد المدير المالي (قرار 2026-08-20) — بالترتيب المعتمد حرفيًا:
@@ -53,7 +54,7 @@ export function FinanceDashboard({ data }: { data: FinanceDashboardData }) {
           <h2 className="mb-3 text-sm font-bold text-foreground">دوامك</h2>
           <AttendanceCard theme="web" />
         </div>
-        <div style={OD_TOKENS}>
+        <div className="od-scope" style={{ background: "transparent" }}>
           <OwnerAttendance isOwner />
         </div>
       </section>
@@ -191,7 +192,7 @@ export function HrExtras({ data }: { data: HrExtrasData }) {
             </div>
           )}
         </div>
-        <div style={OD_TOKENS}>
+        <div className="od-scope" style={{ background: "transparent" }}>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-bold text-foreground">دوام الفريق اليوم</span>
             <Link href="/attendance" className="text-xs text-gold hover:underline">حوكمة الدوام ←</Link>

@@ -16,7 +16,7 @@ const DOT: Record<OwnerActivityRow["state"], { color: string; glow: boolean }> =
 
 export function OwnerActivity({ rows }: { rows: OwnerActivityRow[] }) {
   return (
-    <div className="mt-3.5 rounded-[18px] border p-3.5" style={{ background: "var(--od-raised)", borderColor: "var(--od-hair)" }}>
+    <div className="sop-raise mt-3.5 p-3.5">
       <div className="mb-[3px] flex items-center gap-2">
         <span className="h-[18px] w-1 rounded-sm" style={{ background: "var(--od-visit)" }} aria-hidden />
         <span className="text-[15px] font-bold text-foreground">معدّل النشاط</span>
@@ -35,7 +35,7 @@ export function OwnerActivity({ rows }: { rows: OwnerActivityRow[] }) {
               aria-hidden
             />
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{r.name}</span>
-            <span className="h-[5px] w-[52px] flex-none overflow-hidden rounded-[3px]" style={{ background: "var(--od-raised2)" }}>
+            <span className="sop-inset h-[6px] w-[52px] flex-none overflow-hidden" style={{ borderRadius: 999 }}>
               <span className="block h-full rounded-[3px]" style={{ width: `${r.recencyPct}%`, background: dot.color }} />
             </span>
             <span className="w-14 flex-none text-left text-[9.5px]" style={{ color: "var(--od-t3)" }}>{r.agoText}</span>

@@ -50,11 +50,11 @@ function KindIcon({ kind }: { kind: OwnerAuditKind }) {
 export function OwnerAuditFeed({ rows }: { rows: OwnerAuditRow[] }) {
   const router = useRouter();
   return (
-    <div className="rounded-[28px] p-[22px]" style={{ background: "var(--od-raised)" }}>
+    <div className="sop-raise-lg p-[22px]">
       <div className="mb-[3px] flex items-center gap-2 text-lg font-bold text-foreground">
         سجل التدقيق
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ background: "rgba(52,212,148,.13)", color: "var(--od-won)" }}>
-          <span className="size-1.5 animate-pulse rounded-full" style={{ background: "var(--od-won)" }} aria-hidden />
+        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ background: "color-mix(in srgb, var(--green) 13%, transparent)", color: "var(--green)" }}>
+          <span className="size-1.5 animate-pulse rounded-full" style={{ background: "var(--green)" }} aria-hidden />
           مباشر
         </span>
       </div>
@@ -75,10 +75,10 @@ export function OwnerAuditFeed({ rows }: { rows: OwnerAuditRow[] }) {
               type="button"
               disabled={!clickable}
               onClick={() => clickable && router.push(`/leads/${r.leadId}`)}
-              className="flex items-start gap-[13px] rounded-3xl px-4 py-[15px] text-start transition-colors enabled:hover:-translate-x-0.5 disabled:cursor-default"
-              style={{ background: "var(--od-raised2)", borderInlineStart: `3px solid ${c}` }}
+              className="sop-raise-sm flex items-start gap-[13px] px-4 py-[15px] text-start transition-transform enabled:hover:-translate-x-0.5 disabled:cursor-default"
+              style={{ borderInlineStart: `3px solid ${c}`, borderRadius: 16 }}
             >
-              <span className="flex size-[42px] flex-none items-center justify-center rounded-[20px]" style={{ background: `color-mix(in srgb, ${c} 14%, transparent)`, color: c }}>
+              <span className="sop-inset flex size-[42px] flex-none items-center justify-center" style={{ background: `color-mix(in srgb, ${c} 12%, transparent)`, color: c, borderRadius: 14 }}>
                 <KindIcon kind={r.kind} />
               </span>
               <span className="min-w-0 flex-1">

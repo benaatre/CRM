@@ -9,11 +9,12 @@ import { toArabicDigits } from "@/lib/format";
  */
 
 const BAR_COLORS = ["var(--od-visit)", "var(--od-int)", "var(--od-try)", "var(--od-nego)", "var(--gold)", "var(--od-later)", "var(--od-red)", "var(--od-new)", "var(--od-t3)"];
-const AV_COLORS = ["#34d494", "#5b9def", "#a98edb", "#e8a54d", "#5bbccb", "#cba45e", "#ff7a8a"];
+// لوحة الأفاتار الحتمية — توكنات حصرًا (v2 §9.2: صفر hex بالمكوّنات).
+const AV_COLORS = ["var(--green)", "var(--blue)", "var(--purple)", "var(--amber)", "var(--teal)", "var(--gold)", "var(--red)"];
 
 function Card({ title, sub, children, header }: { title: string; sub: string; children: React.ReactNode; header?: React.ReactNode }) {
   return (
-    <div className="rounded-[28px] p-[22px]" style={{ background: "var(--od-raised)" }}>
+    <div className="sop-raise-lg p-[22px]">
       <div className="flex flex-wrap items-start gap-3">
         <div>
           <div className="mb-[3px] text-lg font-bold text-foreground">{title}</div>
@@ -79,7 +80,7 @@ export function OwnerAnalytics({ channels, channelsSub, trend, teamFu, teamFuSub
         {channels.map((c, i) => (
           <div key={c.channel} className="mb-[17px] flex items-center gap-3.5 last:mb-0">
             <span className="w-20 flex-none text-[15px] font-medium" style={{ color: "var(--od-t1)" }}>{c.label}</span>
-            <div className="h-7 min-w-0 flex-1 overflow-hidden rounded-[18px]" style={{ background: "var(--od-raised2)" }}>
+            <div className="sop-inset h-7 min-w-0 flex-1 overflow-hidden" style={{ borderRadius: 999 }}>
               <span
                 className="block h-full rounded-[14px]"
                 style={{ width: `${Math.max(4, Math.round((c.count / maxCount) * 100))}%`, background: BAR_COLORS[i % BAR_COLORS.length] }}
@@ -107,8 +108,8 @@ export function OwnerAnalytics({ channels, channelsSub, trend, teamFu, teamFuSub
         {teamFu.map((r, i) => (
           <div key={r.id} className="flex items-center gap-3 border-b py-3 last:border-b-0" style={{ borderColor: "var(--od-hair)" }}>
             <span
-              className="flex size-10 flex-none items-center justify-center rounded-2xl text-[15px] font-bold text-white"
-              style={{ background: AV_COLORS[i % AV_COLORS.length], fontFamily: "var(--font-zain), var(--font-sans)" }}
+              className="sop-inset flex size-10 flex-none items-center justify-center text-[15px] font-bold"
+              style={{ color: AV_COLORS[i % AV_COLORS.length], background: `color-mix(in srgb, ${AV_COLORS[i % AV_COLORS.length]} 10%, transparent)`, fontFamily: "var(--font-zain), var(--font-sans)", borderRadius: 14 }}
             >
               {r.name.trim().charAt(0)}
             </span>
@@ -122,7 +123,7 @@ export function OwnerAnalytics({ channels, channelsSub, trend, teamFu, teamFuSub
                 ["باقي", r.remaining, "var(--od-visit)"],
                 ["فات", r.missed, "var(--od-red)"],
               ] as const).map(([k, v, color]) => (
-                <div key={k} className="w-12 rounded-xl px-1 py-1.5" style={{ background: "var(--od-raised2)" }}>
+                <div key={k} className="sop-inset w-12 px-1 py-1.5">
                   <div className="text-base font-extrabold leading-none" style={{ color, fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" }}>
                     {toArabicDigits(v)}
                   </div>

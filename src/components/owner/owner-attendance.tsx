@@ -48,7 +48,7 @@ const STATE_META: Record<TileState, { label: string; color: string }> = {
   on: { label: "مداوم", color: "var(--od-won)" },
   late: { label: "مداوم", color: "var(--od-won)" },
   paused: { label: "متوقّف", color: "var(--od-try)" },
-  remote: { label: "عن بُعد", color: "var(--od-info, var(--od-t3))" },
+  remote: { label: "عن بُعد", color: "var(--blue)" },
   miss: { label: "لم يسجّل", color: "var(--od-red)" },
   exc: { label: "مستثنى", color: "var(--od-later)" },
   done: { label: "أنهى دوامه", color: "var(--od-t3)" },
@@ -99,7 +99,7 @@ function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpe
   const remSec = Math.floor((rem % 60_000) / 1000);
 
   return (
-    <div className="relative mb-[11px] overflow-hidden rounded-2xl p-[15px] last:mb-0" style={{ background: "var(--od-raised2)" }}>
+    <div className="sop-raise-sm relative mb-[11px] overflow-hidden p-[15px] last:mb-0" style={{ borderRadius: 16 }}>
       {/* هالة الحالة */}
       <span aria-hidden className="pointer-events-none absolute -top-8 end-[-30px] size-[130px] rounded-full opacity-30 blur-[45px]" style={{ background: meta.color }} />
       <div className="relative">
@@ -131,7 +131,7 @@ function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpe
             onClick={(e) => { e.stopPropagation(); onOpen(); }}
             aria-label={`ملف ${r.name}`}
             className="grid size-[26px] flex-none place-items-center rounded-lg transition-colors hover:text-gold"
-            style={{ background: "rgba(255,255,255,.04)", color: "var(--od-t3)" }}
+            style={{ background: "var(--edge)", color: "var(--mut)" }}
           >
             <svg viewBox="0 0 24 24" className="size-[15px]" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
           </button>
@@ -151,7 +151,7 @@ function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpe
                 </span>
               </div>
               {active ? (
-                <span className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1" style={{ background: "var(--od-raised)" }}>
+                <span className="sop-inset inline-flex items-center gap-1.5 px-2 py-1" style={{ borderRadius: 10 }}>
                   <span className={r.state === "paused" ? "" : "animate-pulse"} style={{ color: meta.color }} aria-hidden>
                     <svg viewBox="0 0 24 24" className="size-[11px]" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
                   </span>
@@ -171,7 +171,7 @@ function TodayTile({ r, nowMs, onOpen }: { r: LiveBoardRow; nowMs: number; onOpe
             </div>
 
             {/* شريط التقدم */}
-            <div className="mb-3 h-[7px] overflow-hidden rounded" style={{ background: "var(--od-raised)" }}>
+            <div className="sop-inset mb-3 h-[8px] overflow-hidden" style={{ borderRadius: 999 }}>
               <span className="block h-full rounded transition-[width] duration-1000" style={{ width: `${pct}%`, background: meta.color === "var(--od-t3)" ? "var(--od-won)" : meta.color }} />
             </div>
 
@@ -219,7 +219,7 @@ const OD_TIMELINE_TOKENS: TimelineTokens = {
 
 function RangeRow({ r }: { r: RangeBoardRow }) {
   return (
-    <div className="mb-[11px] rounded-2xl p-[15px] last:mb-0" style={{ background: "var(--od-raised2)" }}>
+    <div className="sop-raise-sm mb-[11px] p-[15px] last:mb-0" style={{ borderRadius: 16 }}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="truncate text-[13.5px] font-bold text-foreground">{r.name}</span>
         <span className="text-[15px] font-extrabold" style={{ color: "var(--gold)", fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" }}>
@@ -270,7 +270,7 @@ export function OwnerAttendance({ isOwner = false }: { isOwner?: boolean } = {})
   );
 
   return (
-    <div className="rounded-[18px] border p-3.5" style={{ background: "var(--od-raised)", borderColor: "var(--od-hair)" }}>
+    <div className="sop-raise p-3.5">
       {/* الرأس: عنوان + عدّاد + سهم القسم */}
       <div className="mb-1 flex items-center gap-2">
         <span className="h-[18px] w-1 rounded-sm" style={{ background: "var(--gold)" }} aria-hidden />
@@ -280,22 +280,22 @@ export function OwnerAttendance({ isOwner = false }: { isOwner?: boolean } = {})
           type="button"
           onClick={() => router.push("/attendance")}
           aria-label="فتح حوكمة الدوام"
-          className="grid size-7 place-items-center rounded-[9px] transition-colors"
-          style={{ background: "var(--od-raised2)", color: "var(--gold)", marginInlineStart: "auto" }}
+          className="sop-raise-sm n-press grid size-7 place-items-center"
+          style={{ color: "var(--gold)", marginInlineStart: "auto", borderRadius: 9 }}
         >
           <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
         </button>
       </div>
 
       {/* فلتر التاريخ */}
-      <div className="mb-3.5 mt-2 flex gap-1 rounded-[11px] p-1" style={{ background: "var(--od-raised2)" }}>
+      <div className="sop-inset mb-3.5 mt-2 flex gap-1 p-1" style={{ borderRadius: 11 }}>
         {CHIPS.map((c) => (
           <button
             key={c.key}
             type="button"
             onClick={() => setChip(c.key)}
-            className="flex-1 whitespace-nowrap rounded-lg px-1.5 py-[7px] text-[11.5px] transition-colors"
-            style={c.key === chip ? { background: "var(--gold)", color: "#fff", fontWeight: 600 } : { color: "var(--od-t2)" }}
+            className={`n-press flex-1 whitespace-nowrap rounded-lg px-1.5 py-[7px] text-[11.5px] transition-colors ${c.key === chip ? "gold-on" : ""}`}
+            style={c.key === chip ? undefined : { color: "var(--tx2)" }}
           >
             {c.label}
           </button>

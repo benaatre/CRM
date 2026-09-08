@@ -20,8 +20,8 @@ const STATUS_META: Record<OwnerFuStatus, { label: string; color: string }> = {
 
 const FILTERS: (OwnerFuStatus | "all")[] = ["all", "late", "soon", "next", "done"];
 
-// لوحة ألوان حتمية لنقطة الموظف وحرف العميل — من ألوان المرجع نفسها.
-const AV_COLORS = ["#e8a54d", "#5b9def", "#a98edb", "#34d494", "#5bbccb", "#ff7a8a", "#cba45e"];
+// لوحة ألوان حتمية لنقطة الموظف وحرف العميل — توكنات حصرًا (v2 §9.2).
+const AV_COLORS = ["var(--amber)", "var(--blue)", "var(--purple)", "var(--green)", "var(--teal)", "var(--red)", "var(--gold)"];
 function colorFor(name: string): string {
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
@@ -53,20 +53,22 @@ function Card({ r, onOpen, onOpenEmployee }: { r: OwnerFollowupRow; onOpen: () =
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full items-center gap-4 rounded-3xl px-[19px] py-[17px] text-start transition-colors"
+      className="sop-raise n-btn flex w-full items-center gap-4 px-[19px] py-[17px] text-start"
       style={{
-        background: r.status === "late" ? "linear-gradient(160deg,rgba(255,122,138,.09),var(--od-raised2))" : "var(--od-raised2)",
+        background: r.status === "late"
+          ? "linear-gradient(160deg, color-mix(in srgb, var(--red) 8%, var(--plane)), var(--plane))"
+          : undefined,
         borderInlineStart: `3px solid ${meta.color}`,
         opacity: r.status === "done" ? 0.75 : 1,
       }}
     >
-      <span className="w-16 flex-none text-center">
-        <span className="block text-xl font-extrabold leading-none text-foreground" style={{ fontFamily: "var(--font-zain), var(--font-sans)" }}>
+      <span className="sop-inset w-16 flex-none px-2 py-2 text-center">
+        <span className="block text-xl font-extrabold leading-none text-foreground" style={{ fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" }}>
           {r.timeText}
         </span>
-        {r.dayText && <span className="mt-0.5 block text-[10px]" style={{ color: "var(--od-t3)" }}>{r.dayText}</span>}
+        {r.dayText && <span className="mt-0.5 block text-[10px]" style={{ color: "var(--mut)" }}>{r.dayText}</span>}
       </span>
-      <span className="flex size-[52px] flex-none items-center justify-center rounded-3xl text-[19px] font-bold text-white" style={{ background: c, fontFamily: "var(--font-zain), var(--font-sans)" }}>
+      <span className="sop-inset flex size-[52px] flex-none items-center justify-center rounded-full text-[19px] font-bold" style={{ color: c, background: `color-mix(in srgb, ${c} 10%, transparent)`, fontFamily: "var(--font-zain), var(--font-sans)" }}>
         {r.name.trim().charAt(0)}
       </span>
       <span className="min-w-0 flex-1">
@@ -74,7 +76,7 @@ function Card({ r, onOpen, onOpenEmployee }: { r: OwnerFollowupRow; onOpen: () =
           <span className="text-[16.5px] font-semibold" style={{ color: "var(--od-t1)" }}>{r.name}</span>
           <span className="text-[12.5px]" style={{ color: "var(--od-t2)", fontVariantNumeric: "tabular-nums" }} dir="ltr">{r.phone}</span>
           {r.kind === "visit" && (
-            <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "rgba(91,157,239,.14)", color: "var(--od-visit)" }}>زيارة</span>
+            <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "color-mix(in srgb, var(--teal) 14%, transparent)", color: "var(--teal)", border: "1px solid color-mix(in srgb, var(--teal) 28%, transparent)" }}>زيارة</span>
           )}
         </span>
         {r.note && <span className="mt-[5px] block truncate text-[13.5px] leading-normal" style={{ color: "var(--od-t2)" }}>{r.note}</span>}
@@ -131,10 +133,8 @@ export function OwnerFollowups({ rows, isOwner = false }: { rows: OwnerFollowupR
               key={f}
               type="button"
               onClick={() => setFilter(f)}
-              className="inline-flex items-center gap-1.5 rounded-[18px] px-4 py-2.5 text-[13px] transition-colors"
-              style={on
-                ? { background: "var(--gold)", color: "#fff" }
-                : { background: "var(--od-raised2)", color: meta?.color ?? "var(--od-t2)" }}
+              className={`n-btn inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] ${on ? "gold-on" : "sop-raise-sm"}`}
+              style={{ borderRadius: 999, ...(on ? {} : { color: meta?.color ?? "var(--tx2)" }) }}
             >
               {meta && <StatusIcon s={f as OwnerFuStatus} />}
               {meta?.label ?? "الكل"}
@@ -145,7 +145,7 @@ export function OwnerFollowups({ rows, isOwner = false }: { rows: OwnerFollowupR
       </div>
 
       {shown.length === 0 ? (
-        <div className="grid h-40 place-items-center rounded-3xl text-sm" style={{ background: "var(--od-raised2)", color: "var(--od-t3)" }}>
+        <div className="sop-inset grid h-40 place-items-center rounded-3xl text-sm" style={{ color: "var(--mut)" }}>
           ما فيه مواعيد بهالفترة
         </div>
       ) : (
