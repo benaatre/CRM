@@ -10,6 +10,7 @@ import {
   onGeoPermissionChange,
   canOpenLocationSettings,
   openLocationSettings,
+  lastGeoPath,
   type GeoPermState,
 } from "@/lib/geolocation-permission";
 import { geoDiag } from "@/lib/geo-diag";
@@ -96,14 +97,19 @@ async function runRawProbes(): Promise<void> {
   }
 }
 
-/** سطر الحالة المبسط (يوم الإغلاق): المسار الويبي الوحيد — الحالة من الإذن مباشرة. */
+/**
+ * سطر الحالة المبسط — دفعة إيقاظ SultanGeo: مع «جاهز» يُعرض المسار الفائز
+ * بآخر قراءة/إذن («أصلي» = SultanGeo · «ويبي» = navigator.geolocation).
+ */
 function DiagLine({ perm }: { perm: GeoPermState | null }) {
   const label =
     perm === "granted" ? "جاهز" : perm === "denied" ? "مرفوض" : perm === "prompt" ? "بانتظار الإذن" : null;
   if (!label) return null;
+  const path = perm === "granted" ? lastGeoPath() : null;
   return (
     <p className="mt-3 text-center text-[10px]" style={{ color: "var(--att-esp-muted)" }}>
       الموقع: {label}
+      {path && ` — ${path === "native" ? "أصلي" : "ويبي"}`}
     </p>
   );
 }

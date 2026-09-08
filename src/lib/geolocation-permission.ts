@@ -7,8 +7,12 @@
  * Geolocation موثوق داخل Capacitor مع server.url بعيد (سياق آمن https)
  * وعلى المتصفح بالبداهة — مسار واحد واضح: ويب + مهلات + زرعات.
  *
- * بلجن SultanGeo المخصص (Build 5) سيعود من الماك مسارًا أول فوق هذا الملف
- * النظيف — لا فوق ركام المسارات القديمة.
+ * دفعة إيقاظ SultanGeo (2026-09-08): البلجن المخصص (Build 5+6 — يصلح علّة
+ * notDetermined بقواعده الثلاث وبمهلته الداخلية ٢٠ث) صار **المسار الأول**
+ * فوق هذه الأرضية: اكتشاف متزامن حصرًا عبر window.Capacitor.Plugins.SultanGeo
+ * (صفر import ديناميكي — القاعدة الدموية)، بمهلة صلبة ٢٠ث عندنا أيضًا،
+ * وأي فشل/مهلة/غياب (متصفح · أندرويد · Build 4) يسقط للمسار الويبي أدناه
+ * كما هو حرفيًا — هو المظلة الدائمة.
  *
  * الحقيقة الحاكمة: الإذن يُمنح فقط لحظة طلب موقع فعلي — فالطلب الرسمي يُطلق
  * من زر صريح (شاشة التفعيل / «أنا موجود بالموقع») لا من النبض.
@@ -36,6 +40,71 @@ function isNativeApp(): boolean {
     return capGlobal()?.isNativePlatform?.() === true;
   } catch {
     return false;
+  }
+}
+
+/** رد SultanGeo — نفس شكل @capacitor/geolocation حرفيًا (positionPayload بالسويفت). */
+type SultanGeoPosition = {
+  coords: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    altitude?: number;
+    altitudeAccuracy?: number;
+    heading?: number;
+    speed?: number;
+  };
+  timestamp: number;
+};
+
+/** دوال SultanGeo الثلاث المصدّرة (pluginMethods في SultanGeoPlugin.swift). */
+type SultanGeoBridge = {
+  checkPermissions?: () => Promise<{ location?: string }>;
+  requestPermissions?: () => Promise<{ location?: string }>;
+  getCurrentPosition?: (opts?: { enableHighAccuracy?: boolean }) => Promise<SultanGeoPosition>;
+};
+
+/**
+ * اكتشاف SultanGeo — متزامن حصرًا من window.Capacitor.Plugins (الجسر يسجله
+ * قبل أول سطر من كودنا عبر capacitorDidLoad). null = متصفح/أندرويد/Build 4.
+ */
+function sultanGeo(): SultanGeoBridge | null {
+  try {
+    if (!isNativeApp()) return null;
+    const p = capGlobal()?.Plugins?.SultanGeo as SultanGeoBridge | undefined;
+    return p && typeof p.getCurrentPosition === "function" ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+/** مهلة المسار الأصلي — تطابق مهلة أمان البلجن الداخلية (callTimeout=20ث). */
+const NATIVE_READ_TIMEOUT_MS = 20_000;
+
+/** المسار الفائز بآخر قراءة/إذن ناجح — لسطر DiagLine بشاشة التفعيل. */
+let lastPath: "native" | "web" | null = null;
+export function lastGeoPath(): "native" | "web" | null {
+  return lastPath;
+}
+
+/** قراءة عبر SultanGeo — نجاحها بوسم «أصلي»، وفشلها يرمي ليسقط المستدعي للويبي. */
+async function readPositionNative(plugin: SultanGeoBridge): Promise<GeolocationPosition> {
+  geoDiag("native:start");
+  try {
+    const raw = await raceTimeout(
+      plugin.getCurrentPosition!({ enableHighAccuracy: true }),
+      NATIVE_READ_TIMEOUT_MS,
+      "native:getCurrentPosition",
+    );
+    geoDiag("native:success", { acc: Math.round(raw.coords.accuracy) });
+    rememberGrant(true);
+    lastPath = "native";
+    // نفس شكل GeolocationPosition — المستهلكون يقرؤون coords/timestamp فقط.
+    return raw as unknown as GeolocationPosition;
+  } catch (err) {
+    const e = err as { message?: string; code?: string } | undefined;
+    geoDiag("native:fail", { code: e?.code, message: e?.message?.slice(0, 120) });
+    throw err;
   }
 }
 
@@ -88,6 +157,20 @@ function hasRememberedGrant(): boolean {
 
 /** حالة الإذن الحالية — بلا إطلاق أي طلب. `unavailable` = لا API إطلاقًا. */
 export async function queryGeoPermission(): Promise<GeoPermState> {
+  // SultanGeo أولًا (iOS بلا permissions.query): checkPermissions حاسمة وفورية —
+  // فشلها/غيابها يسقط للمنطق الويبي أدناه كما هو.
+  const native = sultanGeo();
+  if (native?.checkPermissions) {
+    try {
+      const r = await raceTimeout(native.checkPermissions(), 5_000, "native:checkPermissions");
+      if (r?.location === "granted" || r?.location === "denied" || r?.location === "prompt") {
+        rememberGrant(r.location === "granted");
+        return r.location;
+      }
+    } catch {
+      /* المظلة الويبية أدناه */
+    }
+  }
   if (typeof navigator === "undefined" || !navigator.geolocation) return "unavailable";
   // لا permissions.query (iOS WKWebView غالبًا): ذاكرة المنحة تحسم — منحة OS
   // نفسها ثابتة بين الفتحات، والذي كان يضيع هو «علم التطبيق» بها.
@@ -128,7 +211,16 @@ export function onGeoPermissionChange(cb: (state: GeoPermState) => void): () => 
  */
 export async function readPositionOnce(opts?: PositionOptions): Promise<GeolocationPosition> {
   const timeoutMs = opts?.timeout ?? 12_000;
-  geoDiag("readPositionOnce:start", { native: isNativeApp(), timeout: timeoutMs });
+  const native = sultanGeo();
+  geoDiag("readPositionOnce:start", { native: !!native, timeout: timeoutMs });
+  // SultanGeo أولًا — فشله/مهلته تسقط للمظلة الويبية أدناه كما هي حرفيًا.
+  if (native) {
+    try {
+      return await readPositionNative(native);
+    } catch {
+      /* المظلة الويبية */
+    }
+  }
   return raceTimeout(readPositionOnceWeb(opts), timeoutMs + 2_000, "readPositionOnce");
 }
 
@@ -144,6 +236,7 @@ function readPositionOnceWeb(opts?: PositionOptions): Promise<GeolocationPositio
       (pos) => {
         geoDiag("web:success", { acc: Math.round(pos.coords.accuracy) });
         rememberGrant(true); // قراءة نجحت = المنحة قائمة — تُذكر للجولات القادمة
+        lastPath = "web";
         resolve(pos);
       },
       (err) => {
@@ -173,7 +266,16 @@ export async function readBestPosition(opts?: {
 }): Promise<GeolocationPosition> {
   const targetAccuracy = opts?.targetAccuracy ?? 50;
   const timeoutMs = opts?.timeoutMs ?? 12_000;
-  geoDiag("readBestPosition:start", { native: isNativeApp(), targetAccuracy, timeoutMs });
+  const native = sultanGeo();
+  geoDiag("readBestPosition:start", { native: !!native, targetAccuracy, timeoutMs });
+  // SultanGeo أولًا (قراءة واحدة بأفضل دقة CoreLocation) — فشله يسقط لحلقة الويب.
+  if (native) {
+    try {
+      return await readPositionNative(native);
+    } catch {
+      /* المظلة الويبية */
+    }
+  }
   return readBestPositionWeb(targetAccuracy, timeoutMs);
 }
 
@@ -195,6 +297,7 @@ function readBestPositionWeb(targetAccuracy: number, timeoutMs: number): Promise
       clearTimeout(timer);
       if (pos) {
         rememberGrant(true); // تثبيت وصل = المنحة قائمة
+        lastPath = "web";
         resolve(pos);
       } else {
         if ((err as GeolocationPositionError | undefined)?.code === 1) rememberGrant(false);
@@ -220,7 +323,28 @@ function readBestPositionWeb(targetAccuracy: number, timeoutMs: number): Promise
  * نجاحها granted؛ رفض صريح denied؛ غير ذلك يُعاد استعلام الحالة.
  */
 export async function requestGeoPermission(): Promise<GeoPermState> {
-  geoDiag("requestGeoPermission:start", { native: isNativeApp() });
+  const native = sultanGeo();
+  geoDiag("requestGeoPermission:start", { native: !!native });
+  // SultanGeo أولًا: requestPermissions تعرض حوار iOS الرسمي وتُحسم دائمًا
+  // (مفوّض CoreLocation أو مهلة أمان البلجن) — الغامض/الفاشل يسقط للويبي.
+  if (native?.requestPermissions) {
+    try {
+      const r = await raceTimeout(native.requestPermissions(), 25_000, "native:requestPermissions");
+      geoDiag("native:requestPermissions", { location: r?.location });
+      if (r?.location === "granted") {
+        rememberGrant(true);
+        lastPath = "native";
+        return "granted";
+      }
+      if (r?.location === "denied") {
+        rememberGrant(false);
+        return "denied";
+      }
+    } catch (err) {
+      const e = err as { message?: string } | undefined;
+      geoDiag("native:requestPermissions:fail", { message: e?.message?.slice(0, 120) });
+    }
+  }
   try {
     await readPositionOnce({ enableHighAccuracy: true, timeout: 15_000 });
     geoDiag("requestGeoPermission:granted");
