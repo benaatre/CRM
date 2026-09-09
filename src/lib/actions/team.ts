@@ -90,7 +90,7 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
       return { ok: false, error: "تعيين الموارد البشرية والمدير المالي للمالك فقط" };
     }
     // حساب المالك لا يعدّله إلا مالك (الاسم/الإيميل/الـPIN/الدور/التعطيل).
-    const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, active: true } });
     if (!target) return { ok: false, error: "الموظف غير موجود" };
     if (target.role === "OWNER" && actor.role !== "OWNER") return { ok: false, error: "حساب المالك ما يعدّله إلا المالك" };
     const role: Role = target.role === "OWNER" ? target.role : (roleRaw as Role); // لا تنزيل لمالك
@@ -118,6 +118,11 @@ export async function updateEmployee(userId: string, formData: FormData): Promis
       data: {
         name, phone, email, role, targetDeals, maxClients, staffNotes, active,
         ...(pin ? { pinHash: bcrypt.hashSync(pin, 10) } : {}),
+        // تغيّر الدور/التفعيل يُبطل جلسات الهدف فورًا — التوكن يحمل الدور القديم
+        // حتى 7 أيام، وrequireUser/requireUserApi يصدّانه بمقارنة loginAt بهذا.
+        ...(role !== target.role || active !== target.active
+          ? { sessionsValidFrom: new Date() }
+          : {}),
         allowedProjects: { set: allowedProjectIds.map((id) => ({ id })) },
       },
     });
