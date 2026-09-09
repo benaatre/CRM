@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { matchLocation, nearestLocation } from "@/lib/geofence";
 import { ksaDayKey } from "@/lib/ksa-time";
@@ -21,8 +21,8 @@ export const dynamic = "force-dynamic";
  * جسم بإحداثيات = تسجيل الفحص بعد إعادة التحقق من الاستحقاق.
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: true, due: false });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: true, due: false });
   if (session.user.role === Role.OWNER) return NextResponse.json({ ok: true, due: false });
   const userId = session.user.id;
 

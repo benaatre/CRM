@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -16,8 +16,8 @@ const UNDO_WINDOW_MS = 90_000;
  * تُعاد (قرار مقبول — الكرون العشوائي القادم يغطي).
  */
 export async function POST() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   if (session.user.role === Role.OWNER) {
     return NextResponse.json(
       { ok: false, reason: "owner_excluded", message: "المالك خارج نظام البصم" },

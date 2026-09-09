@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { distanceMeters } from "@/lib/geofence";
 import { getActiveLocations } from "@/lib/data/attendance";
 
@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
  * مستقلة. الحارس نفس نطاق البصم: الموظف والمدير، والمالك خارج النظام.
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   if (session.user.role === Role.OWNER) {
     return NextResponse.json(
       { ok: false, message: "المالك خارج نظام البصم" },

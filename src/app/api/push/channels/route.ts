@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { ensureChannelDefaults, getChannelConfig } from "@/lib/data/push-channels";
 
 export const runtime = "nodejs";
@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
  * لا يكشف شيئًا حسّاسًا — أسماء قنوات ونغمات فقط — لكن يبقى خلف المصادقة.
  */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   await ensureChannelDefaults();
   const channels = await getChannelConfig();

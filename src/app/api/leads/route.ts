@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { getLeads } from "@/lib/data/leads";
 import { parseLeadFilters } from "@/lib/lead-filters";
 
@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
  * الصلاحيات على الخادم: الموظف يشوف عملاءه فقط (داخل getLeads).
  */
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
   // FINANCE بلا عملاء نهائيًا (قرار 2026-08-20).
   if (session.user.role === "FINANCE") return NextResponse.json({ ok: false, error: "المدير المالي بلا صلاحية عملاء" }, { status: 403 });
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { ksaDayKey, ksaMinutesOfDay } from "@/lib/ksa-time";
 import { formatTime } from "@/lib/format";
@@ -109,8 +109,8 @@ async function computeDue(userId: string, now: Date) {
 
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role === Role.OWNER) return NextResponse.json({ ok: true, due: false });
+    const session = await requireUserApi();
+    if (session instanceof Response || session.user.role === Role.OWNER) return NextResponse.json({ ok: true, due: false });
     return NextResponse.json({ ok: true, ...(await computeDue(session.user.id, new Date())) });
   } catch {
     // fail-open — خلل البوابة لا يحجب أحدًا.
@@ -119,8 +119,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   if (session.user.role === Role.OWNER) {
     return NextResponse.json({ ok: false, error: "المالك خارج نظام البصم" }, { status: 400 });
   }

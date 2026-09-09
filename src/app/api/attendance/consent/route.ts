@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit-event";
 
@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
  * v3 (الثقة المتجددة): النص صار يشمل النبض الجغرافي الدوري أثناء الدوام.
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   await recordAuditEvent(prisma, {
     actorId: session.user.id,

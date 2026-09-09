@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { trackActivityWindow, closeActivityWindow } from "@/lib/activity-window";
 
 export const runtime = "nodejs";
@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
  * heartbeat يبقى مصدر الحقيقة لو غابت هذي الإشارة كليًا.
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   let raw: { active?: unknown };
   try {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -11,8 +11,8 @@ const ALLOWED_EXT = ["mp3", "wav"];
 // POST /api/sounds/upload — رفع نغمة (mp3/wav) وتخزينها كـ data URL في قاعدة البيانات.
 // صلاحية المالك/المدير فقط.
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
   if (session.user.role !== "OWNER" && session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "الرفع للمالك أو المدير فقط" }, { status: 403 });
   }

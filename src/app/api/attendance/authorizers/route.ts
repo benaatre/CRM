@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { requireOwnerApi } from "@/lib/attendance-guard";
 
@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
  * المعطّلة أيضًا (شاشة الإعدادات).
  */
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   const wantAll = new URL(req.url).searchParams.get("all") === "1" && session.user.role === "OWNER";
   const authorizers = await prisma.attendanceAuthorizer.findMany({

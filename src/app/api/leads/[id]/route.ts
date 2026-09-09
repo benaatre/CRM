@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { LeadStage } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { applyStageChange } from "@/lib/stage-change";
@@ -22,8 +22,8 @@ function isFinanceBlocked(role: string) {
  * الصلاحيات على الخادم: الموظف يعدّل عملاءه فقط؛ المدير/المالك الكل.
  */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
   if (isFinanceBlocked(session.user.role)) return NextResponse.json({ ok: false, error: "المدير المالي بلا صلاحية عملاء" }, { status: 403 });
 
   const { id } = await ctx.params;

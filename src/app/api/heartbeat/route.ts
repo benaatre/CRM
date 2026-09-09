@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { recordSessionBeat } from "@/lib/session-devices";
 import { trackActivityWindow } from "@/lib/activity-window";
@@ -29,8 +29,8 @@ export const runtime = "nodejs";
  * - `openSession` بالرد: العميل يرفع الإيقاع لدقيقة أثناء الدوام (قرار ١٠).
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   const userId = session.user.id;
   const now = new Date();
 

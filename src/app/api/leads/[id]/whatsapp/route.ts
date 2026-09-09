@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { FollowUpType, FollowUpResult, ActivityType } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { markContacted } from "@/lib/auto-distribute";
 
@@ -21,8 +21,8 @@ function isFinanceBlocked(role: string) {
 // «ينتظر أول تواصل» بالداشبورد بينما لوحة التوزيع تعدّه «تم التواصل» (نفس مرض «لم يتم الرد»).
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
   if (isFinanceBlocked(session.user.role)) return NextResponse.json({ ok: false, error: "المدير المالي بلا صلاحية عملاء" }, { status: 403 });
 
   const lead = await prisma.lead.findUnique({

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { buildAiContext } from "@/lib/data/ai-context";
 
 export const runtime = "nodejs";
@@ -11,8 +11,8 @@ const SYSTEM = `أنت مساعد ذكي داخل نظام CRM عقاري لشر
 - العملة ريال سعودي (ر.س). اختصر الأرقام الكبيرة عند الحاجة.`;
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await requireUserApi();
+  if (session instanceof Response) {
     return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
   }
 

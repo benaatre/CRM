@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { FollowUpType, FollowUpResult, FollowUpSection, LeadStage, FirstContactStage, ActivityType } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { markContacted } from "@/lib/auto-distribute";
@@ -30,8 +30,8 @@ function isFinanceBlocked(role: string) {
 
 /** يتحقق من جلسة + صلاحية الوصول للعميل (الموظف لعملائه فقط). */
 async function authorize(leadId: string) {
-  const session = await auth();
-  if (!session?.user) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
+  const session = await requireUserApi();
+  if (session instanceof Response) return { error: NextResponse.json({ error: "غير مصرّح" }, { status: 401 }) };
   if (isFinanceBlocked(session.user.role)) return { error: NextResponse.json({ error: "المدير المالي بلا صلاحية عملاء" }, { status: 403 }) };
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, assignedToId: true, assignedAt: true, stage: true, visitAt: true, firstContactAt: true, firstContactStage: true, firstContactDate: true } });
   if (!lead) return { error: NextResponse.json({ error: "العميل غير موجود" }, { status: 404 }) };

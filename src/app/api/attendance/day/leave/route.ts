@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { ksaDayKey } from "@/lib/ksa-time";
 import { formatDate } from "@/lib/format";
@@ -24,8 +24,8 @@ const MAX_DAYS = 30;
  * pauseUntil صباح يوم الرجوع، والرجوع التلقائي من كرون التوزيع القائم).
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   if (session.user.role === Role.OWNER) {
     return NextResponse.json({ ok: false, message: "المالك خارج نظام البصم" }, { status: 403 });
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -38,8 +38,8 @@ async function parseBody(req: Request): Promise<{ token: string; platform: strin
  * إشعارات الموظف السابق لجهاز الموظف الجديد.
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   const body = await parseBody(req);
   if (!body) return NextResponse.json({ ok: false, error: "بيانات غير صالحة" }, { status: 400 });
@@ -58,8 +58,8 @@ export async function POST(req: Request) {
  * أحد على حذف تسجيل جهاز غيره بتخمين توكن.
  */
 export async function DELETE(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   const body = await parseBody(req);
   if (!body) return NextResponse.json({ ok: false, error: "بيانات غير صالحة" }, { status: 400 });

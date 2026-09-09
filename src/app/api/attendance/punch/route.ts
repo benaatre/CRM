@@ -5,7 +5,7 @@ import {
   AttendanceSource,
   Role,
 } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { distanceMeters, matchLocation, nearestLocation } from "@/lib/geofence";
 import { ksaDayKey, ksaDayOfWeek, ksaMinutesOfDay } from "@/lib/ksa-time";
@@ -113,8 +113,8 @@ function refuse(reason: string, message: string, extra: Record<string, unknown> 
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   /*
    * قرار المالك (٢٠٢٦-٠٨-١٣): الموظف والمدير يبصمان — كلٌّ لنفسه — والمالك

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AttendanceEventType, Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { matchLocation, nearestLocation } from "@/lib/geofence";
 import { getActiveLocations, getAttendanceSettings } from "@/lib/data/attendance";
@@ -40,8 +40,8 @@ type Body = {
 const ANSWERS = new Set(["HERE", "EN_ROUTE", "PAUSE", "CHECKOUT", "STILL_EN_ROUTE"]);
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   if (session.user.role === Role.OWNER) {
     return NextResponse.json(
       { ok: false, reason: "owner_excluded", message: "المالك خارج نظام البصم" },

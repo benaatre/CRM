@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { getAttendanceSettings } from "@/lib/data/attendance";
 
@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
  * (عشوائي/يدوي/وصول)، وهل يملك تمديد الوصول، وهل خيار «غادرت» ظاهر.
  */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   if (session.user.role === Role.OWNER) {
     return NextResponse.json({ ok: true, pending: null });
   }

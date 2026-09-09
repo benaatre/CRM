@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { getMyAttendanceStatus } from "@/lib/data/attendance";
 
@@ -21,8 +21,8 @@ const CONSENT_VERSION = "attendance_location_disclosure_v3";
  * بالواجهة كاش تفاؤلي فقط. قراءة خفيفة على فهرس [resourceType, resourceId].
  */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
 
   const [status, consentRow] = await Promise.all([
     getMyAttendanceStatus(session.user.id),

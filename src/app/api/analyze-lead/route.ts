@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { LeadStage } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 import { getLeadDetail } from "@/lib/data/leads";
 import { stageLabels, channelLabel } from "@/lib/labels";
 
@@ -49,8 +49,8 @@ function heuristic(
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
 
   let leadId = "";
   try {

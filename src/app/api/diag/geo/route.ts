@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,8 +48,8 @@ function allow(userId: string): boolean {
 const s = (v: unknown, max: number): string => (typeof v === "string" ? v.slice(0, max) : "");
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await requireUserApi();
+  if (session instanceof Response) return NextResponse.json({ ok: false }, { status: 401 });
   if (!allow(session.user.id)) return NextResponse.json({ ok: false }, { status: 429 });
 
   let raw: { step?: unknown; detail?: unknown; ts?: unknown; ua?: unknown };
