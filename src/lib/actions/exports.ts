@@ -50,7 +50,11 @@ const MONTH_DAYS: Record<3 | 6 | 12, number> = { 3: 90, 6: 180, 12: 365 };
 const VISITED_RESULTS = ["INTERESTED_VISITED", "NOT_INTERESTED_VISITED"] as const;
 
 function csvField(v: string): string {
-  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  // تحييد حقن المعادلات: خلية تبدأ بـ = + - @ أو tab/CR تنفَّذ كصيغة عند فتح
+  // الملف بإكسل — نسبقها بفاصلة عليا فتُعرض نصًّا خاملًا (أسماء العملاء تصل
+  // من نماذج إعلانات خارجية، فالمدخل غير موثوق).
+  const s = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  return /[",\n\r']/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : "");
 
