@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -31,6 +32,20 @@ const resolveSession = cache(async () => {
 
   return { user: session.user } as const;
 });
+
+/**
+ * نظير requireUser لمسارات API (route handlers): نفس فحوص الإبطال حرفيًا
+ * (active + sessionsValidFrom من القاعدة)، لكن يرد Response 401 بدل التحويل —
+ * الـfetch لا يفهم 3xx. عند النجاح يرجّع { user } بنفس شكل الجلسة فلا يتغير
+ * أي `session.user.…` عند المستدعي.
+ */
+export async function requireUserApi() {
+  const r = await resolveSession();
+  if (!r || "invalid" in r) {
+    return NextResponse.json({ ok: false, error: "غير مصرّح" }, { status: 401 });
+  }
+  return { user: r.user };
+}
 
 /** يرجّع المستخدم الحالي أو يحوّل لصفحة الدخول. استخدمه في كل صفحة/أكشن محمي. */
 export async function requireUser() {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { auth } from "@/auth";
+import { requireUserApi } from "@/lib/auth-guards";
 
 /**
  * حارس مسارات حوكمة الدوام الإدارية — المالك فقط، **على الخادم**.
@@ -12,10 +12,13 @@ import { auth } from "@/auth";
 export async function requireOwnerApi(): Promise<
   { ok: true; userId: string } | { ok: false; res: NextResponse }
 > {
-  const session = await auth();
-  if (!session?.user) {
+  // requireUserApi يضيف فحص الإبطال من القاعدة (active + sessionsValidFrom) —
+  // فالموقوف/المطرود يفقد مسارات API فورًا لا بعد انتهاء توكنه (7 أيام).
+  const g = await requireUserApi();
+  if (g instanceof Response) {
     return { ok: false, res: NextResponse.json({ ok: false }, { status: 401 }) };
   }
+  const session = { user: g.user };
   if (session.user.role !== Role.OWNER) {
     return {
       ok: false,
@@ -35,10 +38,11 @@ export async function requireOwnerApi(): Promise<
 export async function requireGovernanceApi(): Promise<
   { ok: true; userId: string; role: Role } | { ok: false; res: NextResponse }
 > {
-  const session = await auth();
-  if (!session?.user) {
+  const g = await requireUserApi();
+  if (g instanceof Response) {
     return { ok: false, res: NextResponse.json({ ok: false }, { status: 401 }) };
   }
+  const session = { user: g.user };
   if (!([Role.OWNER, Role.HR, Role.FINANCE] as Role[]).includes(session.user.role)) {
     return {
       ok: false,
@@ -55,10 +59,11 @@ export async function requireGovernanceApi(): Promise<
 export async function requireLeaveDeciderApi(): Promise<
   { ok: true; userId: string; role: Role } | { ok: false; res: NextResponse }
 > {
-  const session = await auth();
-  if (!session?.user) {
+  const g = await requireUserApi();
+  if (g instanceof Response) {
     return { ok: false, res: NextResponse.json({ ok: false }, { status: 401 }) };
   }
+  const session = { user: g.user };
   if (!([Role.OWNER, Role.HR, Role.FINANCE] as Role[]).includes(session.user.role)) {
     return {
       ok: false,
