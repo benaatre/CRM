@@ -158,6 +158,24 @@ export function EmployeeHome({
       <SecH title="متابعات اليوم" all="القائمة الكاملة" href="/m/today" />
       <DiwanCaroz appointments={appointments} notes={notes} doneLeadIds={doneLeadIds} />
 
+      {/* ===== العملاء الراكدين (المرحلة ٣): كرت + قائمة دوّارة — فوق «المتراكمة»
+           (أولوية أعلى: الحارّ قريب من البيع وانقطع، أثقل من عدّاد المتراكمة العام) ===== */}
+      {stale && stale.counts.total > 0 && (
+        <>
+          <SecH title="العملاء الراكدين" all="القائمة الكاملة" href="/m/leads?stale=1" />
+          <StaleCard
+            label="عملاء راكدين عندك"
+            counts={stale.counts}
+            sub={stale.counts.hot > 0
+              ? <><b style={{ ...ZAIN, color: SOP.red, fontWeight: 700 }}>{toArabicDigits(stale.counts.hot)} حارّ</b> محتاجينك اليوم</>
+              : "محتاجين متابعة وانقطعت"}
+          />
+          <div style={{ marginTop: 12 }}>
+            <StaleWheel rows={stale.rows} restCount={stale.restCount} />
+          </div>
+        </>
+      )}
+
       {/* ===== المتراكمة `.backlog` ===== */}
       {backlogCount > 0 && (
         <div
@@ -184,23 +202,6 @@ export function EmployeeHome({
             ابدأ التصفية
           </Link>
         </div>
-      )}
-
-      {/* ===== العملاء الراكدين (المرحلة ٣): كرت + قائمة دوّارة ===== */}
-      {stale && stale.counts.total > 0 && (
-        <>
-          <SecH title="العملاء الراكدين" all="القائمة الكاملة" href="/m/leads?stale=1" />
-          <StaleCard
-            label="عملاء راكدين عندك"
-            counts={stale.counts}
-            sub={stale.counts.hot > 0
-              ? <><b style={{ ...ZAIN, color: SOP.red, fontWeight: 700 }}>{toArabicDigits(stale.counts.hot)} حارّ</b> محتاجينك اليوم</>
-              : "محتاجين متابعة وانقطعت"}
-          />
-          <div style={{ marginTop: 12 }}>
-            <StaleWheel rows={stale.rows} restCount={stale.restCount} />
-          </div>
-        </>
       )}
 
       {/* ===== ينتظرون أول تواصل `.wrow` ===== */}

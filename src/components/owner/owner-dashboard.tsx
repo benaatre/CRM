@@ -132,8 +132,17 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
           </div>
           </div>
 
+          {/* العملاء الراكدين — فوق التحليلات (أولوية أعلى: عملاء حارّون ينتظرون الإنقاذ) */}
+          <OwnerStale
+            counts={staleHome.counts}
+            rows={staleHome.rows}
+            restCount={staleHome.restCount}
+            dist={staleByEmp.rows}
+            activeTotal={staleByEmp.activeTotal}
+          />
+
           {/*
-            ٣) التحليلات — داخل عمود المحتوى لا تحت الشبكة كلها: كانت تحت الغلاف
+            التحليلات — داخل عمود المحتوى لا تحت الشبكة كلها: كانت تحت الغلاف
             فتنتظر نهاية العمود الجانبي (الأطول غالبًا) وتترك فجوة ميتة تحت
             المتابعات. هنا تتصل مباشرة بما فوقها مهما اختلف طول العمودين.
           */}
@@ -156,15 +165,6 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
             }
           />
           </div>
-
-          {/* العملاء الراكدين — كرت الفريق + قائمة أقدم الحارّ + شيت التوزيع */}
-          <OwnerStale
-            counts={staleHome.counts}
-            rows={staleHome.rows}
-            restCount={staleHome.restCount}
-            dist={staleByEmp.rows}
-            activeTotal={staleByEmp.activeTotal}
-          />
         </div>
 
         {/* العمود الجانبي: الدوام (عدّاد حي) + معدّل النشاط — sticky كما بالمرجع */}
