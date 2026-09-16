@@ -70,6 +70,8 @@ export type MobileLeadRow = {
   followUpsCount: number;
   /** اسم الموظف — للمدير فقط (null للموظف). */
   assignedToName: string | null;
+  /** شارة «راكد N يوم» (المرحلة ٢/٣) من staleMetaFor — null بلا ركود. */
+  staleMeta: { days: number; tier: "STALE" | "ABANDONED" | "DORMANT"; reason: "NO_DATE" | "MISSED"; isHot: boolean } | null;
 };
 
 type Employee = { id: string; name: string };
@@ -330,6 +332,19 @@ export function MobileLeadsList({
                       {l.assignedToName}
                     </span>
                   )}
+                  {/* شارة «راكد N يوم» (من staleMetaFor): حارّ أحمر · مهجور رمادي · غيرهما كهرماني */}
+                  {l.staleMeta && (() => {
+                    const c = l.staleMeta.isHot ? SOP.red : l.staleMeta.tier === "DORMANT" ? SOP.neutral : SOP.amber;
+                    return (
+                      <span
+                        className="flex-none"
+                        title={l.staleMeta.reason === "NO_DATE" ? "بلا موعد قادم" : "فات موعده المسجّل"}
+                        style={{ boxSizing: "border-box", fontSize: 8, fontWeight: 700, padding: "3px 8px", borderRadius: 7, lineHeight: 1.4, background: `color-mix(in srgb, ${c} 14%, transparent)`, color: c }}
+                      >
+                        راكد {toArabicDigits(l.staleMeta.days)} يوم
+                      </span>
+                    );
+                  })()}
                   {tags.map((t) => (
                     <span
                       key={t.key}

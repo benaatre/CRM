@@ -12,6 +12,8 @@ import { OwnerDateFilter } from "@/components/owner/owner-date-filter";
 import { KpiCards } from "@/components/owner/kpi-cards";
 import { OwnerWeekCard } from "@/components/owner/owner-week-card";
 import { getLeaderboard } from "@/lib/data/leaderboard";
+import { getTeamStaleHome, getStaleByEmployee } from "@/lib/stale-leads";
+import { OwnerStale } from "@/components/owner/owner-stale";
 import { OwnerFollowups } from "@/components/owner/owner-followups";
 import { OwnerAuditFeed } from "@/components/owner/owner-audit-feed";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -66,7 +68,7 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
   const empPeriod = normalizeOwnerPeriod(sp.ep);
   // فترة المنصّات الافتراضية «أسبوع» — عنوان المرجع: «مصدر العملاء هذا الأسبوع».
   const chPeriod = normalizeOwnerPeriod(sp.ap ?? "week");
-  const [kpis, followups, audit, channels, trend, teamFu, activity, board] = await Promise.all([
+  const [kpis, followups, audit, channels, trend, teamFu, activity, board, staleHome, staleByEmp] = await Promise.all([
     getOwnerKpis(period, sp.df, sp.dt),
     getOwnerFollowups(fuPeriod, sp.ff, sp.ft),
     getOwnerAudit(30),
@@ -74,8 +76,11 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
     getOwnerWeekTrend(),
     getOwnerTeamFollowups(empPeriod, sp.ef, sp.et),
     getOwnerActivity(),
-    // بطاقة جسر لوحة الأسبوع — نفس دالة اللوحة القائمة حرفيًا، لا استعلام جديد.
+    // بطاقة جسر لوحة الأسبوع — نفس دالة اللوحة القائمة حرفيًا, لا استعلام جديد.
     getLeaderboard(),
+    // العملاء الراكدين (المرحلة ٥) — كرت الفريق + قائمة + شيت التوزيع.
+    getTeamStaleHome(),
+    getStaleByEmployee(),
   ]);
 
   return (
@@ -151,6 +156,15 @@ export async function OwnerDashboard({ userRole, sp }: { userRole: Role; sp: Own
             }
           />
           </div>
+
+          {/* العملاء الراكدين — كرت الفريق + قائمة أقدم الحارّ + شيت التوزيع */}
+          <OwnerStale
+            counts={staleHome.counts}
+            rows={staleHome.rows}
+            restCount={staleHome.restCount}
+            dist={staleByEmp.rows}
+            activeTotal={staleByEmp.activeTotal}
+          />
         </div>
 
         {/* العمود الجانبي: الدوام (عدّاد حي) + معدّل النشاط — sticky كما بالمرجع */}

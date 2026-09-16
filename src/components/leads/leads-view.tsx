@@ -52,7 +52,7 @@ const PAGE_SIZE = 12;
 const NUM: React.CSSProperties = { fontFamily: "var(--font-zain), var(--font-sans)", fontVariantNumeric: "tabular-nums" };
 
 export function LeadsView({
-  query, counts, notContacted, waiting, bankCheck, visitCount, tab, isManager, employees, employeeLoads = [], filters,
+  query, counts, notContacted, waiting, bankCheck, visitCount, staleCount, tab, isManager, employees, employeeLoads = [], filters,
 }: {
   query: string;
   /** أعداد التبويبات + عدّادات المراحل (من getLeadCounts — نطاق «جاري العمل» ضمن صلاحية المستخدم). */
@@ -64,6 +64,8 @@ export function LeadsView({
   bankCheck?: number;
   /** عدد عملاء مرحلتي الزيارة معًا — رقم شريحة «زيارة» الموحّدة. */
   visitCount?: number;
+  /** عدد «العملاء الراكدين» الحي — شريحة المرحلة ٢. */
+  staleCount?: number;
   tab: Tab;
   isManager: boolean;
   employees: Employee[];
@@ -205,6 +207,7 @@ export function LeadsView({
             notContacted={tab === "working" ? notContacted : undefined}
             waiting={tab === "working" ? waiting : undefined}
             bankCheck={tab === "working" ? bankCheck : undefined}
+            staleCount={tab === "working" ? staleCount : undefined}
             visitCount={visitCount}
             showDateRange
           />
@@ -241,6 +244,7 @@ export function LeadsView({
               notContacted={tab === "working" ? notContacted : undefined}
               waiting={tab === "working" ? waiting : undefined}
               bankCheck={tab === "working" ? bankCheck : undefined}
+              staleCount={tab === "working" ? staleCount : undefined}
               purchase={purchase}
               purchaseCounts={purchaseCounts}
               onPurchase={setPurchase}
@@ -367,7 +371,13 @@ export function LeadsView({
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                 <span className={`rounded-full border px-2 py-0.5 ${stageColor[l.stage]}`}>{stageLabels[l.stage]}</span>
-                {l.stale && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold text-warning" title="مهتم بلا متابعة من ٧ أيام — بعد ١٤ يومًا ينزل تلقائيًا «موعد لاحق»">راكد</span>}
+                {/* شارة «راكد N يوم» (من staleMetaFor) — حارّ أحمر، غيره كهرماني */}
+                {l.staleMeta && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${l.staleMeta.isHot ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning"}`}
+                    title={l.staleMeta.reason === "NO_DATE" ? "بلا موعد قادم" : "فات موعده المسجّل"}
+                  >راكد {toArabicDigits(l.staleMeta.days)} يوم</span>
+                )}
                 <span className="text-muted-foreground">الموظف: {l.assignedTo?.name ?? "غير موزّع"}</span>
                 {!isManager && <span className="text-muted-foreground">استلمته {daysAgoLabel(l.daysWaiting)}</span>}
                 {l.followUpsCount > 0 && (

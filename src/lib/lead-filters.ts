@@ -73,7 +73,7 @@ export type ArchiveReason = "" | "final" | "marketer" | "manual";
 const ARCHIVE_REASONS: ArchiveReason[] = ["", "final", "marketer", "manual"];
 
 /** قيم الفلاتر كما في الرابط (مشتركة بين جدول العملاء والكانبان). wait = «في الانتظار» · tr = «محوَّل» · bank = «حسبة البنك» · range/from/to = النطاق الزمني للمواعيد. */
-export type LeadFilterValues = { q: string; stages: string[]; emps: string[]; sort: LeadSort; wait: boolean; tr: boolean; bank: boolean; ar: ArchiveReason; range: DateRangePreset; from: string; to: string };
+export type LeadFilterValues = { q: string; stages: string[]; emps: string[]; sort: LeadSort; wait: boolean; tr: boolean; bank: boolean; stale: boolean; ar: ArchiveReason; range: DateRangePreset; from: string; to: string };
 
 export type ParsedLeadFilters = {
   q: string;
@@ -85,6 +85,8 @@ export type ParsedLeadFilters = {
   transferred: boolean;
   /** فلتر «حسبة البنك»: آخر متابعة للعميل نتيجتها BANK_CHECK — للجميع ضمن صلاحيته. */
   bankCheck: boolean;
+  /** فلتر «راكد» (المرحلة ٢): القائمة من listStaleLeadRows لا getLeads العادية. */
+  stale: boolean;
   archiveReason: ArchiveReason;
   sort: LeadSort;
   /** حدود النطاق الزمني الفعلية [from, to) — null إن لا نطاق أو فلتر المرحلة غير مفعّل. */
@@ -104,6 +106,7 @@ export function buildLeadsQuery(tab: "working" | "archived" | "hidden" | "unassi
   if (v.wait) p.set("wait", "1"); // فلتر «في الانتظار» — آخر متابعة لم يستجب/في الانتظار
   if (v.tr) p.set("tr", "1"); // فلتر «محوَّل» — المحوّلون بالبيانات فقط
   if (v.bank) p.set("bank", "1"); // فلتر «حسبة البنك» — آخر متابعة BANK_CHECK
+  if (v.stale) p.set("stale", "1"); // فلتر «العملاء الراكدين» (المرحلة ٢)
   if (v.ar) p.set("ar", v.ar); // فلتر سبب الأرشفة (تبويب «مؤرشف»)
   // النطاق الزمني — فقط مع فلتر «زيارة»/«موعد لاحق» (يتصفّر تلقائيًا مع إلغائهما).
   if (dateRangeApplies(v.stages)) {
@@ -114,7 +117,7 @@ export function buildLeadsQuery(tab: "working" | "archived" | "hidden" | "unassi
 }
 
 /** تحويل searchParams إلى فلاتر موحّدة — يستخدمه الجدول والكانبان و GET /api/leads. */
-export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: string; sort?: string; wait?: string; nr?: string; tr?: string; bank?: string; ar?: string; range?: string; from?: string; to?: string }): ParsedLeadFilters {
+export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: string; sort?: string; wait?: string; nr?: string; tr?: string; bank?: string; stale?: string; ar?: string; range?: string; from?: string; to?: string }): ParsedLeadFilters {
   const q = sp.q ?? "";
   // #32: نصفّي القيم على أعضاء LeadStage — أي قيمة خاطئة في الرابط تُتجاهل بدل ٥٠٠.
   // فلتر «زيارة» الموحّد: "visit" أو أي من المرحلتين القديمتين (روابط محفوظة قديمة) ⟵ المرحلتان معًا.
@@ -131,6 +134,7 @@ export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: strin
   const waiting = sp.wait === "1" || sp.nr === "1";
   const transferred = sp.tr === "1";
   const bankCheck = sp.bank === "1";
+  const stale = sp.stale === "1";
   const archiveReason: ArchiveReason = ARCHIVE_REASONS.includes(sp.ar as ArchiveReason) ? (sp.ar as ArchiveReason) : "";
   // النطاق الزمني: يعمل فقط مع فلتر «زيارة»/«موعد لاحق» — بدونهما يُتجاهل (رابط قديم/معدّل يدويًا).
   const applies = dateRangeApplies(stages);
@@ -139,8 +143,8 @@ export function parseLeadFilters(sp: { q?: string; stages?: string; emps?: strin
   const to = applies && !range && DATE_RE.test(sp.to ?? "") ? sp.to! : "";
   const bounds = applies ? dateRangeBounds(range, from, to) : null;
   return {
-    q, stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, sort,
+    q, stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, stale, archiveReason, sort,
     dateFrom: bounds?.from ?? null, dateTo: bounds?.to ?? null,
-    values: { q, stages, emps: empTokens, sort, wait: waiting, tr: transferred, bank: bankCheck, ar: archiveReason, range, from, to },
+    values: { q, stages, emps: empTokens, sort, wait: waiting, tr: transferred, bank: bankCheck, stale, ar: archiveReason, range, from, to },
   };
 }

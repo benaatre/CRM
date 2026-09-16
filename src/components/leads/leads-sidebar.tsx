@@ -76,7 +76,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  */
 export function LeadsSidebar({
   basePath, tab, filters, stageCounts, showCounts,
-  notContacted, waiting, bankCheck, purchase, purchaseCounts, onPurchase,
+  notContacted, waiting, bankCheck, staleCount, purchase, purchaseCounts, onPurchase,
 }: {
   basePath: string;
   tab: Tab;
@@ -88,6 +88,8 @@ export function LeadsSidebar({
   notContacted?: number;
   waiting?: number;
   bankCheck?: number;
+  /** عدد «العملاء الراكدين» الحي — شريحة المرحلة ٢ (ضمن صلاحية المستخدم). */
+  staleCount?: number;
   purchase: PurchaseBucket | "";
   purchaseCounts: Record<PurchaseBucket, number>;
   onPurchase: (next: PurchaseBucket | "") => void;
@@ -131,7 +133,7 @@ export function LeadsSidebar({
   const notContactedActive = filters.stages.length === 1 && filters.stages[0] === "NEW";
   // البحث ليس من فلاتر اللوح (مكانه شريط الأدوات) — فلا يمسحه زر «مسح كل الفلاتر».
   const hasFilters = filters.stages.length > 0 || filters.emps.length > 0
-    || filters.wait || filters.tr || filters.bank || !!filters.ar || !!purchase;
+    || filters.wait || filters.tr || filters.bank || filters.stale || !!filters.ar || !!purchase;
   const customRangeActive = !filters.range && (!!filters.from || !!filters.to);
   const visitCount = showCounts ? (stageCounts.VISIT_SCHEDULED ?? 0) + (stageCounts.VIEWING ?? 0) : undefined;
   const umbrellaCount = showCounts ? INTEREST_UMBRELLA.reduce((n, s) => n + (stageCounts[s] ?? 0), 0) : undefined;
@@ -222,6 +224,17 @@ export function LeadsSidebar({
         <Row label="محوَّل" dot="var(--warning)" active={filters.tr} onClick={() => go({ tr: !filters.tr })} title="محوَّل يدويًا بالبيانات" />
         <Row label="حسبة البنك" dot={BANK_HEX} count={bankCheck} active={filters.bank} onClick={() => go({ bank: !filters.bank })} />
         <Row label="في الانتظار" dot={WAITING_HEX} count={waiting} active={filters.wait} onClick={() => go({ wait: !filters.wait })} />
+        {/* «راكد» (المرحلة ٢) — تفعيله يفرد شاشته فيُصفّر بقية الفلاتر (عرض فقط) */}
+        {staleCount != null && (
+          <Row
+            label="راكد"
+            dot="var(--warning)"
+            count={staleCount}
+            active={filters.stale}
+            title="عملاء انقطعت متابعتهم — بلا موعد قادم أو فات موعدهم"
+            onClick={() => go(filters.stale ? { stale: false } : { stale: true, stages: [], wait: false, tr: false, bank: false })}
+          />
+        )}
       </Group>
 
       {/* طريقة الشراء — فلتر محلي على الصفوف المحمّلة (بلا بارامتر رابط ولا استعلام) */}

@@ -28,6 +28,8 @@ export function buildLeadsHref(
   if (tr) p.set("tr", "1");
   const bank = next.bank ?? filters.bank;
   if (bank) p.set("bank", "1");
+  // «راكد» لا يُحمَل تلقائيًا: يُضبط فقط حين يمرَّر صراحةً — فأي فلتر آخر يُلغيه.
+  if (next.stale) p.set("stale", "1");
   const ar = next.ar ?? filters.ar;
   if (tab === "hidden" && ar) p.set("ar", ar); // سبب الأرشفة خاص بتبويب «مؤرشف»
   // النطاق الزمني يُحمل ما دام فلتر «زيارة»/«موعد لاحق» مفعّلًا (يتصفّر مع إلغائه).

@@ -5,6 +5,7 @@ import { getMyNoResponseAlert } from "@/lib/data/no-response";
 import { getMyRank } from "@/lib/data/leaderboard";
 import { getMyOverdue, normalizeBucket } from "@/lib/data/my-overdue";
 import { getMyRecentFollowups } from "@/lib/data/my-log";
+import { getMyStaleHome } from "@/lib/stale-leads";
 import { getLeads } from "@/lib/data/leads";
 import { INTEREST_UMBRELLA } from "@/lib/lead-filters";
 import { dayStartKSA } from "@/lib/ksa-time";
@@ -54,7 +55,7 @@ export default async function DashboardPage({
   if (user.role === Role.EMPLOYEE || user.role === Role.HR) {
     const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "زميلي";
     const bucket = normalizeBucket(sp.late);
-    const [overdue, recent, interestedRaw] = await Promise.all([
+    const [overdue, recent, interestedRaw, staleHome] = await Promise.all([
       getMyOverdue(bucket),
       // سجل متابعاته (هويته من الجلسة) — نقتطع منه منجزات اليوم فقط.
       getMyRecentFollowups(user.id, 50),
@@ -64,6 +65,8 @@ export default async function DashboardPage({
        * صفر استعلام جديد وصفر دالة جديدة.
        */
       getLeads({ tab: "working", sort: "activity", stages: [...INTEREST_UMBRELLA] }),
+      // راكدو الموظف — نطاق شخصي واتجاه إنقاذ (نفس getMyStaleHome الجوال).
+      getMyStaleHome(),
     ]);
 
     // النص النسبي يُحسب على الخادم (توقيت الرياض) فلا يختلف بين خادم وعميل.
@@ -105,6 +108,7 @@ export default async function DashboardPage({
           openAppts={openAppts}
           doneToday={doneToday}
           interested={interested}
+          stale={staleHome}
           period={sp.period}
         />
         {/* HR: قسم الموارد البشرية — دوام الفريق اليوم (قرائي) + طلبات الإجازة بانتظاره. */}

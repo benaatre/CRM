@@ -2,6 +2,7 @@ import { requireUser, isManager } from "@/lib/auth-guards";
 import { getLeads } from "@/lib/data/leads";
 import { getDashboard } from "@/lib/data/dashboard";
 import { getMyRecentFollowups } from "@/lib/data/my-log";
+import { getMyStaleHome } from "@/lib/stale-leads";
 import { getNotifications } from "@/lib/actions/notifications";
 import { getSettings } from "@/lib/data/settings";
 import { buildAgenda, buildDayAppointments } from "@/lib/mobile-agenda";
@@ -41,13 +42,23 @@ export default async function MobileHomePage({
    */
   // take كبير (قرار الديوان المعتمد): يغطي أثقل يوم واقعي — منه عدّاد الدائرة
   // «المنجز اليوم»، والسجل المعروض يبقى أول ٥ فقط.
-  const [leads, notif, dash, recent, settings] = await Promise.all([
+  const [leads, notif, dash, recent, settings, staleHome] = await Promise.all([
     getLeads({ tab: "working", sort: "activity" }),
     getNotifications(),
     getDashboard("all"),
     getMyRecentFollowups(user.id, 200),
     getSettings(),
+    // راكدو الموظف — نطاق شخصي واتجاه إنقاذ (المرحلة ٣). يشمل HR (غير مدير).
+    getMyStaleHome(),
   ]);
+  const stale = {
+    counts: staleHome.counts,
+    restCount: staleHome.restCount,
+    rows: staleHome.rows.map((r) => ({
+      id: r.id, name: r.name, stage: r.stage, days: r.days,
+      tier: r.tier, reason: r.reason, isHot: r.isHot, lastNote: r.lastNote,
+    })),
+  };
 
   const agenda = buildAgenda(leads);
   const appointments = buildDayAppointments(agenda);
@@ -91,6 +102,7 @@ export default async function MobileHomePage({
       notes={notes}
       backlogCount={agenda.overdueOld.length}
       unread={notif.unread}
+      stale={stale}
       appointments={appointments}
       waiting={waiting}
       recent={recent.slice(0, 4)}

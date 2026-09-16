@@ -31,6 +31,8 @@ export type OwnerTeamRow = {
   /** الاستقبال (للبائعين فقط): مفتوح أو مقفول بسببه ومتى يرجع — ليس إنذارًا. */
   reception: { open: boolean; text: string } | null;
   badgeText: string;
+  /** عدد العملاء الحارّ الراكد لدى الموظف (المرحلة ٤) — شارة حمراء بجانبه، تُخفى عند الصفر. */
+  hotStale?: number;
 };
 
 /** لون كل حالة — من توكنز SOP حصرًا (نفس رباعية المرجع). */
@@ -118,6 +120,12 @@ export function OwnerTeamSection({ rows, summary, teamHref = "/m/team" }: {
                   </span>
                   {r.metaText && <span>{r.metaText}</span>}
                   {r.dangerText && <span style={{ color: SOP.red, fontWeight: 700 }}>{r.dangerText}</span>}
+                  {/* الحارّ الراكد لدى الموظف — المرحلة ٤ (عرض فقط) */}
+                  {r.hotStale != null && r.hotStale > 0 && (
+                    <Link href={`/m/leads?stale=1&emps=${r.id}`} className="flex items-center" style={{ gap: 3, color: SOP.red, fontWeight: 700 }}>
+                      <span style={ZAIN}>{toArabicDigits(r.hotStale)}</span> حارّ راكد
+                    </Link>
+                  )}
                 </div>
               </div>
               <div className="flex flex-none flex-col items-end" style={{ gap: 5 }}>

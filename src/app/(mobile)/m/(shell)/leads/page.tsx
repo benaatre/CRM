@@ -7,6 +7,7 @@ import {
   getBankCheckCount, getVisitStagesCount,
   type LeadTab,
 } from "@/lib/data/leads";
+import { listStaleLeadRows, attachStaleMeta } from "@/lib/stale-leads";
 import { getNotifications } from "@/lib/actions/notifications";
 import { getTeam } from "@/lib/data/team";
 import { STAGE_HEX } from "@/lib/stage-colors";
@@ -95,21 +96,26 @@ export default async function MobileLeadsPage({
   const tab: LeadTab = (TABS.find((t) => t.key === sp.tab)?.key ?? "working") as LeadTab;
   const v = filters.values;
 
+  // فلتر «راكد»: مسار مستقل (listStaleLeadRows) — للمدير يقصر على الموظف المختار
+  // إن وُجد، والموظف مقيّد بنفسه. غيابه ⟵ getLeads العادية كما هي.
+  const staleEmp = filters.values.emps.find((id) => id !== "none");
   const [rows, counts, team, notContacted, waitingCount, bankCount, visitCount, notif] = await Promise.all([
-    getLeads({
-      tab,
-      stages: filters.stages,
-      assigneeIds: filters.assigneeIds,
-      includeUnassigned: filters.includeUnassigned,
-      waiting: filters.waiting,
-      transferred: filters.transferred,
-      bankCheck: filters.bankCheck,
-      archiveReason: filters.archiveReason,
-      dateFrom: filters.dateFrom,
-      dateTo: filters.dateTo,
-      q: filters.q,
-      sort: filters.sort,
-    }),
+    filters.stale
+      ? listStaleLeadRows({ employeeId: staleEmp }).then((r) => r.rows)
+      : getLeads({
+        tab,
+        stages: filters.stages,
+        assigneeIds: filters.assigneeIds,
+        includeUnassigned: filters.includeUnassigned,
+        waiting: filters.waiting,
+        transferred: filters.transferred,
+        bankCheck: filters.bankCheck,
+        archiveReason: filters.archiveReason,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        q: filters.q,
+        sort: filters.sort,
+      }),
     getLeadCounts(),
     // نفس دالة شاشة الفريق — فيها عملاء كل موظف (total/closed/activityRate).
     manager ? getTeam() : Promise.resolve(null),
@@ -119,6 +125,11 @@ export default async function MobileLeadsPage({
     getVisitStagesCount(),
     getNotifications(),
   ]);
+
+  // شارة «راكد N يوم» على الصفوف المعروضة (كل الفلاتر) — تجميعة واحدة خفيفة
+  // مقيّدة بمعرّفاتها. مسار stale=1 يحملها أصلًا من listStaleLeadRows، والركود
+  // مفهوم «جاري العمل» فلا نُتعب «مبيعاتي»/«أرشفة».
+  if (!filters.stale && tab === "working") await attachStaleMeta(rows);
 
   // الموظفون: النشطون فقط، مرتّبون بالأكثر عملاءً (أول أربعة يظهرون بالشريط).
   const empChips: EmpChip[] = (team?.members ?? [])
@@ -415,6 +426,7 @@ export default async function MobileLeadsPage({
           purchaseGoalLabel: l.purchaseGoal ? purchaseGoalLabels[l.purchaseGoal] : null,
           followUpsCount: l.followUpsCount,
           assignedToName: manager ? (l.assignedTo?.name ?? "غير موزّع") : null,
+          staleMeta: l.staleMeta ?? null,
         }))}
         isManager={manager}
         employees={employees}

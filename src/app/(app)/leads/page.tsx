@@ -1,6 +1,7 @@
 import { Zain } from "next/font/google";
 import { requireClientAccess, requireUser, isManager } from "@/lib/auth-guards";
 import { getLeadCounts, getEmployees, getNotContactedCount, getWaitingCount, getBankCheckCount, getVisitStagesCount } from "@/lib/data/leads";
+import { countStale } from "@/lib/stale-leads";
 import { getEmployeeLoads } from "@/lib/actions/team";
 import Link from "next/link";
 import { FileDown } from "lucide-react";
@@ -27,7 +28,7 @@ export default async function LeadsPage({
     sp.tab === "archived" ? "archived" : sp.tab === "hidden" ? "hidden" : sp.tab === "unassigned" && manager ? "unassigned" : "working";
   const { values, assigneeIds } = parseLeadFilters(sp);
 
-  const [counts, employees, loads, notContacted, waiting, bankCheck, visitCount] = await Promise.all([
+  const [counts, employees, loads, notContacted, waiting, bankCheck, visitCount, staleCount] = await Promise.all([
     getLeadCounts(),
     manager ? getEmployees() : Promise.resolve([]),
     // أحمال الموظفين لشريط المالك — استدعاء قائم بحارسه (requireManager بداخله).
@@ -38,6 +39,8 @@ export default async function LeadsPage({
     getWaitingCount(),
     getBankCheckCount(),
     getVisitStagesCount(),
+    // عدّاد شريحة «راكد» الحي — ضمن صلاحية المستخدم (نطاقه في countStale).
+    countStale().then((s) => s.total),
   ]);
 
   // الجدول يقرأ صفوفه من نفس الـ API GET /api/leads — كل تبويب بقيوده على الخادم.
@@ -64,6 +67,7 @@ export default async function LeadsPage({
         waiting={waiting}
         bankCheck={bankCheck}
         visitCount={visitCount}
+        staleCount={staleCount}
         tab={tab}
         isManager={manager}
         employees={employees}

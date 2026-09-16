@@ -163,7 +163,15 @@ export function LeadsTable({
                       <span className="flex items-center gap-2">
                         <span aria-hidden className="size-2 flex-none rounded-full" style={{ background: STAGE_HEX[l.stage] }} />
                         <span className="min-w-0 truncate text-[13px] text-foreground/90">{stageLabels[l.stage]}</span>
-                        {l.stale && <Tag tone="bg-warning/12 text-warning" title="مهتم بلا متابعة من ٧ أيام">راكد</Tag>}
+                        {/* شارة «راكد N يوم» (من staleMetaFor) — حارّ أحمر، غيره كهرماني */}
+                        {l.staleMeta && (
+                          <Tag
+                            tone={l.staleMeta.isHot ? "bg-destructive/12 text-destructive" : "bg-warning/12 text-warning"}
+                            title={l.staleMeta.reason === "NO_DATE" ? "بلا موعد قادم" : "فات موعده المسجّل"}
+                          >
+                            راكد {toArabicDigits(l.staleMeta.days)} يوم
+                          </Tag>
+                        )}
                       </span>
                     </td>
 

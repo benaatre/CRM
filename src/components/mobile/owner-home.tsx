@@ -5,6 +5,10 @@ import { getLeadCounts } from "@/lib/data/leads";
 import { getNotifications } from "@/lib/actions/notifications";
 import { normalizeFuWindow, FU_WINDOWS } from "@/lib/data/team-commitment";
 import { getOwnerTeamFollowups, getOwnerAudit } from "@/lib/data/owner-dashboard";
+import { getTeamStaleHome, getStaleByEmployee } from "@/lib/stale-leads";
+import { StaleCard } from "@/components/mobile/stale-card";
+import { StaleWheel } from "@/components/mobile/stale-wheel";
+import { StaleDistribution } from "@/components/mobile/stale-distribution";
 import { getLiveBoard } from "@/lib/data/attendance";
 import { getTeam, getTeamPresence } from "@/lib/data/team";
 import { getLeaderboard } from "@/lib/data/leaderboard";
@@ -199,7 +203,7 @@ export async function MobileOwnerHome({
   const lb: "this" | "last" = owner && rawLb === "last" ? "last" : "this";
   const lbRef = lb === "last" ? new Date(nowMs - 7 * 86_400_000) : now;
 
-  const [data, counts, notif, presence, live, team, fu, audit, board] = await Promise.all([
+  const [data, counts, notif, presence, live, team, fu, audit, board, staleHome, staleByEmp] = await Promise.all([
     getDashboard(period),
     // نفس دالة شارة الزئبق حرفيًا — ومغلّفة بـcache() فالبطاقة والشارة تقرآن نتيجة الطلب الواحدة.
     getLeadCounts(),
@@ -215,6 +219,10 @@ export async function MobileOwnerHome({
     getOwnerAudit(30),
     // لوحة الأسبوع — نفس درجة /leaderboard حرفيًا (الإنجاز × الجودة)، مرتّبة ومرقّمة.
     getLeaderboard(lbRef),
+    // العملاء الراكدين (المرحلة ٤): كرت الفريق + القائمة الدوّارة + شيت التوزيع.
+    // كلاهما يقرأ fetchStale المُخزَّن فطلب واحد يخدمهما (مرشّحون + groupBy).
+    getTeamStaleHome(),
+    getStaleByEmployee(),
   ]);
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "مرحبًا";
@@ -291,6 +299,8 @@ export async function MobileOwnerHome({
       dangerText: state === "miss" && r.absenceStreak > 0 ? `غياب ${toArabicDigits(r.absenceStreak)} يوم متتالية` : null,
       reception,
       badgeText,
+      // الحارّ الراكد لدى الموظف — خريطة getStaleByEmployee (المرحلة ٤).
+      hotStale: staleByEmp.hotById[r.id] ?? 0,
     } satisfies OwnerTeamRow;
   });
 
@@ -422,8 +432,45 @@ export async function MobileOwnerHome({
       />
       <OwnerTeamSection rows={teamRows} summary={teamSummary} teamHref="/m/team" />
 
-      {/* ===== ٣) التزام الموظفين بالمتابعات ===== */}
-      <SecNum n="٣" ac={SOP.amber} title="التزام الموظفين بالمتابعات" cnt="الكل ←" cntHref="/m/team" />
+      {/* ===== ٣) العملاء الراكدين — كرت الفريق + قائمة دوّارة + شيت التوزيع ===== */}
+      {staleHome.counts.total > 0 && (
+        <>
+          <SecNum
+            n="٣"
+            ac={SOP.amber}
+            title="العملاء الراكدين"
+            cnt={`${toArabicDigits(staleHome.counts.hot)} حارّ ←`}
+            cntHref="/m/leads?stale=1"
+          />
+          <StaleCard
+            label="عملاء راكدين"
+            counts={staleHome.counts}
+            sub={<>
+              <b style={{ ...ZAIN, color: SOP.red, fontWeight: 700 }}>{toArabicDigits(staleHome.counts.hot)} حارّ</b>
+              {" "}· <span style={ZAIN}>{staleByEmp.activeTotal > 0 ? toArabicDigits(Math.round((staleHome.counts.total / staleByEmp.activeTotal) * 100)) : "٠"}٪</span> من الخط النشط
+            </>}
+          />
+          <StaleWheel
+            rows={staleHome.rows.map((r) => ({
+              id: r.id, name: r.name, stage: r.stage, days: r.days,
+              tier: r.tier, reason: r.reason, isHot: r.isHot, lastNote: r.lastNote,
+              employeeName: r.employeeName,
+            }))}
+            restCount={staleHome.restCount}
+            restLabel="باقي الراكدين في الفريق"
+            restHref="/m/leads?stale=1"
+          />
+          {/* شيت التوزيع على الموظفين — مرتّب بالحارّ، عرض فقط (بلا سحب ولا إعادة توزيع) */}
+          <div className="flex items-baseline" style={{ margin: "6px 2px 0", gap: 8 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 700, color: SOP.tx2 }}>الراكد حسب الموظف</h3>
+            <span style={{ fontSize: 10.5, color: SOP.mut }}>اضغط الموظف تشوف قائمته</span>
+          </div>
+          <StaleDistribution rows={staleByEmp.rows} />
+        </>
+      )}
+
+      {/* ===== ٤) التزام الموظفين بالمتابعات ===== */}
+      <SecNum n="٤" ac={SOP.amber} title="التزام الموظفين بالمتابعات" cnt="الكل ←" cntHref="/m/team" />
       <ChipsRow param="fu" current={fuWin} base="/m" items={FU_WINDOWS} keep={{ ...(period !== "all" ? { p: period } : {}), ...keepLb }} />
       {commitRows.length === 0 ? (
         <div className="m-raise text-center" style={{ borderRadius: 13, padding: 16, fontSize: 12, color: SOP.mut }}>
@@ -465,15 +512,15 @@ export async function MobileOwnerHome({
       )}
 
       {/* ===== ٤) سجل التدقيق ===== */}
-      <SecNum n="٤" ac={SOP.blue} title="سجل التدقيق" cnt="الكامل ←" cntHref="/m/audit" />
+      <SecNum n="٥" ac={SOP.blue} title="سجل التدقيق" cnt="الكامل ←" cntHref="/m/audit" />
       <OwnerAuditSection rows={auditItems} />
 
       {/* ===== ٥) قمع المبيعات ===== */}
-      <SecNum n="٥" ac={SOP.purple} title="قمع المبيعات" cnt="للتفصيل ←" cntHref="/m/analytics" />
+      <SecNum n="٦" ac={SOP.purple} title="قمع المبيعات" cnt="للتفصيل ←" cntHref="/m/analytics" />
       <OwnerFunnel funnel={data.funnel} />
 
       {/* ===== ٦) لوحة الأسبوع ===== */}
-      <SecNum n="٦" ac={SOP.gold} title="لوحة الأسبوع" cnt="ترتيب الفريق" />
+      <SecNum n="٧" ac={SOP.gold} title="لوحة الأسبوع" cnt="ترتيب الفريق" />
       <OwnerLeaderboardSection
         rows={raceRows}
         unranked={board.unranked.map((r) => r.name)}

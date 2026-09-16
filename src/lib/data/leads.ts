@@ -31,7 +31,7 @@ import { bookingCollection } from "@/lib/booking-finance";
 import { floorLabels } from "@/lib/labels";
 import { duplicateLeadIds } from "@/lib/phone-dupe";
 import { INTEREST_UMBRELLA, VISIT_FILTER_STAGES, type LeadSort, type ArchiveReason } from "@/lib/lead-filters";
-import { interestedIdleDays, INTERESTED_STALE_WARN_DAYS } from "@/lib/visit-engine";
+import type { StaleBadge } from "@/lib/stale-leads";
 import { Prisma } from "@prisma/client";
 
 // ===== أنواع DTO (بيانات عادية قابلة للتمرير لمكوّنات العميل) =====
@@ -97,8 +97,6 @@ export type LeadRow = {
   visitAt: Date | null;
   /** كم مرة أعاد جدولة زيارته — شارة «أعاد الجدولة ×N» (مدير/مالك). */
   visitRescheduleCount: number;
-  /** «راكد»: مهتم بلا متابعة جديدة ٧+ أيام (من نقطة صفر محرّك الزيارات) — شارة صفراء. */
-  stale: boolean;
   /**
    * حُوّل يدويًا «بالبيانات» (آخر إسناد فعلي سببه manual_transfer_full) — وسم ⇄ «محوَّل»
    * يظهر للموظف المستلم وللمالك/الأدمن. المحوّل «كجديد» (_fresh) بلا وسم لأحد عمدًا.
@@ -118,6 +116,13 @@ export type LeadRow = {
    * يجلب `note` أصلًا لآخر ٢٠ متابعة، فهذا الحقل يكشف قيمة محسوبة سلفًا لا أكثر.
    */
   lastNote: string | null;
+  /**
+   * شارة «العملاء الراكدين» (المرحلة ٢) — تُلصق فقط في مسار فلتر «راكد»
+   * (listStaleLeadRows) من staleMetaFor. غائبة (undefined) في كل المسارات
+   * الأخرى فلا شيء يتغيّر خارج الفلتر. مختلفة عن الحقل `stale` أعلاه (مفهوم
+   * محرّك الزيارات الأضيق: مهتم خامل).
+   */
+  staleMeta?: StaleBadge | null;
 };
 
 export type LeadActivity = {
@@ -365,10 +370,6 @@ function toRow(l: LeadWithRels, ctx: RowCtx): LeadRow {
     inAutoPool: l.autoPoolAt != null,
     visitAt: l.visitAt,
     visitRescheduleCount: l.visitRescheduleCount,
-    // «راكد»: مهتم بلا متابعة ٧+ أيام — المرجع آخر متابعة حصريًا (نفس مرجع التنزيل التلقائي؛
-    // بلا متابعة بعد نقطة الصفر ⟵ خارج قاعدة الركود، لا شارة ولا تنزيل).
-    stale: l.stage === "INTERESTED" && !l.isArchived
-      && interestedIdleDays(latestFuAt, ctx.now) >= INTERESTED_STALE_WARN_DAYS,
     // وسم ⇄ «محوَّل بالبيانات» — مشتق من آخر إسناد فعلي، بلا عمود (التحويلات الأقدم من الميزة بلا لاحقة → بلا وسم).
     manualTransferred: lastAssignReason === MANUAL_TRANSFER_FULL,
     // «كان: X»: محوَّل ببياناته وما زال NEW — مرحلته السابقة من أحدث stageAfter (المتابعات تنازلية).
@@ -437,6 +438,12 @@ export type LeadFilters = {
   dateTo?: Date | null;
   q?: string;
   sort?: LeadSort;
+  /**
+   * حصر النتائج بمعرّفات بعينها (id IN) — حقن عام يستخدمه فلتر «العملاء
+   * الراكدين» (listStaleLeadRows) بعد أن يحسب رتبتهم. لا يغيّر أي سلوك قائم
+   * حين يُترك undefined.
+   */
+  ids?: string[];
 };
 
 // خريطة الترتيب → orderBy. «الأحدث نشاطًا» = lastContact (nulls آخرًا) مع createdAt كسر تعادل.
@@ -492,12 +499,15 @@ function tabWhere(tab: LeadTab, ownerIds: string[]): Record<string, unknown> | n
  */
 export async function getLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
   const { user, where, manager } = await scopeForUser();
-  const { tab = "working", stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, dateFrom, dateTo, q, sort = "activity" } = filters;
+  const { tab = "working", stages, assigneeIds, includeUnassigned, waiting, transferred, bankCheck, archiveReason, dateFrom, dateTo, q, sort = "activity", ids } = filters;
 
   const ownerIds = await getOwnerIds();
   const and: Record<string, unknown>[] = [];
   const base = tabWhere(tab, ownerIds);
   if (base) and.push(base);
+
+  // حصر بمعرّفات (id IN) — فلتر «راكد» يحقن رتبته المحسوبة سلفًا.
+  if (ids) and.push({ id: { in: ids } });
 
   if (stages && stages.length) and.push({ stage: { in: stages } });
   // النطاق الزمني للمواعيد: زيارة على visitAt · موعد لاحق على nextFollowup — server-side

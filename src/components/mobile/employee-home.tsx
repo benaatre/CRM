@@ -14,6 +14,9 @@ import { DiwanInvite } from "@/components/mobile/diwan-invite";
 import { DiwanCaroz } from "@/components/mobile/diwan-caroz";
 import { AttendanceBadge } from "@/components/mobile/attendance-badge";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
+import { StaleWheel, type StaleWheelRow } from "@/components/mobile/stale-wheel";
+import { StaleCard } from "@/components/mobile/stale-card";
+import type { StaleCounts } from "@/lib/stale-leads";
 
 /**
  * رئيسية الموظف «الديوان» — مطابقة حرفية للمرجع (بنيةً وقيمًا وترتيبًا):
@@ -74,11 +77,13 @@ function SecH({ title, all, href }: { title: string; all: string; href: string }
 
 export function EmployeeHome({
   firstName, companyName, unread, appointments, notes, doneCount, lateCount, doneLeadIds,
-  backlogCount, waiting, recent, funnel, totalClients, falLicense,
+  backlogCount, waiting, recent, funnel, totalClients, falLicense, stale,
 }: {
   firstName: string;
   companyName: string;
   unread: number;
+  /** راكدو الموظف (المرحلة ٣) — كرت + قائمة دوّارة. null/صفر ⟵ لا يُعرض القسم. */
+  stale?: { counts: StaleCounts; rows: StaleWheelRow[]; restCount: number } | null;
   appointments: DayAppointment[];
   /** leadId ← نص آخر متابعة (LeadRow.lastNote) — للدعوة والكاروسيل. */
   notes: Record<string, string | null>;
@@ -179,6 +184,23 @@ export function EmployeeHome({
             ابدأ التصفية
           </Link>
         </div>
+      )}
+
+      {/* ===== العملاء الراكدين (المرحلة ٣): كرت + قائمة دوّارة ===== */}
+      {stale && stale.counts.total > 0 && (
+        <>
+          <SecH title="العملاء الراكدين" all="القائمة الكاملة" href="/m/leads?stale=1" />
+          <StaleCard
+            label="عملاء راكدين عندك"
+            counts={stale.counts}
+            sub={stale.counts.hot > 0
+              ? <><b style={{ ...ZAIN, color: SOP.red, fontWeight: 700 }}>{toArabicDigits(stale.counts.hot)} حارّ</b> محتاجينك اليوم</>
+              : "محتاجين متابعة وانقطعت"}
+          />
+          <div style={{ marginTop: 12 }}>
+            <StaleWheel rows={stale.rows} restCount={stale.restCount} />
+          </div>
+        </>
       )}
 
       {/* ===== ينتظرون أول تواصل `.wrow` ===== */}

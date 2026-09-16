@@ -19,6 +19,8 @@ import { NextAppointment } from "./next-appointment";
 import { TodayFollowups } from "./today-followups";
 import { OverdueSection } from "./overdue-section";
 import { InterestedRiver, type RiverLead } from "./interested-river";
+import { EmployeeStale } from "./employee-stale";
+import type { StaleCounts, StaleRow } from "@/lib/stale-leads";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 /**
@@ -36,7 +38,7 @@ const zain = Zain({ subsets: ["arabic"], weight: ["700", "800"], display: "swap"
 const NUM = { fontVariantNumeric: "tabular-nums" as const };
 
 export function EmployeeDashboard({
-  data, alert, myRank, firstName, overdue, openAppts, doneToday, interested, period,
+  data, alert, myRank, firstName, overdue, openAppts, doneToday, interested, stale, period,
 }: {
   data: DashboardData;
   alert: MyNoResponseAlert;
@@ -50,6 +52,8 @@ export function EmployeeDashboard({
   doneToday: MyRecentFollowUp[];
   /** عملاء مظلة «مهتم» — النهر الحي (الأنشط أولًا من فرز activity). */
   interested: RiverLead[];
+  /** راكدو الموظف (المرحلة ٥) — كرت + قائمة إنقاذ. */
+  stale: { counts: StaleCounts; rows: StaleRow[]; restCount: number };
   period?: string;
 }) {
   const k = data.kpis;
@@ -125,6 +129,9 @@ export function EmployeeDashboard({
 
           {/* متأخرة عن موعدها — صفوف كاملة بفلاتر مدة بعدّادات حقيقية */}
           <OverdueSection data={overdue} period={period} zainClass={zain.className} />
+
+          {/* العملاء الراكدين (المرحلة ٥) — كرت + قائمة إنقاذ */}
+          <EmployeeStale counts={stale.counts} rows={stale.rows} restCount={stale.restCount} />
 
         </div>
 

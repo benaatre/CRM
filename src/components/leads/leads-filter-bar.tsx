@@ -38,7 +38,7 @@ function chipAll(active: boolean) {
  * preserve: بارامترات تُحفظ في الرابط (مثل tab).
  */
 export function LeadsFilterBar({
-  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, waiting, bankCheck, visitCount, showDateRange = false,
+  basePath, isManager, employees, filters, preserve = {}, hideUnassignedEmp = false, notContacted, waiting, bankCheck, staleCount, visitCount, showDateRange = false,
 }: {
   basePath: string;
   isManager: boolean;
@@ -51,6 +51,8 @@ export function LeadsFilterBar({
   waiting?: number;
   /** عدد «حسبة البنك» (آخر متابعة BANK_CHECK) — الفلتر للجميع ضمن صلاحيته. */
   bankCheck?: number;
+  /** عدد «العملاء الراكدين» الحي — شريحة المرحلة ٢ (ضمن صلاحية المستخدم). */
+  staleCount?: number;
   /** عدد عملاء مرحلتي الزيارة معًا — رقم شريحة «زيارة» الموحّدة (اختياري). */
   visitCount?: number;
   /** يعرض شريط النطاق الزمني مع فلتر «زيارة»/«موعد لاحق» — قائمة العملاء فقط (لا الكانبان). */
@@ -79,6 +81,7 @@ export function LeadsFilterBar({
     if (tr) p.set("tr", "1"); // فلتر «محوَّل» (المحوّلون بالبيانات)
     const bank = next.bank ?? filters.bank;
     if (bank) p.set("bank", "1"); // فلتر «حسبة البنك» (آخر متابعة BANK_CHECK)
+    if (next.stale) p.set("stale", "1"); // «راكد» صريح فقط — أي فلتر آخر يُلغيه
     // النطاق الزمني — يُحمل فقط ما دام فلتر «زيارة»/«موعد لاحق» مفعّلًا (يتصفّر مع إلغائه).
     if (dateRangeApplies(stages)) {
       const range = next.range ?? filters.range;
@@ -126,7 +129,7 @@ export function LeadsFilterBar({
     go({ emps: filters.emps.includes(t) ? filters.emps.filter((x) => x !== t) : [...filters.emps, t] });
   }
 
-  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.wait || filters.tr || filters.bank;
+  const hasFilters = !!filters.q || filters.stages.length > 0 || filters.emps.length > 0 || filters.wait || filters.tr || filters.bank || filters.stale;
   // شريط النطاق الزمني: يظهر مع فلتر «زيارة» (على موعد الزيارة) أو «موعد لاحق» (على موعد المتابعة).
   const dateRangeOn = showDateRange && dateRangeApplies(filters.stages);
   const customRangeActive = !filters.range && (!!filters.from || !!filters.to);
@@ -156,6 +159,16 @@ export function LeadsFilterBar({
           {bankCheck != null && (
             <FilterChip active={filters.bank} onClick={() => go({ bank: !filters.bank })} className={toneFilterChip(BANK_TONE, filters.bank)}>
               حسبة البنك <span className="font-bold">({toArabicDigits(bankCheck)})</span>
+            </FilterChip>
+          )}
+          {/* فلتر «راكد» (المرحلة ٢) — كهرماني؛ تفعيله يفرد شاشته فيُصفّر بقية الفلاتر */}
+          {staleCount != null && (
+            <FilterChip
+              active={filters.stale}
+              onClick={() => go(filters.stale ? { stale: false } : { stale: true, stages: [], wait: false, tr: false, bank: false })}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.stale ? "border-warning bg-warning/25 text-warning" : "border-warning/30 text-warning/70 hover:bg-warning/10 hover:text-warning"}`}
+            >
+              راكد <span className="font-bold">({toArabicDigits(staleCount)})</span>
             </FilterChip>
           )}
         </div>
